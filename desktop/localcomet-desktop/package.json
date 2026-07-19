@@ -1,0 +1,27 @@
+{
+  "name": "localcomet-desktop",
+  "version": "0.0.0-v6.84.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "vite build",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "3.0.10",
+    "@sveltejs/kit": "2.69.2",
+    "@sveltejs/vite-plugin-svelte": "7.2.0",
+    "@tauri-apps/cli": "2.11.4",
+    "svelte": "5.56.4",
+    "svelte-check": "4.7.2",
+    "typescript": "6.0.3",
+    "vite": "8.1.4",
+    "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1"
+  }
+}

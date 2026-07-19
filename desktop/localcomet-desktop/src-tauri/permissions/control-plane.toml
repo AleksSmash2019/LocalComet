@@ -1,0 +1,153 @@
+[[permission]]
+identifier = "allow-control-plane-bootstrap"
+description = "Allow LocalComet control-plane bootstrap."
+commands.allow = [
+  "control_plane_bootstrap",
+]
+
+[[permission]]
+identifier = "allow-control-plane-create-session"
+description = "Allow creating a LocalComet control-plane session."
+commands.allow = [
+  "control_plane_create_session",
+]
+
+[[permission]]
+identifier = "allow-control-plane-close-session"
+description = "Allow closing a LocalComet control-plane session."
+commands.allow = [
+  "control_plane_close_session",
+]
+
+[[permission]]
+identifier = "allow-control-plane-create-thread"
+description = "Allow creating a LocalComet control-plane thread."
+commands.allow = [
+  "control_plane_create_thread",
+]
+
+[[permission]]
+identifier = "allow-control-plane-start-mock-turn"
+description = "Allow starting a mock LocalComet control-plane turn."
+commands.allow = [
+  "control_plane_start_mock_turn",
+]
+
+[[permission]]
+identifier = "allow-control-plane-get-turn-status"
+description = "Allow reading LocalComet control-plane turn status."
+commands.allow = [
+  "control_plane_get_turn_status",
+]
+
+[[permission]]
+identifier = "allow-control-plane-cancel-turn"
+description = "Allow cancelling a LocalComet control-plane turn."
+commands.allow = [
+  "control_plane_cancel_turn",
+]
+
+[[permission]]
+identifier = "allow-model-gateway-catalog"
+description = "Allow reading the fixed LocalComet model gateway catalog."
+commands.allow = [
+  "model_gateway_catalog",
+]
+
+[[permission]]
+identifier = "allow-knowledge-turn-preview"
+description = "Allow preparing one bounded project-knowledge preview for an existing Turn."
+commands.allow = [
+  "knowledge_turn_preview",
+]
+
+[[permission]]
+identifier = "allow-knowledge-turn-decide"
+description = "Allow one bounded user decision for an exact project-knowledge preview."
+commands.allow = [
+  "knowledge_turn_decide",
+]
+
+[[permission]]
+identifier = "allow-knowledge-review-list"
+description = "Allow listing bounded read-only knowledge review summaries."
+commands.allow = [
+  "knowledge_review_list",
+]
+
+[[permission]]
+identifier = "allow-knowledge-review-get"
+description = "Allow reading one exact bounded knowledge review projection."
+commands.allow = [
+  "knowledge_review_get",
+]
+
+[[permission]]
+identifier = "allow-model-gateway-probe"
+description = "Allow probing the fixed loopback-only local model gateway."
+commands.allow = [
+  "model_gateway_probe",
+]
+
+[[permission]]
+identifier = "allow-model-gateway-list-models"
+description = "Allow listing models from the fixed loopback-only local model gateway."
+commands.allow = [
+  "model_gateway_list_models",
+]
+
+[[permission]]
+identifier = "allow-model-binding-set"
+description = "Allow confirming an in-memory LocalComet model binding."
+commands.allow = [
+  "model_binding_set",
+]
+
+[[permission]]
+identifier = "allow-model-turn-start"
+description = "Allow starting one bounded local text model turn."
+commands.allow = [
+  "model_turn_start",
+]
+
+[[permission]]
+identifier = "allow-model-turn-cancel"
+description = "Allow cancelling the active local text model turn."
+commands.allow = [
+  "model_turn_cancel",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-status"
+description = "Allow reading sanitized LocalComet managed runtime status."
+commands.allow = [
+  "managed_runtime_status",
+]
+
+[[permission]]
+identifier = "allow-managed-model-catalog"
+description = "Allow reading the fixed LocalComet managed model catalog."
+commands.allow = [
+  "managed_model_catalog",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-start"
+description = "Allow starting the fixed LocalComet managed llama.cpp runtime."
+commands.allow = [
+  "managed_runtime_start",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-stop"
+description = "Allow stopping the active LocalComet managed llama.cpp runtime."
+commands.allow = [
+  "managed_runtime_stop",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-logs"
+description = "Allow reading bounded sanitized managed runtime log tails."
+commands.allow = [
+  "managed_runtime_logs",
+]

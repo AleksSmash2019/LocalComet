@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">LocalComet mark</title>
+  <desc id="desc">Original LocalComet circular comet mark.</desc>
+  <circle cx="32" cy="32" r="28" fill="#f8fafc" stroke="#2563eb" stroke-width="4" />
+  <path d="M18 34c9-13 20-17 34-16-8 4-13 10-16 18-2 6-7 10-14 10-5 0-8-4-4-12z" fill="#2563eb" />
+  <path d="M13 43c8-1 14-3 20-8-3 7-9 12-18 15-3 1-5-5-2-7z" fill="#16a34a" />
+  <circle cx="36" cy="29" r="5" fill="#ffffff" />
+</svg>

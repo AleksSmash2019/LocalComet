@@ -1,0 +1,419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "localcomet://schemas/ipc/v1",
+  "title": "LocalComet IPC v1 Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "version",
+    "type",
+    "id",
+    "method",
+    "run_id",
+    "sequence",
+    "reply_to",
+    "payload"
+  ],
+  "properties": {
+    "protocol": {
+      "const": "localcomet.ipc"
+    },
+    "version": {
+      "const": "1.0"
+    },
+    "type": {
+      "$ref": "#/$defs/envelopeType"
+    },
+    "id": {
+      "$ref": "#/$defs/messageId"
+    },
+    "method": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/method"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/runId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sequence": {
+      "$ref": "#/$defs/sequence"
+    },
+    "reply_to": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/messageId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "maxProperties": 256
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/errorPayload"
+          },
+          "reply_to": {
+            "$ref": "#/$defs/messageId"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "cancel"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/cancelPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "chat.delta"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/chatDeltaPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "approval.submit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/approvalSubmitPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "approval.required"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/approvalRequiredPayload"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "envelopeType": {
+      "type": "string",
+      "enum": [
+        "cancel",
+        "error",
+        "event",
+        "goodbye",
+        "hello",
+        "request",
+        "response"
+      ]
+    },
+    "messageId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "method": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){0,7}$"
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{24}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "risk": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "approval_required",
+        "budget_exceeded",
+        "busy",
+        "duplicate_message_id",
+        "frame_too_large",
+        "internal_error",
+        "invalid_envelope",
+        "invalid_frame",
+        "invalid_json",
+        "invalid_payload",
+        "invalid_sequence",
+        "kill_switch_active",
+        "payload_too_large",
+        "policy_blocked",
+        "request_cancelled",
+        "request_not_found",
+        "sidecar_shutdown",
+        "sidecar_unavailable",
+        "timeout",
+        "unsupported_method",
+        "unsupported_type",
+        "unsupported_version"
+      ]
+    },
+    "cancelReason": {
+      "type": "string",
+      "enum": [
+        "shutdown",
+        "timeout",
+        "user_requested",
+        "window_closing"
+      ]
+    },
+    "approvalScope": {
+      "type": "string",
+      "enum": [
+        "SINGLE_ACTION"
+      ]
+    },
+    "approvalDecision": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "deny"
+      ]
+    },
+    "streamChannel": {
+      "type": "string",
+      "enum": [
+        "content",
+        "reasoning"
+      ]
+    },
+    "errorPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "retryable",
+        "details"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/errorCode"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object",
+          "maxProperties": 256
+        }
+      }
+    },
+    "cancelPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_request_id",
+        "reason"
+      ],
+      "properties": {
+        "target_request_id": {
+          "$ref": "#/$defs/messageId"
+        },
+        "reason": {
+          "$ref": "#/$defs/cancelReason"
+        }
+      }
+    },
+    "chatDeltaPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channel",
+        "text",
+        "finish_reason"
+      ],
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/streamChannel"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "approvalRequiredPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_id",
+        "action_fingerprint",
+        "risk",
+        "summary",
+        "target",
+        "reversible",
+        "expires_at"
+      ],
+      "properties": {
+        "action_id": {
+          "$ref": "#/$defs/messageId"
+        },
+        "action_fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "risk": {
+          "$ref": "#/$defs/risk"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^<PROJECT_ROOT>(/[^\\u0000]*)?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reversible": {
+          "type": "boolean"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "approvalSubmitPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_id",
+        "action_fingerprint",
+        "decision",
+        "scope"
+      ],
+      "properties": {
+        "action_id": {
+          "$ref": "#/$defs/messageId"
+        },
+        "action_fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "decision": {
+          "$ref": "#/$defs/approvalDecision"
+        },
+        "scope": {
+          "$ref": "#/$defs/approvalScope"
+        }
+      }
+    },
+    "documentEvent": {
+      "type": "string",
+      "enum": [
+        "document.artifact.created",
+        "document.confirmation.required",
+        "document.failed",
+        "document.fields.extracted",
+        "document.fields.required",
+        "document.ingestion.completed",
+        "document.ingestion.started",
+        "document.rendering.started",
+        "document.verification.completed"
+      ]
+    }
+  }
+}

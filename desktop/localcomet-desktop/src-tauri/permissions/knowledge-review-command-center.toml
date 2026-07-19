@@ -1,0 +1,20 @@
+[[permission]]
+identifier = "allow-knowledge-review-snapshot"
+description = "Allow reading the bounded LocalComet knowledge review inbox snapshot."
+commands.allow = [
+  "knowledge_review_snapshot",
+]
+
+[[permission]]
+identifier = "allow-knowledge-review-refresh"
+description = "Allow refreshing read-only LocalComet knowledge review freshness state."
+commands.allow = [
+  "knowledge_review_refresh",
+]
+
+[[permission]]
+identifier = "allow-knowledge-review-decision-create"
+description = "Allow creating one bounded in-memory human review decision artifact."
+commands.allow = [
+  "knowledge_review_decision_create",
+]
