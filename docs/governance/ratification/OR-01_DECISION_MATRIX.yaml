@@ -1,0 +1,66 @@
+schema_version: 1
+decision_id: OR-01
+mission_id: UP00-WP01_WINDOWS_ONE_CLICK_LAUNCH
+accountable_owner: AleksSmash2019
+effective_date: '2026-07-20'
+effect: PROSPECTIVE_ONLY
+repository_baseline:
+  commit: 6c784ace543e345bdb8bd2f778be974dc89f2df5
+  branch: main
+source_mapping:
+  status: COMPLETED_AND_REMEDIATED
+  baseline_commit: 6c784ace543e345bdb8bd2f778be974dc89f2df5
+governance:
+  architecture_governance_pack:
+    version: 1.0.4-correction-candidate
+    sha256: 3dc9fd1434c68462352fe493ffbd640a7ef30911d299043be7f2b1ebc6c1b607
+    decision: RATIFIED_PROSPECTIVELY
+  architecture_constitution:
+    document_id: LC-AGP-CONSTITUTION
+    precedence: HIGHEST_NORMATIVE
+    existing_code_conformance: NOT_RETROACTIVELY_ASSERTED
+  automated_enforcement:
+    status: NOT_ACTIVATED_BY_OR-01
+roadmap:
+  universal_patches:
+    version: 1.0.3-correction-candidate
+    sha256: 95e35bf21f1c3af5a44db9f9944ddad01e3e5265cc40812cac9d733b59721f29
+    decision: ADOPTED_AS_LONG_TERM_ROADMAP
+    blanket_implementation_authority: false
+  cross_pack_dossier:
+    version: 1.4.0
+    sha256: 155f7856db8208b997722cae1c1f5eca86cfefcfd1ec07ce73a1c49883a1873b
+    role: HISTORICAL_ADVISORY_AND_PRECEDENCE_INPUT
+source_write_authority:
+  authorized:
+    - work_package: UP00-WP01
+      title: Windows One-Click Launch and Installer Baseline
+      platform: Windows
+  denied:
+    - UP01
+    - UP02
+    - UP03
+    - UP04
+    - UP05
+    - UP06
+    - UP07
+    - UP08
+    - UP09
+    - UP10
+deferred_decisions:
+  - G03_G12_ARCHITECTURAL_DECOMPOSITION
+  - G05_IPC_AND_CONTRACT_VERSIONING
+  - G09_DATA_LIFECYCLE
+  - PUBLIC_RELEASE_LICENSING
+  - PRODUCTION_PERFORMANCE_BASELINES
+  - PRODUCTION_CODE_SIGNING
+  - AUTOMATIC_UPDATES
+forbidden_authority_additions:
+  - GENERIC_SHELL_EXECUTION
+  - GENERIC_RAW_IPC
+  - VAULT_WRITE
+  - PUBLICATION
+  - AUTOMATIC_APPROVAL
+  - TELEMETRY_OR_ANALYTICS
+  - AUTOMATIC_WINDOWS_LOGIN_START
+release_classification: UNSIGNED_INTERNAL_BUILD
