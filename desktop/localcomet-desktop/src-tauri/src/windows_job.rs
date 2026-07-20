@@ -42,7 +42,7 @@ mod platform {
         CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
         ResumeThread, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
         CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
-        EXTENDED_STARTUPINFO_PRESENT, INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
+        EXTENDED_STARTUPINFO_PRESENT, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
         PROC_THREAD_ATTRIBUTE_HANDLE_LIST, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
     };
 
@@ -77,6 +77,16 @@ mod platform {
         pub fn is_running(&self) -> bool {
             let _job_handle = self.job.raw();
             unsafe { WaitForSingleObject(self.process.raw(), 0) == WAIT_TIMEOUT }
+        }
+
+        pub fn terminate(&self, exit_code: u32) {
+            unsafe {
+                TerminateProcess(self.process.raw(), exit_code);
+            }
+        }
+
+        pub fn wait_bounded(&self, millis: u32) -> bool {
+            unsafe { WaitForSingleObject(self.process.raw(), millis) != WAIT_TIMEOUT }
         }
     }
 
@@ -114,7 +124,7 @@ mod platform {
             unsafe {
                 if self.is_running() {
                     TerminateProcess(self.process.raw(), 0);
-                    WaitForSingleObject(self.process.raw(), INFINITE);
+                    WaitForSingleObject(self.process.raw(), 2_000);
                 }
             }
         }
@@ -135,7 +145,7 @@ mod platform {
             unsafe {
                 if self.is_running() {
                     TerminateProcess(self.process.raw(), 0);
-                    WaitForSingleObject(self.process.raw(), INFINITE);
+                    WaitForSingleObject(self.process.raw(), 2_000);
                 }
             }
         }
@@ -595,6 +605,12 @@ mod platform {
 
         pub fn is_running(&self) -> bool {
             false
+        }
+
+        pub fn terminate(&self, _exit_code: u32) {}
+
+        pub fn wait_bounded(&self, _millis: u32) -> bool {
+            true
         }
     }
 

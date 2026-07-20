@@ -2,6 +2,8 @@ mod control_plane;
 mod ipc;
 mod knowledge;
 mod managed_runtime;
+mod single_instance;
+mod startup;
 mod supervisor;
 mod windows_job;
 
@@ -19,26 +21,84 @@ use managed_runtime::{
     managed_runtime_stop, ManagedRuntimeSupervisor,
 };
 use std::sync::Arc;
-use supervisor::DesktopSidecarSupervisor;
+use std::time::Duration;
+use supervisor::{DesktopSidecarSupervisor, SupervisorError};
 use tauri::Manager;
+
+const BACKEND_READINESS_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    startup::record(
+        startup::StartupPhase::SingleInstance,
+        "begin",
+        "LC_START_000",
+    );
+    let _single_instance: single_instance::SingleInstanceGuard = match single_instance::acquire() {
+        Ok(Some(guard)) => {
+            startup::record(
+                startup::StartupPhase::SingleInstance,
+                "success",
+                "LC_START_000",
+            );
+            guard
+        }
+        Ok(None) => {
+            startup::record(
+                startup::StartupPhase::SingleInstance,
+                "already_running",
+                "LC_START_DUPLICATE",
+            );
+            return;
+        }
+        Err(_) => {
+            startup::report_failure(startup::StartupPhase::SingleInstance, "LC_START_001");
+            return;
+        }
+    };
+
+    let run_result = tauri::Builder::default()
         .setup(|app| {
+            startup::record(startup::StartupPhase::BackendStart, "begin", "LC_START_100");
             let supervisor = Arc::new(DesktopSidecarSupervisor::default());
             let bridge = Arc::new(ControlPlaneBridge::new(
                 Arc::clone(&supervisor),
                 app.handle().clone(),
             ));
             supervisor.set_frame_router(bridge.clone());
-            let _ = supervisor.start();
-            let _ = supervisor.send_health_probe();
+            if let Err(error) = supervisor.start_and_wait_ready(BACKEND_READINESS_TIMEOUT) {
+                let (phase, code) = match error {
+                    SupervisorError::ReadinessTimeout => {
+                        (startup::StartupPhase::BackendReadiness, "LC_START_102")
+                    }
+                    SupervisorError::ExitedBeforeReady => {
+                        (startup::StartupPhase::BackendReadiness, "LC_START_103")
+                    }
+                    SupervisorError::Unavailable(_) | SupervisorError::Io(_) => {
+                        (startup::StartupPhase::BackendStart, "LC_START_101")
+                    }
+                };
+                let _ = supervisor.shutdown();
+                startup::report_failure(phase, code);
+                app.handle().exit(1);
+                return Ok(());
+            }
+            startup::record(
+                startup::StartupPhase::BackendStart,
+                "success",
+                "LC_START_100",
+            );
+            startup::record(
+                startup::StartupPhase::BackendReadiness,
+                "success",
+                "LC_START_100",
+            );
             bridge.emit_sidecar_status();
             let snapshot = supervisor.snapshot();
             let _ = (
                 snapshot.running,
                 snapshot.saw_python_hello,
+                snapshot.saw_health_ok,
                 snapshot.saw_goodbye,
                 snapshot.last_frame,
                 snapshot.stderr_tail,
@@ -46,15 +106,36 @@ pub fn run() {
             app.manage(Arc::clone(&supervisor));
             app.manage(bridge);
             app.manage(Arc::new(ManagedRuntimeSupervisor::production()));
+            let Some(window) = app.get_webview_window("main") else {
+                let _ = supervisor.shutdown();
+                startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_201");
+                app.handle().exit(1);
+                return Ok(());
+            };
+            if window.show().is_err() {
+                let _ = supervisor.shutdown();
+                startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_201");
+                app.handle().exit(1);
+                return Ok(());
+            }
+            startup::record(
+                startup::StartupPhase::WindowDisplay,
+                "success",
+                "LC_START_200",
+            );
             Ok(())
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-                let runtime = window.state::<Arc<ManagedRuntimeSupervisor>>();
-                let bridge = window.state::<Arc<ControlPlaneBridge>>();
-                let _ = runtime.stop(&bridge);
-                let supervisor = window.state::<Arc<DesktopSidecarSupervisor>>();
-                let _ = supervisor.shutdown();
+                if let (Some(runtime), Some(bridge)) = (
+                    window.try_state::<Arc<ManagedRuntimeSupervisor>>(),
+                    window.try_state::<Arc<ControlPlaneBridge>>(),
+                ) {
+                    let _ = runtime.stop(&bridge);
+                }
+                if let Some(supervisor) = window.try_state::<Arc<DesktopSidecarSupervisor>>() {
+                    let _ = supervisor.shutdown();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -84,6 +165,9 @@ pub fn run() {
             managed_runtime_stop,
             managed_runtime_logs
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run LocalComet desktop shell");
+        .run(tauri::generate_context!());
+
+    if run_result.is_err() {
+        startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_202");
+    }
 }

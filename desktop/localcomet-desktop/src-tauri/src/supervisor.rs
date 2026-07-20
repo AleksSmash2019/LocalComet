@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const PYTHON_ISOLATED_ARG: &str = "-I";
 pub const PYTHON_NO_BYTECODE_ARG: &str = "-B";
@@ -29,6 +29,8 @@ pub trait SidecarFrameRouter: Send + Sync {
 pub enum SupervisorError {
     Unavailable(String),
     Io(io::Error),
+    ReadinessTimeout,
+    ExitedBeforeReady,
 }
 
 impl std::fmt::Display for SupervisorError {
@@ -36,6 +38,8 @@ impl std::fmt::Display for SupervisorError {
         match self {
             Self::Unavailable(message) => write!(formatter, "sidecar unavailable: {message}"),
             Self::Io(error) => write!(formatter, "sidecar I/O error: {error}"),
+            Self::ReadinessTimeout => write!(formatter, "sidecar readiness timed out"),
+            Self::ExitedBeforeReady => write!(formatter, "sidecar exited before readiness"),
         }
     }
 }
@@ -223,6 +227,7 @@ struct SupervisorState {
 #[derive(Default)]
 struct SupervisorShared {
     saw_python_hello: AtomicBool,
+    saw_health_ok: AtomicBool,
     saw_goodbye: AtomicBool,
     last_frame: Mutex<Option<String>>,
     stderr_tail: Mutex<String>,
@@ -233,6 +238,7 @@ struct SupervisorShared {
 pub struct SupervisorSnapshot {
     pub running: bool,
     pub saw_python_hello: bool,
+    pub saw_health_ok: bool,
     pub saw_goodbye: bool,
     pub last_frame: Option<String>,
     pub stderr_tail: String,
@@ -260,6 +266,21 @@ impl DesktopSidecarSupervisor {
         }
 
         let spec = self.config.to_launch_spec()?;
+        state.next_request = 0;
+        state.shutting_down = false;
+        self.shared.saw_python_hello.store(false, Ordering::SeqCst);
+        self.shared.saw_health_ok.store(false, Ordering::SeqCst);
+        self.shared.saw_goodbye.store(false, Ordering::SeqCst);
+        *self
+            .shared
+            .last_frame
+            .lock()
+            .expect("sidecar frame lock poisoned") = None;
+        self.shared
+            .stderr_tail
+            .lock()
+            .expect("sidecar stderr lock poisoned")
+            .clear();
         let mut process = ContainedSidecarProcess::spawn(&spec)?;
         if let Some(stdout) = process.take_stdout() {
             spawn_stdout_reader(stdout, Arc::clone(&self.shared));
@@ -275,6 +296,31 @@ impl DesktopSidecarSupervisor {
         process.flush()?;
         state.process = Some(process);
         Ok(())
+    }
+
+    pub fn start_and_wait_ready(&self, timeout: Duration) -> Result<(), SupervisorError> {
+        self.start()?;
+        if let Err(error) = self.send_health_probe() {
+            self.abort_start();
+            return Err(error);
+        }
+
+        let deadline = Instant::now() + timeout;
+        loop {
+            let snapshot = self.snapshot();
+            if snapshot.running && snapshot.saw_python_hello && snapshot.saw_health_ok {
+                return Ok(());
+            }
+            if !snapshot.running {
+                self.abort_start();
+                return Err(SupervisorError::ExitedBeforeReady);
+            }
+            if Instant::now() >= deadline {
+                self.abort_start();
+                return Err(SupervisorError::ReadinessTimeout);
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
     }
 
     pub fn set_frame_router(&self, router: Arc<dyn SidecarFrameRouter>) {
@@ -328,6 +374,7 @@ impl DesktopSidecarSupervisor {
         SupervisorSnapshot {
             running,
             saw_python_hello: self.shared.saw_python_hello.load(Ordering::SeqCst),
+            saw_health_ok: self.shared.saw_health_ok.load(Ordering::SeqCst),
             saw_goodbye: self.shared.saw_goodbye.load(Ordering::SeqCst),
             last_frame: self
                 .shared
@@ -345,25 +392,63 @@ impl DesktopSidecarSupervisor {
     }
 
     pub fn shutdown(&self) -> Result<(), SupervisorError> {
-        let mut state = self.state.lock().expect("sidecar supervisor lock poisoned");
-        if state.shutting_down {
-            return Ok(());
-        }
-        state.shutting_down = true;
-        let sequence = state.next_request;
-        state.next_request += 1;
-        if let Some(process) = state.process.as_mut() {
-            process.write_all(&ipc::lifecycle_request_frame(
+        let (mut process, sequence) = {
+            let mut state = self.state.lock().expect("sidecar supervisor lock poisoned");
+            if state.shutting_down {
+                return Ok(());
+            }
+            state.shutting_down = true;
+            let sequence = state.next_request;
+            state.next_request += 1;
+            (state.process.take(), sequence)
+        };
+
+        let send_result = if let Some(process) = process.as_mut() {
+            ipc::lifecycle_request_frame(
                 &format!("desk-shutdown-{sequence:06}"),
                 SHUTDOWN_METHOD,
                 sequence,
-            )?)?;
-            process.flush()?;
-            thread::sleep(Duration::from_millis(25));
+            )
+            .and_then(|frame| {
+                process.write_all(&frame)?;
+                process.flush()
+            })
+            .map_err(SupervisorError::Io)
+        } else {
+            Ok(())
+        };
+
+        if let Some(process) = process.as_ref() {
+            if send_result.is_err() {
+                process.terminate(1);
+                let _ = process.wait_bounded(1_000);
+            } else if !process.wait_bounded(1_500) {
+                process.terminate(0);
+                let _ = process.wait_bounded(1_000);
+            }
         }
-        state.process = None;
+        drop(process);
+        self.state
+            .lock()
+            .expect("sidecar supervisor lock poisoned")
+            .shutting_down = false;
         self.fail_pending("sidecar_shutdown", "sidecar shutdown");
-        Ok(())
+        send_result
+    }
+
+    fn abort_start(&self) {
+        let process = self
+            .state
+            .lock()
+            .expect("sidecar supervisor lock poisoned")
+            .process
+            .take();
+        if let Some(process) = process {
+            if process.is_running() {
+                process.terminate(1);
+                let _ = process.wait_bounded(1_000);
+            }
+        }
     }
 
     fn fail_pending(&self, code: &str, message: &str) {
@@ -397,12 +482,7 @@ fn spawn_stdout_reader(mut stdout: File, shared: Arc<SupervisorShared>) {
         .spawn(move || {
             while let Ok(frame) = ipc::read_frame(&mut stdout) {
                 let text = String::from_utf8_lossy(&frame).into_owned();
-                if text.contains("\"type\":\"hello\"") && text.contains("\"python_core\"") {
-                    shared.saw_python_hello.store(true, Ordering::SeqCst);
-                }
-                if text.contains("\"type\":\"goodbye\"") {
-                    shared.saw_goodbye.store(true, Ordering::SeqCst);
-                }
+                observe_lifecycle_frame(&frame, &shared);
                 *shared
                     .last_frame
                     .lock()
@@ -425,6 +505,37 @@ fn spawn_stdout_reader(mut stdout: File, shared: Arc<SupervisorShared>) {
                 router.fail_pending("sidecar_unavailable", "sidecar stdout closed");
             }
         });
+}
+
+fn observe_lifecycle_frame(frame: &[u8], shared: &SupervisorShared) {
+    let Ok(message) = serde_json::from_slice::<serde_json::Value>(frame) else {
+        return;
+    };
+    let message_type = message.get("type").and_then(serde_json::Value::as_str);
+    if message_type == Some("hello")
+        && message
+            .pointer("/payload/role")
+            .and_then(serde_json::Value::as_str)
+            == Some("python_core")
+    {
+        shared.saw_python_hello.store(true, Ordering::SeqCst);
+    }
+    if message_type == Some("response")
+        && message
+            .get("reply_to")
+            .and_then(serde_json::Value::as_str)
+            .map(|reply_to| reply_to.starts_with("desk-health-"))
+            .unwrap_or(false)
+        && message
+            .pointer("/payload/status")
+            .and_then(serde_json::Value::as_str)
+            == Some("ok")
+    {
+        shared.saw_health_ok.store(true, Ordering::SeqCst);
+    }
+    if message_type == Some("goodbye") {
+        shared.saw_goodbye.store(true, Ordering::SeqCst);
+    }
 }
 
 fn spawn_stderr_reader(mut stderr: File, shared: Arc<SupervisorShared>) {
@@ -631,13 +742,35 @@ mod tests {
         };
         let supervisor =
             DesktopSidecarSupervisor::new(SupervisorConfig::debug_for_tests(root, python));
-        supervisor.start().unwrap();
-        thread::sleep(Duration::from_millis(200));
-        supervisor.send_health_probe().unwrap();
-        thread::sleep(Duration::from_millis(200));
+        supervisor
+            .start_and_wait_ready(Duration::from_secs(5))
+            .unwrap();
         let snapshot = supervisor.snapshot();
         assert!(snapshot.running);
         assert!(snapshot.saw_python_hello);
+        assert!(snapshot.saw_health_ok);
         supervisor.shutdown().unwrap();
+    }
+
+    #[test]
+    fn lifecycle_frame_observation_requires_exact_health_response_shape() {
+        let shared = SupervisorShared::default();
+        observe_lifecycle_frame(
+            br#"{"type":"hello","payload":{"role":"python_core"}}"#,
+            &shared,
+        );
+        observe_lifecycle_frame(
+            br#"{"type":"response","reply_to":"desk-health-000000","payload":{"status":"ok"}}"#,
+            &shared,
+        );
+        assert!(shared.saw_python_hello.load(Ordering::SeqCst));
+        assert!(shared.saw_health_ok.load(Ordering::SeqCst));
+
+        let other = SupervisorShared::default();
+        observe_lifecycle_frame(
+            br#"{"type":"response","reply_to":"desk-other-000000","payload":{"status":"ok"}}"#,
+            &other,
+        );
+        assert!(!other.saw_health_ok.load(Ordering::SeqCst));
     }
 }
