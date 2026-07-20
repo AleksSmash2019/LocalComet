@@ -23,6 +23,8 @@ Unavailable: internet, email, browser, files, Vault, Computer Use, shell, and ex
 
 The final evidence package records frontend, Rust/Tauri, backend, security-negative, installed semantic, 40-row regression, installer, uninstall/reinstall, process cleanup, and rollback results. Any critical truthfulness or existing-function regression failure blocks completion.
 
+Completed local verification passed all 15 installed semantic prompts with zero critical truthfulness failures. It also passed the 30-message/long-stream HF1 layout checks, mouse and keyboard scrolling, Stop with stable partial output, retry, restart, Settings/capability summary and persistence, exact managed-artifact preservation through uninstall/reinstall, and clean process shutdown. The offline pipeline passed 247 frontend tests, Svelte check/build, Rust format/check/Clippy/tests, backend suites, release build, and unsigned NSIS bundle.
+
 ## Distribution
 
 Internal unsigned build only. The bootstrap model/runtime are not bundled. No push or remote pull request is performed by this mission.

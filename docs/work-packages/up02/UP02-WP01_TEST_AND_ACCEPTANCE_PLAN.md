@@ -25,3 +25,12 @@ Installed acceptance also covers a 30-message conversation, long streaming outpu
 ## Evidence policy
 
 Evidence and installer artifacts are written only to the owner-specified external directories. They exclude model/runtime bytes, source copies, Vault content, private documents, secrets, credentials, full environment dumps, and unrelated logs. No network access is used.
+
+## Completed acceptance summary
+
+- Automated frontend: 16 files and 247 tests passed; Svelte check reported 0 errors and the single pre-existing `LanguageSwitcher.svelte` warning; production build passed.
+- Offline Rust/Tauri: format, check, warnings-denied Clippy, 75 tests passed with 2 owner-provisioned artifact tests intentionally ignored, release build, and NSIS bundle passed.
+- Backend: focused AssistantContext, security-negative, model-chat lifecycle, and complete model-gateway suites passed, including deterministic `temperature: 0` request construction.
+- Installed semantic acceptance: all 15 prompts passed semantically with 0 critical capability-truth failures using the approved bootstrap model.
+- Installed regression: 30-message conversation, long streaming, manual scroll stability, mouse/keyboard/drag scrolling, reachable composer, Stop with immutable partial output, retry, restart, Settings, preference persistence, clean shutdown, and per-user uninstall/reinstall passed.
+- Uninstall removed only installer-owned files, shortcuts, and registration. It preserved the approved runtime (`3a8aea5f…6b59fb`) and model (`6a1a2eb6…9407e`) bytes; reinstall restored the application and another real response.
