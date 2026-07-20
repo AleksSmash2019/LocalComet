@@ -268,6 +268,7 @@ export const ru: TranslationMap = {
   'capability.local_model_inference': 'Вывод локальной модели',
   'capability.internet': 'Интернет',
   'capability.email': 'Электронная почта',
+  'capability.browser': 'Браузер',
   'capability.files': 'Файлы',
   'capability.vault': 'Vault',
   'capability.computer_use': 'Computer Use',

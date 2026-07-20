@@ -152,6 +152,29 @@
           <dd>{DESKTOP_BUILD_STATUS}</dd>
         </div>
       </dl>
+      <div class="capability-summary" aria-label={$t('settings.capabilities')}>
+        <div>
+          <h4>{$t('settings.available')}</h4>
+          <ul>
+            <li>{$t('capability.local_chat')}</li>
+            <li>{$t('capability.local_model_inference')}</li>
+          </ul>
+        </div>
+        <div>
+          <h4>{$t('settings.unavailable')}</h4>
+          <ul>
+            <li>{$t('capability.internet')}</li>
+            <li>{$t('capability.email')}</li>
+            <li>{$t('capability.browser')}</li>
+            <li>{$t('capability.files')}</li>
+            <li>{$t('capability.vault')}</li>
+            <li>{$t('capability.computer_use')}</li>
+            <li>{$t('capability.shell')}</li>
+            <li>{$t('capability.external_tools')}</li>
+          </ul>
+        </div>
+      </div>
+      <p class="capability-note">{$t('settings.project_context_unavailable')}</p>
     </section>
   </div>
 </div>
@@ -315,6 +338,43 @@
     font-weight: 760;
   }
 
+  .capability-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--lc-space-2);
+    margin-top: var(--lc-space-3);
+  }
+
+  .capability-summary > div {
+    min-width: 0;
+    border: var(--border-thin);
+    border-radius: var(--lc-radius-sm);
+    padding: var(--lc-space-3);
+    background: var(--lc-panel-soft);
+  }
+
+  h4 {
+    margin: 0 0 var(--lc-space-2);
+    color: var(--lc-text);
+    font-size: 12px;
+  }
+
+  ul {
+    display: grid;
+    gap: var(--lc-space-1);
+    margin: 0;
+    padding-left: 18px;
+    color: var(--lc-muted);
+    font-size: 11px;
+  }
+
+  .capability-note {
+    margin: var(--lc-space-3) 0 0;
+    color: var(--lc-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
   .diagnostics-toggle {
     display: inline-flex;
     align-items: center;
@@ -351,6 +411,10 @@
     }
 
     .theme-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .capability-summary {
       grid-template-columns: 1fr;
     }
   }

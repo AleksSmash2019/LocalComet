@@ -268,6 +268,7 @@ export const en: TranslationMap = {
   'capability.local_model_inference': 'Local model inference',
   'capability.internet': 'Internet',
   'capability.email': 'Email',
+  'capability.browser': 'Browser',
   'capability.files': 'Files',
   'capability.vault': 'Vault',
   'capability.computer_use': 'Computer Use',
