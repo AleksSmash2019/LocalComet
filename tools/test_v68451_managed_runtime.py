@@ -125,8 +125,9 @@ def run_fixture_protocol() -> None:
 
 
 def rust_function_block(source: str, function_name: str) -> str:
-    marker = f"pub fn {function_name}("
-    start = source.find(marker)
+    markers = (f"pub fn {function_name}(", f"pub async fn {function_name}(")
+    starts = [source.find(marker) for marker in markers]
+    start = min((value for value in starts if value >= 0), default=-1)
     check(start >= 0, f"Rust command definition missing: {function_name}")
     opening = source.find("{", start)
     check(opening >= 0, f"Rust command body missing: {function_name}")

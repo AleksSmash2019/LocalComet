@@ -254,7 +254,7 @@ class DesktopKnowledgeFlowTests(unittest.TestCase):
 STATIC_CHECKS: list[tuple[str, Path, str, bool]] = [
     ("toggle_default_off", ROOT / "desktop/localcomet-desktop/src/lib/stores/knowledgePreview.ts", "enabled: false", True),
     ("toggle_session_only", ROOT / "desktop/localcomet-desktop/src/lib/stores/knowledgePreview.ts", "localStorage", False),
-    ("off_ordinary_flow", ROOT / "desktop/localcomet-desktop/src/lib/components/chat/MessageComposer.svelte", "startLocalModelTurn(draft)", True),
+    ("off_ordinary_flow", ROOT / "desktop/localcomet-desktop/src/lib/components/chat/MessageComposer.svelte", "startLocalModelTurn(draft, $selectedConversationId)", True),
     ("pending_turn_behavior", ROOT / "desktop/localcomet-desktop/src/lib/components/chat/MessageComposer.svelte", "createPendingKnowledgeTurn", True),
     ("preview_waits", ROOT / "desktop/localcomet-desktop/src/lib/stores/knowledgePreview.ts", "PREVIEW_READY", True),
     ("explicit_include", ROOT / "desktop/localcomet-desktop/src/lib/components/knowledge/KnowledgePreviewPanel.svelte", "INCLUDE_AND_SEND", True),

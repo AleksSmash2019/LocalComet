@@ -56,6 +56,7 @@ from modules.local_model_gateway_ru import (  # noqa: E402
     MODEL_GATEWAY_METHODS,
     PROVIDER_REGISTRY,
     LocalModelGateway,
+    trusted_assistant_context_payload,
 )
 
 
@@ -347,6 +348,7 @@ def _typed_turn_request(
         "submitted_at_unix_ms": 1,
         "max_tokens": 64,
         "prompt": prompt,
+        "assistant_context": trusted_assistant_context_payload("ru"),
         "binding_fingerprint": binding_fingerprint,
     }
 
@@ -890,7 +892,7 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
         finally:
             server.__exit__(None, None, None)
 
-    def test_79_ordinary_path_shape_unchanged(self) -> None:
+    def test_79_ordinary_path_has_trusted_system_then_user(self) -> None:
         with CaptureServer() as server:
             gateway, binding = _bound_gateway(server.port)
             events: list[tuple[str, str, int, Mapping[str, Any]]] = []
@@ -903,7 +905,10 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
                 lambda *event: events.append(event),
             )
             _wait_terminal(events)
-            self.assertEqual([{"role": "user", "content": "ordinary"}], CaptureProvider.posts[0]["messages"])
+            messages = CaptureProvider.posts[0]["messages"]
+            self.assertEqual(["system", "user"], [message["role"] for message in messages])
+            self.assertIn("LocalComet", messages[0]["content"])
+            self.assertEqual("ordinary", messages[1]["content"])
             self.assertNotIn("knowledge_injection_id", events[0][3]["metadata"])
 
     def test_80_stale_dispatch_sends_no_request(self) -> None:
