@@ -362,6 +362,7 @@ def run_source_scans() -> None:
     supervisor_text = read(TAURI_SRC / "supervisor.rs")
     windows_job_text = read(TAURI_SRC / "windows_job.rs")
     tauri_config_text = read(DESKTOP / "src-tauri" / "tauri.conf.json")
+    nsis_hook_text = read(DESKTOP / "src-tauri" / "nsis" / "installer-hooks.nsh")
     rust_text = "\n".join(
         [lib_text, ipc_text, single_instance_text, startup_text, supervisor_text, windows_job_text]
     )
@@ -406,6 +407,15 @@ def run_source_scans() -> None:
         "Tauri setup does not wait for bounded supervisor readiness",
     )
     check('"visible": false' in tauri_config_text and 'window.show()' in lib_text, "window is not gated on readiness")
+    check(
+        'StrCpy $INSTDIR "$LOCALAPPDATA\\Programs\\${PRODUCTNAME}"' in nsis_hook_text,
+        "installer payload path is not separated from user data",
+    )
+    check(
+        "SetOutPath $INSTDIR" in nsis_hook_text
+        and nsis_hook_text.index("StrCpy $INSTDIR") < nsis_hook_text.index("SetOutPath $INSTDIR"),
+        "installer output path is not reset after changing INSTDIR",
+    )
     check("CloseRequested" in lib_text and "supervisor.shutdown()" in lib_text, "Tauri close does not stop supervisor")
     check("invoke_handler" in rust_text and "control_plane_bootstrap" in rust_text, "static control-plane invoke handler missing")
     check("control_plane_request" not in rust_text and "generic_request" not in rust_text, "generic invoke command present")
