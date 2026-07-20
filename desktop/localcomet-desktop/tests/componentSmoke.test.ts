@@ -6,6 +6,7 @@ import ChatHeader from '../src/lib/components/shell/ChatHeader.svelte';
 import ConversationSidebar from '../src/lib/components/shell/ConversationSidebar.svelte';
 import MessageComposer from '../src/lib/components/chat/MessageComposer.svelte';
 import NavigationRail from '../src/lib/components/shell/NavigationRail.svelte';
+import SettingsPanel from '../src/lib/components/shell/SettingsPanel.svelte';
 import ToolCallCard from '../src/lib/components/chat/ToolCallCard.svelte';
 import { approvalCard, mockToolCall } from '../src/lib/data/mockData';
 import { resetShellStores } from '../src/lib/stores/shellStore';
@@ -15,19 +16,23 @@ describe('component smoke tests', () => {
     resetShellStores();
   });
 
-  it('renders the navigation rail with product modules', () => {
+  it('renders only functional minimal primary navigation', () => {
     const html = render(NavigationRail).body;
     expect(html).toContain('aria-label="Основная навигация"');
     expect(html).toContain('aria-label="Чат"');
-    expect(html).toContain('Задачи — позже');
+    expect(html).toContain('aria-label="Настройки"');
+    expect(html).not.toContain('Задачи');
+    expect(html).not.toContain('позже');
+    expect(html).not.toContain('Центр проверки');
     expect(html).toContain('aria-current="page"');
   });
 
-  it('renders grouped demo sessions and theme controls in the sidebar', () => {
+  it('renders functional sessions without placeholder or preference clutter', () => {
     const html = render(ConversationSidebar).body;
     expect(html).toContain('LocalComet');
-    expect(html).toContain('Зарезервировано');
-    expect(html).toContain('Использовать системную тему');
+    expect(html).not.toContain('Зарезервировано');
+    expect(html).not.toContain('Документы');
+    expect(html).not.toContain('Использовать системную тему');
     expect(html).toContain('aria-expanded="true"');
   });
 
@@ -72,10 +77,10 @@ describe('component smoke tests', () => {
     expect(html.match(/disabled/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('keeps theme controls accessible in the sidebar', () => {
-    const html = render(ConversationSidebar).body;
-    expect(html).toContain('aria-label="Использовать системную тему"');
-    expect(html).toContain('aria-label="Использовать светлую тему"');
-    expect(html).toContain('aria-label="Использовать тёмную тему"');
+  it('keeps theme controls accessible in Settings', () => {
+    const html = render(SettingsPanel).body;
+    expect(html).toContain('aria-label="Системная"');
+    expect(html).toContain('title="Светлая"');
+    expect(html).toContain('title="Тёмная"');
   });
 });

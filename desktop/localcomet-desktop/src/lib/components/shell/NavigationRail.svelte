@@ -4,37 +4,15 @@
   import { t } from '$lib/i18n';
   import {
     activeWorkspace,
+    closeSettings,
+    openSettings,
     setActiveWorkspace,
-    type WorkspaceMode
+    settingsPanelOpen
   } from '$lib/stores/shellStore';
 
-  type NavigationItem = {
-    icon: string;
-    key: string;
-    enabled: boolean;
-    workspace?: WorkspaceMode;
-  };
-
-  const primaryItems: readonly NavigationItem[] = [
-    { icon: 'chat', key: 'nav.chat', enabled: true, workspace: 'chat' },
-    { icon: 'tasks', key: 'nav.tasks', enabled: false },
-    { icon: 'inspector', key: 'nav.diagnostics', enabled: true, workspace: 'chat' },
-    { icon: 'audit', key: 'nav.review_center', enabled: true, workspace: 'review' },
-    { icon: 'settings', key: 'nav.settings', enabled: false }
-  ];
-
-  let selectedIndex = 0;
-
-  $: if ($activeWorkspace === 'review') {
-    selectedIndex = 3;
-  } else if ($activeWorkspace === 'chat' && selectedIndex === 3) {
-    selectedIndex = 0;
-  }
-
-  function activate(item: NavigationItem, index: number): void {
-    if (!item.enabled) return;
-    selectedIndex = index;
-    if (item.workspace) setActiveWorkspace(item.workspace);
+  function openChat(): void {
+    closeSettings();
+    setActiveWorkspace('chat');
   }
 </script>
 
@@ -42,24 +20,30 @@
   <div class="rail-mark" title="LocalComet">
     <LocalCometLogo size={34} />
   </div>
-  <div class="rail-group" role="list">
-    {#each primaryItems as item, i}
-      {@const label = $t(item.key)}
-      <button
-        type="button"
-        class="rail-button"
-        aria-label={item.enabled ? label : `${label} — ${$t('nav.later')}`}
-        aria-current={selectedIndex === i ? 'page' : undefined}
-        aria-disabled={!item.enabled}
-        title={item.enabled ? label : `${label} — ${$t('nav.later')}`}
-        onclick={() => activate(item, i)}
-      >
-        <Icon name={item.icon} />
-        {#if !item.enabled}
-          <span class="rail-disabled" aria-hidden="true"></span>
-        {/if}
-      </button>
-    {/each}
+  <div class="rail-group">
+    <button
+      type="button"
+      class="rail-button"
+      aria-label={$t('nav.chat')}
+      aria-current={$activeWorkspace === 'chat' && !$settingsPanelOpen ? 'page' : undefined}
+      title={$t('nav.chat')}
+      onclick={openChat}
+    >
+      <Icon name="chat" />
+    </button>
+  </div>
+  <div class="rail-group rail-bottom">
+    <button
+      type="button"
+      class="rail-button"
+      aria-label={$t('nav.settings')}
+      aria-current={$settingsPanelOpen ? 'page' : undefined}
+      title={$t('nav.settings')}
+      data-settings-trigger="true"
+      onclick={openSettings}
+    >
+      <Icon name="settings" />
+    </button>
   </div>
 </nav>
 
@@ -85,6 +69,10 @@
     gap: var(--lc-space-2);
   }
 
+  .rail-bottom {
+    margin-top: auto;
+  }
+
   .rail-button {
     position: relative;
     width: 44px;
@@ -100,17 +88,8 @@
     border-color: var(--lc-line-strong);
   }
 
-  .rail-button[aria-disabled='true'] {
-    color: var(--lc-faint);
-  }
-
-  .rail-disabled {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--lc-faint);
+  .rail-button:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
   }
 </style>

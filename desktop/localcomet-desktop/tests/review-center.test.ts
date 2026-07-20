@@ -472,16 +472,18 @@ describe('Knowledge Operations Command Center components and boundaries', () => 
     expect(reviewSources).toContain('min-height: 44px');
   });
 
-  it('preserves chat and uses the existing Audit rail slot for Review Center', () => {
+  it('preserves chat and Review Center while keeping the primary rail minimal', () => {
     const appShell = source('../src/lib/components/shell/AppShell.svelte');
     const navigation = source('../src/lib/components/shell/NavigationRail.svelte');
     expect(appShell).toContain("$activeWorkspace === 'chat'");
     expect(appShell).toContain('<MessageList />');
     expect(appShell).toContain('<MessageComposer />');
     expect(appShell).toContain('<ReviewCenterWorkspace />');
-    expect(navigation).toContain("icon: 'audit'");
-    expect(navigation).toContain("workspace: 'review'");
-    expect(navigation).toContain("key: 'nav.review_center'");
-    expect(navigation).toContain("key: 'nav.diagnostics', enabled: true, workspace: 'chat'");
+    expect(navigation).toContain("$t('nav.chat')");
+    expect(navigation).toContain("$t('nav.settings')");
+    expect(navigation).toContain('data-settings-trigger="true"');
+    expect(navigation).not.toContain("'nav.review_center'");
+    expect(navigation).not.toContain("'nav.diagnostics'");
+    expect(navigation).not.toContain("'nav.tasks'");
   });
 });

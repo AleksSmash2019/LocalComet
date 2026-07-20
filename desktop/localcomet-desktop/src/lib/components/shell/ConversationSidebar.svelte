@@ -1,7 +1,5 @@
 <script lang="ts">
   import Icon from '$lib/components/common/Icon.svelte';
-  import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
-  import LanguageSwitcher from '$lib/components/common/LanguageSwitcher.svelte';
   import { conversationGroups, pinnedProject, projectLabels } from '$lib/data/mockData';
   import { selectedConversationId, setSelectedConversation, sidebarExpanded } from '$lib/stores/shellStore';
   import { controlPlaneStore } from '$lib/stores/controlPlane';
@@ -9,6 +7,11 @@
 
   $: sessionState = $controlPlaneStore.currentSession?.state ?? 'Unknown';
   $: sessionTone = $controlPlaneStore.currentSession ? 'ready' : 'unknown';
+
+  const hiddenConversationGroupLabels = new Set(['Зарезервировано', 'Отключено']);
+  const visibleConversationGroups = conversationGroups.filter(
+    (group) => !hiddenConversationGroupLabels.has(group.label)
+  );
 
   function tGroup(label: string): string {
     const v = $t('group.' + label);
@@ -56,7 +59,7 @@
   </section>
 
   <div class="conversation-groups">
-    {#each conversationGroups as group}
+    {#each visibleConversationGroups as group}
       <section aria-label={tGroup(group.label)}>
         <h2>{tGroup(group.label)}</h2>
         {#each group.items as item}
@@ -74,11 +77,6 @@
       </section>
     {/each}
   </div>
-
-  <footer>
-    <LanguageSwitcher />
-    <ThemeToggle />
-  </footer>
 </aside>
 
 <style>
@@ -174,15 +172,6 @@
   .conversation-button.selected {
     background: var(--lc-accent-dim);
     border-color: var(--lc-line-strong);
-  }
-
-  footer {
-    margin-top: auto;
-    padding-top: var(--lc-space-4);
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--lc-space-2);
-    align-items: center;
   }
 
   @media (max-width: 920px) {
