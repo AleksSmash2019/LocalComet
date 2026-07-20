@@ -2,6 +2,7 @@ import { get, writable } from 'svelte/store';
 import { getInitialMessages, inspectorSections, modeOptions, modelOptions } from '$lib/data/mockData';
 import type { InspectorSection, MockMessage, ModeOption, ModelOption, ThemeMode } from '$lib/data/mockData';
 import { locale } from '$lib/i18n';
+import { loadUiPreferences, updateUiPreferences } from './uiPreferences';
 
 export const MAX_DRAFT_LENGTH = 1200;
 
@@ -9,16 +10,18 @@ export type WorkspaceMode = 'chat' | 'review';
 
 const DEFAULT_CONVERSATION = 'control-plane-demo';
 let messageCounter = 0;
+const initialUiPreferences = loadUiPreferences();
 
 function cloneMessages(): MockMessage[] {
   return getInitialMessages(get(locale)).map((message) => ({ ...message }));
 }
 
-export const themeMode = writable<ThemeMode>('system');
+export const themeMode = writable<ThemeMode>(initialUiPreferences.theme);
 export const activeWorkspace = writable<WorkspaceMode>('chat');
 export const sidebarExpanded = writable(true);
-export const inspectorVisible = writable(false);
-export const inspectorDrawerOpen = writable(false);
+export const inspectorVisible = writable(initialUiPreferences.diagnosticsPanel === 'open');
+export const inspectorDrawerOpen = writable(initialUiPreferences.diagnosticsPanel === 'open');
+export const settingsPanelOpen = writable(false);
 export const selectedConversationId = writable(DEFAULT_CONVERSATION);
 export const selectedModel = writable<ModelOption>(modelOptions[0]);
 export const selectedMode = writable<ModeOption>('Chat');
@@ -38,7 +41,30 @@ export function setActiveWorkspace(workspace: WorkspaceMode): void {
 }
 
 export function setThemeMode(mode: ThemeMode): void {
+  if (mode !== 'system' && mode !== 'light' && mode !== 'dark') return;
   themeMode.set(mode);
+  updateUiPreferences({ theme: mode });
+}
+
+export function openSettings(): void {
+  toolsPopoverOpen.set(false);
+  modelSetupDrawerOpen.set(false);
+  settingsPanelOpen.set(true);
+}
+
+export function closeSettings(): void {
+  settingsPanelOpen.set(false);
+}
+
+export function setDiagnosticsPanelOpen(open: boolean): void {
+  if (typeof open !== 'boolean') return;
+  inspectorVisible.set(open);
+  inspectorDrawerOpen.set(open);
+  updateUiPreferences({ diagnosticsPanel: open ? 'open' : 'closed' });
+}
+
+export function closeDiagnosticsPanel(): void {
+  setDiagnosticsPanelOpen(false);
 }
 
 export function setSelectedModel(model: ModelOption): void {
@@ -98,23 +124,33 @@ export function setModelConnected(connected: boolean): void {
 
 export function closePopovers(): void {
   toolsPopoverOpen.set(false);
-  inspectorDrawerOpen.set(false);
+  closeSettings();
+  if (get(inspectorVisible) || get(inspectorDrawerOpen)) closeDiagnosticsPanel();
   modelSetupDrawerOpen.set(false);
 }
 
 export function handleGlobalEscape(key: string): boolean {
   if (key !== 'Escape') return false;
+  const hadOpenSurface =
+    get(settingsPanelOpen) ||
+    get(toolsPopoverOpen) ||
+    get(inspectorVisible) ||
+    get(inspectorDrawerOpen) ||
+    get(modelSetupDrawerOpen);
+  if (!hadOpenSurface) return false;
   closePopovers();
   return true;
 }
 
 export function resetShellStores(): void {
+  const preferences = loadUiPreferences();
   messageCounter = 0;
-  themeMode.set('system');
+  themeMode.set(preferences.theme);
   activeWorkspace.set('chat');
   sidebarExpanded.set(true);
-  inspectorVisible.set(false);
-  inspectorDrawerOpen.set(false);
+  inspectorVisible.set(preferences.diagnosticsPanel === 'open');
+  inspectorDrawerOpen.set(preferences.diagnosticsPanel === 'open');
+  settingsPanelOpen.set(false);
   selectedConversationId.set(DEFAULT_CONVERSATION);
   selectedModel.set(modelOptions[0]);
   selectedMode.set('Chat');

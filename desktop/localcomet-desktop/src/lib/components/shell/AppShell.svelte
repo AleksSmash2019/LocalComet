@@ -7,16 +7,21 @@
   import ChatHeader from './ChatHeader.svelte';
   import ConversationSidebar from './ConversationSidebar.svelte';
   import NavigationRail from './NavigationRail.svelte';
+  import SettingsPanel from './SettingsPanel.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import ModelSetupDrawer from '$lib/components/model/ModelSetupDrawer.svelte';
   import ReviewCenterWorkspace from '$lib/components/review/ReviewCenterWorkspace.svelte';
   import {
     activeWorkspace,
-    closePopovers,
+    closeDiagnosticsPanel,
+    closeModelSetup,
+    closeSettings,
     handleGlobalEscape,
     inspectorDrawerOpen,
     modelSetupDrawerOpen,
+    openSettings,
+    settingsPanelOpen,
     sidebarExpanded,
     themeMode
   } from '$lib/stores/shellStore';
@@ -25,9 +30,17 @@
   import { initializeKnowledgePreviewEvents, shutdownKnowledgePreviewEvents } from '$lib/stores/knowledgePreview';
   import { locale, t } from '$lib/i18n';
   import type { ResolvedTheme } from '$lib/data/mockData';
+  import { DESKTOP_BUILD_LABEL } from '$lib/version';
 
   let systemDark = false;
   let resolvedTheme: ResolvedTheme = 'light';
+
+  function closeSettingsAndRestoreFocus(): void {
+    closeSettings();
+    queueMicrotask(() => {
+      document.querySelector<HTMLButtonElement>('[data-settings-trigger]')?.focus();
+    });
+  }
 
   $: resolvedTheme = $themeMode === 'system' ? (systemDark ? 'dark' : 'light') : $themeMode;
 
@@ -58,6 +71,16 @@
 
   onMount(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key === ',') {
+        event.preventDefault();
+        openSettings();
+        return;
+      }
+      if (event.key === 'Escape' && $settingsPanelOpen) {
+        event.preventDefault();
+        closeSettingsAndRestoreFocus();
+        return;
+      }
       if (handleGlobalEscape(event.key)) {
         event.stopPropagation();
       }
@@ -113,7 +136,7 @@
       <span class="wordmark"><span class="wordmark-local">Local</span><span class="wordmark-comet">Comet</span></span>
     </div>
     <StatusBadge label={controlPlaneLabel} tone={controlPlaneTone} />
-    <span class="title-version">v6.84.5.1b</span>
+    <span class="title-version">{DESKTOP_BUILD_LABEL}</span>
   </header>
 
   <div class:review-mode={$activeWorkspace === 'review'} class="shell-body">
@@ -130,14 +153,18 @@
         </div>
         <MessageComposer />
       </main>
-      <Diagnostics className={$inspectorDrawerOpen ? 'drawer-open' : ''} onClose={closePopovers} />
+      <Diagnostics className={$inspectorDrawerOpen ? 'drawer-open' : ''} onClose={closeDiagnosticsPanel} />
       {#if $modelSetupDrawerOpen}
-        <ModelSetupDrawer onClose={closePopovers} />
+        <ModelSetupDrawer onClose={closeModelSetup} />
       {/if}
     {:else}
       <ReviewCenterWorkspace />
     {/if}
   </div>
+
+  {#if $settingsPanelOpen}
+    <SettingsPanel onClose={closeSettingsAndRestoreFocus} />
+  {/if}
 </div>
 
 <style>

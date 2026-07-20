@@ -5,27 +5,52 @@ import {
   MAX_DRAFT_LENGTH,
   activeInspectorSection,
   appendMockMessage,
+  closeDiagnosticsPanel,
   closeModelSetup,
+  closeSettings,
   handleGlobalEscape,
+  inspectorDrawerOpen,
   inspectorVisible,
   mockMessages,
   modelConnected,
   modelSetupDrawerOpen,
   modelSetupMode,
+  openSettings,
   openModelSetup,
   resetShellStores,
   selectedMode,
   selectedModel,
   setSelectedMode,
   setSelectedModel,
+  setDiagnosticsPanelOpen,
   setThemeMode,
+  settingsPanelOpen,
   sidebarExpanded,
   themeMode,
   toolsPopoverOpen
 } from '../src/lib/stores/shellStore';
+import { UI_PREFERENCES_KEY } from '../src/lib/stores/uiPreferences';
+
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    removeItem: (key: string) => { values.delete(key); },
+    setItem: (key: string, value: string) => { values.set(key, value); }
+  };
+}
+
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: createMemoryStorage()
+});
 
 describe('shell stores', () => {
   beforeEach(() => {
+    localStorage.clear();
     resetShellStores();
   });
 
@@ -37,11 +62,46 @@ describe('shell stores', () => {
     expect(get(themeMode)).toBe('dark');
   });
 
-  it('does not persist theme to browser storage APIs', () => {
+  it('persists theme in the bounded preference record', () => {
     setThemeMode('light');
     expect(get(themeMode)).toBe('light');
-    expect('localStorage' in globalThis).toBe(false);
-    expect('sessionStorage' in globalThis).toBe(false);
+    expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
+      theme: 'light',
+      locale: 'ru',
+      diagnosticsPanel: 'closed'
+    });
+  });
+
+  it('initializes persisted theme and diagnostics state on reset', () => {
+    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
+      theme: 'dark',
+      locale: 'en',
+      diagnosticsPanel: 'open'
+    }));
+    resetShellStores();
+    expect(get(themeMode)).toBe('dark');
+    expect(get(inspectorVisible)).toBe(true);
+    expect(get(inspectorDrawerOpen)).toBe(true);
+  });
+
+  it('opens and closes Settings without persisting its open state', () => {
+    openSettings();
+    expect(get(settingsPanelOpen)).toBe(true);
+    expect(localStorage.getItem(UI_PREFERENCES_KEY)).toBeNull();
+    closeSettings();
+    expect(get(settingsPanelOpen)).toBe(false);
+  });
+
+  it('sets, persists, and closes diagnostics through bounded helpers', () => {
+    setDiagnosticsPanelOpen(true);
+    expect(get(inspectorVisible)).toBe(true);
+    expect(get(inspectorDrawerOpen)).toBe(true);
+    expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}').diagnosticsPanel).toBe('open');
+
+    closeDiagnosticsPanel();
+    expect(get(inspectorVisible)).toBe(false);
+    expect(get(inspectorDrawerOpen)).toBe(false);
+    expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}').diagnosticsPanel).toBe('closed');
   });
 
   it('has deterministic sidebar and inspector defaults', () => {
@@ -95,6 +155,18 @@ describe('shell stores', () => {
     toolsPopoverOpen.set(true);
     expect(handleGlobalEscape('Escape')).toBe(true);
     expect(get(toolsPopoverOpen)).toBe(false);
+  });
+
+  it('closes Settings and diagnostics on Escape and reports whether it acted', () => {
+    expect(handleGlobalEscape('Escape')).toBe(false);
+    openSettings();
+    setDiagnosticsPanelOpen(true);
+    expect(handleGlobalEscape('Enter')).toBe(false);
+    expect(handleGlobalEscape('Escape')).toBe(true);
+    expect(get(settingsPanelOpen)).toBe(false);
+    expect(get(inspectorVisible)).toBe(false);
+    expect(get(inspectorDrawerOpen)).toBe(false);
+    expect(handleGlobalEscape('Escape')).toBe(false);
   });
 
   it('defaults theme mode to system', () => {

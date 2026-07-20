@@ -4,7 +4,7 @@
   import { conversationTitleById } from '$lib/data/mockData';
   import { controlPlaneStore } from '$lib/stores/controlPlane';
   import { modelGatewayStore } from '$lib/stores/modelGateway';
-  import { selectedConversationId, sidebarExpanded, openModelSetup, modelConnected, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen } from '$lib/stores/shellStore';
+  import { selectedConversationId, sidebarExpanded, openModelSetup, modelConnected, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
   $: title = (() => {
@@ -86,8 +86,7 @@
       aria-expanded={$inspectorVisible || $inspectorDrawerOpen}
       onclick={() => {
         const next = !($inspectorVisible || $inspectorDrawerOpen);
-        inspectorVisible.set(next);
-        inspectorDrawerOpen.set(next);
+        setDiagnosticsPanelOpen(next);
       }}
     >
       <Icon name="inspector" />

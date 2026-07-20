@@ -1,30 +1,13 @@
 import { writable, derived } from 'svelte/store';
 import { ru } from './ru';
 import { en } from './en';
+import { loadUiPreferences, updateUiPreferences } from '$lib/stores/uiPreferences';
 
 export type Language = 'ru' | 'en';
 export type TranslationMap = Record<string, string>;
 
-const STORAGE_KEY = 'localcomet.ui.language';
-
 function getInitialLanguage(): Language {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return 'ru';
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'ru' || stored === 'en') return stored;
-  } catch {
-    // localStorage unavailable (SSR, test, privacy mode)
-  }
-  return 'ru';
-}
-
-function persistLanguage(lang: Language): void {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, lang);
-  } catch {
-    // silent
-  }
+  return loadUiPreferences().locale;
 }
 
 function setDocumentLang(lang: Language): void {
@@ -41,7 +24,8 @@ export const t = derived(locale, ($locale) => {
 });
 
 export function setLocale(lang: Language): void {
+  if (lang !== 'ru' && lang !== 'en') return;
   locale.set(lang);
-  persistLanguage(lang);
+  updateUiPreferences({ locale: lang });
   setDocumentLang(lang);
 }

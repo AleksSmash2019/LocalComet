@@ -3,8 +3,11 @@ import { get } from 'svelte/store';
 import { locale, setLocale, t } from '../src/lib/i18n';
 import { getInitialMessages } from '../src/lib/data/mockData';
 import type { Language } from '../src/lib/i18n';
-
-const STORAGE_KEY = 'localcomet.ui.language';
+import {
+  LEGACY_LANGUAGE_KEY,
+  UI_PREFERENCES_KEY,
+  loadUiPreferences
+} from '../src/lib/stores/uiPreferences';
 
 // Minimal localStorage polyfill for node test environment
 if (typeof localStorage === 'undefined') {
@@ -42,11 +45,8 @@ describe('language store', () => {
   });
 
   it('invalid stored value falls back to ru', () => {
-    localStorage.setItem(STORAGE_KEY, 'fr');
-    const stored = localStorage.getItem(STORAGE_KEY);
-    expect(stored).toBe('fr');
-    const valid = stored === 'ru' || stored === 'en' ? stored : 'ru';
-    expect(valid).toBe('ru');
+    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({ locale: 'fr' }));
+    expect(loadUiPreferences().locale).toBe('ru');
   });
 
   it('selecting English changes visible UI text', () => {
@@ -68,11 +68,16 @@ describe('language store', () => {
     expect(tf('conn.not_connected')).toBe('Не подключено');
   });
 
-  it('selected language persists to localStorage', () => {
+  it('selected language persists to the versioned preference record', () => {
     setLocale('en');
-    expect(localStorage.getItem(STORAGE_KEY)).toBe('en');
+    expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
+      theme: 'system',
+      locale: 'en',
+      diagnosticsPanel: 'closed'
+    });
+    expect(localStorage.getItem(LEGACY_LANGUAGE_KEY)).toBeNull();
     setLocale('ru');
-    expect(localStorage.getItem(STORAGE_KEY)).toBe('ru');
+    expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}').locale).toBe('ru');
   });
 
   it('runtime/model state is not reset by language switch', () => {

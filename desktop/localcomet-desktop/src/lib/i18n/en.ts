@@ -219,6 +219,25 @@ export const en: TranslationMap = {
   'lang.russian': 'Русский',
   'lang.english': 'English',
 
+  // Settings
+  'settings.title': 'Settings',
+  'settings.close': 'Close settings',
+  'settings.appearance': 'Appearance',
+  'settings.theme': 'Theme',
+  'settings.theme_system': 'System',
+  'settings.theme_light': 'Light',
+  'settings.theme_dark': 'Dark',
+  'settings.language': 'Language',
+  'settings.diagnostics': 'Diagnostics',
+  'settings.connection_state': 'Control Plane connection',
+  'settings.show_diagnostics': 'Show Diagnostics',
+  'settings.hide_diagnostics': 'Hide Diagnostics',
+  'settings.about': 'About',
+  'settings.application': 'Application',
+  'settings.version': 'Version',
+  'settings.build': 'Build',
+  'settings.build_status': 'Build status',
+
   // Project
   'project.detail': 'Local chat with model',
 

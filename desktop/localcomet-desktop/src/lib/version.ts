@@ -1,1 +1,3 @@
 export const DESKTOP_SHELL_VERSION = 'v6.84.5.1';
+export const DESKTOP_BUILD_LABEL = 'v6.84.5.1b';
+export const DESKTOP_BUILD_STATUS = 'UNSIGNED_INTERNAL_BUILD';
