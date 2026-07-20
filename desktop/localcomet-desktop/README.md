@@ -110,6 +110,22 @@ cargo test --manifest-path src-tauri\Cargo.toml --locked -- --test-threads=1
 npm run tauri build -- --no-bundle
 ```
 
+## UP00-WP01 Windows installer
+
+The owner-authorized Windows package keeps the existing static Svelte/Tauri/Rust/Python boundary. A generated build workspace stages a private CPython 3.14 runtime and the bounded existing sidecar dependency closure; no generated runtime, `node_modules`, Cargo target, or installer is committed.
+
+From a clean `feat/up00-wp01-windows-one-click-launch` branch, run:
+
+```powershell
+npm run bundle:windows
+```
+
+The build helper copies tracked source to the ignored root `target/up00-wp01/` area, uses `npm ci --offline` and Cargo offline mode, runs the repository-supported frontend/backend/Rust checks, and invokes the pinned Tauri 2 NSIS target. The installed user does not need Python, Node.js, npm, Cargo, Vite, Tauri CLI, or the repository.
+
+The NSIS package is current-user and unsigned. Installer-owned binaries are placed under `%LOCALAPPDATA%\Programs\LocalComet`; LocalComet user data and startup logs remain under `%LOCALAPPDATA%\LocalComet` and are not removed by the normal uninstall path. Tauri's pinned NSIS template creates `LocalComet` Start Menu and desktop shortcuts and the HKCU uninstall registration. WebView2 is treated as a Windows prerequisite; the installer does not add a network bootstrap.
+
+Do not use this internal package as a public release. Production signing, automatic updates, public-release licensing, and distribution approval remain deferred.
+
 ## Production Build Behavior
 
 `npm run build` creates deterministic static frontend assets in `build/`. Tauri production configuration points to that static output through `frontendDist`. The development Vite server is used only by Tauri development mode.

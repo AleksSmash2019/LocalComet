@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "UP00-WP01",
+  "targetTriple": "x86_64-pc-windows-msvc",
+  "sidecarBaseName": "localcomet-core",
+  "entrypoint": "tools/run_localcomet_desktop_sidecar.py",
+  "python": {
+    "implementation": "CPython",
+    "major": 3,
+    "minor": 14,
+    "licenseFile": "LICENSE.txt",
+    "excludedTopLevel": [
+      "__pycache__",
+      "ensurepip",
+      "idlelib",
+      "site-packages",
+      "tkinter",
+      "turtledemo",
+      "venv"
+    ]
+  },
+  "sourceFiles": [
+    "modules/desktop_control_plane_ru.py",
+    "modules/desktop_ipc_contract_ru.py",
+    "modules/desktop_sidecar_runtime_ru.py",
+    "modules/knowledge_adapter_ru.py",
+    "modules/knowledge_change_proposal_ru.py",
+    "modules/knowledge_change_review_decision_ru.py",
+    "modules/knowledge_change_review_ru.py",
+    "modules/knowledge_contract_ru.py",
+    "modules/knowledge_injection_ru.py",
+    "modules/knowledge_review_ui_projection_ru.py",
+    "modules/local_model_gateway_ru.py",
+    "tools/run_localcomet_desktop_sidecar.py",
+    "tools/validate_localcomet_vault.py"
+  ]
+}

@@ -9,14 +9,14 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-#[cfg(debug_assertions)]
 pub const PYTHON_ISOLATED_ARG: &str = "-I";
-#[cfg(debug_assertions)]
 pub const PYTHON_NO_BYTECODE_ARG: &str = "-B";
 #[cfg(debug_assertions)]
 pub const PYTHON_SIDECAR_RUNNER: &str = "tools/run_localcomet_desktop_sidecar.py";
 #[cfg(not(debug_assertions))]
 pub const RELEASE_SIDECAR_EXE: &str = "localcomet-core.exe";
+#[cfg(not(debug_assertions))]
+pub const RELEASE_SIDECAR_RUNNER: &str = "app/tools/run_localcomet_desktop_sidecar.py";
 pub const HEALTH_METHOD: &str = "app.health";
 pub const SHUTDOWN_METHOD: &str = "app.shutdown";
 
@@ -60,6 +60,7 @@ pub enum SidecarProgram {
     ReleaseBundle {
         executable: PathBuf,
         current_dir: PathBuf,
+        runner: PathBuf,
     },
     #[cfg(debug_assertions)]
     Unavailable { reason: String },
@@ -135,15 +136,30 @@ impl SupervisorConfig {
             SidecarProgram::ReleaseBundle {
                 executable,
                 current_dir,
+                runner,
             } => {
                 if !executable.is_file() {
                     return Err(SupervisorError::Unavailable(
                         "release sidecar executable missing".into(),
                     ));
                 }
+                if !runner.is_file()
+                    || runner
+                        .symlink_metadata()
+                        .map(|meta| meta.file_type().is_symlink())
+                        .unwrap_or(true)
+                {
+                    return Err(SupervisorError::Unavailable(
+                        "release sidecar runner missing or symlinked".into(),
+                    ));
+                }
                 Ok(SidecarLaunchSpec {
                     executable: executable.clone(),
-                    args: Vec::new(),
+                    args: vec![
+                        OsString::from(PYTHON_ISOLATED_ARG),
+                        OsString::from(PYTHON_NO_BYTECODE_ARG),
+                        runner.as_os_str().to_os_string(),
+                    ],
                     current_dir: current_dir.clone(),
                     env: self.env.clone(),
                 })
@@ -184,12 +200,15 @@ impl SupervisorConfig {
             .and_then(|path| path.parent().map(Path::to_path_buf))
             .unwrap_or_else(|| PathBuf::from("."));
         let executable = current_dir.join(RELEASE_SIDECAR_EXE);
+        let runner = current_dir.join(RELEASE_SIDECAR_RUNNER);
+        let env = minimal_sidecar_environment(Some(&executable));
         Self {
             program: SidecarProgram::ReleaseBundle {
                 executable,
                 current_dir,
+                runner,
             },
-            env: minimal_sidecar_environment(None),
+            env,
         }
     }
 }
@@ -592,8 +611,11 @@ mod tests {
     fn release_config_points_to_future_contained_executable() {
         let config = SupervisorConfig::release_from_current_exe();
         match config.program {
-            SidecarProgram::ReleaseBundle { executable, .. } => {
+            SidecarProgram::ReleaseBundle {
+                executable, runner, ..
+            } => {
                 assert!(executable.ends_with(RELEASE_SIDECAR_EXE));
+                assert!(runner.ends_with(RELEASE_SIDECAR_RUNNER));
             }
             _ => panic!("release sidecar executable expected"),
         }

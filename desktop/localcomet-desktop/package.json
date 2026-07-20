@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev --host 127.0.0.1 --port 1420 --strictPort",
     "build": "vite build",
+    "bundle:windows": "python ../../tools/build_up00_windows_installer.py --build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "tauri": "tauri"
