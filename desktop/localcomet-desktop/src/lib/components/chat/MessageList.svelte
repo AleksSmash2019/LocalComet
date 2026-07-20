@@ -38,11 +38,15 @@
 
 <style>
   .message-list {
+    min-width: 0;
+    max-width: 100%;
     display: grid;
     gap: var(--lc-space-4);
   }
 
   .message {
+    min-width: 0;
+    max-width: 100%;
     display: grid;
     grid-template-columns: 38px minmax(0, 1fr);
     gap: var(--lc-space-3);
@@ -98,6 +102,7 @@
 
   p {
     margin: 0;
+    white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
 
