@@ -20,6 +20,12 @@ TAURI_DIR = Path("desktop/localcomet-desktop/src-tauri")
 APP_DIR = Path("desktop/localcomet-desktop")
 SIDECAR_READY_TEST = Path("tools/test_v6843_sidecar_supervisor.py")
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
+AUTHORIZED_FEATURE_BRANCHES = frozenset(
+    (
+        "feat/up00-wp01-windows-one-click-launch",
+        "feat/up02-wp01-truthful-assistant-usability",
+    )
+)
 
 
 class PackagingHold(RuntimeError):
@@ -139,8 +145,8 @@ def git_output(root: Path, *args: str) -> bytes:
 
 def require_clean_feature_branch(root: Path) -> str:
     branch = git_output(root, "branch", "--show-current").decode("utf-8").strip()
-    if branch != "feat/up00-wp01-windows-one-click-launch":
-        raise PackagingHold("packaging must run from the authorized feature branch")
+    if branch not in AUTHORIZED_FEATURE_BRANCHES:
+        raise PackagingHold("packaging must run from an authorized installer feature branch")
     status = git_output(root, "status", "--porcelain=v1", "--untracked-files=all")
     if status:
         raise PackagingHold("packaging requires a clean feature worktree")
@@ -323,11 +329,11 @@ def build_installer(root: Path, workspace: Path) -> tuple[Path, ...]:
     run_checked([npm, "run", "check"], app_dir, env)
     run_checked([npm, "run", "build"], app_dir, env)
     run_checked(["cargo", "fmt", "--all", "--", "--check"], tauri_dir, env)
-    run_checked(["cargo", "check", "--offline"], tauri_dir, env)
-    run_checked(["cargo", "clippy", "--offline", "--all-targets", "--", "-D", "warnings"], tauri_dir, env)
-    run_checked(["cargo", "test", "--offline"], tauri_dir, env)
+    run_checked(["cargo", "check", "--locked", "--offline"], tauri_dir, env)
+    run_checked(["cargo", "clippy", "--locked", "--offline", "--all-targets", "--", "-D", "warnings"], tauri_dir, env)
+    run_checked(["cargo", "test", "--locked", "--offline"], tauri_dir, env)
     run_checked(
-        [npm, "run", "tauri", "--", "build", "--bundles", "nsis", "--no-sign", "--ci", "--", "--offline"],
+        [npm, "run", "tauri", "--", "build", "--bundles", "nsis", "--no-sign", "--ci", "--", "--locked", "--offline"],
         app_dir,
         env,
     )
