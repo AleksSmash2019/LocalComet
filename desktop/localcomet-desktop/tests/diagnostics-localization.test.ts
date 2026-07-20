@@ -2,6 +2,7 @@ import { render } from 'svelte/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import Diagnostics from '../src/lib/components/agent/Diagnostics.svelte';
+import TelemetryRow from '../src/lib/components/common/TelemetryRow.svelte';
 import { locale, setLocale, t } from '../src/lib/i18n';
 import { controlPlaneStore, resetControlPlaneStore } from '../src/lib/stores/controlPlane';
 import { modelGatewayStore, resetModelGatewayStore } from '../src/lib/stores/modelGateway';
@@ -11,6 +12,27 @@ import {
   resetShellStores,
   setActiveInspectorSection
 } from '../src/lib/stores/shellStore';
+
+const diagnosticsSourceModules = import.meta.glob(
+  [
+    '../src/lib/components/agent/Diagnostics.svelte',
+    '../src/lib/components/common/TelemetryRow.svelte',
+    '../src/lib/components/common/EventStream.svelte'
+  ],
+  {
+    eager: true,
+    query: '?raw',
+    import: 'default'
+  }
+) as Record<string, string>;
+
+function diagnosticSource(relativePath: string): string {
+  const content = diagnosticsSourceModules[relativePath];
+  if (typeof content !== 'string') {
+    throw new Error(`Diagnostics source fixture not found: ${relativePath}`);
+  }
+  return content;
+}
 
 function diagnosticsHtml(language: 'ru' | 'en'): string {
   setLocale(language);
@@ -25,6 +47,32 @@ beforeEach(() => {
 });
 
 describe('Diagnostics localization closure', () => {
+  it('keeps wrapped telemetry labels and values available as full titles', () => {
+    const label = 'Long diagnostic label';
+    const value = 'provider-with-a-very-long-local-identifier';
+    const html = render(TelemetryRow, { props: { label, value, tone: 'info' } }).body;
+
+    expect(html).toContain(`title="${label}"`);
+    expect(html).toContain(`title="${value}"`);
+  });
+
+  it('keeps the bounded sticky-header and overflow source guards', () => {
+    const diagnostics = diagnosticSource('../src/lib/components/agent/Diagnostics.svelte');
+    const telemetryRow = diagnosticSource('../src/lib/components/common/TelemetryRow.svelte');
+    const eventStream = diagnosticSource('../src/lib/components/common/EventStream.svelte');
+
+    expect(diagnostics).toContain('position: sticky;');
+    expect(diagnostics).toContain('overflow-x: hidden;');
+    expect(diagnostics).toContain('--telemetry-row-columns: repeat(2, minmax(0, 1fr));');
+    expect(diagnostics).toContain('min-width: 0;');
+    expect(telemetryRow).toContain(
+      'var(--telemetry-row-columns, minmax(0, 1fr) minmax(92px, auto))'
+    );
+    expect(telemetryRow).toContain('overflow-wrap: anywhere;');
+    expect(eventStream).toContain('class="event-method" title={event.method}');
+    expect(eventStream).toContain('overflow-wrap: anywhere;');
+  });
+
   it('removes the known reachable English chrome from Russian Diagnostics', () => {
     modelGatewayStore.update((state) => ({ ...state, status: 'Binding required' }));
     const html = diagnosticsHtml('ru');

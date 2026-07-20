@@ -19,6 +19,7 @@
     closeSettings,
     handleGlobalEscape,
     inspectorDrawerOpen,
+    inspectorVisible,
     modelSetupDrawerOpen,
     openSettings,
     settingsPanelOpen,
@@ -139,7 +140,11 @@
     <span class="title-version">{DESKTOP_BUILD_LABEL}</span>
   </header>
 
-  <div class:review-mode={$activeWorkspace === 'review'} class="shell-body">
+  <div
+    class:review-mode={$activeWorkspace === 'review'}
+    class:diagnostics-open={$activeWorkspace === 'chat' && $inspectorVisible}
+    class="shell-body"
+  >
     <NavigationRail />
 
     {#if $activeWorkspace === 'chat'}

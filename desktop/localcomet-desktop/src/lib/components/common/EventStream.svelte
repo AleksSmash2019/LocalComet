@@ -24,8 +24,8 @@
       {#each visibleEvents as event}
         <li>
           <span class="seq">#{event.sequence}</span>
-          <span>{event.method}</span>
-          <small>{event.kind} / {event.state}</small>
+          <span class="event-method" title={event.method}>{event.method}</span>
+          <small title={`${event.kind} / ${event.state}`}>{event.kind} / {event.state}</small>
         </li>
       {/each}
     </ol>
@@ -35,6 +35,7 @@
 <style>
   .event-stream {
     display: grid;
+    min-width: 0;
     gap: var(--lc-space-2);
   }
 
@@ -65,6 +66,7 @@
 
   ol {
     display: grid;
+    min-width: 0;
     gap: var(--lc-space-2);
     margin: 0;
     padding: 0;
@@ -73,6 +75,7 @@
 
   li {
     display: grid;
+    min-width: 0;
     gap: 2px;
     border: var(--border-thin);
     border-radius: var(--lc-radius-sm);
@@ -86,6 +89,13 @@
     font-weight: 800;
   }
 
+  .event-method,
+  small {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
   small,
   .empty {
     color: var(--lc-muted);
@@ -97,5 +107,6 @@
     border: var(--border-thin);
     border-radius: var(--lc-radius-sm);
     padding: var(--lc-space-3);
+    overflow-wrap: anywhere;
   }
 </style>

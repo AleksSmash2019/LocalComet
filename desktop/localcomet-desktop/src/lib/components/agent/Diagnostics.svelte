@@ -89,7 +89,7 @@
   }
 </script>
 
-<aside class="diagnostics {className}" class:hidden={!$inspectorVisible && !className} aria-label={$t('diag.title')}>
+<aside id="diagnostics-panel" class="diagnostics {className}" class:hidden={!$inspectorVisible && !className} aria-label={$t('diag.title')}>
   <header>
     <div>
       <span class="eyebrow">{$t('diag.title')}</span>
@@ -186,9 +186,15 @@
 
 <style>
   .diagnostics {
+    --telemetry-row-columns: repeat(2, minmax(0, 1fr));
+    --telemetry-row-alignment: start;
+    --telemetry-label-display: grid;
     width: var(--inspector-width);
     min-width: var(--inspector-width);
+    max-width: 100vw;
+    overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     border-left: var(--border-thin);
     border-right: 0;
     padding: var(--lc-space-4);
@@ -201,10 +207,22 @@
   }
 
   header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--lc-space-3);
+    margin-block-start: calc(0px - var(--lc-space-4));
+    margin-inline: calc(0px - var(--lc-space-4));
+    border-bottom: var(--border-thin);
+    padding: var(--lc-space-4);
+    background: var(--lc-panel-solid);
+  }
+
+  header > div {
+    min-width: 0;
   }
 
   .eyebrow,
@@ -222,6 +240,7 @@
   h2 {
     margin-top: var(--lc-space-1);
     font-size: 17px;
+    overflow-wrap: anywhere;
   }
 
   h3 {
@@ -234,6 +253,7 @@
 
   .close-button {
     display: inline-flex;
+    flex: 0 0 auto;
     align-items: center;
     gap: var(--lc-space-1);
     min-height: 32px;
@@ -308,6 +328,12 @@
     border-bottom: var(--border-thin);
   }
 
+  .summary :global(.status-badge) {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   footer {
     margin-top: var(--lc-space-6);
     border-top: var(--border-thin);
@@ -326,6 +352,8 @@
       z-index: 40;
       display: block;
       width: min(var(--inspector-width), calc(100vw - var(--rail-width)));
+      min-width: 0;
+      max-width: 100vw;
       height: calc(100vh - 56px);
       box-shadow: var(--lc-shadow);
     }
@@ -334,6 +362,8 @@
   @media (max-width: 680px) {
     .diagnostics.drawer-open {
       width: 100vw;
+      min-width: 0;
+      max-width: 100vw;
       right: 0;
     }
   }
