@@ -1,3 +1,4 @@
+mod artifact_trust;
 mod control_plane;
 mod ipc;
 mod knowledge;
@@ -7,6 +8,10 @@ mod startup;
 mod supervisor;
 mod windows_job;
 
+use artifact_trust::{
+    managed_artifact_validation_status, managed_installed_artifacts, managed_model_catalog,
+    managed_model_readiness, managed_runtime_catalog, ArtifactTrustService,
+};
 use control_plane::{
     control_plane_bootstrap, control_plane_cancel_turn, control_plane_close_session,
     control_plane_create_session, control_plane_create_thread, control_plane_get_turn_status,
@@ -17,8 +22,8 @@ use control_plane::{
 };
 use knowledge::{knowledge_turn_decide, knowledge_turn_preview};
 use managed_runtime::{
-    managed_model_catalog, managed_runtime_logs, managed_runtime_start, managed_runtime_status,
-    managed_runtime_stop, ManagedRuntimeSupervisor,
+    managed_runtime_logs, managed_runtime_start, managed_runtime_status, managed_runtime_stop,
+    ManagedRuntimeSupervisor,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -60,6 +65,22 @@ pub fn run() {
     let run_result = tauri::Builder::default()
         .setup(|app| {
             startup::record(startup::StartupPhase::BackendStart, "begin", "LC_START_100");
+            let local_data_dir = match app.path().local_data_dir() {
+                Ok(path) => path,
+                Err(_) => {
+                    startup::report_failure(startup::StartupPhase::BackendStart, "LC_START_101");
+                    app.handle().exit(1);
+                    return Ok(());
+                }
+            };
+            let artifact_trust = match ArtifactTrustService::production(&local_data_dir) {
+                Ok(service) => Arc::new(service),
+                Err(_) => {
+                    startup::report_failure(startup::StartupPhase::BackendStart, "LC_START_101");
+                    app.handle().exit(1);
+                    return Ok(());
+                }
+            };
             let supervisor = Arc::new(DesktopSidecarSupervisor::default());
             let bridge = Arc::new(ControlPlaneBridge::new(
                 Arc::clone(&supervisor),
@@ -105,7 +126,8 @@ pub fn run() {
             );
             app.manage(Arc::clone(&supervisor));
             app.manage(bridge);
-            app.manage(Arc::new(ManagedRuntimeSupervisor::production()));
+            app.manage(Arc::clone(&artifact_trust));
+            app.manage(Arc::new(ManagedRuntimeSupervisor::new(artifact_trust)));
             let Some(window) = app.get_webview_window("main") else {
                 let _ = supervisor.shutdown();
                 startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_201");
@@ -160,7 +182,11 @@ pub fn run() {
             knowledge_review_refresh,
             knowledge_review_decision_create,
             managed_runtime_status,
+            managed_runtime_catalog,
             managed_model_catalog,
+            managed_installed_artifacts,
+            managed_artifact_validation_status,
+            managed_model_readiness,
             managed_runtime_start,
             managed_runtime_stop,
             managed_runtime_logs

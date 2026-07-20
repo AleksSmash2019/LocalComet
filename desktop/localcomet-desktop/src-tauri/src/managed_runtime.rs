@@ -1,20 +1,20 @@
+use crate::artifact_trust::{ArtifactTrustService, ValidatedRuntimeModel};
 use crate::control_plane::{BridgeError, ControlPlaneBridge, ControlPlaneMethod};
 use crate::windows_job::{ContainedManagedRuntimeProcess, ManagedRuntimeLaunchSpec};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::State;
 
 #[cfg(windows)]
-use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+use std::os::windows::fs::MetadataExt;
 
 #[cfg(windows)]
 use windows_sys::Win32::Security::Cryptography::{
@@ -22,11 +22,6 @@ use windows_sys::Win32::Security::Cryptography::{
 };
 
 const ENGINE_ID: &str = "llama.cpp";
-const EXECUTABLE_NAME: &str = "llama-server.exe";
-const MANIFEST_NAME: &str = "runtime_manifest.json";
-const MAX_MODELS: usize = 64;
-const MIN_GGUF_BYTES: u64 = 1_048_576;
-const MAX_GGUF_BYTES: u64 = 128 * 1024 * 1024 * 1024;
 const MAX_LOG_BYTES: usize = 256 * 1024;
 const MAX_LOG_LINES: usize = 200;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(300);
@@ -64,23 +59,6 @@ pub struct ManagedRuntimeStatus {
     pub model_display_name: Option<String>,
     pub binding_fingerprint: Option<String>,
     pub last_error: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ManagedModelEntry {
-    pub model_id: String,
-    pub display_name: String,
-    pub size_bytes: u64,
-    pub availability: String,
-    pub identity_fingerprint: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ManagedModelCatalog {
-    pub engine: &'static str,
-    pub model_root: &'static str,
-    pub models: Vec<ManagedModelEntry>,
-    pub maximum_models: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -129,58 +107,6 @@ impl From<ManagedRuntimeError> for BridgeError {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct RuntimeManifest {
-    schema_version: String,
-    runtime_id: String,
-    engine: String,
-    runtime_version: String,
-    executable: String,
-    manifest_sha256: String,
-    files: Vec<RuntimeManifestFile>,
-    required_cli_flags: Vec<String>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct RuntimeManifestFile {
-    path: String,
-    size_bytes: u64,
-    sha256: String,
-}
-
-#[derive(Clone, Debug)]
-struct ApprovedRuntime {
-    runtime_id: &'static str,
-    engine: &'static str,
-    runtime_version: &'static str,
-    manifest_sha256: &'static str,
-    executable_sha256: &'static str,
-    required_cli_flags: &'static [&'static str],
-}
-
-const APPROVED_RUNTIME_REGISTRY: &[ApprovedRuntime] = &[];
-
-#[derive(Clone, Debug)]
-struct RuntimeRoots {
-    runtime_root: PathBuf,
-    model_root: PathBuf,
-    state_root: PathBuf,
-}
-
-#[derive(Clone, Debug)]
-struct VerifiedRuntime {
-    runtime_id: String,
-    runtime_version: String,
-    package_dir: PathBuf,
-    executable: PathBuf,
-}
-
-#[derive(Clone, Debug)]
-struct VerifiedModel {
-    entry: ManagedModelEntry,
-    path: PathBuf,
-}
-
 struct ActiveRuntime {
     process: ContainedManagedRuntimeProcess,
     stdout_reader: Option<thread::JoinHandle<()>>,
@@ -191,8 +117,10 @@ struct ActiveRuntime {
     runtime_instance_id: String,
     runtime_instance_fingerprint: String,
     binding_fingerprint: String,
-    model_entry: ManagedModelEntry,
+    model_id: String,
+    model_display_name: String,
     _model_handle: File,
+    _runtime_handles: Vec<File>,
 }
 
 #[derive(Default, Debug)]
@@ -224,25 +152,24 @@ impl Default for ManagedRuntimeInner {
 }
 
 pub struct ManagedRuntimeSupervisor {
-    roots: RuntimeRoots,
+    artifacts: Arc<ArtifactTrustService>,
+    lifecycle: Mutex<()>,
     inner: Mutex<ManagedRuntimeInner>,
 }
 
 impl ManagedRuntimeSupervisor {
-    pub fn production() -> Self {
-        Self::new(production_roots())
-    }
-
-    fn new(roots: RuntimeRoots) -> Self {
+    pub fn new(artifacts: Arc<ArtifactTrustService>) -> Self {
         Self {
-            roots,
+            artifacts,
+            lifecycle: Mutex::new(()),
             inner: Mutex::new(ManagedRuntimeInner::default()),
         }
     }
 
     pub fn status(&self) -> ManagedRuntimeStatus {
         let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
-        if inner.active.is_none() && !runtime_registry_has_installable() {
+        let runtime_installed = self.artifacts.has_valid_runtime();
+        if inner.active.is_none() && !runtime_installed {
             inner.state = ManagedRuntimeState::NotInstalled;
         } else if inner.active.is_none() && inner.state == ManagedRuntimeState::NotInstalled {
             inner.state = ManagedRuntimeState::Stopped;
@@ -251,7 +178,7 @@ impl ManagedRuntimeSupervisor {
         ManagedRuntimeStatus {
             engine: ENGINE_ID,
             state: inner.state.clone(),
-            installation: if runtime_registry_has_installable() {
+            installation: if runtime_installed {
                 "Installed".into()
             } else {
                 "Not installed".into()
@@ -260,36 +187,11 @@ impl ManagedRuntimeSupervisor {
             runtime_instance_id: active.map(|item| item.runtime_instance_id.clone()),
             runtime_instance_fingerprint: active
                 .map(|item| item.runtime_instance_fingerprint.clone()),
-            model_id: active.map(|item| item.model_entry.model_id.clone()),
-            model_display_name: active.map(|item| item.model_entry.display_name.clone()),
+            model_id: active.map(|item| item.model_id.clone()),
+            model_display_name: active.map(|item| item.model_display_name.clone()),
             binding_fingerprint: active.map(|item| item.binding_fingerprint.clone()),
             last_error: inner.last_error.clone(),
         }
-    }
-
-    pub fn catalog(&self) -> Result<ManagedModelCatalog, ManagedRuntimeError> {
-        fs::create_dir_all(&self.roots.model_root)
-            .map_err(|_| ManagedRuntimeError::new("io_error", "model root unavailable"))?;
-        ensure_local_safe_root(&self.roots.model_root)?;
-        let mut models = Vec::new();
-        let entries = fs::read_dir(&self.roots.model_root)
-            .map_err(|_| ManagedRuntimeError::new("io_error", "model root scan failed"))?;
-        for entry in entries.take(MAX_MODELS + 1) {
-            let entry =
-                entry.map_err(|_| ManagedRuntimeError::new("io_error", "model scan failed"))?;
-            if models.len() >= MAX_MODELS {
-                break;
-            }
-            if let Ok(model) = model_entry_from_path(&self.roots.model_root, &entry.path()) {
-                models.push(model.entry);
-            }
-        }
-        Ok(ManagedModelCatalog {
-            engine: ENGINE_ID,
-            model_root: "<MODEL_ROOT>",
-            models,
-            maximum_models: MAX_MODELS,
-        })
     }
 
     pub fn logs(&self) -> ManagedRuntimeLogs {
@@ -317,8 +219,12 @@ impl ManagedRuntimeSupervisor {
         model_id: &str,
         bridge: &ControlPlaneBridge,
     ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .expect("managed runtime lifecycle lock poisoned");
         {
-            let inner = self.inner.lock().expect("managed runtime lock poisoned");
+            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
             if inner.active.is_some()
                 || matches!(
                     inner.state,
@@ -330,15 +236,16 @@ impl ManagedRuntimeSupervisor {
             {
                 return Err(ManagedRuntimeError::new("busy", "managed runtime is busy").into());
             }
+            inner.state = ManagedRuntimeState::Validating;
+            inner.last_error = None;
         }
 
-        self.set_state(ManagedRuntimeState::Validating, None);
         let start_result = self.start_inner(model_id);
         match start_result {
             Ok(response) => {
                 let attach = self.attach_payload_for_active()?;
                 if let Err(error) = bridge.request(ControlPlaneMethod::ModelManagedAttach, attach) {
-                    let _ = self.stop(bridge);
+                    let _ = self.stop_inner(bridge);
                     self.set_state(
                         ManagedRuntimeState::Failed,
                         Some("managed provider attach failed"),
@@ -350,12 +257,23 @@ impl ManagedRuntimeSupervisor {
             }
             Err(error) => {
                 self.set_state(ManagedRuntimeState::Failed, Some(&error.message));
-                Err(error.into())
+                Err(error)
             }
         }
     }
 
     pub fn stop(
+        &self,
+        bridge: &ControlPlaneBridge,
+    ) -> Result<ManagedRuntimeStopResponse, BridgeError> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .expect("managed runtime lifecycle lock poisoned");
+        self.stop_inner(bridge)
+    }
+
+    fn stop_inner(
         &self,
         bridge: &ControlPlaneBridge,
     ) -> Result<ManagedRuntimeStopResponse, BridgeError> {
@@ -375,7 +293,7 @@ impl ManagedRuntimeSupervisor {
             active.credential.clear();
         }
         inner.runtime_version = None;
-        inner.state = if runtime_registry_has_installable() {
+        inner.state = if self.artifacts.has_valid_runtime() {
             ManagedRuntimeState::Stopped
         } else {
             ManagedRuntimeState::NotInstalled
@@ -386,73 +304,64 @@ impl ManagedRuntimeSupervisor {
         })
     }
 
-    fn start_inner(
-        &self,
-        model_id: &str,
-    ) -> Result<ManagedRuntimeStartResponse, ManagedRuntimeError> {
-        if !runtime_registry_has_installable() {
-            return Err(ManagedRuntimeError::new(
-                "runtime_not_installed",
-                "Managed Runtime: Not installed",
-            ));
-        }
-        fs::create_dir_all(&self.roots.runtime_root)
+    fn start_inner(&self, model_id: &str) -> Result<ManagedRuntimeStartResponse, BridgeError> {
+        let roots = self.artifacts.roots();
+        fs::create_dir_all(&roots.runtime_root)
             .map_err(|_| ManagedRuntimeError::new("io_error", "runtime root unavailable"))?;
-        fs::create_dir_all(&self.roots.model_root)
+        fs::create_dir_all(&roots.model_root)
             .map_err(|_| ManagedRuntimeError::new("io_error", "model root unavailable"))?;
-        fs::create_dir_all(&self.roots.state_root)
+        fs::create_dir_all(&roots.state_root)
             .map_err(|_| ManagedRuntimeError::new("io_error", "runtime state unavailable"))?;
-        ensure_local_safe_root(&self.roots.runtime_root)?;
-        ensure_local_safe_root(&self.roots.model_root)?;
-        ensure_local_safe_root(&self.roots.state_root)?;
+        ensure_local_safe_root(&roots.app_data_root, &roots.runtime_root)?;
+        ensure_local_safe_root(&roots.app_data_root, &roots.model_root)?;
+        ensure_local_safe_root(&roots.app_data_root, &roots.state_root)?;
 
-        let runtime = verify_first_approved_runtime(&self.roots.runtime_root)?;
-        verify_runtime_capabilities(&runtime)?;
-        let model = resolve_model_by_id(&self.roots.model_root, model_id)?;
-        let model_handle = open_model_guard(&model.path)?;
-        let identity_after = model_entry_from_path(&self.roots.model_root, &model.path)?;
-        if identity_after.entry.identity_fingerprint != model.entry.identity_fingerprint {
-            return Err(ManagedRuntimeError::new(
-                "model_changed",
-                "model identity changed before launch",
-            ));
-        }
+        let launch = self.artifacts.resolve_launch(model_id)?;
+        verify_runtime_capabilities(&launch)?;
         let credential = generate_credential()?;
-        let api_key_file = write_private_api_key_file(&self.roots.state_root, &credential)?;
         let port = select_ephemeral_loopback_port()?;
-        let alias = safe_alias(&model.entry.model_id);
+        let api_key_file = write_private_api_key_file(&roots.state_root, &credential)?;
+        let alias = safe_alias(&launch.model_id);
         let runtime_instance_id = hex_bytes(&random_bytes(16)?);
         let runtime_instance_fingerprint = sha256_text(&format!(
             "{}:{}:{}",
-            runtime.runtime_id, runtime.runtime_version, runtime_instance_id
+            launch.runtime_id, launch.runtime_release_tag, runtime_instance_id
         ));
         let binding_fingerprint = sha256_text(&format!(
-            "managed:{}:{}:{}",
-            runtime_instance_id, model.entry.model_id, model.entry.identity_fingerprint
+            "managed:{}:{}",
+            runtime_instance_id, launch.model_id
         ));
 
         self.set_state(ManagedRuntimeState::Starting, None);
         let spec = ManagedRuntimeLaunchSpec {
-            executable: runtime.executable.clone(),
-            args: runtime_args(&model.path, port, &api_key_file, &alias),
-            current_dir: runtime.package_dir.clone(),
+            executable: launch.executable.clone(),
+            args: runtime_args(&launch.model_path, port, &api_key_file, &alias),
+            current_dir: launch.package_dir.clone(),
             env: sanitized_runtime_environment(),
         };
-        let mut process = ContainedManagedRuntimeProcess::spawn(&spec).map_err(|_| {
-            ManagedRuntimeError::new("launch_failed", "managed runtime launch failed")
-        })?;
+        let mut process = match ContainedManagedRuntimeProcess::spawn(&spec) {
+            Ok(process) => process,
+            Err(_) => {
+                let _ = fs::remove_file(&api_key_file);
+                return Err(ManagedRuntimeError::new(
+                    "launch_failed",
+                    "managed runtime launch failed",
+                )
+                .into());
+            }
+        };
         let inner = self.inner.lock().expect("managed runtime lock poisoned");
         let stdout_tail = Arc::clone(&inner.stdout_tail);
         let stderr_tail = Arc::clone(&inner.stderr_tail);
         drop(inner);
-        let stdout_reader = process.take_stdout().map(|stdout| {
+        let mut stdout_reader = process.take_stdout().map(|stdout| {
             spawn_log_reader(
                 stdout,
                 stdout_tail,
                 self.redaction_markers(&credential, &api_key_file),
             )
         });
-        let stderr_reader = process.take_stderr().map(|stderr| {
+        let mut stderr_reader = process.take_stderr().map(|stderr| {
             spawn_log_reader(
                 stderr,
                 stderr_tail,
@@ -464,20 +373,26 @@ impl ManagedRuntimeSupervisor {
         if let Err(error) = ready {
             process.terminate(1);
             let _ = process.wait_bounded(3000);
+            if let Some(handle) = stdout_reader.take() {
+                let _ = handle.join();
+            }
+            if let Some(handle) = stderr_reader.take() {
+                let _ = handle.join();
+            }
             let _ = fs::remove_file(&api_key_file);
-            return Err(error);
+            return Err(error.into());
         }
 
         let response = ManagedRuntimeStartResponse {
             state: ManagedRuntimeState::Ready,
             provider_id: "managed-llama-cpp",
-            model_id: model.entry.model_id.clone(),
-            model_display_name: model.entry.display_name.clone(),
+            model_id: launch.model_id.clone(),
+            model_display_name: launch.model_display_name.clone(),
             runtime_instance_id: runtime_instance_id.clone(),
             runtime_instance_fingerprint: runtime_instance_fingerprint.clone(),
         };
         let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
-        inner.runtime_version = Some(runtime.runtime_version);
+        inner.runtime_version = Some(launch.runtime_release_tag);
         inner.active = Some(ActiveRuntime {
             process,
             stdout_reader,
@@ -488,8 +403,10 @@ impl ManagedRuntimeSupervisor {
             runtime_instance_id,
             runtime_instance_fingerprint,
             binding_fingerprint,
-            model_entry: model.entry,
-            _model_handle: model_handle,
+            model_id: launch.model_id,
+            model_display_name: launch.model_display_name,
+            _model_handle: launch.model_handle,
+            _runtime_handles: launch.runtime_handles,
         });
         Ok(response)
     }
@@ -503,8 +420,8 @@ impl ManagedRuntimeSupervisor {
             "runtime_instance_id": active.runtime_instance_id,
             "port": active.port,
             "credential": active.credential,
-            "expected_model_alias": safe_alias(&active.model_entry.model_id),
-            "model_id": active.model_entry.model_id,
+            "expected_model_alias": safe_alias(&active.model_id),
+            "model_id": active.model_id,
             "binding_fingerprint": active.binding_fingerprint,
         }))
     }
@@ -516,17 +433,18 @@ impl ManagedRuntimeSupervisor {
     }
 
     fn redaction_markers(&self, credential: &str, api_key_file: &Path) -> Vec<(String, String)> {
+        let roots = self.artifacts.roots();
         vec![
             (
-                self.roots.runtime_root.to_string_lossy().into_owned(),
+                roots.runtime_root.to_string_lossy().into_owned(),
                 "<RUNTIME_ROOT>".into(),
             ),
             (
-                self.roots.model_root.to_string_lossy().into_owned(),
+                roots.model_root.to_string_lossy().into_owned(),
                 "<MODEL_ROOT>".into(),
             ),
             (
-                self.roots.state_root.to_string_lossy().into_owned(),
+                roots.state_root.to_string_lossy().into_owned(),
                 "<RUNTIME_STATE>".into(),
             ),
             (
@@ -544,6 +462,12 @@ impl Drop for ManagedRuntimeSupervisor {
             if let Some(mut active) = inner.active.take() {
                 active.process.terminate(0);
                 let _ = active.process.wait_bounded(3000);
+                if let Some(handle) = active.stdout_reader.take() {
+                    let _ = handle.join();
+                }
+                if let Some(handle) = active.stderr_reader.take() {
+                    let _ = handle.join();
+                }
                 let _ = fs::remove_file(&active.api_key_file);
                 active.credential.clear();
             }
@@ -551,186 +475,7 @@ impl Drop for ManagedRuntimeSupervisor {
     }
 }
 
-fn production_roots() -> RuntimeRoots {
-    let local = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\Users\Public\AppData\Local"));
-    RuntimeRoots {
-        runtime_root: local.join("LocalComet").join("runtimes").join(ENGINE_ID),
-        model_root: local.join("LocalComet").join("models"),
-        state_root: local.join("LocalComet").join("runtime-state"),
-    }
-}
-
-fn runtime_registry_has_installable() -> bool {
-    !APPROVED_RUNTIME_REGISTRY.is_empty()
-}
-
-fn verify_first_approved_runtime(
-    runtime_root: &Path,
-) -> Result<VerifiedRuntime, ManagedRuntimeError> {
-    let approved = APPROVED_RUNTIME_REGISTRY.first().ok_or_else(|| {
-        ManagedRuntimeError::new("runtime_not_installed", "Managed Runtime: Not installed")
-    })?;
-    let package_dir = runtime_root.join(approved.runtime_id);
-    let manifest_path = package_dir.join(MANIFEST_NAME);
-    let manifest = parse_runtime_manifest(&manifest_path)?;
-    verify_manifest_against_approval(&manifest, approved, &manifest_path, &package_dir)?;
-    Ok(VerifiedRuntime {
-        runtime_id: manifest.runtime_id,
-        runtime_version: manifest.runtime_version,
-        executable: package_dir.join(EXECUTABLE_NAME),
-        package_dir,
-    })
-}
-
-fn parse_runtime_manifest(path: &Path) -> Result<RuntimeManifest, ManagedRuntimeError> {
-    let body = fs::read(path).map_err(|_| {
-        ManagedRuntimeError::new("runtime_not_installed", "runtime manifest missing")
-    })?;
-    if has_duplicate_json_key(&body) {
-        return Err(ManagedRuntimeError::new(
-            "invalid_manifest",
-            "duplicate JSON key rejected",
-        ));
-    }
-    serde_json::from_slice(&body)
-        .map_err(|_| ManagedRuntimeError::new("invalid_manifest", "runtime manifest invalid"))
-}
-
-fn verify_manifest_against_approval(
-    manifest: &RuntimeManifest,
-    approved: &ApprovedRuntime,
-    manifest_path: &Path,
-    package_dir: &Path,
-) -> Result<(), ManagedRuntimeError> {
-    if manifest.schema_version != "1"
-        || manifest.runtime_id != approved.runtime_id
-        || manifest.engine != ENGINE_ID
-        || manifest.engine != approved.engine
-        || manifest.runtime_version != approved.runtime_version
-        || manifest.executable != EXECUTABLE_NAME
-    {
-        return Err(ManagedRuntimeError::new(
-            "invalid_manifest",
-            "runtime manifest rejected",
-        ));
-    }
-    let manifest_hash = sha256_file(manifest_path)?;
-    if manifest.manifest_sha256 != manifest_hash || manifest_hash != approved.manifest_sha256 {
-        return Err(ManagedRuntimeError::new(
-            "runtime_not_approved",
-            "runtime manifest hash is not approved",
-        ));
-    }
-    for flag in approved.required_cli_flags {
-        if !manifest.required_cli_flags.iter().any(|item| item == flag) {
-            return Err(ManagedRuntimeError::new(
-                "runtime_incompatible",
-                "required runtime CLI flag missing",
-            ));
-        }
-    }
-    for flag in REQUIRED_FLAGS {
-        if !manifest.required_cli_flags.iter().any(|item| item == flag) {
-            return Err(ManagedRuntimeError::new(
-                "runtime_incompatible",
-                "required runtime CLI flag missing",
-            ));
-        }
-    }
-    let mut listed = BTreeSet::new();
-    for file in &manifest.files {
-        validate_manifest_relative_path(&file.path)?;
-        if !listed.insert(file.path.clone()) {
-            return Err(ManagedRuntimeError::new(
-                "invalid_manifest",
-                "duplicate file path",
-            ));
-        }
-        let full = package_dir.join(&file.path);
-        reject_reparse_point(&full)?;
-        let meta = full
-            .metadata()
-            .map_err(|_| ManagedRuntimeError::new("invalid_manifest", "runtime file missing"))?;
-        if !meta.is_file() || meta.len() != file.size_bytes {
-            return Err(ManagedRuntimeError::new(
-                "invalid_manifest",
-                "runtime file size mismatch",
-            ));
-        }
-        if sha256_file(&full)? != file.sha256 {
-            return Err(ManagedRuntimeError::new(
-                "invalid_manifest",
-                "runtime file hash mismatch",
-            ));
-        }
-    }
-    let exe_hash = manifest
-        .files
-        .iter()
-        .find(|item| item.path.eq_ignore_ascii_case(EXECUTABLE_NAME))
-        .map(|item| item.sha256.as_str())
-        .ok_or_else(|| {
-            ManagedRuntimeError::new("invalid_manifest", "runtime executable missing")
-        })?;
-    if exe_hash != approved.executable_sha256 {
-        return Err(ManagedRuntimeError::new(
-            "runtime_not_approved",
-            "runtime executable hash is not approved",
-        ));
-    }
-    reject_unlisted_forbidden_files(package_dir, &listed)?;
-    Ok(())
-}
-
-fn validate_manifest_relative_path(path: &str) -> Result<(), ManagedRuntimeError> {
-    let candidate = Path::new(path);
-    if candidate.is_absolute()
-        || path.contains('\\')
-        || path.contains('\0')
-        || candidate
-            .components()
-            .any(|part| !matches!(part, Component::Normal(_)))
-    {
-        return Err(ManagedRuntimeError::new(
-            "invalid_manifest",
-            "runtime path rejected",
-        ));
-    }
-    Ok(())
-}
-
-fn reject_unlisted_forbidden_files(
-    package_dir: &Path,
-    listed: &BTreeSet<String>,
-) -> Result<(), ManagedRuntimeError> {
-    for entry in fs::read_dir(package_dir)
-        .map_err(|_| ManagedRuntimeError::new("invalid_manifest", "runtime package unreadable"))?
-    {
-        let entry = entry
-            .map_err(|_| ManagedRuntimeError::new("invalid_manifest", "runtime scan failed"))?;
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if entry.file_type().map(|item| item.is_dir()).unwrap_or(false) {
-            continue;
-        }
-        let lowered = name.to_ascii_lowercase();
-        let forbidden = [".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1", ".com"]
-            .iter()
-            .any(|suffix| lowered.ends_with(suffix));
-        if forbidden && !listed.contains(&name) {
-            return Err(ManagedRuntimeError::new(
-                "invalid_manifest",
-                "unlisted executable file rejected",
-            ));
-        }
-        reject_reparse_point(&path)?;
-    }
-    Ok(())
-}
-
-fn verify_runtime_capabilities(runtime: &VerifiedRuntime) -> Result<(), ManagedRuntimeError> {
+fn verify_runtime_capabilities(runtime: &ValidatedRuntimeModel) -> Result<(), ManagedRuntimeError> {
     let version_output = run_capability_probe(runtime, "--version")?;
     if version_output.len() > 4096 {
         return Err(ManagedRuntimeError::new(
@@ -751,7 +496,7 @@ fn verify_runtime_capabilities(runtime: &VerifiedRuntime) -> Result<(), ManagedR
 }
 
 fn run_capability_probe(
-    runtime: &VerifiedRuntime,
+    runtime: &ValidatedRuntimeModel,
     flag: &str,
 ) -> Result<String, ManagedRuntimeError> {
     let spec = ManagedRuntimeLaunchSpec {
@@ -774,113 +519,6 @@ fn run_capability_probe(
         ));
     }
     Ok(sanitize_text(&output, 4096))
-}
-
-fn model_entry_from_path(
-    model_root: &Path,
-    path: &Path,
-) -> Result<VerifiedModel, ManagedRuntimeError> {
-    reject_reparse_point(path)?;
-    let canonical_root = model_root
-        .canonicalize()
-        .map_err(|_| ManagedRuntimeError::new("invalid_model", "model root invalid"))?;
-    let canonical = path
-        .canonicalize()
-        .map_err(|_| ManagedRuntimeError::new("invalid_model", "model path invalid"))?;
-    if canonical.parent() != Some(canonical_root.as_path()) {
-        return Err(ManagedRuntimeError::new(
-            "invalid_model",
-            "model traversal rejected",
-        ));
-    }
-    if canonical
-        .extension()
-        .and_then(|item| item.to_str())
-        .map(|item| !item.eq_ignore_ascii_case("gguf"))
-        .unwrap_or(true)
-    {
-        return Err(ManagedRuntimeError::new(
-            "invalid_model",
-            "non-GGUF model rejected",
-        ));
-    }
-    let meta = canonical
-        .metadata()
-        .map_err(|_| ManagedRuntimeError::new("invalid_model", "model metadata unavailable"))?;
-    if !meta.is_file() || meta.len() < MIN_GGUF_BYTES || meta.len() > MAX_GGUF_BYTES {
-        return Err(ManagedRuntimeError::new(
-            "invalid_model",
-            "model size rejected",
-        ));
-    }
-    let mut file = File::open(&canonical)
-        .map_err(|_| ManagedRuntimeError::new("invalid_model", "model open failed"))?;
-    let mut magic = [0_u8; 4];
-    file.read_exact(&mut magic)
-        .map_err(|_| ManagedRuntimeError::new("invalid_model", "model magic missing"))?;
-    if &magic != b"GGUF" {
-        return Err(ManagedRuntimeError::new(
-            "invalid_model",
-            "invalid GGUF magic",
-        ));
-    }
-    let name = canonical
-        .file_name()
-        .and_then(|item| item.to_str())
-        .ok_or_else(|| ManagedRuntimeError::new("invalid_model", "model name invalid"))?;
-    let display_name = sanitize_model_name(name);
-    let fingerprint = file_identity_fingerprint(&canonical, &meta);
-    let model_id = format!("managed-{}", &fingerprint[..32]);
-    Ok(VerifiedModel {
-        path: canonical,
-        entry: ManagedModelEntry {
-            model_id,
-            display_name,
-            size_bytes: meta.len(),
-            availability: "Available".into(),
-            identity_fingerprint: fingerprint,
-        },
-    })
-}
-
-fn resolve_model_by_id(
-    model_root: &Path,
-    model_id: &str,
-) -> Result<VerifiedModel, ManagedRuntimeError> {
-    for entry in fs::read_dir(model_root)
-        .map_err(|_| ManagedRuntimeError::new("invalid_model", "model root unavailable"))?
-        .take(MAX_MODELS + 1)
-    {
-        let entry =
-            entry.map_err(|_| ManagedRuntimeError::new("invalid_model", "model scan failed"))?;
-        if let Ok(model) = model_entry_from_path(model_root, &entry.path()) {
-            if model.entry.model_id == model_id {
-                return Ok(model);
-            }
-        }
-    }
-    Err(ManagedRuntimeError::new(
-        "invalid_model",
-        "model_id not found",
-    ))
-}
-
-#[cfg(windows)]
-fn open_model_guard(path: &Path) -> Result<File, ManagedRuntimeError> {
-    const GENERIC_READ: u32 = 0x8000_0000;
-    const FILE_SHARE_READ: u32 = 0x0000_0001;
-    OpenOptions::new()
-        .read(true)
-        .access_mode(GENERIC_READ)
-        .share_mode(FILE_SHARE_READ)
-        .open(path)
-        .map_err(|_| ManagedRuntimeError::new("model_locked", "model file identity guard failed"))
-}
-
-#[cfg(not(windows))]
-fn open_model_guard(path: &Path) -> Result<File, ManagedRuntimeError> {
-    File::open(path)
-        .map_err(|_| ManagedRuntimeError::new("model_locked", "model file identity guard failed"))
 }
 
 fn runtime_args(model: &Path, port: u16, api_key_file: &Path, alias: &str) -> Vec<OsString> {
@@ -1056,14 +694,22 @@ fn random_bytes(len: usize) -> Result<Vec<u8>, ManagedRuntimeError> {
     Ok(out)
 }
 
-fn ensure_local_safe_root(path: &Path) -> Result<(), ManagedRuntimeError> {
+fn ensure_local_safe_root(anchor: &Path, path: &Path) -> Result<(), ManagedRuntimeError> {
     if path.to_string_lossy().starts_with(r"\\") {
         return Err(ManagedRuntimeError::new(
             "invalid_path",
             "UNC path rejected",
         ));
     }
-    reject_reparse_point(path)?;
+    let relative = path
+        .strip_prefix(anchor)
+        .map_err(|_| ManagedRuntimeError::new("invalid_path", "managed root escaped app data"))?;
+    reject_reparse_point(anchor)?;
+    let mut current = anchor.to_path_buf();
+    for component in relative.components() {
+        current.push(component.as_os_str());
+        reject_reparse_point(&current)?;
+    }
     Ok(())
 }
 
@@ -1084,15 +730,6 @@ fn reject_reparse_point(path: &Path) -> Result<(), ManagedRuntimeError> {
         }
     }
     Ok(())
-}
-
-fn sha256_file(path: &Path) -> Result<String, ManagedRuntimeError> {
-    let mut file = File::open(path)
-        .map_err(|_| ManagedRuntimeError::new("io_error", "hash input unavailable"))?;
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)
-        .map_err(|_| ManagedRuntimeError::new("io_error", "hash read failed"))?;
-    Ok(sha256_bytes(&buffer))
 }
 
 fn sha256_text(text: &str) -> String {
@@ -1191,31 +828,6 @@ fn hex_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn file_identity_fingerprint(path: &Path, meta: &fs::Metadata) -> String {
-    #[cfg(windows)]
-    {
-        sha256_text(&format!(
-            "{}:{}:{}:{}",
-            path.file_name()
-                .and_then(|item| item.to_str())
-                .unwrap_or("model"),
-            meta.file_size(),
-            meta.creation_time(),
-            meta.last_write_time()
-        ))
-    }
-    #[cfg(not(windows))]
-    {
-        sha256_text(&format!(
-            "{}:{}",
-            path.file_name()
-                .and_then(|item| item.to_str())
-                .unwrap_or("model"),
-            meta.len(),
-        ))
-    }
-}
-
 fn sanitize_model_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -1288,74 +900,11 @@ fn spawn_log_reader(
         .expect("managed runtime log reader spawn failed")
 }
 
-fn has_duplicate_json_key(body: &[u8]) -> bool {
-    let Ok(text) = std::str::from_utf8(body) else {
-        return false;
-    };
-    let mut stack: Vec<BTreeSet<String>> = Vec::new();
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut token = String::new();
-    let mut expecting_key = false;
-    let mut last_string: Option<String> = None;
-    for ch in text.chars() {
-        if in_string {
-            if escaped {
-                escaped = false;
-                token.push(ch);
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-                last_string = Some(token.clone());
-                token.clear();
-            } else {
-                token.push(ch);
-            }
-            continue;
-        }
-        match ch {
-            '"' => in_string = true,
-            '{' => {
-                stack.push(BTreeSet::new());
-                expecting_key = true;
-                last_string = None;
-            }
-            '}' => {
-                stack.pop();
-                expecting_key = false;
-                last_string = None;
-            }
-            ':' if expecting_key => {
-                if let (Some(keys), Some(key)) = (stack.last_mut(), last_string.take()) {
-                    if !keys.insert(key) {
-                        return true;
-                    }
-                }
-                expecting_key = false;
-            }
-            ',' => {
-                expecting_key = !stack.is_empty();
-                last_string = None;
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
 #[tauri::command]
 pub fn managed_runtime_status(
     state: State<'_, Arc<ManagedRuntimeSupervisor>>,
 ) -> ManagedRuntimeStatus {
     state.status()
-}
-
-#[tauri::command]
-pub fn managed_model_catalog(
-    state: State<'_, Arc<ManagedRuntimeSupervisor>>,
-) -> Result<ManagedModelCatalog, BridgeError> {
-    state.catalog().map_err(BridgeError::from)
 }
 
 #[tauri::command]
@@ -1386,31 +935,6 @@ pub fn managed_runtime_logs(state: State<'_, Arc<ManagedRuntimeSupervisor>>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn production_registry_is_empty_and_llama_cpp_only() {
-        assert!(APPROVED_RUNTIME_REGISTRY.is_empty());
-        assert_eq!(ENGINE_ID, "llama.cpp");
-        assert_eq!(EXECUTABLE_NAME, "llama-server.exe");
-    }
-
-    #[test]
-    fn duplicate_json_keys_are_rejected() {
-        assert!(has_duplicate_json_key(
-            br#"{"schema_version":"1","schema_version":"2"}"#
-        ));
-        assert!(!has_duplicate_json_key(
-            br#"{"schema_version":"1","files":[{"path":"a"}]}"#
-        ));
-    }
-
-    #[test]
-    fn manifest_paths_reject_absolute_and_traversal() {
-        assert!(validate_manifest_relative_path("llama-server.exe").is_ok());
-        assert!(validate_manifest_relative_path("../x").is_err());
-        assert!(validate_manifest_relative_path("C:/x").is_err());
-        assert!(validate_manifest_relative_path("dir/file.dll").is_ok());
-    }
 
     #[test]
     fn fixed_runtime_args_disable_webui_and_agent() {
