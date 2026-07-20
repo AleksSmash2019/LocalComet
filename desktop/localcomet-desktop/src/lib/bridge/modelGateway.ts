@@ -1,12 +1,20 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type {
+  ApprovedModelSummary,
+  ApprovedRuntimeSummary,
+  ArtifactInstallationStatus,
+  ArtifactValidationSummary,
   GatewayCatalog,
   HarnessId,
+  ManagedCatalogIdentity,
+  ManagedInstalledArtifacts,
   ManagedModelCatalog,
+  ManagedRuntimeCatalog,
   ManagedRuntimeLogs,
   ManagedRuntimeStartResponse,
   ManagedRuntimeStatus,
+  ModelReadinessSummary,
   ModelBinding,
   ModelGatewayEvent,
   ModelListResponse,
@@ -41,7 +49,7 @@ export async function setModelBinding(args: {
   const invokeArgs: Record<string, string | number | boolean> = {
     providerId: args.providerId,
     harnessId: args.harnessId,
-    modelId: validateModelId(args.modelId),
+    modelId: args.providerId === 'managed-llama-cpp' ? validateArtifactId(args.modelId) : validateModelId(args.modelId),
     confirmed: true
   };
   if (args.providerId === 'openai-compatible-local') {
@@ -59,12 +67,38 @@ export async function getManagedRuntimeStatus(): Promise<ManagedRuntimeStatus> {
   return validateManagedStatus(await invokeExact('managed_runtime_status'));
 }
 
+export async function getManagedRuntimeCatalog(): Promise<ManagedRuntimeCatalog> {
+  return validateManagedRuntimeCatalog(await invokeExact('managed_runtime_catalog'));
+}
+
 export async function getManagedModelCatalog(): Promise<ManagedModelCatalog> {
-  return validateManagedCatalog(await invokeExact('managed_model_catalog'));
+  return validateManagedModelCatalog(await invokeExact('managed_model_catalog'));
+}
+
+export async function getManagedInstalledArtifacts(): Promise<ManagedInstalledArtifacts> {
+  return validateManagedInstalledArtifacts(await invokeExact('managed_installed_artifacts'));
+}
+
+export async function getManagedArtifactValidationStatus(artifactId: string): Promise<ArtifactValidationSummary> {
+  const requestedId = validateArtifactId(artifactId);
+  const result = validateArtifactValidationSummary(
+    await invokeExact('managed_artifact_validation_status', { artifactId: requestedId })
+  );
+  if (result.artifact_id !== requestedId) throw invalid();
+  return result;
+}
+
+export async function getManagedModelReadiness(modelId: string): Promise<ModelReadinessSummary> {
+  const requestedId = validateArtifactId(modelId);
+  const result = validateModelReadiness(
+    await invokeExact('managed_model_readiness', { modelId: requestedId })
+  );
+  if (result.model_id !== requestedId) throw invalid();
+  return result;
 }
 
 export async function startManagedRuntime(modelId: string): Promise<ManagedRuntimeStartResponse> {
-  return validateManagedStart(await invokeExact('managed_runtime_start', { modelId: validateModelId(modelId) }));
+  return validateManagedStart(await invokeExact('managed_runtime_start', { modelId: validateArtifactId(modelId) }));
 }
 
 export async function stopManagedRuntime(): Promise<void> {
@@ -148,29 +182,204 @@ function validateBinding(value: unknown): ModelBinding {
 }
 
 function validateManagedStatus(value: unknown): ManagedRuntimeStatus {
-  const object = expectRecord(value);
-  if (object.engine !== 'llama.cpp' || typeof object.state !== 'string') throw invalid();
-  return object as unknown as ManagedRuntimeStatus;
+  const object = expectExactRecord(value, [
+    'engine',
+    'state',
+    'installation',
+    'runtime_version',
+    'runtime_instance_id',
+    'runtime_instance_fingerprint',
+    'model_id',
+    'model_display_name',
+    'binding_fingerprint',
+    'last_error'
+  ]);
+  if (object.engine !== 'llama.cpp') throw invalid();
+  return {
+    engine: 'llama.cpp',
+    state: exactString(object.state, ['NotInstalled', 'Stopped', 'Validating', 'Starting', 'Ready', 'Stopping', 'Failed']),
+    installation: exactString(object.installation, ['Installed', 'Not installed']),
+    runtime_version: nullableSafeText(object.runtime_version, 96),
+    runtime_instance_id: nullablePattern(object.runtime_instance_id, /^[0-9a-f]{32}$/),
+    runtime_instance_fingerprint: nullableHash(object.runtime_instance_fingerprint),
+    model_id: object.model_id === null ? null : validateArtifactId(String(object.model_id)),
+    model_display_name: nullableSafeText(object.model_display_name, 192),
+    binding_fingerprint: nullableHash(object.binding_fingerprint),
+    last_error: nullableSafeText(object.last_error, 240)
+  };
 }
 
-function validateManagedCatalog(value: unknown): ManagedModelCatalog {
-  const object = expectRecord(value);
-  if (object.engine !== 'llama.cpp' || object.model_root !== '<MODEL_ROOT>' || !Array.isArray(object.models)) throw invalid();
-  object.models.forEach((item) => validateModelId(String(expectRecord(item).model_id)));
-  return object as unknown as ManagedModelCatalog;
+function validateManagedRuntimeCatalog(value: unknown): ManagedRuntimeCatalog {
+  const object = expectExactRecord(value, ['schema_version', 'catalog_id', 'catalog_version', 'catalog_digest', 'runtimes']);
+  const identity = validateCatalogIdentity(object);
+  const runtimes = boundedArray(object.runtimes, 32).map(validateApprovedRuntime);
+  validateUniqueSorted(runtimes.map((runtime) => runtime.runtime_id));
+  return { ...identity, runtimes };
+}
+
+function validateManagedModelCatalog(value: unknown): ManagedModelCatalog {
+  const object = expectExactRecord(value, [
+    'schema_version',
+    'catalog_id',
+    'catalog_version',
+    'catalog_digest',
+    'engine',
+    'model_root',
+    'models',
+    'maximum_models'
+  ]);
+  if (object.engine !== 'llama.cpp' || object.model_root !== '<MANAGED_MODEL_ROOT>' || object.maximum_models !== 32) throw invalid();
+  const identity = validateCatalogIdentity(object);
+  const models = boundedArray(object.models, 32).map(validateApprovedModel);
+  validateUniqueSorted(models.map((model) => model.model_id));
+  return { ...identity, engine: 'llama.cpp', model_root: '<MANAGED_MODEL_ROOT>', models, maximum_models: 32 };
+}
+
+function validateManagedInstalledArtifacts(value: unknown): ManagedInstalledArtifacts {
+  const object = expectExactRecord(value, ['schema_version', 'catalog_id', 'catalog_version', 'catalog_digest', 'artifacts']);
+  const identity = validateCatalogIdentity(object);
+  const artifacts = boundedArray(object.artifacts, 64).map(validateArtifactValidationSummary);
+  validateUnique(artifacts.map((artifact) => artifact.artifact_id));
+  return { ...identity, artifacts };
+}
+
+function validateArtifactValidationSummary(value: unknown): ArtifactValidationSummary {
+  const object = expectExactRecord(value, [
+    'schema_version',
+    'catalog_id',
+    'catalog_version',
+    'catalog_digest',
+    'artifact_id',
+    'kind',
+    'catalog_status',
+    'installation_status',
+    'expected_bytes',
+    'expected_sha256',
+    'observed_bytes',
+    'observed_sha256',
+    'validation_code',
+    'verified_unix_ms'
+  ]);
+  const identity = validateCatalogIdentity(object);
+  const kind = exactString(object.kind, ['runtime', 'model']);
+  const installationStatus = validateInstallationStatus(object.installation_status);
+  const expectedBytes = positiveSafeInteger(object.expected_bytes);
+  const expectedSha256 = validateHash(object.expected_sha256);
+  const observedBytes = object.observed_bytes === null ? null : nonNegativeSafeInteger(object.observed_bytes);
+  const observedSha256 = object.observed_sha256 === null ? null : validateHash(object.observed_sha256);
+  const validationCode = safeText(object.validation_code, 64);
+  if (validationCode !== installationStatus) throw invalid();
+  if (installationStatus === 'not_installed' && (observedBytes !== null || observedSha256 !== null)) throw invalid();
+  if (
+    installationStatus === 'valid' &&
+    ((kind === 'model' && (observedBytes !== expectedBytes || observedSha256 !== expectedSha256)) ||
+      (kind === 'runtime' && (observedBytes !== null || observedSha256 !== null)))
+  ) throw invalid();
+  return {
+    ...identity,
+    artifact_id: validateArtifactId(String(object.artifact_id)),
+    kind,
+    catalog_status: validateCatalogStatus(object.catalog_status),
+    installation_status: installationStatus,
+    expected_bytes: expectedBytes,
+    expected_sha256: expectedSha256,
+    observed_bytes: observedBytes,
+    observed_sha256: observedSha256,
+    validation_code: validationCode,
+    verified_unix_ms: nonNegativeSafeInteger(object.verified_unix_ms)
+  };
+}
+
+function validateModelReadiness(value: unknown): ModelReadinessSummary {
+  const object = expectExactRecord(value, [
+    'schema_version',
+    'catalog_id',
+    'catalog_version',
+    'catalog_digest',
+    'model_id',
+    'model_status',
+    'compatible_runtime_ids',
+    'selected_runtime_id',
+    'runtime_status',
+    'compatibility',
+    'readiness',
+    'launchable'
+  ]);
+  const identity = validateCatalogIdentity(object);
+  const compatibleRuntimeIds = boundedArray(object.compatible_runtime_ids, 32).map((item) => validateArtifactId(String(item)));
+  validateUniqueSorted(compatibleRuntimeIds);
+  const selectedRuntimeId = object.selected_runtime_id === null ? null : validateArtifactId(String(object.selected_runtime_id));
+  const modelStatus = validateInstallationStatus(object.model_status);
+  const runtimeStatus = object.runtime_status === null ? null : validateInstallationStatus(object.runtime_status);
+  const compatibility = exactString(object.compatibility, [
+    'compatible',
+    'no_compatible_runtime_installed',
+    'incompatible_runtime_installed'
+  ]);
+  const readiness = exactString(object.readiness, [
+    'ready',
+    'model_not_installed',
+    'model_invalid',
+    'runtime_not_installed',
+    'runtime_invalid',
+    'incompatible'
+  ]);
+  if (typeof object.launchable !== 'boolean') throw invalid();
+  const launchable = object.launchable;
+  const truthfullyLaunchable =
+    modelStatus === 'valid' &&
+    runtimeStatus === 'valid' &&
+    compatibility === 'compatible' &&
+    readiness === 'ready' &&
+    selectedRuntimeId !== null &&
+    compatibleRuntimeIds.includes(selectedRuntimeId);
+  if (launchable !== truthfullyLaunchable) throw invalid();
+  if (compatibility === 'compatible' && (runtimeStatus !== 'valid' || selectedRuntimeId === null || !compatibleRuntimeIds.includes(selectedRuntimeId))) throw invalid();
+  if (compatibility === 'no_compatible_runtime_installed' && selectedRuntimeId !== null) throw invalid();
+  if (readiness === 'model_not_installed' && modelStatus !== 'not_installed') throw invalid();
+  if (readiness === 'model_invalid' && ['valid', 'not_installed'].includes(modelStatus)) throw invalid();
+  if (readiness === 'runtime_not_installed' && (modelStatus !== 'valid' || runtimeStatus !== 'not_installed')) throw invalid();
+  if (readiness === 'runtime_invalid' && (modelStatus !== 'valid' || runtimeStatus === null || ['valid', 'not_installed'].includes(runtimeStatus))) throw invalid();
+  if (readiness === 'incompatible' && compatibility !== 'incompatible_runtime_installed') throw invalid();
+  return {
+    ...identity,
+    model_id: validateArtifactId(String(object.model_id)),
+    model_status: modelStatus,
+    compatible_runtime_ids: compatibleRuntimeIds,
+    selected_runtime_id: selectedRuntimeId,
+    runtime_status: runtimeStatus,
+    compatibility,
+    readiness,
+    launchable
+  };
 }
 
 function validateManagedStart(value: unknown): ManagedRuntimeStartResponse {
-  const object = expectRecord(value);
+  const object = expectExactRecord(value, [
+    'state',
+    'provider_id',
+    'model_id',
+    'model_display_name',
+    'runtime_instance_id',
+    'runtime_instance_fingerprint'
+  ]);
   if (object.provider_id !== 'managed-llama-cpp' || object.state !== 'Ready') throw invalid();
-  validateModelId(String(object.model_id));
-  return object as unknown as ManagedRuntimeStartResponse;
+  return {
+    state: 'Ready',
+    provider_id: 'managed-llama-cpp',
+    model_id: validateArtifactId(String(object.model_id)),
+    model_display_name: safeText(object.model_display_name, 192),
+    runtime_instance_id: patternString(object.runtime_instance_id, /^[0-9a-f]{32}$/),
+    runtime_instance_fingerprint: validateHash(object.runtime_instance_fingerprint)
+  };
 }
 
 function validateManagedLogs(value: unknown): ManagedRuntimeLogs {
-  const object = expectRecord(value);
-  if (!Array.isArray(object.stdout_tail) || !Array.isArray(object.stderr_tail)) throw invalid();
-  return object as unknown as ManagedRuntimeLogs;
+  const object = expectExactRecord(value, ['stdout_tail', 'stderr_tail']);
+  return {
+    stdout_tail: boundedArray(object.stdout_tail, 200).map((line) => safeTextAllowEmpty(line, 2_048)),
+    stderr_tail: boundedArray(object.stderr_tail, 200).map((line) => safeTextAllowEmpty(line, 2_048))
+  };
 }
 
 function validateTurnStart(value: unknown): ModelTurnStartResponse {
@@ -213,6 +422,203 @@ function isModelMethod(value: unknown): value is ModelGatewayEvent['method'] {
   return typeof value === 'string' && ['model.turn.started', 'model.output.delta', 'model.turn.completed', 'model.turn.cancelled', 'model.turn.failed'].includes(value);
 }
 
+function validateApprovedRuntime(value: unknown): ApprovedRuntimeSummary {
+  const object = expectExactRecord(value, [
+    'runtime_id',
+    'provider',
+    'release_tag',
+    'platform',
+    'architecture',
+    'variant',
+    'upstream_repository',
+    'upstream_revision',
+    'asset_filename',
+    'asset_bytes',
+    'asset_sha256',
+    'archive_format',
+    'permitted_bind_scope',
+    'supported_api_protocol',
+    'license_id',
+    'public_distribution',
+    'status'
+  ]);
+  if (
+    object.platform !== 'windows' ||
+    object.architecture !== 'x86-64' ||
+    object.variant !== 'cpu' ||
+    object.archive_format !== 'zip' ||
+    object.permitted_bind_scope !== 'loopback-only' ||
+    object.supported_api_protocol !== 'openai-compatible-v1' ||
+    object.public_distribution !== false
+  ) throw invalid();
+  return {
+    runtime_id: validateArtifactId(String(object.runtime_id)),
+    provider: safeText(object.provider, 256),
+    release_tag: safeText(object.release_tag, 256),
+    platform: 'windows',
+    architecture: 'x86-64',
+    variant: 'cpu',
+    upstream_repository: safeText(object.upstream_repository, 256),
+    upstream_revision: safeText(object.upstream_revision, 256),
+    asset_filename: safeFilename(object.asset_filename),
+    asset_bytes: positiveSafeInteger(object.asset_bytes),
+    asset_sha256: validateHash(object.asset_sha256),
+    archive_format: 'zip',
+    permitted_bind_scope: 'loopback-only',
+    supported_api_protocol: 'openai-compatible-v1',
+    license_id: safeText(object.license_id, 256),
+    public_distribution: false,
+    status: validateCatalogStatus(object.status)
+  };
+}
+
+function validateApprovedModel(value: unknown): ApprovedModelSummary {
+  const object = expectExactRecord(value, [
+    'model_id',
+    'provider',
+    'family',
+    'display_name',
+    'format',
+    'quantization',
+    'upstream_repository',
+    'upstream_revision',
+    'asset_filename',
+    'asset_bytes',
+    'asset_sha256',
+    'license_id',
+    'compatible_runtime_ids',
+    'public_distribution',
+    'installer_bundled',
+    'bootstrap_purpose',
+    'status'
+  ]);
+  if (
+    object.format !== 'GGUF' ||
+    object.quantization !== 'Q4_K_M' ||
+    object.public_distribution !== false ||
+    object.installer_bundled !== false ||
+    object.bootstrap_purpose !== 'INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION'
+  ) throw invalid();
+  const compatibleRuntimeIds = boundedArray(object.compatible_runtime_ids, 32).map((item) => validateArtifactId(String(item)));
+  validateUniqueSorted(compatibleRuntimeIds);
+  return {
+    model_id: validateArtifactId(String(object.model_id)),
+    provider: safeText(object.provider, 256),
+    family: safeText(object.family, 256),
+    display_name: safeText(object.display_name, 256),
+    format: 'GGUF',
+    quantization: 'Q4_K_M',
+    upstream_repository: safeText(object.upstream_repository, 256),
+    upstream_revision: safeText(object.upstream_revision, 256),
+    asset_filename: safeFilename(object.asset_filename),
+    asset_bytes: positiveSafeInteger(object.asset_bytes),
+    asset_sha256: validateHash(object.asset_sha256),
+    license_id: safeText(object.license_id, 256),
+    compatible_runtime_ids: compatibleRuntimeIds,
+    public_distribution: false,
+    installer_bundled: false,
+    bootstrap_purpose: 'INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION',
+    status: validateCatalogStatus(object.status)
+  };
+}
+
+function validateCatalogIdentity(object: Readonly<Record<string, unknown>>): ManagedCatalogIdentity {
+  if (object.schema_version !== 1 || object.catalog_id !== 'localcomet-approved-artifacts') throw invalid();
+  return {
+    schema_version: 1,
+    catalog_id: 'localcomet-approved-artifacts',
+    catalog_version: patternString(object.catalog_version, /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/),
+    catalog_digest: validateHash(object.catalog_digest)
+  };
+}
+
+function validateCatalogStatus(value: unknown): 'approved_internal_bootstrap' {
+  return exactString(value, ['approved_internal_bootstrap']);
+}
+
+function validateInstallationStatus(value: unknown): ArtifactInstallationStatus {
+  return exactString(value, [
+    'not_installed',
+    'valid',
+    'bytes_mismatch',
+    'hash_mismatch',
+    'invalid_path',
+    'invalid_format',
+    'missing_required_file',
+    'unexpected_file',
+    'io_error'
+  ]);
+}
+
+function validateArtifactId(value: string): string {
+  if (!/^[a-z0-9][a-z0-9._-]{2,95}$/.test(value)) throw invalid();
+  return value;
+}
+
+function validateHash(value: unknown): string {
+  return patternString(value, /^[0-9a-f]{64}$/);
+}
+
+function safeFilename(value: unknown): string {
+  return patternString(value, /^[A-Za-z0-9][A-Za-z0-9._+-]{0,255}$/);
+}
+
+function safeText(value: unknown, limit: number): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > limit || /[\0-\x1f\x7f]/.test(value)) throw invalid();
+  return value;
+}
+
+function safeTextAllowEmpty(value: unknown, limit: number): string {
+  if (typeof value !== 'string' || value.length > limit || /[\0-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) throw invalid();
+  return value;
+}
+
+function nullableSafeText(value: unknown, limit: number): string | null {
+  return value === null ? null : safeText(value, limit);
+}
+
+function patternString(value: unknown, pattern: RegExp): string {
+  if (typeof value !== 'string' || !pattern.test(value)) throw invalid();
+  return value;
+}
+
+function nullablePattern(value: unknown, pattern: RegExp): string | null {
+  return value === null ? null : patternString(value, pattern);
+}
+
+function nullableHash(value: unknown): string | null {
+  return value === null ? null : validateHash(value);
+}
+
+function positiveSafeInteger(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) throw invalid();
+  return value;
+}
+
+function nonNegativeSafeInteger(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw invalid();
+  return value;
+}
+
+function boundedArray(value: unknown, limit: number): readonly unknown[] {
+  if (!Array.isArray(value) || value.length > limit) throw invalid();
+  return value;
+}
+
+function validateUnique(values: readonly string[]): void {
+  if (new Set(values).size !== values.length) throw invalid();
+}
+
+function validateUniqueSorted(values: readonly string[]): void {
+  validateUnique(values);
+  if (values.some((value, index) => index > 0 && values[index - 1]! > value)) throw invalid();
+}
+
+function exactString<const T extends string>(value: unknown, options: readonly T[]): T {
+  if (typeof value !== 'string' || !options.includes(value as T)) throw invalid();
+  return value as T;
+}
+
 function validatePort(value: number): number {
   if (!Number.isInteger(value) || value < 1024 || value > 65535) throw invalid();
   return value;
@@ -236,6 +642,14 @@ function validateFingerprint(value: string): string {
 function expectRecord(value: unknown): Readonly<Record<string, unknown>> {
   if (!isRecord(value)) throw invalid();
   return value;
+}
+
+function expectExactRecord(value: unknown, expectedKeys: readonly string[]): Readonly<Record<string, unknown>> {
+  const object = expectRecord(value);
+  const actual = Object.keys(object).sort();
+  const expected = [...expectedKeys].sort();
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) throw invalid();
+  return object;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

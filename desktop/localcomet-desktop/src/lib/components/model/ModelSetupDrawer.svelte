@@ -34,9 +34,10 @@
   // Managed flow state
   $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
   $: managedSelectedModel = $managedRuntimeStore.catalog.find((m) => m.model_id === $managedRuntimeStore.selectedModelId);
-  $: canStartManaged = Boolean(managedSelectedModel) && (managedState === 'Stopped' || managedState === 'Failed');
+  $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === managedSelectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
+  $: canStartManaged = Boolean(managedSelectedModel) && managedModelLaunchable && (managedState === 'Stopped' || managedState === 'Failed');
   $: canStopManaged = managedState === 'Ready' || managedState === 'Starting' || managedState === 'Validating' || managedState === 'Failed';
-  $: canBindManaged = managedState === 'Ready' && Boolean($managedRuntimeStore.status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
+  $: canBindManaged = managedState === 'Ready' && managedModelLaunchable && Boolean($managedRuntimeStore.status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
   $: managedTone = managedState === 'Ready' ? 'ready' : managedState === 'Failed' ? 'danger' : managedState === 'Starting' || managedState === 'Validating' || managedState === 'Stopping' ? 'info' : 'disabled';
 
   function onPortInput(event: Event) {
@@ -270,10 +271,10 @@
 
             <label class="form-field">
               <span>{$t('setup.runtime_model')}</span>
-              <select value={$managedRuntimeStore.selectedModelId} onchange={(e) => setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
+              <select value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
                 <option value="">{$t('setup.select_local_model')}</option>
                 {#each $managedRuntimeStore.catalog as model}
-                  <option value={model.model_id}>{model.display_name} ({Math.round(model.size_bytes / 1024 / 1024)} MiB)</option>
+                  <option value={model.model_id}>{model.display_name} ({Math.round(model.asset_bytes / 1024 / 1024)} MiB)</option>
                 {/each}
               </select>
             </label>

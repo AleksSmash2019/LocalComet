@@ -102,7 +102,7 @@ export type ManagedRuntimeState = 'NotInstalled' | 'Stopped' | 'Validating' | 'S
 export interface ManagedRuntimeStatus {
   readonly engine: 'llama.cpp';
   readonly state: ManagedRuntimeState;
-  readonly installation: 'Installed' | 'Not installed' | string;
+  readonly installation: 'Installed' | 'Not installed';
   readonly runtime_version: string | null;
   readonly runtime_instance_id: string | null;
   readonly runtime_instance_fingerprint: string | null;
@@ -112,19 +112,114 @@ export interface ManagedRuntimeStatus {
   readonly last_error: string | null;
 }
 
-export interface ManagedModelEntry {
-  readonly model_id: string;
-  readonly display_name: string;
-  readonly size_bytes: number;
-  readonly availability: 'Available' | string;
-  readonly identity_fingerprint: string;
+export type CatalogStatus = 'approved_internal_bootstrap';
+export type ArtifactKind = 'runtime' | 'model';
+export type ArtifactInstallationStatus =
+  | 'not_installed'
+  | 'valid'
+  | 'bytes_mismatch'
+  | 'hash_mismatch'
+  | 'invalid_path'
+  | 'invalid_format'
+  | 'missing_required_file'
+  | 'unexpected_file'
+  | 'io_error';
+export type CompatibilityStatus =
+  | 'compatible'
+  | 'no_compatible_runtime_installed'
+  | 'incompatible_runtime_installed';
+export type ManagedModelReadiness =
+  | 'ready'
+  | 'model_not_installed'
+  | 'model_invalid'
+  | 'runtime_not_installed'
+  | 'runtime_invalid'
+  | 'incompatible';
+
+export interface ManagedCatalogIdentity {
+  readonly schema_version: 1;
+  readonly catalog_id: 'localcomet-approved-artifacts';
+  readonly catalog_version: string;
+  readonly catalog_digest: string;
 }
 
-export interface ManagedModelCatalog {
+export interface ApprovedRuntimeSummary {
+  readonly runtime_id: string;
+  readonly provider: string;
+  readonly release_tag: string;
+  readonly platform: 'windows';
+  readonly architecture: 'x86-64';
+  readonly variant: 'cpu';
+  readonly upstream_repository: string;
+  readonly upstream_revision: string;
+  readonly asset_filename: string;
+  readonly asset_bytes: number;
+  readonly asset_sha256: string;
+  readonly archive_format: 'zip';
+  readonly permitted_bind_scope: 'loopback-only';
+  readonly supported_api_protocol: 'openai-compatible-v1';
+  readonly license_id: string;
+  readonly public_distribution: false;
+  readonly status: CatalogStatus;
+}
+
+export interface ApprovedModelSummary {
+  readonly model_id: string;
+  readonly provider: string;
+  readonly family: string;
+  readonly display_name: string;
+  readonly format: 'GGUF';
+  readonly quantization: 'Q4_K_M';
+  readonly upstream_repository: string;
+  readonly upstream_revision: string;
+  readonly asset_filename: string;
+  readonly asset_bytes: number;
+  readonly asset_sha256: string;
+  readonly license_id: string;
+  readonly compatible_runtime_ids: readonly string[];
+  readonly public_distribution: false;
+  readonly installer_bundled: false;
+  readonly bootstrap_purpose: 'INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION';
+  readonly status: CatalogStatus;
+}
+
+export interface ManagedRuntimeCatalog extends ManagedCatalogIdentity {
+  readonly runtimes: readonly ApprovedRuntimeSummary[];
+}
+
+export interface ManagedModelCatalog extends ManagedCatalogIdentity {
   readonly engine: 'llama.cpp';
-  readonly model_root: '<MODEL_ROOT>';
-  readonly models: readonly ManagedModelEntry[];
-  readonly maximum_models: 64;
+  readonly model_root: '<MANAGED_MODEL_ROOT>';
+  readonly models: readonly ApprovedModelSummary[];
+  readonly maximum_models: 32;
+}
+
+export interface ArtifactValidationSummary extends ManagedCatalogIdentity {
+  readonly artifact_id: string;
+  readonly kind: ArtifactKind;
+  readonly catalog_status: CatalogStatus;
+  readonly installation_status: ArtifactInstallationStatus;
+  readonly expected_bytes: number;
+  readonly expected_sha256: string;
+  readonly observed_bytes: number | null;
+  readonly observed_sha256: string | null;
+  readonly validation_code: string;
+  readonly verified_unix_ms: number;
+}
+
+export interface ManagedInstalledArtifacts extends ManagedCatalogIdentity {
+  readonly artifacts: readonly ArtifactValidationSummary[];
+}
+
+export interface ModelReadinessSummary extends ManagedCatalogIdentity {
+  readonly model_id: string;
+  readonly model_status: ArtifactInstallationStatus;
+  readonly compatible_runtime_ids: readonly string[];
+  readonly selected_runtime_id: string | null;
+  readonly runtime_status: ArtifactInstallationStatus | null;
+  readonly compatibility: CompatibilityStatus;
+  readonly readiness: ManagedModelReadiness;
+  readonly launchable: boolean;
 }
 
 export interface ManagedRuntimeStartResponse {

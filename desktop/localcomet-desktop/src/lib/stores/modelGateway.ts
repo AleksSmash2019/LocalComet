@@ -1,8 +1,11 @@
 import { get, writable } from 'svelte/store';
 import {
   cancelModelTurn,
+  getManagedInstalledArtifacts,
   getManagedModelCatalog,
+  getManagedModelReadiness,
   getManagedRuntimeLogs,
+  getManagedRuntimeCatalog,
   getManagedRuntimeStatus,
   getModelGatewayCatalog,
   listModelGatewayModels,
@@ -15,10 +18,17 @@ import {
   subscribeModelGatewayEvents
 } from '$lib/bridge/modelGateway';
 import type {
+  ApprovedModelSummary,
+  ApprovedRuntimeSummary,
+  ArtifactValidationSummary,
   GatewayCatalog,
   GatewayStatus,
   HarnessId,
-  ManagedModelEntry,
+  ManagedCatalogIdentity,
+  ManagedInstalledArtifacts,
+  ManagedModelCatalog,
+  ModelReadinessSummary,
+  ManagedRuntimeCatalog,
   ManagedRuntimeLogs,
   ManagedRuntimeState,
   ManagedRuntimeStatus,
@@ -49,7 +59,11 @@ interface ModelGatewayState {
 
 interface ManagedRuntimePanelState {
   readonly status: ManagedRuntimeStatus | null;
-  readonly catalog: readonly ManagedModelEntry[];
+  readonly catalogIdentity: ManagedCatalogIdentity | null;
+  readonly runtimeCatalog: readonly ApprovedRuntimeSummary[];
+  readonly catalog: readonly ApprovedModelSummary[];
+  readonly installedArtifacts: readonly ArtifactValidationSummary[];
+  readonly readiness: ModelReadinessSummary | null;
   readonly selectedModelId: string;
   readonly harnessId: HarnessId;
   readonly binding: ModelBinding | null;
@@ -76,7 +90,11 @@ const initialState: ModelGatewayState = {
 
 const initialManagedState: ManagedRuntimePanelState = {
   status: null,
+  catalogIdentity: null,
+  runtimeCatalog: [],
   catalog: [],
+  installedArtifacts: [],
+  readiness: null,
   selectedModelId: '',
   harnessId: 'minimal',
   binding: null,
@@ -181,56 +199,122 @@ export async function confirmBinding(): Promise<void> {
   }
 }
 
-export function setManagedSelectedModel(modelId: string): void {
+export async function setManagedSelectedModel(modelId: string): Promise<void> {
+  const previousModelId = get(managedRuntimeStore).selectedModelId;
   managedRuntimeStore.update((state) => ({
     ...state,
     selectedModelId: modelId,
-    binding: state.binding?.model_id === modelId ? state.binding : null
+    readiness: state.readiness?.model_id === modelId ? state.readiness : null,
+    binding: state.binding?.model_id === modelId ? state.binding : null,
+    lastError: null
   }));
+  if (previousModelId !== modelId) clearManagedGatewayBinding();
+  if (!modelId) return;
+  try {
+    const readiness = await readManagedModelReadiness(modelId);
+    managedRuntimeStore.update((state) => state.selectedModelId === modelId
+      ? { ...state, readiness, binding: readiness.launchable ? state.binding : null, lastError: null }
+      : state);
+    if (!readiness.launchable) clearManagedGatewayBinding();
+  } catch (error) {
+    managedRuntimeStore.update((state) => state.selectedModelId === modelId
+      ? { ...state, readiness: null, binding: null, lastError: normalizeGatewayError(error) }
+      : state);
+    clearManagedGatewayBinding();
+  }
 }
 
 export function setManagedHarness(harnessId: HarnessId): void {
+  const previousHarnessId = get(managedRuntimeStore).harnessId;
   managedRuntimeStore.update((state) => ({
     ...state,
     harnessId,
     binding: state.binding?.harness_id === harnessId ? state.binding : null
   }));
+  if (previousHarnessId !== harnessId) clearManagedGatewayBinding();
 }
 
 export async function refreshManagedRuntimeStatus(): Promise<void> {
   try {
-    const [status, catalog, logs] = await Promise.all([
+    const [status, runtimeCatalog, modelCatalog, installedArtifacts, logs] = await Promise.all([
       getManagedRuntimeStatus(),
-      getManagedModelCatalog().catch(() => ({ models: [] })),
-      getManagedRuntimeLogs().catch(() => ({ stdout_tail: [], stderr_tail: [] }))
+      getManagedRuntimeCatalog(),
+      getManagedModelCatalog(),
+      getManagedInstalledArtifacts(),
+      getManagedRuntimeLogs()
     ]);
+    assertManagedTrustBundle(runtimeCatalog, modelCatalog, installedArtifacts);
+    const previous = get(managedRuntimeStore);
+    const selectedModelId = modelCatalog.models.some((model) => model.model_id === previous.selectedModelId)
+      ? previous.selectedModelId
+      : '';
+    const selectedModel = modelCatalog.models.find((model) => model.model_id === selectedModelId);
+    const bindingTrusted =
+      status.state === 'Ready' &&
+      previous.binding !== null &&
+      previous.binding.model_id === selectedModelId &&
+      selectedModel !== undefined &&
+      isInstalledLaunchable(selectedModel, runtimeCatalog.runtimes, installedArtifacts.artifacts);
     managedRuntimeStore.update((state) => ({
       ...state,
       status,
-      catalog: 'models' in catalog ? catalog.models : [],
+      catalogIdentity: catalogIdentityOf(runtimeCatalog),
+      runtimeCatalog: runtimeCatalog.runtimes,
+      catalog: modelCatalog.models,
+      installedArtifacts: installedArtifacts.artifacts,
+      readiness: null,
+      selectedModelId,
       logs,
       lastError: null,
-      binding: status.state === 'Ready' ? state.binding : null
+      binding: bindingTrusted ? state.binding : null
     }));
+    if (!bindingTrusted) clearManagedGatewayBinding();
+    if (selectedModelId) await setManagedSelectedModel(selectedModelId);
   } catch (error) {
-    managedRuntimeStore.update((state) => ({ ...state, lastError: normalizeGatewayError(error) }));
+    managedRuntimeStore.update((state) => ({
+      ...state,
+      catalogIdentity: null,
+      runtimeCatalog: [],
+      catalog: [],
+      installedArtifacts: [],
+      readiness: null,
+      selectedModelId: '',
+      binding: null,
+      lastError: normalizeGatewayError(error)
+    }));
+    clearManagedGatewayBinding();
   }
 }
 
 export async function startSelectedManagedRuntime(): Promise<void> {
   const state = get(managedRuntimeStore);
   if (!state.selectedModelId) return;
-  managedRuntimeStore.update((current) => ({
-    ...current,
-    status: current.status ? { ...current.status, state: 'Starting' as ManagedRuntimeState } : current.status,
-    lastError: null
-  }));
   try {
+    const readiness = await readManagedModelReadiness(state.selectedModelId);
+    if (get(managedRuntimeStore).selectedModelId !== state.selectedModelId) return;
+    if (!readiness.launchable) {
+      managedRuntimeStore.update((current) => ({
+        ...current,
+        readiness,
+        binding: null,
+        lastError: { code: 'model_not_ready', message: 'Approved managed model and runtime artifacts are not ready' }
+      }));
+      clearManagedGatewayBinding();
+      return;
+    }
+    managedRuntimeStore.update((current) => ({
+      ...current,
+      readiness,
+      status: current.status ? { ...current.status, state: 'Starting' as ManagedRuntimeState } : current.status,
+      lastError: null
+    }));
     await startManagedRuntime(state.selectedModelId);
     await refreshManagedRuntimeStatus();
   } catch (error) {
-    managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalizeGatewayError(error) }));
+    const normalized = normalizeGatewayError(error);
     await refreshManagedRuntimeStatus();
+    managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalized }));
+    clearManagedGatewayBinding();
   }
 }
 
@@ -246,18 +330,26 @@ export async function stopSelectedManagedRuntime(): Promise<void> {
 export async function confirmManagedBinding(): Promise<void> {
   const state = get(managedRuntimeStore);
   const runtimeInstanceId = state.status?.runtime_instance_id ?? '';
-  if (!state.selectedModelId || !runtimeInstanceId || state.status?.state !== 'Ready') return;
+  if (!state.selectedModelId || !runtimeInstanceId || state.status?.state !== 'Ready' || !state.readiness?.launchable) return;
   try {
+    const readiness = await readManagedModelReadiness(state.selectedModelId);
+    const current = get(managedRuntimeStore);
+    if (!readiness.launchable || current.selectedModelId !== state.selectedModelId || current.harnessId !== state.harnessId) {
+      managedRuntimeStore.update((value) => ({ ...value, readiness, binding: null }));
+      clearManagedGatewayBinding();
+      return;
+    }
     const binding = await setModelBinding({
       providerId: 'managed-llama-cpp',
       harnessId: state.harnessId,
       modelId: state.selectedModelId,
       runtimeInstanceId
     });
-    managedRuntimeStore.update((current) => ({ ...current, binding, lastError: null }));
-    modelGatewayStore.update((current) => ({ ...current, binding, status: 'Bound', lastError: null }));
+    managedRuntimeStore.update((value) => ({ ...value, readiness, binding, lastError: null }));
+    modelGatewayStore.update((value) => ({ ...value, binding, status: 'Bound', lastError: null }));
   } catch (error) {
     managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalizeGatewayError(error) }));
+    clearManagedGatewayBinding();
   }
 }
 
@@ -329,6 +421,91 @@ export function applyModelGatewayEvent(event: ModelGatewayEvent): void {
     }
     return state;
   });
+}
+
+async function readManagedModelReadiness(modelId: string): Promise<ModelReadinessSummary> {
+  const state = get(managedRuntimeStore);
+  const identity = state.catalogIdentity;
+  const model = state.catalog.find((candidate) => candidate.model_id === modelId);
+  if (!identity || !model) throw trustPayloadError();
+  const readiness = await getManagedModelReadiness(modelId);
+  assertSameCatalogIdentity(identity, readiness);
+  if (!sameStrings(readiness.compatible_runtime_ids, model.compatible_runtime_ids)) throw trustPayloadError();
+  if (readiness.selected_runtime_id && !state.runtimeCatalog.some((runtime) => runtime.runtime_id === readiness.selected_runtime_id)) {
+    throw trustPayloadError();
+  }
+  return readiness;
+}
+
+function assertManagedTrustBundle(
+  runtimeCatalog: ManagedRuntimeCatalog,
+  modelCatalog: ManagedModelCatalog,
+  installedArtifacts: ManagedInstalledArtifacts
+): void {
+  assertSameCatalogIdentity(runtimeCatalog, modelCatalog);
+  assertSameCatalogIdentity(runtimeCatalog, installedArtifacts);
+  const runtimes = new Map(runtimeCatalog.runtimes.map((runtime) => [runtime.runtime_id, runtime] as const));
+  const models = new Map(modelCatalog.models.map((model) => [model.model_id, model] as const));
+  for (const model of modelCatalog.models) {
+    if (model.compatible_runtime_ids.some((runtimeId) => !runtimes.has(runtimeId))) throw trustPayloadError();
+  }
+  if (installedArtifacts.artifacts.length !== runtimes.size + models.size) throw trustPayloadError();
+  for (const artifact of installedArtifacts.artifacts) {
+    const approved = artifact.kind === 'runtime' ? runtimes.get(artifact.artifact_id) : models.get(artifact.artifact_id);
+    if (
+      !approved ||
+      approved.status !== artifact.catalog_status ||
+      approved.asset_bytes !== artifact.expected_bytes ||
+      approved.asset_sha256 !== artifact.expected_sha256
+    ) throw trustPayloadError();
+  }
+}
+
+function assertSameCatalogIdentity(left: ManagedCatalogIdentity, right: ManagedCatalogIdentity): void {
+  if (
+    left.schema_version !== right.schema_version ||
+    left.catalog_id !== right.catalog_id ||
+    left.catalog_version !== right.catalog_version ||
+    left.catalog_digest !== right.catalog_digest
+  ) throw trustPayloadError();
+}
+
+function catalogIdentityOf(value: ManagedCatalogIdentity): ManagedCatalogIdentity {
+  return {
+    schema_version: value.schema_version,
+    catalog_id: value.catalog_id,
+    catalog_version: value.catalog_version,
+    catalog_digest: value.catalog_digest
+  };
+}
+
+function isInstalledLaunchable(
+  model: ApprovedModelSummary,
+  runtimes: readonly ApprovedRuntimeSummary[],
+  installedArtifacts: readonly ArtifactValidationSummary[]
+): boolean {
+  const modelValidation = installedArtifacts.find((artifact) => artifact.kind === 'model' && artifact.artifact_id === model.model_id);
+  if (modelValidation?.installation_status !== 'valid') return false;
+  return model.compatible_runtime_ids.some((runtimeId) =>
+    runtimes.some((runtime) => runtime.runtime_id === runtimeId) &&
+    installedArtifacts.some((artifact) =>
+      artifact.kind === 'runtime' && artifact.artifact_id === runtimeId && artifact.installation_status === 'valid'
+    )
+  );
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function trustPayloadError(): SanitizedGatewayError {
+  return { code: 'invalid_payload', message: 'Invalid managed artifact trust payload' };
+}
+
+function clearManagedGatewayBinding(): void {
+  modelGatewayStore.update((state) => state.binding?.provider_id === 'managed-llama-cpp'
+    ? { ...state, binding: null, status: 'Binding required' }
+    : state);
 }
 
 export function resetModelGatewayStore(): void {

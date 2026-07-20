@@ -126,9 +126,37 @@ commands.allow = [
 
 [[permission]]
 identifier = "allow-managed-model-catalog"
-description = "Allow reading the fixed LocalComet managed model catalog."
+description = "Allow reading safe approved model metadata from the immutable LocalComet artifact catalog."
 commands.allow = [
   "managed_model_catalog",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-catalog"
+description = "Allow reading safe approved runtime metadata from the immutable LocalComet artifact catalog."
+commands.allow = [
+  "managed_runtime_catalog",
+]
+
+[[permission]]
+identifier = "allow-managed-installed-artifacts"
+description = "Allow reading live validated installed artifact metadata derived from the LocalComet artifact catalog."
+commands.allow = [
+  "managed_installed_artifacts",
+]
+
+[[permission]]
+identifier = "allow-managed-artifact-validation-status"
+description = "Allow reading live validation status for one LocalComet catalog artifact ID."
+commands.allow = [
+  "managed_artifact_validation_status",
+]
+
+[[permission]]
+identifier = "allow-managed-model-readiness"
+description = "Allow reading runtime compatibility and readiness for one LocalComet catalog model ID."
+commands.allow = [
+  "managed_model_readiness",
 ]
 
 [[permission]]

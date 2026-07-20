@@ -15,9 +15,10 @@
   $: status = $managedRuntimeStore.status;
   $: state = status?.state ?? 'NotInstalled';
   $: selectedModel = $managedRuntimeStore.catalog.find((model) => model.model_id === $managedRuntimeStore.selectedModelId);
-  $: canStart = Boolean(selectedModel) && (state === 'Stopped' || state === 'Failed');
+  $: modelLaunchable = $managedRuntimeStore.readiness?.model_id === selectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
+  $: canStart = Boolean(selectedModel) && modelLaunchable && (state === 'Stopped' || state === 'Failed');
   $: canStop = state === 'Ready' || state === 'Starting' || state === 'Validating' || state === 'Failed';
-  $: canBind = state === 'Ready' && Boolean(status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
+  $: canBind = state === 'Ready' && modelLaunchable && Boolean(status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
   $: tone = state === 'Ready' ? 'ready' : state === 'Failed' ? 'danger' : state === 'Starting' || state === 'Validating' || state === 'Stopping' ? 'info' : 'disabled';
 
   function onHarnessChange(event: Event) {
@@ -50,10 +51,10 @@
   <div class="managed-controls" aria-label="Managed model binding controls">
     <label>
       <span>Managed Model</span>
-      <select value={$managedRuntimeStore.selectedModelId} onchange={(event) => setManagedSelectedModel((event.currentTarget as HTMLSelectElement).value)}>
+      <select value={$managedRuntimeStore.selectedModelId} onchange={(event) => void setManagedSelectedModel((event.currentTarget as HTMLSelectElement).value)}>
         <option value="">Select managed model</option>
         {#each $managedRuntimeStore.catalog as model}
-          <option value={model.model_id}>{model.display_name} ({Math.round(model.size_bytes / 1024 / 1024)} MiB)</option>
+          <option value={model.model_id}>{model.display_name} ({Math.round(model.asset_bytes / 1024 / 1024)} MiB)</option>
         {/each}
       </select>
     </label>

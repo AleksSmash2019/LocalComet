@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "LocalComet v6.84.6 main window with fixed bounded Control Plane and Knowledge Operations commands only.",
+  "description": "LocalComet v6.84.6 main window with fixed bounded Control Plane, Knowledge Operations, and managed artifact commands only.",
   "windows": [
     "main"
   ],
@@ -20,7 +20,11 @@
     "allow-knowledge-review-snapshot",
     "allow-knowledge-turn-decide",
     "allow-knowledge-turn-preview",
+    "allow-managed-artifact-validation-status",
+    "allow-managed-installed-artifacts",
     "allow-managed-model-catalog",
+    "allow-managed-model-readiness",
+    "allow-managed-runtime-catalog",
     "allow-managed-runtime-logs",
     "allow-managed-runtime-start",
     "allow-managed-runtime-status",

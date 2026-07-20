@@ -219,7 +219,6 @@ pub struct ApprovedRuntimeSummary {
     pub license_id: String,
     pub public_distribution: bool,
     pub status: CatalogStatus,
-    pub installation_status: InstallationStatus,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -241,7 +240,6 @@ pub struct ApprovedModelSummary {
     pub installer_bundled: bool,
     pub bootstrap_purpose: String,
     pub status: CatalogStatus,
-    pub installation_status: InstallationStatus,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -405,7 +403,6 @@ impl ArtifactTrustService {
                     license_id: runtime.license_id.clone(),
                     public_distribution: runtime.public_distribution,
                     status: runtime.status.clone(),
-                    installation_status: self.validate_runtime(runtime).status,
                 })
                 .collect(),
         }
@@ -441,7 +438,6 @@ impl ArtifactTrustService {
                     installer_bundled: model.installer_bundled,
                     bootstrap_purpose: model.bootstrap_purpose.clone(),
                     status: model.status.clone(),
-                    installation_status: self.validate_model(model).status,
                 })
                 .collect(),
             maximum_models: MAX_ARTIFACTS,
@@ -2298,5 +2294,43 @@ mod tests {
             InstallationStatus::InvalidPath
         );
         fs::remove_dir(&localcomet_link).expect("remove test link");
+    }
+
+    #[test]
+    #[ignore = "requires the owner-provisioned UP05-WP00 bootstrap artifacts"]
+    fn provisioned_bootstrap_is_discovered_only_through_the_catalog() {
+        let local_data = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA is required");
+        let service = ArtifactTrustService::production(Path::new(&local_data))
+            .expect("embedded production catalog");
+        assert_eq!(
+            service.catalog.runtimes[0].runtime_id,
+            "llama-cpp-windows-x86-64-cpu-bootstrap"
+        );
+        assert_eq!(
+            service.catalog.models[0].model_id,
+            "qwen2.5-1.5b-instruct-q4-k-m"
+        );
+
+        let installed = service.installed_artifacts();
+        assert_eq!(installed.artifacts.len(), 2);
+        assert!(installed
+            .artifacts
+            .iter()
+            .all(|artifact| artifact.installation_status == InstallationStatus::Valid));
+        let readiness = service
+            .model_readiness("qwen2.5-1.5b-instruct-q4-k-m")
+            .expect("approved model readiness");
+        assert_eq!(readiness.compatibility, CompatibilityStatus::Compatible);
+        assert_eq!(readiness.readiness, ModelReadiness::Ready);
+        assert!(readiness.launchable);
+        let launch = service
+            .resolve_launch("qwen2.5-1.5b-instruct-q4-k-m")
+            .expect("catalog-resolved launch identity");
+        assert_eq!(launch.runtime_id, "llama-cpp-windows-x86-64-cpu-bootstrap");
+        assert_eq!(launch.model_id, "qwen2.5-1.5b-instruct-q4-k-m");
+        drop(launch);
+        assert!(service
+            .artifact_validation_status("unapproved-runtime")
+            .is_err());
     }
 }
