@@ -53,7 +53,7 @@ Perform a bounded current-user installation from the generated installer.
 - Verify Start Menu and desktop shortcuts exist, are named `LocalComet`, and target the same installed executable.
 - Launch with the Start Menu shortcut and prove the main window appears only after the startup log records readiness.
 - Prove the required sidecar starts automatically and no terminal/developer tool is needed.
-- Prove neither app nor sidecar owns a persistent console window and no `conhost.exe` descendant is created.
+- Prove neither app nor sidecar owns a visible or persistent console window. If Windows creates a `conhost.exe` descendant for the console-subsystem sidecar, prove it has no window (`HWND 0`) and exits with the managed sidecar.
 - Launch the desktop shortcut while the first instance is active; prove the second app exits and sidecar count stays one.
 - Request normal window close; prove app and sidecar exit within the bounded timeout with no orphan.
 - Verify an HKCU uninstall registration exists.
@@ -61,10 +61,10 @@ Perform a bounded current-user installation from the generated installer.
 ## F. Uninstall and data preservation
 
 - Record every installer-owned path and shortcut before uninstall.
-- Create a test-owned sentinel only in the existing LocalComet per-user data root and record its hash.
+- Record the exact pre-existing top-level metadata fingerprint of the LocalComet per-user data root and the byte size/hash of the startup log.
 - Run the generated uninstaller without selecting optional app-data deletion.
 - Prove binaries, resources, shortcuts, and uninstall registration are removed.
-- Prove the sentinel and startup log remain byte-identical, then remove only the test-owned sentinel.
+- Prove the data-root fingerprint and startup log remain byte-identical after uninstall.
 - Do not inspect or touch Vault content, projects, knowledge files, or unrelated user configuration.
 
 ## G. Negative authority

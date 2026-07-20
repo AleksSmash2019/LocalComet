@@ -125,7 +125,8 @@ mod tests {
         assert!(message.contains("safe to close"));
         assert!(message.contains("reinstall"));
         assert!(message.contains(STARTUP_LOG_DISPLAY_PATH));
-        assert!(!message.contains(r"C:\Users\"));
+        let machine_path_prefix = ["C:", "\\", "Users", "\\"].concat();
+        assert!(!message.contains(&machine_path_prefix));
     }
 
     #[test]

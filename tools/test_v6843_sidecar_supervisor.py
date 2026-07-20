@@ -447,7 +447,7 @@ def run_source_scans() -> None:
     check("ERROR_ALREADY_EXISTS" in single_instance_text, "duplicate-instance detection is missing")
     check("MessageBoxW" in startup_text, "native startup failure dialog is missing")
     check("%LOCALAPPDATA%\\LocalComet\\logs\\startup.log" in startup_text, "sanitized startup log path is missing")
-    check(r"C:\Users\DNS" not in startup_text, "startup handling contains a machine-specific path")
+    check("C:\\Users\\" not in startup_text, "startup handling contains a machine-specific path")
 
     check('PYTHON_ISOLATED_ARG: &str = "-I"' in supervisor_text, "isolated Python arg not fixed")
     check('PYTHON_NO_BYTECODE_ARG: &str = "-B"' in supervisor_text, "no-bytecode Python arg not fixed")

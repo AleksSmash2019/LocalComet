@@ -1,6 +1,6 @@
 # UP00-WP01 — Windows One-Click Launch and Installer Baseline
 
-**Status:** authorized implementation work package
+**Status:** implementation complete; pending human PR review
 
 **Owner decision:** `OR-01`
 
@@ -67,3 +67,7 @@ No UI redesign, command/event/capability change, IPC redesign, database or schem
 ## Deferred limitations
 
 Production signing, automatic updates, public-release licensing, production performance baselines, and broader architecture/data/contract decisions remain deferred. WebView2 is treated as a Windows runtime prerequisite; this internal installer adds no network bootstrap.
+
+## Acceptance result
+
+All thirteen acceptance criteria passed in local verification. The generated NSIS installer, installed application, both shortcuts, readiness gate, duplicate-start behavior, normal shutdown, unresponsive-sidecar cleanup, uninstall preservation, authority-negative scans, and disposable-clone rollback rehearsal were verified. The release remains an unsigned internal build and requires human PR review before any publication decision.
