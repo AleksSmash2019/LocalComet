@@ -14,7 +14,18 @@ use std::time::{Duration, Instant};
 use tauri::State;
 
 #[cfg(windows)]
-use std::os::windows::fs::MetadataExt;
+use std::os::windows::fs::OpenOptionsExt;
+
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR};
+
+#[cfg(windows)]
+use windows_sys::Win32::NetworkManagement::IpHelper::{
+    GetExtendedTcpTable, MIB_TCPROW_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
+};
+
+#[cfg(windows)]
+use windows_sys::Win32::Networking::WinSock::AF_INET;
 
 #[cfg(windows)]
 use windows_sys::Win32::Security::Cryptography::{
@@ -24,6 +35,7 @@ use windows_sys::Win32::Security::Cryptography::{
 const ENGINE_ID: &str = "llama.cpp";
 const MAX_LOG_BYTES: usize = 256 * 1024;
 const MAX_LOG_LINES: usize = 200;
+const MAX_PROBE_BYTES: usize = 64 * 1024;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(300);
 const REQUIRED_FLAGS: &[&str] = &[
     "--model",
@@ -112,6 +124,7 @@ struct ActiveRuntime {
     stdout_reader: Option<thread::JoinHandle<()>>,
     stderr_reader: Option<thread::JoinHandle<()>>,
     api_key_file: PathBuf,
+    api_key_handle: Option<File>,
     credential: String,
     port: u16,
     runtime_instance_id: String,
@@ -121,6 +134,8 @@ struct ActiveRuntime {
     model_display_name: String,
     _model_handle: File,
     _runtime_handles: Vec<File>,
+    _directory_handles: Vec<File>,
+    _state_directory_handles: Vec<File>,
 }
 
 #[derive(Default, Debug)]
@@ -166,9 +181,34 @@ impl ManagedRuntimeSupervisor {
         }
     }
 
-    pub fn status(&self) -> ManagedRuntimeStatus {
-        let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+    pub fn status(&self, bridge: &ControlPlaneBridge) -> ManagedRuntimeStatus {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .expect("managed runtime lifecycle lock poisoned");
+        let exited = {
+            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+            if inner
+                .active
+                .as_ref()
+                .is_some_and(|active| !active.process.is_running())
+            {
+                let active = inner.active.take();
+                inner.state = ManagedRuntimeState::Failed;
+                inner.runtime_version = None;
+                inner.last_error = Some("managed runtime exited".into());
+                active
+            } else {
+                None
+            }
+        };
+        if let Some(active) = exited {
+            let _ = bridge.request(ControlPlaneMethod::ModelManagedDetach, json!({}));
+            Self::dispose_active(active, false);
+        }
+
         let runtime_installed = self.artifacts.has_valid_runtime();
+        let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
         if inner.active.is_none() && !runtime_installed {
             inner.state = ManagedRuntimeState::NotInstalled;
         } else if inner.active.is_none() && inner.state == ManagedRuntimeState::NotInstalled {
@@ -280,17 +320,8 @@ impl ManagedRuntimeSupervisor {
         self.set_state(ManagedRuntimeState::Stopping, None);
         let _ = bridge.request(ControlPlaneMethod::ModelManagedDetach, json!({}));
         let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
-        if let Some(mut active) = inner.active.take() {
-            active.process.terminate(0);
-            let _ = active.process.wait_bounded(3000);
-            if let Some(handle) = active.stdout_reader.take() {
-                let _ = handle.join();
-            }
-            if let Some(handle) = active.stderr_reader.take() {
-                let _ = handle.join();
-            }
-            let _ = fs::remove_file(&active.api_key_file);
-            active.credential.clear();
+        if let Some(active) = inner.active.take() {
+            Self::dispose_active(active, true);
         }
         inner.runtime_version = None;
         inner.state = if self.artifacts.has_valid_runtime() {
@@ -306,21 +337,13 @@ impl ManagedRuntimeSupervisor {
 
     fn start_inner(&self, model_id: &str) -> Result<ManagedRuntimeStartResponse, BridgeError> {
         let roots = self.artifacts.roots();
-        fs::create_dir_all(&roots.runtime_root)
-            .map_err(|_| ManagedRuntimeError::new("io_error", "runtime root unavailable"))?;
-        fs::create_dir_all(&roots.model_root)
-            .map_err(|_| ManagedRuntimeError::new("io_error", "model root unavailable"))?;
-        fs::create_dir_all(&roots.state_root)
-            .map_err(|_| ManagedRuntimeError::new("io_error", "runtime state unavailable"))?;
-        ensure_local_safe_root(&roots.app_data_root, &roots.runtime_root)?;
-        ensure_local_safe_root(&roots.app_data_root, &roots.model_root)?;
-        ensure_local_safe_root(&roots.app_data_root, &roots.state_root)?;
-
         let launch = self.artifacts.resolve_launch(model_id)?;
         verify_runtime_capabilities(&launch)?;
+        let state_directory_handles = self.artifacts.guard_runtime_state_root()?;
         let credential = generate_credential()?;
         let port = select_ephemeral_loopback_port()?;
-        let api_key_file = write_private_api_key_file(&roots.state_root, &credential)?;
+        let (api_key_file, api_key_handle) =
+            write_private_api_key_file(&roots.state_root, &credential)?;
         let alias = safe_alias(&launch.model_id);
         let runtime_instance_id = hex_bytes(&random_bytes(16)?);
         let runtime_instance_fingerprint = sha256_text(&format!(
@@ -342,6 +365,7 @@ impl ManagedRuntimeSupervisor {
         let mut process = match ContainedManagedRuntimeProcess::spawn(&spec) {
             Ok(process) => process,
             Err(_) => {
+                drop(api_key_handle);
                 let _ = fs::remove_file(&api_key_file);
                 return Err(ManagedRuntimeError::new(
                     "launch_failed",
@@ -369,7 +393,7 @@ impl ManagedRuntimeSupervisor {
             )
         });
 
-        let ready = wait_ready(port, &credential, &alias, STARTUP_TIMEOUT);
+        let ready = wait_ready(&process, port, &credential, &alias, STARTUP_TIMEOUT);
         if let Err(error) = ready {
             process.terminate(1);
             let _ = process.wait_bounded(3000);
@@ -379,6 +403,7 @@ impl ManagedRuntimeSupervisor {
             if let Some(handle) = stderr_reader.take() {
                 let _ = handle.join();
             }
+            drop(api_key_handle);
             let _ = fs::remove_file(&api_key_file);
             return Err(error.into());
         }
@@ -398,6 +423,7 @@ impl ManagedRuntimeSupervisor {
             stdout_reader,
             stderr_reader,
             api_key_file,
+            api_key_handle: Some(api_key_handle),
             credential,
             port,
             runtime_instance_id,
@@ -407,6 +433,8 @@ impl ManagedRuntimeSupervisor {
             model_display_name: launch.model_display_name,
             _model_handle: launch.model_handle,
             _runtime_handles: launch.runtime_handles,
+            _directory_handles: launch.directory_handles,
+            _state_directory_handles: state_directory_handles,
         });
         Ok(response)
     }
@@ -430,6 +458,22 @@ impl ManagedRuntimeSupervisor {
         let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
         inner.state = state;
         inner.last_error = error.map(|item| sanitize_text(item, 240));
+    }
+
+    fn dispose_active(mut active: ActiveRuntime, terminate: bool) {
+        if terminate && active.process.is_running() {
+            active.process.terminate(0);
+        }
+        let _ = active.process.wait_bounded(3000);
+        if let Some(handle) = active.stdout_reader.take() {
+            let _ = handle.join();
+        }
+        if let Some(handle) = active.stderr_reader.take() {
+            let _ = handle.join();
+        }
+        drop(active.api_key_handle.take());
+        let _ = fs::remove_file(&active.api_key_file);
+        active.credential.clear();
     }
 
     fn redaction_markers(&self, credential: &str, api_key_file: &Path) -> Vec<(String, String)> {
@@ -459,17 +503,8 @@ impl ManagedRuntimeSupervisor {
 impl Drop for ManagedRuntimeSupervisor {
     fn drop(&mut self) {
         if let Ok(mut inner) = self.inner.lock() {
-            if let Some(mut active) = inner.active.take() {
-                active.process.terminate(0);
-                let _ = active.process.wait_bounded(3000);
-                if let Some(handle) = active.stdout_reader.take() {
-                    let _ = handle.join();
-                }
-                if let Some(handle) = active.stderr_reader.take() {
-                    let _ = handle.join();
-                }
-                let _ = fs::remove_file(&active.api_key_file);
-                active.credential.clear();
+            if let Some(active) = inner.active.take() {
+                Self::dispose_active(active, true);
             }
         }
     }
@@ -507,18 +542,77 @@ fn run_capability_probe(
     };
     let mut process = ContainedManagedRuntimeProcess::spawn(&spec)
         .map_err(|_| ManagedRuntimeError::new("runtime_incompatible", "runtime probe failed"))?;
-    let mut output = String::new();
-    if let Some(mut stdout) = process.take_stdout() {
-        let _ = stdout.read_to_string(&mut output);
-    }
-    if !process.wait_bounded(5000) {
+    let stdout_reader = process.take_stdout().map(spawn_probe_reader);
+    let stderr_reader = process.take_stderr().map(spawn_probe_reader);
+    let completed = process.wait_bounded(5000);
+    if !completed {
         process.terminate(1);
+        let _ = process.wait_bounded(3000);
+    }
+    let stdout = join_probe_reader(stdout_reader)?;
+    let stderr = join_probe_reader(stderr_reader)?;
+    if !completed {
         return Err(ManagedRuntimeError::new(
             "runtime_incompatible",
             "runtime probe timed out",
         ));
     }
-    Ok(sanitize_text(&output, 4096))
+    if stdout.overflow || stderr.overflow {
+        return Err(ManagedRuntimeError::new(
+            "runtime_incompatible",
+            "runtime probe output too large",
+        ));
+    }
+    let mut output = String::from_utf8_lossy(&stdout.bytes).into_owned();
+    if !stderr.bytes.is_empty() {
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&String::from_utf8_lossy(&stderr.bytes));
+    }
+    Ok(sanitize_text(&output, MAX_PROBE_BYTES))
+}
+
+struct ProbeOutput {
+    bytes: Vec<u8>,
+    overflow: bool,
+}
+
+fn spawn_probe_reader(mut file: File) -> thread::JoinHandle<ProbeOutput> {
+    thread::Builder::new()
+        .name("localcomet-runtime-probe-log".into())
+        .spawn(move || {
+            let mut output = ProbeOutput {
+                bytes: Vec::new(),
+                overflow: false,
+            };
+            let mut buffer = [0_u8; 4096];
+            while let Ok(count) = file.read(&mut buffer) {
+                if count == 0 {
+                    break;
+                }
+                let remaining = MAX_PROBE_BYTES.saturating_sub(output.bytes.len());
+                let retained = remaining.min(count);
+                output.bytes.extend_from_slice(&buffer[..retained]);
+                output.overflow |= retained < count;
+            }
+            output
+        })
+        .expect("runtime probe reader spawn failed")
+}
+
+fn join_probe_reader(
+    reader: Option<thread::JoinHandle<ProbeOutput>>,
+) -> Result<ProbeOutput, ManagedRuntimeError> {
+    match reader {
+        Some(handle) => handle
+            .join()
+            .map_err(|_| ManagedRuntimeError::new("runtime_incompatible", "probe reader failed")),
+        None => Ok(ProbeOutput {
+            bytes: Vec::new(),
+            overflow: false,
+        }),
+    }
 }
 
 fn runtime_args(model: &Path, port: u16, api_key_file: &Path, alias: &str) -> Vec<OsString> {
@@ -559,6 +653,7 @@ fn sanitized_runtime_environment() -> Vec<(OsString, OsString)> {
 }
 
 fn wait_ready(
+    process: &ContainedManagedRuntimeProcess,
     port: u16,
     credential: &str,
     expected_alias: &str,
@@ -566,10 +661,22 @@ fn wait_ready(
 ) -> Result<(), ManagedRuntimeError> {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
+        if !process.is_running() {
+            return Err(ManagedRuntimeError::new(
+                "runtime_exited",
+                "managed runtime exited before readiness",
+            ));
+        }
         match http_get_json(port, "/health", credential) {
-            Ok(value) if value.contains("\"status\"") || value.contains("\"ok\"") => {
+            Ok(value) if health_payload_ready(&value)? => {
+                if !loopback_listener_owned_by_process(port, process.process_id())? {
+                    return Err(ManagedRuntimeError::new(
+                        "endpoint_owner_mismatch",
+                        "managed endpoint owner mismatch",
+                    ));
+                }
                 let models = http_get_json(port, "/v1/models", credential)?;
-                if models.contains(expected_alias) {
+                if model_list_contains_exact_alias(&models, expected_alias)? {
                     return Ok(());
                 }
                 return Err(ManagedRuntimeError::new(
@@ -599,24 +706,231 @@ fn http_get_json(port: u16, path: &str, credential: &str) -> Result<String, Mana
     stream.write_all(request.as_bytes()).map_err(|_| {
         ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint write failed")
     })?;
-    let mut body = Vec::new();
-    stream.take(65_536).read_to_end(&mut body).map_err(|_| {
-        ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint read failed")
+    let mut response = Vec::new();
+    stream
+        .take(65_537)
+        .read_to_end(&mut response)
+        .map_err(|_| {
+            ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint read failed")
+        })?;
+    if response.len() > 65_536 {
+        return Err(ManagedRuntimeError::new(
+            "invalid_payload",
+            "managed endpoint response too large",
+        ));
+    }
+    let separator = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .ok_or_else(|| ManagedRuntimeError::new("invalid_payload", "HTTP header rejected"))?;
+    let header = std::str::from_utf8(&response[..separator]).map_err(|_| {
+        ManagedRuntimeError::new("invalid_payload", "HTTP header encoding rejected")
     })?;
-    let text = String::from_utf8_lossy(&body);
-    if text.contains(" 30") {
+    let body = &response[separator + 4..];
+    let mut lines = header.split("\r\n");
+    let status_line = lines
+        .next()
+        .ok_or_else(|| ManagedRuntimeError::new("invalid_payload", "HTTP status missing"))?;
+    let mut status_parts = status_line.split_ascii_whitespace();
+    let protocol = status_parts.next().unwrap_or_default();
+    let status = status_parts
+        .next()
+        .and_then(|value| value.parse::<u16>().ok())
+        .ok_or_else(|| ManagedRuntimeError::new("invalid_payload", "HTTP status rejected"))?;
+    if !matches!(protocol, "HTTP/1.0" | "HTTP/1.1") || status_parts.next().is_none() {
+        return Err(ManagedRuntimeError::new(
+            "invalid_payload",
+            "HTTP status rejected",
+        ));
+    }
+    if (300..400).contains(&status) {
         return Err(ManagedRuntimeError::new(
             "invalid_payload",
             "redirect rejected",
         ));
     }
-    if !text.starts_with("HTTP/1.0 200") && !text.starts_with("HTTP/1.1 200") {
+    if status != 200 {
         return Err(ManagedRuntimeError::new(
             "sidecar_unavailable",
             "managed endpoint non-200",
         ));
     }
-    Ok(text.split("\r\n\r\n").nth(1).unwrap_or("").to_string())
+    let mut content_length = None;
+    for line in lines {
+        let (name, value) = line
+            .split_once(':')
+            .ok_or_else(|| ManagedRuntimeError::new("invalid_payload", "HTTP header rejected"))?;
+        if name.eq_ignore_ascii_case("transfer-encoding") {
+            return Err(ManagedRuntimeError::new(
+                "invalid_payload",
+                "HTTP transfer encoding rejected",
+            ));
+        }
+        if name.eq_ignore_ascii_case("content-length") {
+            if content_length.is_some() {
+                return Err(ManagedRuntimeError::new(
+                    "invalid_payload",
+                    "duplicate content length rejected",
+                ));
+            }
+            content_length = Some(value.trim().parse::<usize>().map_err(|_| {
+                ManagedRuntimeError::new("invalid_payload", "content length rejected")
+            })?);
+        }
+    }
+    if content_length.is_some_and(|expected| expected != body.len()) {
+        return Err(ManagedRuntimeError::new(
+            "invalid_payload",
+            "HTTP body length mismatch",
+        ));
+    }
+    std::str::from_utf8(body)
+        .map(str::to_owned)
+        .map_err(|_| ManagedRuntimeError::new("invalid_payload", "JSON encoding rejected"))
+}
+
+fn health_payload_ready(body: &str) -> Result<bool, ManagedRuntimeError> {
+    let value: Value = serde_json::from_str(body)
+        .map_err(|_| ManagedRuntimeError::new("invalid_payload", "health JSON rejected"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| ManagedRuntimeError::new("invalid_payload", "health payload rejected"))?;
+    let status = object
+        .get("status")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ManagedRuntimeError::new("invalid_payload", "health status rejected"))?;
+    match status {
+        "ok" => Ok(true),
+        "loading model" => Ok(false),
+        _ => Err(ManagedRuntimeError::new(
+            "invalid_payload",
+            "health status rejected",
+        )),
+    }
+}
+
+fn model_list_contains_exact_alias(
+    body: &str,
+    expected_alias: &str,
+) -> Result<bool, ManagedRuntimeError> {
+    let value: Value = serde_json::from_str(body)
+        .map_err(|_| ManagedRuntimeError::new("invalid_payload", "model list JSON rejected"))?;
+    let data = value
+        .as_object()
+        .and_then(|object| object.get("data"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| ManagedRuntimeError::new("invalid_payload", "model list rejected"))?;
+    if data.is_empty() || data.len() > 32 {
+        return Err(ManagedRuntimeError::new(
+            "invalid_payload",
+            "model list size rejected",
+        ));
+    }
+    let mut found = false;
+    for entry in data {
+        let model_id = entry
+            .as_object()
+            .and_then(|object| object.get("id"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| ManagedRuntimeError::new("invalid_payload", "model entry rejected"))?;
+        if model_id.len() > 128 || model_id.chars().any(char::is_control) {
+            return Err(ManagedRuntimeError::new(
+                "invalid_payload",
+                "model alias rejected",
+            ));
+        }
+        found |= model_id == expected_alias;
+    }
+    Ok(found)
+}
+
+#[cfg(windows)]
+fn loopback_listener_owned_by_process(
+    port: u16,
+    process_id: u32,
+) -> Result<bool, ManagedRuntimeError> {
+    const MAX_TCP_TABLE_BYTES: u32 = 16 * 1024 * 1024;
+    let mut table_bytes = 0_u32;
+    let initial = unsafe {
+        GetExtendedTcpTable(
+            std::ptr::null_mut(),
+            &mut table_bytes,
+            0,
+            AF_INET as u32,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        )
+    };
+    if initial != ERROR_INSUFFICIENT_BUFFER && initial != NO_ERROR {
+        return Err(ManagedRuntimeError::new(
+            "endpoint_owner_unavailable",
+            "TCP ownership query failed",
+        ));
+    }
+    if table_bytes < std::mem::size_of::<u32>() as u32 || table_bytes > MAX_TCP_TABLE_BYTES {
+        return Err(ManagedRuntimeError::new(
+            "endpoint_owner_unavailable",
+            "TCP ownership table size rejected",
+        ));
+    }
+    let capacity = table_bytes
+        .saturating_add(64 * 1024)
+        .min(MAX_TCP_TABLE_BYTES);
+    let mut buffer = vec![0_u8; capacity as usize];
+    table_bytes = capacity;
+    let result = unsafe {
+        GetExtendedTcpTable(
+            buffer.as_mut_ptr().cast(),
+            &mut table_bytes,
+            0,
+            AF_INET as u32,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        )
+    };
+    if result != NO_ERROR || table_bytes as usize > buffer.len() {
+        return Err(ManagedRuntimeError::new(
+            "endpoint_owner_unavailable",
+            "TCP ownership query failed",
+        ));
+    }
+    let count = unsafe { std::ptr::read_unaligned(buffer.as_ptr().cast::<u32>()) } as usize;
+    let row_offset = std::mem::size_of::<u32>();
+    let row_bytes = std::mem::size_of::<MIB_TCPROW_OWNER_PID>();
+    let maximum_rows = (table_bytes as usize).saturating_sub(row_offset) / row_bytes;
+    if count > maximum_rows {
+        return Err(ManagedRuntimeError::new(
+            "endpoint_owner_unavailable",
+            "TCP ownership table rejected",
+        ));
+    }
+    let loopback = u32::from_ne_bytes([127, 0, 0, 1]);
+    for index in 0..count {
+        let row = unsafe {
+            std::ptr::read_unaligned(
+                buffer
+                    .as_ptr()
+                    .add(row_offset + index * row_bytes)
+                    .cast::<MIB_TCPROW_OWNER_PID>(),
+            )
+        };
+        let row_port = u16::from_be((row.dwLocalPort & 0xffff) as u16);
+        if row.dwLocalAddr == loopback && row_port == port {
+            return Ok(row.dwOwningPid == process_id);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(not(windows))]
+fn loopback_listener_owned_by_process(
+    _port: u16,
+    _process_id: u32,
+) -> Result<bool, ManagedRuntimeError> {
+    Err(ManagedRuntimeError::new(
+        "endpoint_owner_unavailable",
+        "Windows TCP ownership is required",
+    ))
 }
 
 fn select_ephemeral_loopback_port() -> Result<u16, ManagedRuntimeError> {
@@ -642,20 +956,21 @@ fn select_ephemeral_loopback_port() -> Result<u16, ManagedRuntimeError> {
 fn write_private_api_key_file(
     state_root: &Path,
     credential: &str,
-) -> Result<PathBuf, ManagedRuntimeError> {
-    fs::create_dir_all(state_root)
-        .map_err(|_| ManagedRuntimeError::new("io_error", "runtime state unavailable"))?;
+) -> Result<(PathBuf, File), ManagedRuntimeError> {
     let file_name = format!("key-{}.txt", hex_bytes(&random_bytes(16)?));
     let path = state_root.join(file_name);
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(windows)]
+    options.share_mode(0x0000_0001);
+    let mut file = options
         .open(&path)
         .map_err(|_| ManagedRuntimeError::new("io_error", "credential file creation failed"))?;
     file.write_all(credential.as_bytes())
         .and_then(|_| file.write_all(b"\n"))
+        .and_then(|_| file.sync_all())
         .map_err(|_| ManagedRuntimeError::new("io_error", "credential file write failed"))?;
-    Ok(path)
+    Ok((path, file))
 }
 
 fn generate_credential() -> Result<String, ManagedRuntimeError> {
@@ -692,44 +1007,6 @@ fn random_bytes(len: usize) -> Result<Vec<u8>, ManagedRuntimeError> {
     }
     out.truncate(len);
     Ok(out)
-}
-
-fn ensure_local_safe_root(anchor: &Path, path: &Path) -> Result<(), ManagedRuntimeError> {
-    if path.to_string_lossy().starts_with(r"\\") {
-        return Err(ManagedRuntimeError::new(
-            "invalid_path",
-            "UNC path rejected",
-        ));
-    }
-    let relative = path
-        .strip_prefix(anchor)
-        .map_err(|_| ManagedRuntimeError::new("invalid_path", "managed root escaped app data"))?;
-    reject_reparse_point(anchor)?;
-    let mut current = anchor.to_path_buf();
-    for component in relative.components() {
-        current.push(component.as_os_str());
-        reject_reparse_point(&current)?;
-    }
-    Ok(())
-}
-
-fn reject_reparse_point(path: &Path) -> Result<(), ManagedRuntimeError> {
-    let meta = fs::symlink_metadata(path)
-        .map_err(|_| ManagedRuntimeError::new("invalid_path", "path metadata unavailable"))?;
-    if meta.file_type().is_symlink() {
-        return Err(ManagedRuntimeError::new("invalid_path", "symlink rejected"));
-    }
-    #[cfg(windows)]
-    {
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
-        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            return Err(ManagedRuntimeError::new(
-                "invalid_path",
-                "reparse point rejected",
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn sha256_text(text: &str) -> String {
@@ -856,7 +1133,11 @@ fn sanitize_text(value: &str, limit: usize) -> String {
         }
     }
     if text.len() > limit {
-        text.truncate(limit);
+        let mut boundary = limit;
+        while boundary > 0 && !text.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        text.truncate(boundary);
     }
     text
 }
@@ -902,9 +1183,10 @@ fn spawn_log_reader(
 
 #[tauri::command]
 pub fn managed_runtime_status(
-    state: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    bridge: State<'_, Arc<ControlPlaneBridge>>,
 ) -> ManagedRuntimeStatus {
-    state.status()
+    runtime.status(&bridge)
 }
 
 #[tauri::command]
@@ -968,5 +1250,38 @@ mod tests {
                 || key.starts_with("HUGGINGFACE_")
                 || key.ends_with("PROXY")
         }));
+    }
+
+    #[test]
+    fn readiness_payloads_require_exact_json_fields() {
+        assert!(health_payload_ready(r#"{"status":"ok"}"#).expect("valid health"));
+        assert!(
+            !health_payload_ready(r#"{"status":"loading model"}"#).expect("valid loading health")
+        );
+        assert!(health_payload_ready(r#"{"message":"status ok"}"#).is_err());
+        assert!(model_list_contains_exact_alias(
+            r#"{"object":"list","data":[{"id":"expected"}]}"#,
+            "expected"
+        )
+        .expect("valid model list"));
+        assert!(!model_list_contains_exact_alias(
+            r#"{"object":"list","data":[{"id":"expected-suffix"}]}"#,
+            "expected"
+        )
+        .expect("valid nonmatching model list"));
+        assert!(model_list_contains_exact_alias(r#"{"data":"expected"}"#, "expected").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn loopback_listener_ownership_is_exact() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind loopback test listener");
+        let port = listener.local_addr().expect("listener address").port();
+        assert!(loopback_listener_owned_by_process(port, std::process::id())
+            .expect("query listener owner"));
+        assert!(
+            !loopback_listener_owned_by_process(port, std::process::id().wrapping_add(1))
+                .expect("query mismatched listener owner")
+        );
     }
 }

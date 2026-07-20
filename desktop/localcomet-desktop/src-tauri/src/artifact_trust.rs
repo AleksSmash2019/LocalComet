@@ -13,7 +13,20 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 #[cfg(windows)]
-use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+use std::os::windows::{
+    ffi::OsStrExt,
+    fs::{MetadataExt, OpenOptionsExt},
+    io::FromRawHandle,
+};
+
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{GENERIC_READ, INVALID_HANDLE_VALUE};
+
+#[cfg(windows)]
+use windows_sys::Win32::Storage::FileSystem::{
+    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, OPEN_EXISTING,
+};
 
 const CATALOG_BYTES: &[u8] = include_bytes!("../resources/localcomet/approved-artifacts.v1.json");
 const CATALOG_ID: &str = "localcomet-approved-artifacts";
@@ -325,6 +338,7 @@ pub(crate) struct ValidatedRuntimeModel {
     pub model_path: PathBuf,
     pub model_handle: File,
     pub runtime_handles: Vec<File>,
+    pub directory_handles: Vec<File>,
 }
 
 pub struct ArtifactTrustService {
@@ -357,6 +371,10 @@ impl ArtifactTrustService {
 
     pub(crate) fn roots(&self) -> &ManagedArtifactRoots {
         &self.roots
+    }
+
+    pub(crate) fn guard_runtime_state_root(&self) -> Result<Vec<File>, ArtifactTrustError> {
+        open_directory_guard_chain(&self.roots.app_data_root, &self.roots.state_root, true)
     }
 
     pub fn runtime_catalog(&self) -> ManagedRuntimeCatalog {
@@ -589,6 +607,27 @@ impl ArtifactTrustService {
             resolve_contained(&self.roots.runtime_root, &runtime.managed_relative_path)?;
         let executable = resolve_contained(&package_dir, &runtime.executable_relative_path)?;
         let model_path = resolve_contained(&self.roots.model_root, &model.managed_relative_path)?;
+        let model_parent = model_path
+            .parent()
+            .ok_or_else(|| ArtifactTrustError::new("invalid_path", "model parent unavailable"))?;
+        let mut directory_handles =
+            open_directory_guard_chain(&self.roots.app_data_root, &package_dir, false)?;
+        directory_handles.extend(open_directory_guard_chain(
+            &self.roots.app_data_root,
+            model_parent,
+            false,
+        )?);
+        for required in &runtime.required_files {
+            let path = resolve_contained(&package_dir, &required.relative_path)?;
+            let parent = path.parent().ok_or_else(|| {
+                ArtifactTrustError::new("invalid_path", "runtime file parent unavailable")
+            })?;
+            directory_handles.extend(open_directory_guard_chain(
+                &self.roots.app_data_root,
+                parent,
+                false,
+            )?);
+        }
         let model_handle = open_model_guard(&model_path)?;
         let mut runtime_handles = Vec::with_capacity(runtime.required_files.len());
         for required in &runtime.required_files {
@@ -619,6 +658,7 @@ impl ArtifactTrustService {
             model_path,
             model_handle,
             runtime_handles,
+            directory_handles,
         })
     }
 
@@ -1156,10 +1196,9 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
 }
 
 fn validate_required_texts(values: &[&str]) -> Result<(), ArtifactTrustError> {
-    if values
-        .iter()
-        .any(|value| value.is_empty() || value.len() > 256 || value.contains('\0'))
-    {
+    if values.iter().any(|value| {
+        value.trim().is_empty() || value.len() > 256 || value.chars().any(char::is_control)
+    }) {
         return Err(ArtifactTrustError::new(
             "invalid_catalog",
             "required catalog field rejected",
@@ -1205,7 +1244,12 @@ fn validate_sha256(value: &str) -> Result<(), ArtifactTrustError> {
 
 fn validate_filename(value: &str) -> Result<(), ArtifactTrustError> {
     validate_relative_windows_path(value)?;
-    if value.contains('/') {
+    if value.contains('/')
+        || !value
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+    {
         return Err(ArtifactTrustError::new(
             "invalid_catalog",
             "artifact filename rejected",
@@ -1223,6 +1267,9 @@ fn validate_relative_windows_path(value: &str) -> Result<(), ArtifactTrustError>
         || value.contains(':')
         || value.contains('\0')
         || value.ends_with('/')
+        || value.bytes().any(|byte| {
+            !(byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'.' | b'_' | b'+' | b'-'))
+        })
     {
         return Err(ArtifactTrustError::new(
             "invalid_path",
@@ -1428,6 +1475,68 @@ fn reject_reparse_chain(root: &Path, path: &Path) -> Result<(), ArtifactTrustErr
     Ok(())
 }
 
+fn open_directory_guard_chain(
+    root: &Path,
+    target: &Path,
+    create_missing: bool,
+) -> Result<Vec<File>, ArtifactTrustError> {
+    let relative = target
+        .strip_prefix(root)
+        .map_err(|_| ArtifactTrustError::new("invalid_path", "managed directory escaped root"))?;
+    let root_metadata = fs::symlink_metadata(root)
+        .map_err(|_| ArtifactTrustError::new("invalid_path", "app data root unavailable"))?;
+    if !root_metadata.is_dir() {
+        return Err(ArtifactTrustError::new(
+            "invalid_path",
+            "app data root type rejected",
+        ));
+    }
+    reject_reparse_point(root)?;
+    let mut handles = vec![open_directory_guard(root)?];
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                if !metadata.is_dir() {
+                    return Err(ArtifactTrustError::new(
+                        "invalid_path",
+                        "managed directory type rejected",
+                    ));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && create_missing => {
+                if let Err(create_error) = fs::create_dir(&current) {
+                    if create_error.kind() != std::io::ErrorKind::AlreadyExists {
+                        return Err(ArtifactTrustError::new(
+                            "io_error",
+                            "managed directory creation failed",
+                        ));
+                    }
+                }
+                let metadata = fs::symlink_metadata(&current).map_err(|_| {
+                    ArtifactTrustError::new("invalid_path", "managed directory unavailable")
+                })?;
+                if !metadata.is_dir() {
+                    return Err(ArtifactTrustError::new(
+                        "invalid_path",
+                        "managed directory type rejected",
+                    ));
+                }
+            }
+            Err(_) => {
+                return Err(ArtifactTrustError::new(
+                    "invalid_path",
+                    "managed directory unavailable",
+                ))
+            }
+        }
+        reject_reparse_point(&current)?;
+        handles.push(open_directory_guard(&current)?);
+    }
+    Ok(handles)
+}
+
 #[cfg(windows)]
 fn reject_reparse_point(path: &Path) -> Result<(), ArtifactTrustError> {
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
@@ -1479,6 +1588,44 @@ fn open_runtime_guard(path: &Path) -> Result<File, ArtifactTrustError> {
         .map_err(|_| ArtifactTrustError::new("runtime_locked", "runtime identity guard failed"))
 }
 
+#[cfg(windows)]
+fn open_directory_guard(path: &Path) -> Result<File, ArtifactTrustError> {
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let handle = unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        return Err(ArtifactTrustError::new(
+            "invalid_path",
+            "directory identity guard failed",
+        ));
+    }
+    let file = unsafe { File::from_raw_handle(handle.cast()) };
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    let metadata = file
+        .metadata()
+        .map_err(|_| ArtifactTrustError::new("invalid_path", "directory metadata unavailable"))?;
+    if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(ArtifactTrustError::new(
+            "invalid_path",
+            "directory identity rejected",
+        ));
+    }
+    Ok(file)
+}
+
 #[cfg(not(windows))]
 fn open_model_guard(path: &Path) -> Result<File, ArtifactTrustError> {
     File::open(path)
@@ -1489,6 +1636,24 @@ fn open_model_guard(path: &Path) -> Result<File, ArtifactTrustError> {
 fn open_runtime_guard(path: &Path) -> Result<File, ArtifactTrustError> {
     File::open(path)
         .map_err(|_| ArtifactTrustError::new("runtime_locked", "runtime identity guard failed"))
+}
+
+#[cfg(not(windows))]
+fn open_directory_guard(path: &Path) -> Result<File, ArtifactTrustError> {
+    reject_reparse_point(path)?;
+    let file = File::open(path)
+        .map_err(|_| ArtifactTrustError::new("invalid_path", "directory identity guard failed"))?;
+    if !file
+        .metadata()
+        .map_err(|_| ArtifactTrustError::new("invalid_path", "directory metadata unavailable"))?
+        .is_dir()
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_path",
+            "directory identity rejected",
+        ));
+    }
+    Ok(file)
 }
 
 fn sha256_file(path: &Path) -> Result<String, ArtifactTrustError> {
@@ -1867,6 +2032,19 @@ mod tests {
         assert_catalog_invalid(&catalog);
 
         let mut catalog = baseline.clone();
+        catalog.models[0].provider = "   ".into();
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.models[0].display_name = "bad\nname".into();
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.models[0].asset_filename = "bad?.gguf".into();
+        catalog.models[0].managed_relative_path = "test-model/bad?.gguf".into();
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
         catalog.models[0].compatible_runtime_ids = vec!["unknown-runtime".into()];
         assert_catalog_invalid(&catalog);
 
@@ -2053,12 +2231,32 @@ mod tests {
         let launch = service
             .resolve_launch("test-model")
             .expect("resolve launch");
+        let package = runtime_path.parent().expect("runtime package");
+        let model_parent = model_path.parent().expect("model parent");
+        let moved_package = package.with_file_name("moved-runtime");
+        let moved_model_parent = model_parent.with_file_name("moved-model");
 
         assert!(OpenOptions::new().write(true).open(&model_path).is_err());
         assert!(OpenOptions::new().write(true).open(&runtime_path).is_err());
+        assert!(fs::rename(package, &moved_package).is_err());
+        assert!(fs::rename(model_parent, &moved_model_parent).is_err());
         drop(launch);
         assert!(OpenOptions::new().write(true).open(&model_path).is_ok());
         assert!(OpenOptions::new().write(true).open(&runtime_path).is_ok());
+        fs::rename(package, &moved_package).expect("rename unlocked runtime directory");
+        fs::rename(&moved_package, package).expect("restore runtime directory");
+        fs::rename(model_parent, &moved_model_parent).expect("rename unlocked model directory");
+        fs::rename(&moved_model_parent, model_parent).expect("restore model directory");
+
+        let state_handles = service
+            .guard_runtime_state_root()
+            .expect("guard runtime state root");
+        let state_root = workspace.roots().state_root;
+        let moved_state = state_root.with_file_name("moved-state");
+        assert!(fs::rename(&state_root, &moved_state).is_err());
+        drop(state_handles);
+        fs::rename(&state_root, &moved_state).expect("rename unlocked state directory");
+        fs::rename(&moved_state, &state_root).expect("restore state directory");
     }
 
     #[cfg(windows)]

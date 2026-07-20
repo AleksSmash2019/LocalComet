@@ -57,6 +57,7 @@ mod platform {
     pub struct ContainedManagedRuntimeProcess {
         process: OwnedHandle,
         job: OwnedHandle,
+        process_id: u32,
         stdout: Option<File>,
         stderr: Option<File>,
     }
@@ -106,6 +107,10 @@ mod platform {
         pub fn is_running(&self) -> bool {
             let _job_handle = self.job.raw();
             unsafe { WaitForSingleObject(self.process.raw(), 0) == WAIT_TIMEOUT }
+        }
+
+        pub fn process_id(&self) -> u32 {
+            self.process_id
         }
 
         pub fn terminate(&self, exit_code: u32) {
@@ -440,6 +445,7 @@ mod platform {
         Ok(ContainedManagedRuntimeProcess {
             process,
             job,
+            process_id: process_info.dwProcessId,
             stdout: Some(parent_stdout.into_file()),
             stderr: Some(parent_stderr.into_file()),
         })
@@ -631,6 +637,10 @@ mod platform {
 
         pub fn is_running(&self) -> bool {
             false
+        }
+
+        pub fn process_id(&self) -> u32 {
+            0
         }
 
         pub fn terminate(&self, _exit_code: u32) {}
