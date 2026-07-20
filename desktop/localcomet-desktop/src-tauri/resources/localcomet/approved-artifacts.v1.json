@@ -15,6 +15,24 @@
       "asset_filename": "llama-b10068-bin-win-cpu-x64.zip",
       "asset_bytes": 18007324,
       "asset_sha256": "01d5f30876acfb4a0be59396710f450213495c7181d8fbcce2fad045835ceb89",
+      "acquisition": {
+        "artifact_id": "llama-cpp-windows-x86-64-cpu-bootstrap",
+        "artifact_kind": "runtime",
+        "source_type": "approved_https",
+        "primary_url": "https://github.com/ggml-org/llama.cpp/releases/download/b10068/llama-b10068-bin-win-cpu-x64.zip",
+        "allowed_redirect_hosts": [
+          "github.com",
+          "objects.githubusercontent.com",
+          "release-assets.githubusercontent.com"
+        ],
+        "expected_filename": "llama-b10068-bin-win-cpu-x64.zip",
+        "expected_bytes": 18007324,
+        "expected_sha256": "01d5f30876acfb4a0be59396710f450213495c7181d8fbcce2fad045835ceb89",
+        "content_type": "application/octet-stream",
+        "managed_relative_destination": "llama-cpp-windows-x86-64-cpu-bootstrap",
+        "automatic_download": false,
+        "user_confirmation_required": true
+      },
       "archive_format": "zip",
       "managed_relative_path": "llama-cpp-windows-x86-64-cpu-bootstrap",
       "executable_relative_path": "llama-server.exe",
@@ -195,6 +213,26 @@
       "asset_filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
       "asset_bytes": 1117320736,
       "asset_sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+      "acquisition": {
+        "artifact_id": "qwen2.5-1.5b-instruct-q4-k-m",
+        "artifact_kind": "model",
+        "source_type": "approved_https",
+        "primary_url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "allowed_redirect_hosts": [
+          "cas-bridge.xethub.hf.co",
+          "cdn-lfs-us-1.hf.co",
+          "cdn-lfs.hf.co",
+          "huggingface.co",
+          "transfer.xethub.hf.co"
+        ],
+        "expected_filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "expected_bytes": 1117320736,
+        "expected_sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+        "content_type": "application/octet-stream",
+        "managed_relative_destination": "qwen2.5-1.5b-instruct-q4-k-m/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "automatic_download": false,
+        "user_confirmation_required": true
+      },
       "license_id": "Apache-2.0",
       "compatible_runtime_ids": [
         "llama-cpp-windows-x86-64-cpu-bootstrap"

@@ -45,6 +45,36 @@ pub enum CatalogStatus {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcquisitionArtifactKind {
+    Runtime,
+    Model,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcquisitionSourceType {
+    ApprovedHttps,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovedArtifactAcquisition {
+    pub artifact_id: String,
+    pub artifact_kind: AcquisitionArtifactKind,
+    pub source_type: AcquisitionSourceType,
+    pub primary_url: String,
+    pub allowed_redirect_hosts: Vec<String>,
+    pub expected_filename: String,
+    pub expected_bytes: u64,
+    pub expected_sha256: String,
+    pub content_type: Option<String>,
+    pub managed_relative_destination: String,
+    pub automatic_download: bool,
+    pub user_confirmation_required: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApprovedRuntimeFile {
     pub relative_path: String,
@@ -66,6 +96,7 @@ pub struct ApprovedRuntimeArtifact {
     pub asset_filename: String,
     pub asset_bytes: u64,
     pub asset_sha256: String,
+    pub acquisition: ApprovedArtifactAcquisition,
     pub archive_format: String,
     pub managed_relative_path: String,
     pub executable_relative_path: String,
@@ -91,6 +122,7 @@ pub struct ApprovedModelArtifact {
     pub asset_filename: String,
     pub asset_bytes: u64,
     pub asset_sha256: String,
+    pub acquisition: ApprovedArtifactAcquisition,
     pub license_id: String,
     pub compatible_runtime_ids: Vec<String>,
     pub managed_relative_path: String,
@@ -1024,6 +1056,7 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
     let mut filenames = BTreeMap::new();
     let mut runtime_locations = BTreeSet::new();
     let mut model_locations = BTreeSet::new();
+    let mut acquisition_sources = BTreeSet::new();
 
     for runtime in &catalog.runtimes {
         validate_artifact_id(&runtime.runtime_id)?;
@@ -1058,6 +1091,16 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
         validate_sha256(&runtime.asset_sha256)?;
         validate_filename(&runtime.asset_filename)?;
         validate_relative_windows_path(&runtime.managed_relative_path)?;
+        validate_acquisition(
+            &runtime.acquisition,
+            &runtime.runtime_id,
+            AcquisitionArtifactKind::Runtime,
+            &runtime.asset_filename,
+            runtime.asset_bytes,
+            &runtime.asset_sha256,
+            &runtime.managed_relative_path,
+            &mut acquisition_sources,
+        )?;
         insert_disjoint_managed_path(&mut runtime_locations, &runtime.managed_relative_path)?;
         validate_relative_windows_path(&runtime.executable_relative_path)?;
         if !runtime
@@ -1152,6 +1195,16 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
         validate_sha256(&model.asset_sha256)?;
         validate_filename(&model.asset_filename)?;
         validate_relative_windows_path(&model.managed_relative_path)?;
+        validate_acquisition(
+            &model.acquisition,
+            &model.model_id,
+            AcquisitionArtifactKind::Model,
+            &model.asset_filename,
+            model.asset_bytes,
+            &model.asset_sha256,
+            &model.managed_relative_path,
+            &mut acquisition_sources,
+        )?;
         insert_disjoint_managed_path(&mut model_locations, &model.managed_relative_path)?;
         let managed_filename = model
             .managed_relative_path
@@ -1189,6 +1242,131 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
         )?;
     }
     Ok(())
+}
+
+fn validate_acquisition(
+    acquisition: &ApprovedArtifactAcquisition,
+    artifact_id: &str,
+    expected_kind: AcquisitionArtifactKind,
+    expected_filename: &str,
+    expected_bytes: u64,
+    expected_sha256: &str,
+    expected_destination: &str,
+    identities: &mut BTreeSet<String>,
+) -> Result<(), ArtifactTrustError> {
+    validate_artifact_id(&acquisition.artifact_id)?;
+    if acquisition.artifact_id != artifact_id
+        || acquisition.artifact_kind != expected_kind
+        || acquisition.source_type != AcquisitionSourceType::ApprovedHttps
+        || acquisition.expected_filename != expected_filename
+        || acquisition.expected_bytes != expected_bytes
+        || acquisition.expected_sha256 != expected_sha256
+        || acquisition.managed_relative_destination != expected_destination
+        || acquisition.automatic_download
+        || !acquisition.user_confirmation_required
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_catalog",
+            "acquisition identity rejected",
+        ));
+    }
+    validate_filename(&acquisition.expected_filename)?;
+    validate_sha256(&acquisition.expected_sha256)?;
+    validate_relative_windows_path(&acquisition.managed_relative_destination)?;
+    if acquisition.expected_bytes == 0
+        || acquisition.allowed_redirect_hosts.is_empty()
+        || acquisition.allowed_redirect_hosts.len() > 16
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_catalog",
+            "acquisition metadata rejected",
+        ));
+    }
+    let mut prior_host = None::<&str>;
+    for host in &acquisition.allowed_redirect_hosts {
+        validate_allowed_redirect_host(host)?;
+        if prior_host.is_some_and(|prior| prior >= host) {
+            return Err(ArtifactTrustError::new(
+                "invalid_catalog",
+                "redirect hosts not sorted or unique",
+            ));
+        }
+        prior_host = Some(host);
+    }
+    let primary_host = validate_https_url(&acquisition.primary_url)?;
+    if !acquisition
+        .allowed_redirect_hosts
+        .iter()
+        .any(|host| host == primary_host)
+        || !identities.insert(acquisition.primary_url.clone())
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_catalog",
+            "acquisition source rejected",
+        ));
+    }
+    if let Some(content_type) = &acquisition.content_type {
+        if content_type.is_empty()
+            || content_type.len() > 128
+            || content_type.chars().any(|character| {
+                character.is_control()
+                    || !(character.is_ascii_alphanumeric()
+                        || matches!(character, '/' | '-' | '+' | '.' | ';' | '=' | ' '))
+            })
+        {
+            return Err(ArtifactTrustError::new(
+                "invalid_catalog",
+                "acquisition content type rejected",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_allowed_redirect_host(value: &str) -> Result<(), ArtifactTrustError> {
+    if value.is_empty()
+        || value.len() > 253
+        || value.starts_with('.')
+        || value.ends_with('.')
+        || !value.contains('.')
+        || value.bytes().any(|byte| {
+            !(byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-'))
+        })
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_catalog",
+            "redirect host rejected",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_https_url(value: &str) -> Result<&str, ArtifactTrustError> {
+    if value.len() > 2_048
+        || value.chars().any(char::is_control)
+        || !value.starts_with("https://")
+        || value.contains(['?', '#', '@', '\\'])
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_catalog",
+            "HTTPS URL rejected",
+        ));
+    }
+    let after_scheme = &value["https://".len()..];
+    let Some((host, path)) = after_scheme.split_once('/') else {
+        return Err(ArtifactTrustError::new(
+            "invalid_catalog",
+            "HTTPS URL path rejected",
+        ));
+    };
+    validate_allowed_redirect_host(host)?;
+    if path.is_empty() {
+        return Err(ArtifactTrustError::new(
+            "invalid_catalog",
+            "HTTPS URL path rejected",
+        ));
+    }
+    Ok(host)
 }
 
 fn validate_required_texts(values: &[&str]) -> Result<(), ArtifactTrustError> {
@@ -1777,7 +1955,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     const EMBEDDED_CATALOG_SHA256: &str =
-        "e50530563403c5e750205581576bcaf108daf08d05223d91b4ed31e107a8b33c";
+        "4cfe2f2c7f6d887583fa8ab65c5f872a5f04b2ea2bca9397b33500bdf22b3080";
     const TEST_RUNTIME_BYTES: &[u8] = b"test-runtime";
     const TEST_MODEL_BYTES: &[u8] = b"GGUFtest-model";
 
@@ -1828,6 +2006,20 @@ mod tests {
             asset_filename: format!("{runtime_id}.zip"),
             asset_bytes: 7,
             asset_sha256: sha256_bytes(b"archive"),
+            acquisition: ApprovedArtifactAcquisition {
+                artifact_id: runtime_id.into(),
+                artifact_kind: AcquisitionArtifactKind::Runtime,
+                source_type: AcquisitionSourceType::ApprovedHttps,
+                primary_url: format!("https://example.test/{runtime_id}.zip"),
+                allowed_redirect_hosts: vec!["example.test".into()],
+                expected_filename: format!("{runtime_id}.zip"),
+                expected_bytes: 7,
+                expected_sha256: sha256_bytes(b"archive"),
+                content_type: Some("application/octet-stream".into()),
+                managed_relative_destination: managed_path.into(),
+                automatic_download: false,
+                user_confirmation_required: true,
+            },
             archive_format: "zip".into(),
             managed_relative_path: managed_path.into(),
             executable_relative_path: "llama-server.exe".into(),
@@ -1857,6 +2049,20 @@ mod tests {
             asset_filename: "test-model.gguf".into(),
             asset_bytes: TEST_MODEL_BYTES.len() as u64,
             asset_sha256: sha256_bytes(TEST_MODEL_BYTES),
+            acquisition: ApprovedArtifactAcquisition {
+                artifact_id: "test-model".into(),
+                artifact_kind: AcquisitionArtifactKind::Model,
+                source_type: AcquisitionSourceType::ApprovedHttps,
+                primary_url: "https://example.test/test-model.gguf".into(),
+                allowed_redirect_hosts: vec!["example.test".into()],
+                expected_filename: "test-model.gguf".into(),
+                expected_bytes: TEST_MODEL_BYTES.len() as u64,
+                expected_sha256: sha256_bytes(TEST_MODEL_BYTES),
+                content_type: Some("application/octet-stream".into()),
+                managed_relative_destination: "test-model/test-model.gguf".into(),
+                automatic_download: false,
+                user_confirmation_required: true,
+            },
             license_id: "Apache-2.0".into(),
             compatible_runtime_ids,
             managed_relative_path: "test-model/test-model.gguf".into(),
@@ -2057,6 +2263,27 @@ mod tests {
 
         let mut catalog = baseline.clone();
         catalog.models[0].public_distribution = true;
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.models[0].acquisition.primary_url = "http://example.test/model.gguf".into();
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.runtimes[0].acquisition.allowed_redirect_hosts =
+            vec!["z.example.test".into(), "a.example.test".into()];
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.models[0].acquisition.expected_sha256 = "a".repeat(64);
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.runtimes[0].acquisition.managed_relative_destination = "../runtime".into();
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.models[0].acquisition.automatic_download = true;
         assert_catalog_invalid(&catalog);
 
         let mut catalog = baseline;
