@@ -1,6 +1,6 @@
 # UP05-WP01 State Machine
 
-Status: owner-authorized R2 contract. Durations below are internal reliability bounds, not production performance baselines.
+Status: implemented and verified R2 lifecycle. Durations below are internal reliability bounds, not production performance baselines.
 
 ## Independent state domains
 
@@ -81,6 +81,7 @@ An accepted submission creates exactly one user message and exactly one assistan
 | Overall inference | 120 seconds | `request_timed_out` |
 | Cancellation acknowledgement | 5 seconds | `cancel_ack_timeout` followed by stable local terminal recovery |
 | Runtime/process shutdown | 5 seconds total bounded ownership cleanup | `shutdown_timeout` with process containment retained |
+| Sidecar pipe delivery | 2 seconds bounded non-blocking retry | typed delivery failure and owned sidecar retirement |
 
 Implementation may retain a shorter safe existing bound, but it must not silently widen a bound. Timeout events are terminal exactly once and remain retryable only when the runtime/model session is still healthy.
 
@@ -89,3 +90,10 @@ Implementation may retain a shorter safe existing bound, but it must not silentl
 User-visible errors are bounded and sanitized. At minimum the typed path distinguishes `runtime_unavailable`, `approved_model_unavailable`, `model_validation_failed`, `model_load_failed`, `model_load_timed_out`, `request_rejected`, `request_acceptance_timeout`, `first_token_timeout`, `stream_inactivity_timeout`, `stream_interrupted`, `request_cancelled`, `cancel_ack_timeout`, and `protocol_mismatch`.
 
 No error exposes stack traces, credentials, absolute private paths, provider JSON, or SSE framing.
+
+## Observed installed transitions
+
+- Two consecutive requests reached `completed` with visible assistant content.
+- A long request reached `streaming -> cancelling -> cancelled` with 14 chunks and preserved partial output; the message and metrics were unchanged after a further 2.6 seconds.
+- The next request reached `completed`, proving cancellation cleanup and retry recovery.
+- Closing and reopening the installed application left no owned orphan and produced another `completed` response after the runtime/model binding was re-established.
