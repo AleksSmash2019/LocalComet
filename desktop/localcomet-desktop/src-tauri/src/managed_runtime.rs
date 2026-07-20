@@ -1090,7 +1090,11 @@ fn run_capability_probe(
         }
         output.push_str(&String::from_utf8_lossy(&stderr.bytes));
     }
-    Ok(sanitize_text(&output, MAX_PROBE_BYTES))
+    Ok(normalize_probe_output(output))
+}
+
+fn normalize_probe_output(output: String) -> String {
+    output.replace('\0', "")
 }
 
 struct ProbeOutput {
@@ -1933,6 +1937,18 @@ pub fn managed_runtime_logs(state: State<'_, Arc<ManagedRuntimeSupervisor>>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capability_probe_output_preserves_flags_after_secret_like_substrings() {
+        let output = format!("--cpu-mask-batch {}", REQUIRED_FLAGS.join(" "));
+
+        let normalized = normalize_probe_output(format!("{output}\0"));
+
+        assert!(!normalized.contains('\0'));
+        for flag in REQUIRED_FLAGS {
+            assert!(normalized.contains(flag), "missing required flag {flag}");
+        }
+    }
 
     #[test]
     fn fixed_runtime_args_disable_webui_and_agent() {
