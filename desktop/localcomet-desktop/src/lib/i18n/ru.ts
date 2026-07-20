@@ -95,6 +95,7 @@ export const ru: TranslationMap = {
   'setup.managed_tab': 'Управляемая локальная модель',
   'setup.external_desc': 'Подключение к OpenAI-совместимому серверу на localhost',
   'setup.managed_desc': 'Управляемая llama.cpp модель, запускаемая локально',
+  'setup.external_diagnostics_only': 'Внешняя loopback-привязка доступна только для диагностики. Для чата нужна одобренная управляемая модель.',
   'setup.step_port': '1. Порт',
   'setup.step_model': '2. Модель',
   'setup.step_mode': '3. Режим',

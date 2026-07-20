@@ -1,11 +1,10 @@
 <script lang="ts">
   import EmptyState from '$lib/components/common/EmptyState.svelte';
-  import { mockMessages } from '$lib/stores/shellStore';
-  import { modelGatewayStore } from '$lib/stores/modelGateway';
-  import { modelConnected, openModelSetup } from '$lib/stores/shellStore';
+  import { chatMessages, openModelSetup } from '$lib/stores/shellStore';
+  import { approvedManagedModelInstalled, managedModelReady } from '$lib/stores/modelGateway';
   import { t } from '$lib/i18n';
 
-  $: showEmptyState = !$modelConnected;
+  $: showEmptyState = !$managedModelReady && $chatMessages.length === 0;
 </script>
 
 <section class="message-list" aria-label={$t('chat.message_history')}>
@@ -14,10 +13,10 @@
       title={$t('chat.model_not_connected')}
       detail={$t('chat.model_not_connected_detail')}
       actionLabel={$t('chat.connect_model')}
-      onAction={() => openModelSetup('external')}
+      onAction={() => openModelSetup($approvedManagedModelInstalled ? 'managed' : 'external')}
     />
   {:else}
-    {#each $mockMessages as message}
+    {#each $chatMessages as message}
       <article class="message {message.role}" aria-label={message.role === 'user' ? $t('chat.user_message') : $t('chat.model_response')}>
         <div class="avatar" aria-hidden="true">{message.role === 'user' ? 'U' : 'LC'}</div>
         <div class="bubble">
@@ -28,6 +27,9 @@
             {/if}
           </div>
           <p>{message.body}</p>
+          {#if message.role === 'assistant' && message.state && message.state !== 'completed'}
+            <span class="request-state" data-state={message.state}>{message.error ?? message.state}</span>
+          {/if}
         </div>
       </article>
     {/each}
@@ -97,6 +99,14 @@
   p {
     margin: 0;
     overflow-wrap: anywhere;
+  }
+
+  .request-state {
+    display: inline-block;
+    margin-top: var(--lc-space-2);
+    color: var(--lc-muted);
+    font-size: 11px;
+    font-family: var(--lc-mono);
   }
 
   @media (max-width: 680px) {

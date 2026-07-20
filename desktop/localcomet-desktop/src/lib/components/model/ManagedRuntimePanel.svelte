@@ -3,6 +3,7 @@
   import TelemetryRow from '$lib/components/common/TelemetryRow.svelte';
   import {
     confirmManagedBinding,
+    inferenceBusy,
     managedRuntimeStore,
     refreshManagedRuntimeStatus,
     setManagedHarness,
@@ -16,9 +17,9 @@
   $: state = status?.state ?? 'NotInstalled';
   $: selectedModel = $managedRuntimeStore.catalog.find((model) => model.model_id === $managedRuntimeStore.selectedModelId);
   $: modelLaunchable = $managedRuntimeStore.readiness?.model_id === selectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
-  $: canStart = Boolean(selectedModel) && modelLaunchable && (state === 'Stopped' || state === 'Failed');
-  $: canStop = state === 'Ready' || state === 'Starting' || state === 'Validating' || state === 'Failed';
-  $: canBind = state === 'Ready' && modelLaunchable && Boolean(status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
+  $: canStart = !$inferenceBusy && Boolean(selectedModel) && modelLaunchable && (state === 'Stopped' || state === 'Failed');
+  $: canStop = !$inferenceBusy && (state === 'Ready' || state === 'Starting' || state === 'Validating' || state === 'Failed');
+  $: canBind = !$inferenceBusy && state === 'Ready' && status?.model_state === 'Ready' && status?.inference_ready === true && status?.model_id === $managedRuntimeStore.selectedModelId && modelLaunchable && Boolean(status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
   $: tone = state === 'Ready' ? 'ready' : state === 'Failed' ? 'danger' : state === 'Starting' || state === 'Validating' || state === 'Stopping' ? 'info' : 'disabled';
 
   function onHarnessChange(event: Event) {
@@ -39,11 +40,12 @@
     <TelemetryRow label="Engine" value="llama.cpp" mono />
     <TelemetryRow label="Managed Runtime" value={status?.installation ?? 'Not installed'} tone={state === 'NotInstalled' ? 'disabled' : 'ready'} />
     <TelemetryRow label="Runtime Version" value={status?.runtime_version ?? 'Not validated'} tone="disabled" mono />
-    <TelemetryRow label="Inference" value={$managedRuntimeStore.binding ? 'Bound' : 'Binding required'} tone={$managedRuntimeStore.binding ? 'ready' : 'disabled'} />
+    <TelemetryRow label="Model State" value={status?.model_state ?? 'Unavailable'} tone={status?.model_state === 'Ready' ? 'ready' : 'disabled'} />
+    <TelemetryRow label="Inference" value={status?.inference_ready ? 'Ready' : 'Unavailable'} tone={status?.inference_ready ? 'ready' : 'disabled'} />
   </div>
 
   <div class="managed-controls">
-    <button type="button" onclick={() => void refreshManagedRuntimeStatus()}>Refresh</button>
+    <button type="button" disabled={$inferenceBusy} onclick={() => void refreshManagedRuntimeStatus()}>Refresh</button>
     <button type="button" disabled={!canStart} onclick={() => void startSelectedManagedRuntime()}>Start Runtime</button>
     <button type="button" disabled={!canStop} onclick={() => void stopSelectedManagedRuntime()}>Stop Runtime</button>
   </div>
@@ -51,7 +53,7 @@
   <div class="managed-controls" aria-label="Managed model binding controls">
     <label>
       <span>Managed Model</span>
-      <select value={$managedRuntimeStore.selectedModelId} onchange={(event) => void setManagedSelectedModel((event.currentTarget as HTMLSelectElement).value)}>
+      <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(event) => void setManagedSelectedModel((event.currentTarget as HTMLSelectElement).value)}>
         <option value="">Select managed model</option>
         {#each $managedRuntimeStore.catalog as model}
           <option value={model.model_id}>{model.display_name} ({Math.round(model.asset_bytes / 1024 / 1024)} MiB)</option>
@@ -60,7 +62,7 @@
     </label>
     <label>
       <span>Harness</span>
-      <select value={$managedRuntimeStore.harnessId} onchange={onHarnessChange}>
+      <select disabled={$inferenceBusy} value={$managedRuntimeStore.harnessId} onchange={onHarnessChange}>
         <option value="minimal">minimal</option>
         <option value="native-localcomet">native-localcomet</option>
       </select>

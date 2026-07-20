@@ -2,19 +2,23 @@
   import Icon from '$lib/components/common/Icon.svelte';
   import KnowledgePreviewPanel from '$lib/components/knowledge/KnowledgePreviewPanel.svelte';
   import KnowledgeToggle from '$lib/components/knowledge/KnowledgeToggle.svelte';
-  import { appendMockMessage, composerDraft, setComposerDraft } from '$lib/stores/shellStore';
-  import { modelGatewayStore } from '$lib/stores/modelGateway';
-  import { modelConnected } from '$lib/stores/shellStore';
+  import { appendMockMessage, composerDraft, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
   import { createPendingKnowledgeTurn, controlPlaneStore } from '$lib/stores/controlPlane';
   import { knowledgePreviewStore, prepareProjectKnowledge } from '$lib/stores/knowledgePreview';
-  import { startLocalModelTurn } from '$lib/stores/modelGateway';
+  import { cancelLocalModelTurn, inferenceRequestStore, managedModelReady, startLocalModelTurn } from '$lib/stores/modelGateway';
 
   let textarea: HTMLTextAreaElement;
 
   $: knowledgeLocked = ['RETRIEVING', 'PREVIEW_READY', 'DECIDING', 'DISPATCHING'].includes($knowledgePreviewStore.lifecycle);
-  $: canSend = $modelConnected && Boolean($composerDraft.trim()) && !knowledgeLocked && (!$knowledgePreviewStore.enabled || $controlPlaneStore.bridgeState === 'READY');
-  $: isGenerating = $modelGatewayStore.status === 'Generating' || $modelGatewayStore.status === 'Cancelling';
+  $: isGenerating = ['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle);
+  $: canSend = $managedModelReady && Boolean($composerDraft.trim()) && !isGenerating && !knowledgeLocked && (!$knowledgePreviewStore.enabled || $controlPlaneStore.bridgeState === 'READY');
+  $: firstTokenMs = $inferenceRequestStore.submittedAtUnixMs && $inferenceRequestStore.firstTokenAtUnixMs
+    ? Math.max(0, $inferenceRequestStore.firstTokenAtUnixMs - $inferenceRequestStore.submittedAtUnixMs)
+    : null;
+  $: totalMs = $inferenceRequestStore.submittedAtUnixMs && $inferenceRequestStore.terminalAtUnixMs
+    ? Math.max(0, $inferenceRequestStore.terminalAtUnixMs - $inferenceRequestStore.submittedAtUnixMs)
+    : null;
 
   function resizeDraftBox(): void {
     if (!textarea) return;
@@ -23,6 +27,10 @@
   }
 
   async function send(): Promise<void> {
+    if (isGenerating) {
+      await cancelLocalModelTurn();
+      return;
+    }
     if (!canSend) return;
     const draft = $composerDraft;
     if ($knowledgePreviewStore.enabled) {
@@ -33,9 +41,8 @@
       await prepareProjectKnowledge(turn.turn_id, draft);
       return;
     }
-    if (!appendMockMessage(draft)) return;
+    await startLocalModelTurn(draft, $selectedConversationId);
     resizeDraftBox();
-    await startLocalModelTurn(draft);
   }
 
   function handleKeydown(event: KeyboardEvent): void {
@@ -68,8 +75,8 @@
       value={$composerDraft}
       maxlength="12000"
       rows="1"
-      placeholder={$modelConnected ? ($modelGatewayStore.status === 'Generating' || $modelGatewayStore.status === 'Cancelling' ? $t('chat.model_responding') : $t('chat.type_message')) : $t('chat.connect_model_first')}
-      disabled={!$modelConnected || isGenerating || knowledgeLocked}
+      placeholder={$managedModelReady ? (isGenerating ? $t('chat.model_responding') : $t('chat.type_message')) : $t('chat.connect_model_first')}
+      disabled={!$managedModelReady || isGenerating || knowledgeLocked}
       oninput={(event) => {
         setComposerDraft(event.currentTarget.value);
         resizeDraftBox();
@@ -77,11 +84,19 @@
       onkeydown={handleKeydown}
     ></textarea>
 
-    <button type="button" class="send-button" disabled={!canSend} onclick={() => void send()}>
-      <span>{$modelGatewayStore.status === 'Generating' || $modelGatewayStore.status === 'Cancelling' ? $t('chat.stop') : $t('chat.send')}</span>
-      <Icon name={$modelGatewayStore.status === 'Generating' || $modelGatewayStore.status === 'Cancelling' ? 'stop' : 'send'} size={18} />
+    <button type="button" class="send-button" disabled={isGenerating ? false : !canSend} onclick={() => void send()}>
+      <span>{isGenerating ? $t('chat.stop') : $t('chat.send')}</span>
+      <Icon name={isGenerating ? 'stop' : 'send'} size={18} />
     </button>
   </div>
+  {#if $inferenceRequestStore.lastError}
+    <p class="request-error" role="status">{$inferenceRequestStore.lastError.message}</p>
+  {/if}
+  {#if $inferenceRequestStore.requestId}
+    <p class="request-metrics" data-request-id={$inferenceRequestStore.requestId}>
+      {$inferenceRequestStore.lifecycle} · chunks {$inferenceRequestStore.chunkCount} · first {firstTokenMs ?? '—'} ms · total {totalMs ?? '—'} ms
+    </p>
+  {/if}
 </form>
 
 <style>
@@ -145,6 +160,20 @@
   .send-button:disabled {
     background: var(--lc-panel-soft);
     color: var(--lc-muted);
+  }
+
+  .request-error {
+    margin: var(--lc-space-2) 0 0;
+    color: var(--lc-danger);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .request-metrics {
+    margin: var(--lc-space-2) 0 0;
+    color: var(--lc-muted);
+    font-family: var(--lc-mono);
+    font-size: 11px;
   }
 
   @media (max-width: 760px) {

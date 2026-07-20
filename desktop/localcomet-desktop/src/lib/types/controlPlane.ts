@@ -28,6 +28,7 @@ export type ControlPlaneEventMethod =
   | 'model.output.delta'
   | 'model.turn.completed'
   | 'model.turn.cancelled'
+  | 'model.turn.timed_out'
   | 'model.turn.failed';
 export type MockTurnBehavior = 'complete' | 'pending_model' | 'wait_for_cancel';
 export type CancelReason = 'user_requested' | 'window_closing' | 'timeout';

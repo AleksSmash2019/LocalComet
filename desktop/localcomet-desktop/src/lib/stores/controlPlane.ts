@@ -276,6 +276,7 @@ function isKnownEvent(method: string): boolean {
     'model.output.delta',
     'model.turn.completed',
     'model.turn.cancelled',
+    'model.turn.timed_out',
     'model.turn.failed'
   ].includes(method);
 }

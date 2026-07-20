@@ -95,6 +95,7 @@ export const en: TranslationMap = {
   'setup.managed_tab': 'Managed local model',
   'setup.external_desc': 'Connect to an OpenAI-compatible server on localhost',
   'setup.managed_desc': 'Managed llama.cpp model running locally',
+  'setup.external_diagnostics_only': 'External loopback binding is diagnostics-only. Chat requires the approved managed model.',
   'setup.step_port': '1. Port',
   'setup.step_model': '2. Model',
   'setup.step_mode': '3. Mode',

@@ -18,6 +18,7 @@ import type {
   ModelBinding,
   ModelGatewayEvent,
   ModelListResponse,
+  ModelTurnCancelResponse,
   ModelTurnStartResponse,
   ProbeResponse,
   ProviderId,
@@ -109,23 +110,63 @@ export async function getManagedRuntimeLogs(): Promise<ManagedRuntimeLogs> {
   return validateManagedLogs(await invokeExact('managed_runtime_logs'));
 }
 
-export async function startModelTurn(prompt: string, bindingFingerprint: string): Promise<ModelTurnStartResponse> {
-  return validateTurnStart(
+export async function startModelTurn(args: {
+  requestId: string;
+  chatSessionId: string;
+  modelId: string;
+  submittedAtUnixMs: number;
+  maxTokens: number;
+  prompt: string;
+  bindingFingerprint: string;
+}): Promise<ModelTurnStartResponse> {
+  const requestId = validateTurnId(args.requestId);
+  const chatSessionId = validateChatSessionId(args.chatSessionId);
+  const modelId = validateArtifactId(args.modelId);
+  const submittedAtUnixMs = positiveSafeInteger(args.submittedAtUnixMs);
+  const maxTokens = validateMaxTokens(args.maxTokens);
+  const result = validateTurnStart(
     await invokeExact('model_turn_start', {
-      prompt: bounded(prompt, 16_384),
-      bindingFingerprint: validateFingerprint(bindingFingerprint)
+      requestId,
+      chatSessionId,
+      modelId,
+      submittedAtUnixMs,
+      maxTokens,
+      prompt: bounded(args.prompt, 16_384),
+      bindingFingerprint: validateFingerprint(args.bindingFingerprint)
     })
   );
+  if (
+    result.request_id !== requestId ||
+    result.turn_id !== requestId ||
+    result.chat_session_id !== chatSessionId ||
+    result.model_id !== modelId ||
+    result.submitted_at_unix_ms !== submittedAtUnixMs ||
+    result.max_tokens !== maxTokens ||
+    result.binding_fingerprint !== args.bindingFingerprint
+  ) throw invalid();
+  return result;
 }
 
-export async function cancelModelTurn(turnId: string): Promise<void> {
-  await invokeExact('model_turn_cancel', { turnId: validateTurnId(turnId) });
+export async function cancelModelTurn(requestId: string): Promise<ModelTurnCancelResponse> {
+  const expectedRequestId = validateTurnId(requestId);
+  const result = validateTurnCancel(
+    await invokeExact('model_turn_cancel', { requestId: expectedRequestId })
+  );
+  if (result.request_id !== expectedRequestId || result.turn_id !== expectedRequestId) throw invalid();
+  return result;
 }
 
-export async function subscribeModelGatewayEvents(callback: (event: ModelGatewayEvent) => void): Promise<() => void> {
+export async function subscribeModelGatewayEvents(
+  callback: (event: ModelGatewayEvent) => void,
+  onProtocolError?: (error: SanitizedGatewayError) => void
+): Promise<() => void> {
   const cleanup = await listen<unknown>(CONTROL_PLANE_EVENT_CHANNEL, (event) => {
-    const parsed = parseModelEvent(event.payload);
-    if (parsed) callback(parsed);
+    try {
+      const parsed = parseModelEvent(event.payload);
+      if (parsed) callback(parsed);
+    } catch (error) {
+      onProtocolError?.(normalizeGatewayError(error));
+    }
   });
   return () => cleanup();
 }
@@ -192,6 +233,8 @@ function validateManagedStatus(value: unknown): ManagedRuntimeStatus {
     'model_id',
     'model_display_name',
     'binding_fingerprint',
+    'model_state',
+    'inference_ready',
     'last_error'
   ]);
   if (object.engine !== 'llama.cpp') throw invalid();
@@ -205,6 +248,8 @@ function validateManagedStatus(value: unknown): ManagedRuntimeStatus {
     model_id: object.model_id === null ? null : validateArtifactId(String(object.model_id)),
     model_display_name: nullableSafeText(object.model_display_name, 192),
     binding_fingerprint: nullableHash(object.binding_fingerprint),
+    model_state: exactString(object.model_state, ['Unavailable', 'Validating', 'Loading', 'Ready', 'Failed', 'Unloading']),
+    inference_ready: exactBoolean(object.inference_ready),
     last_error: nullableSafeText(object.last_error, 240)
   };
 }
@@ -357,15 +402,19 @@ function validateModelReadiness(value: unknown): ModelReadinessSummary {
 function validateManagedStart(value: unknown): ManagedRuntimeStartResponse {
   const object = expectExactRecord(value, [
     'state',
+    'model_state',
+    'inference_ready',
     'provider_id',
     'model_id',
     'model_display_name',
     'runtime_instance_id',
     'runtime_instance_fingerprint'
   ]);
-  if (object.provider_id !== 'managed-llama-cpp' || object.state !== 'Ready') throw invalid();
+  if (object.provider_id !== 'managed-llama-cpp' || object.state !== 'Ready' || object.model_state !== 'Ready' || object.inference_ready !== true) throw invalid();
   return {
     state: 'Ready',
+    model_state: 'Ready',
+    inference_ready: true,
     provider_id: 'managed-llama-cpp',
     model_id: validateArtifactId(String(object.model_id)),
     model_display_name: safeText(object.model_display_name, 192),
@@ -384,30 +433,90 @@ function validateManagedLogs(value: unknown): ManagedRuntimeLogs {
 
 function validateTurnStart(value: unknown): ModelTurnStartResponse {
   const object = expectRecord(value);
-  validateTurnId(String(object.turn_id));
-  if (object.model_called !== false || object.tools_executed !== 0 || object.persistence !== false) throw invalid();
-  return object as unknown as ModelTurnStartResponse;
+  const requestId = validateTurnId(String(object.request_id));
+  const turnId = validateTurnId(String(object.turn_id));
+  if (turnId !== requestId || object.state !== 'Accepted') throw invalid();
+  return {
+    request_id: requestId,
+    chat_session_id: validateChatSessionId(object.chat_session_id),
+    turn_id: turnId,
+    state: 'Accepted',
+    model_id: validateArtifactId(String(object.model_id)),
+    submitted_at_unix_ms: positiveSafeInteger(object.submitted_at_unix_ms),
+    max_tokens: validateMaxTokens(object.max_tokens),
+    binding_fingerprint: validateFingerprint(String(object.binding_fingerprint))
+  };
+}
+
+function validateTurnCancel(value: unknown): ModelTurnCancelResponse {
+  const object = expectExactRecord(value, [
+    'request_id',
+    'turn_id',
+    'state',
+    'accepted',
+    'already_terminal',
+    'worker_alive'
+  ]);
+  const requestId = validateTurnId(String(object.request_id));
+  const turnId = validateTurnId(String(object.turn_id));
+  if (requestId !== turnId || typeof object.accepted !== 'boolean' || typeof object.already_terminal !== 'boolean' || typeof object.worker_alive !== 'boolean') {
+    throw invalid();
+  }
+  const state = exactString(object.state, ['Cancelling', 'Cancelled']);
+  const acceptedActive = object.accepted === true && object.already_terminal === false && (
+    (state === 'Cancelling' && object.worker_alive === true) ||
+    (state === 'Cancelled' && object.worker_alive === false)
+  );
+  const alreadyTerminal = object.accepted === false && object.already_terminal === true && object.worker_alive === false && state === 'Cancelled';
+  if (!acceptedActive && !alreadyTerminal) throw invalid();
+  return {
+    request_id: requestId,
+    turn_id: turnId,
+    state,
+    accepted: object.accepted,
+    already_terminal: object.already_terminal,
+    worker_alive: object.worker_alive
+  };
 }
 
 function parseModelEvent(value: unknown): ModelGatewayEvent | null {
   const object = expectRecord(value);
   if (!isModelMethod(object.method)) return null;
   const metadata = expectRecord(object.metadata ?? {});
+  const requestId = validateTurnId(String(object.request_id));
+  const turnId = validateTurnId(String(object.turn_id));
+  const replyTo = validateTurnId(String(object.reply_to));
+  if (requestId !== turnId || requestId !== replyTo) throw invalid();
+  const state = exactString(object.state, ['Streaming', 'Completed', 'Cancelled', 'TimedOut', 'Failed']);
+  const expectedState: Readonly<Record<ModelGatewayEvent['method'], ModelGatewayEvent['state']>> = {
+    'model.turn.started': 'Streaming',
+    'model.output.delta': 'Streaming',
+    'model.turn.completed': 'Completed',
+    'model.turn.cancelled': 'Cancelled',
+    'model.turn.timed_out': 'TimedOut',
+    'model.turn.failed': 'Failed'
+  };
+  if (state !== expectedState[object.method]) throw invalid();
+  const toolsExecuted = nonNegativeSafeInteger(metadata.tools_executed);
+  const persistence = exactBoolean(metadata.persistence);
+  if (toolsExecuted !== 0 || persistence !== false) throw invalid();
   return {
     method: object.method,
-    sequence: Number(object.sequence),
-    reply_to: String(object.reply_to),
-    turn_id: validateTurnId(String(object.turn_id)),
-    state: String(object.state) as ModelGatewayEvent['state'],
+    sequence: nonNegativeSafeInteger(object.sequence),
+    reply_to: replyTo,
+    request_id: requestId,
+    chat_session_id: validateChatSessionId(object.chat_session_id),
+    turn_id: turnId,
+    state,
     text: typeof object.text === 'string' ? bounded(object.text, 65_536) : null,
-    model_called: metadata.model_called === true,
+    model_called: exactBoolean(metadata.model_called),
     tools_executed: 0,
     persistence: false,
-    generated_bytes: typeof metadata.generated_bytes === 'number' ? metadata.generated_bytes : 0,
-    provider_id: metadata.provider_id === 'managed-llama-cpp' ? 'managed-llama-cpp' : 'openai-compatible-local',
-    harness_id: metadata.harness_id === 'minimal' ? 'minimal' : 'native-localcomet',
-    model_id: validateModelId(String(metadata.model_id ?? 'unknown-model')),
-    binding_fingerprint: validateFingerprint(String(metadata.binding_fingerprint ?? '0'.repeat(64))),
+    generated_bytes: nonNegativeSafeInteger(metadata.generated_bytes),
+    provider_id: exactString(metadata.provider_id, ['managed-llama-cpp', 'openai-compatible-local']),
+    harness_id: exactString(metadata.harness_id, ['minimal', 'native-localcomet']),
+    model_id: validateArtifactId(String(object.model_id)),
+    binding_fingerprint: validateFingerprint(String(metadata.binding_fingerprint)),
     error: isRecord(metadata.error)
       ? {
           code: bounded(String(metadata.error.code ?? 'gateway_error'), 64),
@@ -419,7 +528,7 @@ function parseModelEvent(value: unknown): ModelGatewayEvent | null {
 }
 
 function isModelMethod(value: unknown): value is ModelGatewayEvent['method'] {
-  return typeof value === 'string' && ['model.turn.started', 'model.output.delta', 'model.turn.completed', 'model.turn.cancelled', 'model.turn.failed'].includes(value);
+  return typeof value === 'string' && ['model.turn.started', 'model.output.delta', 'model.turn.completed', 'model.turn.cancelled', 'model.turn.timed_out', 'model.turn.failed'].includes(value);
 }
 
 function validateApprovedRuntime(value: unknown): ApprovedRuntimeSummary {
@@ -619,6 +728,11 @@ function exactString<const T extends string>(value: unknown, options: readonly T
   return value as T;
 }
 
+function exactBoolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') throw invalid();
+  return value;
+}
+
 function validatePort(value: number): number {
   if (!Number.isInteger(value) || value < 1024 || value > 65535) throw invalid();
   return value;
@@ -631,6 +745,16 @@ function validateModelId(value: string): string {
 
 function validateTurnId(value: string): string {
   if (!/^[0-9a-f]{24}$/.test(value)) throw invalid();
+  return value;
+}
+
+function validateChatSessionId(value: unknown): string {
+  if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value)) throw invalid();
+  return value;
+}
+
+function validateMaxTokens(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > 512) throw invalid();
   return value;
 }
 

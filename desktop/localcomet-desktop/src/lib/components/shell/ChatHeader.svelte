@@ -3,8 +3,8 @@
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import { conversationTitleById } from '$lib/data/mockData';
   import { controlPlaneStore } from '$lib/stores/controlPlane';
-  import { modelGatewayStore } from '$lib/stores/modelGateway';
-  import { selectedConversationId, sidebarExpanded, openModelSetup, modelConnected, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
+  import { approvedManagedModelInstalled, inferenceRequestStore, managedModelReady, managedRuntimeStore, modelGatewayStore } from '$lib/stores/modelGateway';
+  import { selectedConversationId, sidebarExpanded, openModelSetup, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
   $: title = (() => {
@@ -15,10 +15,10 @@
 
   // Connection summary for header
   $: connectionSummary = (() => {
-    if ($modelGatewayStore.status === 'Generating' || $modelGatewayStore.status === 'Cancelling') return { label: $t('conn.generating'), tone: 'info' as const };
-    if ($modelGatewayStore.status === 'Failed') return { label: $t('conn.error'), tone: 'danger' as const };
-    if ($modelGatewayStore.binding) return { label: $t('conn.ready'), tone: 'ready' as const };
-    if ($modelGatewayStore.status === 'Probing' || $modelGatewayStore.status === 'Binding required') return { label: $t('conn.connecting'), tone: 'info' as const };
+    if (['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle)) return { label: $t('conn.generating'), tone: 'info' as const };
+    if ($inferenceRequestStore.lifecycle === 'failed' || $inferenceRequestStore.lifecycle === 'timed_out' || $modelGatewayStore.status === 'Failed') return { label: $t('conn.error'), tone: 'danger' as const };
+    if ($managedModelReady) return { label: $t('conn.ready'), tone: 'ready' as const };
+    if (['Validating', 'Starting'].includes($managedRuntimeStore.status?.state ?? '') || ['Validating', 'Loading'].includes($managedRuntimeStore.status?.model_state ?? '')) return { label: $t('conn.connecting'), tone: 'info' as const };
     return { label: $t('conn.not_connected'), tone: 'disabled' as const };
   })();
 
@@ -64,11 +64,11 @@
   </div>
 
   <div class="header-actions">
-    {#if !$modelConnected}
+    {#if !$managedModelReady}
       <button
         type="button"
         class="primary-button"
-        onclick={() => openModelSetup('external')}
+        onclick={() => openModelSetup($approvedManagedModelInstalled ? 'managed' : 'external')}
         aria-expanded={$modelSetupDrawerOpen}
         aria-controls="model-setup-drawer"
       >

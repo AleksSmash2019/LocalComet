@@ -1,10 +1,10 @@
 import { get, writable } from 'svelte/store';
-import { getInitialMessages, inspectorSections, modeOptions, modelOptions } from '$lib/data/mockData';
-import type { InspectorSection, MockMessage, ModeOption, ModelOption, ThemeMode } from '$lib/data/mockData';
-import { locale } from '$lib/i18n';
+import { inspectorSections, modeOptions, modelOptions } from '$lib/data/mockData';
+import type { ChatMessageState, InspectorSection, MockMessage, ModeOption, ModelOption, ThemeMode } from '$lib/data/mockData';
 import { loadUiPreferences, updateUiPreferences } from './uiPreferences';
 
 export const MAX_DRAFT_LENGTH = 1200;
+export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 
 export type WorkspaceMode = 'chat' | 'review';
 
@@ -13,7 +13,7 @@ let messageCounter = 0;
 const initialUiPreferences = loadUiPreferences();
 
 function cloneMessages(): MockMessage[] {
-  return getInitialMessages(get(locale)).map((message) => ({ ...message }));
+  return [];
 }
 
 export const themeMode = writable<ThemeMode>(initialUiPreferences.theme);
@@ -25,7 +25,8 @@ export const settingsPanelOpen = writable(false);
 export const selectedConversationId = writable(DEFAULT_CONVERSATION);
 export const selectedModel = writable<ModelOption>(modelOptions[0]);
 export const selectedMode = writable<ModeOption>('Chat');
-export const mockMessages = writable<MockMessage[]>(cloneMessages());
+export const chatMessages = writable<MockMessage[]>(cloneMessages());
+export const mockMessages = chatMessages;
 export const composerDraft = writable('');
 export const activeInspectorSection = writable<InspectorSection>(inspectorSections[0]);
 export const toolsPopoverOpen = writable(false);
@@ -99,6 +100,66 @@ export function appendMockMessage(rawDraft: string): boolean {
   ]);
   composerDraft.set('');
   return true;
+}
+
+export function appendAcceptedChatTurn(requestId: string, rawDraft: string): boolean {
+  const bounded = rawDraft.slice(0, MAX_DRAFT_LENGTH);
+  const body = bounded.trim();
+  if (!body || !/^[0-9a-f]{24}$/.test(requestId)) return false;
+  if (get(chatMessages).some((message) => message.requestId === requestId)) return false;
+
+  messageCounter += 1;
+  chatMessages.update((messages) => [
+    ...messages,
+    {
+      id: `chat-user-${messageCounter}`,
+      role: 'user',
+      body,
+      requestId
+    },
+    {
+      id: `chat-assistant-${messageCounter}`,
+      role: 'assistant',
+      body: '',
+      requestId,
+      state: 'accepted'
+    }
+  ]);
+  composerDraft.set('');
+  return true;
+}
+
+export function appendAssistantChunk(requestId: string, chunk: string): boolean {
+  if (!chunk || !/^[0-9a-f]{24}$/.test(requestId)) return false;
+  let appended = false;
+  chatMessages.update((messages) => messages.map((message) => {
+    if (message.role !== 'assistant' || message.requestId !== requestId || isTerminalMessage(message.state)) return message;
+    appended = true;
+    return {
+      ...message,
+      body: `${message.body}${chunk}`.slice(0, MAX_ASSISTANT_MESSAGE_LENGTH),
+      state: 'streaming'
+    };
+  }));
+  return appended;
+}
+
+export function finalizeAssistantMessage(
+  requestId: string,
+  state: Exclude<ChatMessageState, 'accepted' | 'streaming'>,
+  error?: string
+): boolean {
+  let finalized = false;
+  chatMessages.update((messages) => messages.map((message) => {
+    if (message.role !== 'assistant' || message.requestId !== requestId || isTerminalMessage(message.state)) return message;
+    finalized = true;
+    return { ...message, state, error: error?.slice(0, 240) };
+  }));
+  return finalized;
+}
+
+function isTerminalMessage(state: ChatMessageState | undefined): boolean {
+  return state === 'completed' || state === 'cancelled' || state === 'timed_out' || state === 'failed';
 }
 
 export function sendComposerDraft(): boolean {

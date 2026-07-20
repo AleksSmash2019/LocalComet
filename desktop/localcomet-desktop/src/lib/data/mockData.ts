@@ -3,12 +3,16 @@ export type ResolvedTheme = 'light' | 'dark';
 export type ModeOption = 'Chat' | 'Plan' | 'Agent';
 export type ModelOption = 'Not configured';
 export type MessageRole = 'user' | 'assistant';
+export type ChatMessageState = 'accepted' | 'streaming' | 'completed' | 'cancelled' | 'timed_out' | 'failed';
 export type InspectorSection = 'Обзор' | 'Телеметрия' | 'События' | 'Политика' | 'Проверка';
 
 export interface MockMessage {
   id: string;
   role: MessageRole;
   body: string;
+  requestId?: string;
+  state?: ChatMessageState;
+  error?: string;
   demo?: boolean;
 }
 

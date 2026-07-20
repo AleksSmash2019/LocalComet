@@ -4,8 +4,9 @@
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import {
     confirmBinding,
-    confirmManagedBinding,
+    connectSelectedManagedModel,
     discoverModels,
+    inferenceBusy,
     managedRuntimeStore,
     modelGatewayStore,
     probeGateway,
@@ -18,7 +19,7 @@
     startSelectedManagedRuntime,
     stopSelectedManagedRuntime
   } from '$lib/stores/modelGateway';
-  import { closeModelSetup, modelConnected, modelSetupDrawerOpen, modelSetupMode, setModelConnected } from '$lib/stores/shellStore';
+  import { closeModelSetup, modelSetupDrawerOpen, modelSetupMode } from '$lib/stores/shellStore';
   import type { HarnessId } from '$lib/types/modelGateway';
   import { t } from '$lib/i18n';
 
@@ -28,16 +29,16 @@
   $: portValid = /^\d+$/.test(portInput) && Number(portInput) >= 1024 && Number(portInput) <= 65535;
 
   // External flow state
-  $: canBindExternal = portValid && Boolean($modelGatewayStore.selectedModelId);
+  $: canBindExternal = !$inferenceBusy && portValid && Boolean($modelGatewayStore.selectedModelId);
   $: externalStep = !$modelGatewayStore.catalog ? 0 : portValid ? 1 : $modelGatewayStore.models.length ? 2 : 3;
 
   // Managed flow state
   $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
   $: managedSelectedModel = $managedRuntimeStore.catalog.find((m) => m.model_id === $managedRuntimeStore.selectedModelId);
   $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === managedSelectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
-  $: canStartManaged = Boolean(managedSelectedModel) && managedModelLaunchable && (managedState === 'Stopped' || managedState === 'Failed');
-  $: canStopManaged = managedState === 'Ready' || managedState === 'Starting' || managedState === 'Validating' || managedState === 'Failed';
-  $: canBindManaged = managedState === 'Ready' && managedModelLaunchable && Boolean($managedRuntimeStore.status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
+  $: canStartManaged = !$inferenceBusy && Boolean(managedSelectedModel) && managedModelLaunchable && (managedState === 'Stopped' || managedState === 'Failed');
+  $: canStopManaged = !$inferenceBusy && (managedState === 'Ready' || managedState === 'Starting' || managedState === 'Validating' || managedState === 'Failed');
+  $: canBindManaged = !$inferenceBusy && managedModelLaunchable && ['Stopped', 'Failed', 'Ready'].includes(managedState) && Boolean($managedRuntimeStore.selectedModelId);
   $: managedTone = managedState === 'Ready' ? 'ready' : managedState === 'Failed' ? 'danger' : managedState === 'Starting' || managedState === 'Validating' || managedState === 'Stopping' ? 'info' : 'disabled';
 
   function onPortInput(event: Event) {
@@ -70,10 +71,6 @@
 
   async function onConfirmBinding() {
     await confirmBinding();
-    if ($modelGatewayStore.binding) {
-      setModelConnected(true);
-      closeModelSetup();
-    }
   }
 
   async function onStartManaged() {
@@ -85,9 +82,8 @@
   }
 
   async function onConfirmManagedBinding() {
-    await confirmManagedBinding();
-    if ($managedRuntimeStore.binding) {
-      setModelConnected(true);
+    const connected = await connectSelectedManagedModel();
+    if (connected) {
       closeModelSetup();
     }
   }
@@ -157,17 +153,18 @@
               maxlength="5"
               value={portInput}
               oninput={onPortInput}
+              disabled={$inferenceBusy}
               aria-invalid={!portValid}
               placeholder="1234"
             />
           </label>
 
           <div class="action-row">
-            <button type="button" disabled={!portValid || $modelGatewayStore.status === 'Probing'} onclick={onProbe}>
+            <button type="button" disabled={$inferenceBusy || !portValid || $modelGatewayStore.status === 'Probing'} onclick={onProbe}>
               <Icon name="refresh" size={16} />
               <span>{$t('setup.check_server')}</span>
             </button>
-            <button type="button" disabled={!portValid || $modelGatewayStore.status === 'Probing'} onclick={onDiscover}>
+            <button type="button" disabled={$inferenceBusy || !portValid || $modelGatewayStore.status === 'Probing'} onclick={onDiscover}>
               <Icon name="search" size={16} />
               <span>{$t('setup.find_models')}</span>
             </button>
@@ -183,7 +180,7 @@
 
           <label class="form-field">
             <span>{$t('setup.model')}</span>
-            <select value={$modelGatewayStore.selectedModelId} onchange={(e) => setSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
+            <select disabled={$inferenceBusy} value={$modelGatewayStore.selectedModelId} onchange={(e) => setSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
               <option value="">{$t('setup.select_model')}</option>
               {#each $modelGatewayStore.models as model}
                 <option value={model.model_id}>{model.model_id}</option>
@@ -193,7 +190,7 @@
 
           <label class="form-field">
             <span>{$t('setup.response_mode')}</span>
-            <select value={$modelGatewayStore.harnessId} onchange={onExternalHarnessChange}>
+            <select disabled={$inferenceBusy} value={$modelGatewayStore.harnessId} onchange={onExternalHarnessChange}>
               <option value="minimal">{$t('setup.no_system_instruction')}</option>
               <option value="native-localcomet">{$t('setup.safe_mode')}</option>
             </select>
@@ -215,6 +212,7 @@
               <span>{$t('setup.binding_id')}</span>
               <code>{$modelGatewayStore.binding.binding_fingerprint}</code>
             </div>
+            <p class="field-hint">{$t('setup.external_diagnostics_only')}</p>
           {/if}
 
           {#if $modelGatewayStore.lastError}
@@ -243,7 +241,7 @@
             </div>
             <div class="status-row">
               <span class="status-label">{$t('setup.runtime_inference')}</span>
-              <span class="status-value">{$managedRuntimeStore.binding ? $t('setup.connected') : $t('setup.needs_binding')}</span>
+              <span class="status-value">{$managedRuntimeStore.status?.inference_ready && $managedRuntimeStore.status?.model_state === 'Ready' ? $t('setup.connected') : $t('setup.needs_binding')}</span>
             </div>
           </div>
 
@@ -255,7 +253,7 @@
             </div>
           {:else}
             <div class="action-row">
-              <button type="button" onclick={onRefreshManaged}>
+              <button type="button" disabled={$inferenceBusy} onclick={onRefreshManaged}>
                 <Icon name="refresh" size={16} />
                 <span>{$t('setup.refresh')}</span>
               </button>
@@ -271,7 +269,7 @@
 
             <label class="form-field">
               <span>{$t('setup.runtime_model')}</span>
-              <select value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
+              <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
                 <option value="">{$t('setup.select_local_model')}</option>
                 {#each $managedRuntimeStore.catalog as model}
                   <option value={model.model_id}>{model.display_name} ({Math.round(model.asset_bytes / 1024 / 1024)} MiB)</option>
@@ -281,7 +279,7 @@
 
             <label class="form-field">
               <span>{$t('setup.response_mode')}</span>
-              <select value={$managedRuntimeStore.harnessId} onchange={onManagedHarnessChange}>
+              <select disabled={$inferenceBusy} value={$managedRuntimeStore.harnessId} onchange={onManagedHarnessChange}>
                 <option value="minimal">{$t('setup.no_system_instruction')}</option>
                 <option value="native-localcomet">{$t('setup.safe_mode')}</option>
               </select>

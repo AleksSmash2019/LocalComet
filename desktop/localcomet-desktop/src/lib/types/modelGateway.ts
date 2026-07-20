@@ -13,6 +13,17 @@ export type GatewayStatus =
   | 'Cancelled'
   | 'Failed';
 
+export type InferenceLifecycle =
+  | 'idle'
+  | 'submitted'
+  | 'accepted'
+  | 'streaming'
+  | 'completed'
+  | 'cancelling'
+  | 'cancelled'
+  | 'timed_out'
+  | 'failed';
+
 export interface GatewayCatalog {
   readonly gateway_version: 'v6.84.5';
   readonly providers: readonly { readonly provider_id: ProviderId; readonly label: string; readonly scheme: 'http' | 'internal'; readonly host: '127.0.0.1'; readonly base_path: '/v1' }[];
@@ -56,15 +67,23 @@ export interface ModelBinding {
 }
 
 export interface ModelTurnStartResponse {
+  readonly request_id: string;
+  readonly chat_session_id: string;
   readonly turn_id: string;
-  readonly state: 'GENERATING';
-  readonly provider_id: ProviderId;
-  readonly harness_id: HarnessId;
+  readonly state: 'Accepted';
   readonly model_id: string;
+  readonly submitted_at_unix_ms: number;
+  readonly max_tokens: number;
   readonly binding_fingerprint: string;
-  readonly model_called: false;
-  readonly tools_executed: 0;
-  readonly persistence: false;
+}
+
+export interface ModelTurnCancelResponse {
+  readonly request_id: string;
+  readonly turn_id: string;
+  readonly state: 'Cancelling' | 'Cancelled';
+  readonly accepted: boolean;
+  readonly already_terminal: boolean;
+  readonly worker_alive: boolean;
 }
 
 export type ModelEventMethod =
@@ -72,14 +91,17 @@ export type ModelEventMethod =
   | 'model.output.delta'
   | 'model.turn.completed'
   | 'model.turn.cancelled'
+  | 'model.turn.timed_out'
   | 'model.turn.failed';
 
 export interface ModelGatewayEvent {
   readonly method: ModelEventMethod;
   readonly sequence: number;
   readonly reply_to: string;
+  readonly request_id: string;
+  readonly chat_session_id: string;
   readonly turn_id: string;
-  readonly state: GatewayStatus;
+  readonly state: 'Streaming' | 'Completed' | 'Cancelled' | 'TimedOut' | 'Failed';
   readonly text: string | null;
   readonly model_called: boolean;
   readonly tools_executed: 0;
@@ -98,6 +120,7 @@ export interface SanitizedGatewayError {
 }
 
 export type ManagedRuntimeState = 'NotInstalled' | 'Stopped' | 'Validating' | 'Starting' | 'Ready' | 'Stopping' | 'Failed';
+export type ManagedModelState = 'Unavailable' | 'Validating' | 'Loading' | 'Ready' | 'Failed' | 'Unloading';
 
 export interface ManagedRuntimeStatus {
   readonly engine: 'llama.cpp';
@@ -109,7 +132,28 @@ export interface ManagedRuntimeStatus {
   readonly model_id: string | null;
   readonly model_display_name: string | null;
   readonly binding_fingerprint: string | null;
+  readonly model_state: ManagedModelState;
+  readonly inference_ready: boolean;
   readonly last_error: string | null;
+}
+
+export interface InferenceRequestState {
+  readonly lifecycle: InferenceLifecycle;
+  readonly requestId: string | null;
+  readonly chatSessionId: string | null;
+  readonly modelId: string | null;
+  readonly submittedAtUnixMs: number | null;
+  readonly acceptedAtUnixMs: number | null;
+  readonly firstTokenAtUnixMs: number | null;
+  readonly terminalAtUnixMs: number | null;
+  readonly maxTokens: number | null;
+  readonly chunkCount: number;
+  readonly nextSequence: number;
+  readonly receivedContent: boolean;
+  readonly cancellationAccepted: boolean;
+  readonly terminalMethod: ModelEventMethod | null;
+  readonly rejectedEventCount: number;
+  readonly lastError: SanitizedGatewayError | null;
 }
 
 export type CatalogStatus = 'approved_internal_bootstrap';
@@ -224,6 +268,8 @@ export interface ModelReadinessSummary extends ManagedCatalogIdentity {
 
 export interface ManagedRuntimeStartResponse {
   readonly state: 'Ready';
+  readonly model_state: 'Ready';
+  readonly inference_ready: true;
   readonly provider_id: 'managed-llama-cpp';
   readonly model_id: string;
   readonly model_display_name: string;

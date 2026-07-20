@@ -123,6 +123,7 @@ function isEventMethod(value: unknown): boolean {
     'model.output.delta',
     'model.turn.completed',
     'model.turn.cancelled',
+    'model.turn.timed_out',
     'model.turn.failed'
   ]);
 }
