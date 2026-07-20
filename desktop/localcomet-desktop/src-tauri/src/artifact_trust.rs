@@ -2106,14 +2106,25 @@ mod tests {
         assert!(readiness.launchable);
 
         fs::create_dir_all(&workspace.roots().state_root).expect("create state root");
-        fs::write(
-            workspace
-                .roots()
-                .state_root
-                .join("installed-artifacts.v1.json"),
-            br#"{"approved":true,"artifact_id":"unknown-runtime","catalog_digest":"stale"}"#,
-        )
-        .expect("write hostile inventory");
+        let hostile_inventory = workspace
+            .roots()
+            .state_root
+            .join("installed-artifacts.v1.json");
+        for contents in [
+            br#"{not-json"#.as_slice(),
+            br#"{"schema_version":1,"catalog_digest":"stale","artifact_id":"unknown-runtime","relative_path":"../../outside","approved":true}"#.as_slice(),
+            br#"{"schema_version":1,"catalog_digest":"stale","artifact_id":"unknown-runtime","relative_path":"C:/outside/runtime.exe","hash_bypass":true}"#.as_slice(),
+        ] {
+            fs::write(&hostile_inventory, contents).expect("write hostile inventory");
+            assert!(service
+                .artifact_validation_status("unknown-runtime")
+                .is_err());
+            assert_eq!(service.installed_artifacts().artifacts.len(), 2);
+            assert!(service
+                .model_readiness("test-model")
+                .expect("readiness remains live-derived")
+                .launchable);
+        }
         fs::write(
             workspace.roots().model_root.join("unapproved.gguf"),
             b"GGUFunapproved",
