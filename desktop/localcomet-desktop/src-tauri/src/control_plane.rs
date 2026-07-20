@@ -1906,7 +1906,7 @@ pub async fn model_binding_set(
     if provider_id == "openai-compatible-local" {
         ensure_model_port(port.unwrap_or(0))?;
     } else if let Some(instance_id) = &runtime_instance_id {
-        ensure_id("runtime_instance_id", instance_id)?;
+        ensure_runtime_instance_id(instance_id)?;
     } else {
         return Err(BridgeError::new(
             "invalid_payload",
@@ -3335,7 +3335,15 @@ fn ensure_payload_keys(payload: &Value, expected: &[&str]) -> Result<(), BridgeE
 }
 
 fn ensure_id(name: &str, value: &str) -> Result<(), BridgeError> {
-    if value.len() == 24
+    ensure_lower_hex_id(name, value, 24)
+}
+
+fn ensure_runtime_instance_id(value: &str) -> Result<(), BridgeError> {
+    ensure_lower_hex_id("runtime_instance_id", value, 32)
+}
+
+fn ensure_lower_hex_id(name: &str, value: &str, expected_len: usize) -> Result<(), BridgeError> {
+    if value.len() == expected_len
         && value
             .chars()
             .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
@@ -3934,6 +3942,9 @@ mod tests {
     fn command_input_validation_rejects_bad_values() {
         assert!(ensure_id("turn_id", "abcdefabcdefabcdefabcdef").is_ok());
         assert!(ensure_id("turn_id", "../bad").is_err());
+        assert!(ensure_runtime_instance_id("abcdefabcdefabcdefabcdefabcdefab").is_ok());
+        assert!(ensure_runtime_instance_id("abcdefabcdefabcdefabcdef").is_err());
+        assert!(ensure_runtime_instance_id("ABCDEFABCDEFABCDEFABCDEFABCDEFAB").is_err());
         assert!(ensure_len(
             "prompt",
             &"x".repeat(MAX_PROMPT_CHARS + 1),
