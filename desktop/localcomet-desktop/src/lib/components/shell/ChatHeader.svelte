@@ -15,12 +15,13 @@
 
   // Connection summary for header
   $: connectionSummary = (() => {
-    if (['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle)) return { label: $t('conn.generating'), tone: 'info' as const };
-    if ($inferenceRequestStore.lifecycle === 'failed' || $inferenceRequestStore.lifecycle === 'timed_out' || $modelGatewayStore.status === 'Failed') return { label: $t('conn.error'), tone: 'danger' as const };
-    if ($managedModelReady) return { label: $t('conn.ready'), tone: 'ready' as const };
-    if (['Validating', 'Starting'].includes($managedRuntimeStore.status?.state ?? '') || ['Validating', 'Loading'].includes($managedRuntimeStore.status?.model_state ?? '')) return { label: $t('conn.connecting'), tone: 'info' as const };
-    return { label: $t('conn.not_connected'), tone: 'disabled' as const };
+    if (['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle)) return { label: $t('conn.request_generating'), tone: 'info' as const };
+    if ($inferenceRequestStore.lifecycle === 'failed' || $inferenceRequestStore.lifecycle === 'timed_out' || $modelGatewayStore.status === 'Failed') return { label: $t('conn.request_error'), tone: 'danger' as const };
+    if ($managedModelReady) return { label: $t('conn.model_ready'), tone: 'ready' as const };
+    if (['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') || ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '')) return { label: $t('conn.model_loading'), tone: 'info' as const };
+    return { label: $t('conn.model_unavailable'), tone: 'disabled' as const };
   })();
+  $: safeModelIdentity = $managedRuntimeStore.status?.model_display_name ?? $managedRuntimeStore.status?.model_id ?? '';
 
   $: bridgeLabel =
     $controlPlaneStore.bridgeState === 'READY'
@@ -76,7 +77,10 @@
         <span>{$t('chat.connect_model')}</span>
       </button>
     {:else}
-      <StatusBadge label={$t('conn.model_connected')} tone="ready" />
+      <div class="ready-details" title={safeModelIdentity}>
+        <StatusBadge label={$t('conn.runtime_ready')} tone="ready" />
+        <span>{safeModelIdentity}</span>
+      </div>
     {/if}
 
     <button
@@ -150,6 +154,23 @@
     gap: var(--lc-space-2);
   }
 
+  .ready-details {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--lc-space-2);
+  }
+
+  .ready-details > span {
+    max-width: 180px;
+    overflow: hidden;
+    color: var(--lc-muted);
+    font-family: var(--lc-mono);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .primary-button {
     display: inline-flex;
     align-items: center;
@@ -187,6 +208,10 @@
 
     .primary-button {
       padding: 0 var(--lc-space-2);
+    }
+
+    .ready-details > span {
+      display: none;
     }
   }
 </style>

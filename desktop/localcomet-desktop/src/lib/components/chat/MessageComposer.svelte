@@ -22,6 +22,9 @@
   $: totalMs = $inferenceRequestStore.submittedAtUnixMs && $inferenceRequestStore.terminalAtUnixMs
     ? Math.max(0, $inferenceRequestStore.terminalAtUnixMs - $inferenceRequestStore.submittedAtUnixMs)
     : null;
+  $: requestErrorKey = $inferenceRequestStore.lifecycle === 'timed_out'
+    ? 'chat.request_timed_out_detail'
+    : 'chat.request_failed_detail';
   $: {
     const generatingNow = isGenerating;
     if (previouslyGenerating && !generatingNow) {
@@ -124,7 +127,7 @@
       </button>
     </div>
     {#if $inferenceRequestStore.lastError}
-      <p class="request-error" role="status">{$inferenceRequestStore.lastError.message}</p>
+      <p class="request-error" role="status">{$t(requestErrorKey)}</p>
     {/if}
     {#if $inferenceRequestStore.requestId}
       <p class="request-metrics" data-request-id={$inferenceRequestStore.requestId}>

@@ -5,13 +5,18 @@
   export let detail: string;
   export let actionLabel: string | undefined = undefined;
   export let onAction: (() => void) | undefined = undefined;
+  export let busy = false;
+  export let statusLabel: string | undefined = undefined;
 </script>
 
-<div class="empty-state">
+<div class="empty-state" aria-busy={busy} aria-live="polite">
   <LocalCometLogo size={42} labelled={false} />
   <div>
     <h2>{title}</h2>
     <p>{detail}</p>
+    {#if statusLabel}
+      <span class:busy class="state-label">{statusLabel}</span>
+    {/if}
     {#if actionLabel && onAction}
       <button type="button" class="primary-button" onclick={onAction}>
         {actionLabel}
@@ -61,5 +66,23 @@
 
   .primary-button:hover {
     background: var(--lc-accent-strong);
+  }
+
+  .state-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--lc-space-2);
+    margin-top: var(--lc-space-3);
+    color: var(--lc-muted);
+    font-size: 12px;
+    font-weight: 760;
+  }
+
+  .state-label.busy::before {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--lc-accent);
+    content: '';
   }
 </style>

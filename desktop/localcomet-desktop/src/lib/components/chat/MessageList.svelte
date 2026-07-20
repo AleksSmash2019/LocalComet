@@ -1,19 +1,43 @@
 <script lang="ts">
   import EmptyState from '$lib/components/common/EmptyState.svelte';
-  import { chatMessages, openModelSetup } from '$lib/stores/shellStore';
-  import { approvedManagedModelInstalled, managedModelReady } from '$lib/stores/modelGateway';
+  import { chatMessages, openModelSetup, selectedConversationId } from '$lib/stores/shellStore';
+  import {
+    approvedManagedModelInstalled,
+    inferenceBusy,
+    managedModelReady,
+    managedRuntimeStore,
+    retryLocalModelTurn
+  } from '$lib/stores/modelGateway';
   import { t } from '$lib/i18n';
 
-  $: showEmptyState = !$managedModelReady && $chatMessages.length === 0;
+  $: showEmptyState = $chatMessages.length === 0;
+  $: modelLoading = ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') ||
+    ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '');
+  $: emptyTitleKey = $managedModelReady
+    ? 'chat.first_use_ready'
+    : modelLoading
+      ? 'chat.model_loading'
+      : 'chat.model_unavailable';
+  $: emptyDetailKey = $managedModelReady
+    ? 'chat.first_use_detail'
+    : modelLoading
+      ? 'chat.model_loading_detail'
+      : 'chat.model_unavailable_detail';
+
+  function stateKey(state: string): string {
+    return `chat.state_${state}`;
+  }
 </script>
 
 <section class="message-list" aria-label={$t('chat.message_history')}>
   {#if showEmptyState}
     <EmptyState
-      title={$t('chat.model_not_connected')}
-      detail={$t('chat.model_not_connected_detail')}
-      actionLabel={$t('chat.connect_model')}
-      onAction={() => openModelSetup($approvedManagedModelInstalled ? 'managed' : 'external')}
+      title={$t(emptyTitleKey)}
+      detail={$t(emptyDetailKey)}
+      busy={modelLoading}
+      statusLabel={modelLoading ? $t('chat.model_loading_status') : $managedModelReady ? $t('chat.local_only_status') : undefined}
+      actionLabel={!$managedModelReady && !modelLoading ? $t('chat.connect_model') : undefined}
+      onAction={!$managedModelReady && !modelLoading ? () => openModelSetup($approvedManagedModelInstalled ? 'managed' : 'external') : undefined}
     />
   {:else}
     {#each $chatMessages as message}
@@ -28,7 +52,19 @@
           </div>
           <p>{message.body}</p>
           {#if message.role === 'assistant' && message.state && message.state !== 'completed'}
-            <span class="request-state" data-state={message.state}>{message.error ?? message.state}</span>
+            <div class="request-result">
+              <span class="request-state" data-state={message.state}>{$t(stateKey(message.state))}</span>
+              {#if ['cancelled', 'timed_out', 'failed'].includes(message.state)}
+                <button
+                  type="button"
+                  class="retry-button"
+                  disabled={$inferenceBusy || !$managedModelReady}
+                  onclick={() => void retryLocalModelTurn(message.requestId ?? '', $selectedConversationId)}
+                >
+                  {$t('chat.retry')}
+                </button>
+              {/if}
+            </div>
           {/if}
         </div>
       </article>
@@ -112,6 +148,35 @@
     color: var(--lc-muted);
     font-size: 11px;
     font-family: var(--lc-mono);
+  }
+
+  .request-result {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--lc-space-2);
+    margin-top: var(--lc-space-2);
+  }
+
+  .request-result .request-state {
+    margin-top: 0;
+  }
+
+  .retry-button {
+    min-height: 30px;
+    padding: 0 var(--lc-space-3);
+    border: var(--border-thin);
+    border-radius: var(--lc-radius-sm);
+    background: var(--lc-panel-soft);
+    color: var(--lc-text);
+    font-size: 12px;
+    font-weight: 760;
+    cursor: pointer;
+  }
+
+  .retry-button:disabled {
+    color: var(--lc-faint);
+    cursor: not-allowed;
   }
 
   @media (max-width: 680px) {

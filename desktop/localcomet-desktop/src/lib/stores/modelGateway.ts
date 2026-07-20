@@ -41,6 +41,7 @@ import type {
 import {
   appendAcceptedChatTurn,
   appendAssistantChunk,
+  chatMessages,
   finalizeAssistantMessage,
   setModelConnected
 } from '$lib/stores/shellStore';
@@ -807,6 +808,16 @@ export async function cancelLocalModelTurn(): Promise<void> {
       terminalizeCurrentRequest('failed', 'model.turn.failed', normalizeGatewayError(error));
     }
   }
+}
+
+export async function retryLocalModelTurn(requestId: string, chatSessionId = 'local-chat'): Promise<boolean> {
+  if (!/^[0-9a-f]{24}$/.test(requestId) || get(inferenceBusy) || !get(managedModelReady)) return false;
+  const messages = get(chatMessages);
+  const assistant = messages.find((message) => message.role === 'assistant' && message.requestId === requestId);
+  if (!assistant || !['cancelled', 'timed_out', 'failed'].includes(assistant.state ?? '')) return false;
+  const prompt = messages.find((message) => message.role === 'user' && message.requestId === requestId)?.body;
+  if (!prompt) return false;
+  return startLocalModelTurn(prompt, chatSessionId);
 }
 
 export function applyModelGatewayEvent(event: ModelGatewayEvent): void {
