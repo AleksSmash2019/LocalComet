@@ -1,27 +1,17 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
-  import KnowledgePreviewPanel from '$lib/components/knowledge/KnowledgePreviewPanel.svelte';
   import KnowledgeToggle from '$lib/components/knowledge/KnowledgeToggle.svelte';
-  import { appendMockMessage, composerDraft, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
+  import { composerDraft, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
-  import { createPendingKnowledgeTurn, controlPlaneStore } from '$lib/stores/controlPlane';
-  import { knowledgePreviewStore, prepareProjectKnowledge } from '$lib/stores/knowledgePreview';
   import { cancelLocalModelTurn, inferenceRequestStore, managedModelReady, startLocalModelTurn } from '$lib/stores/modelGateway';
 
   let textarea: HTMLTextAreaElement;
   let restoreComposerFocus = false;
   let previouslyGenerating = false;
 
-  $: knowledgeLocked = ['RETRIEVING', 'PREVIEW_READY', 'DECIDING', 'DISPATCHING'].includes($knowledgePreviewStore.lifecycle);
   $: isGenerating = ['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle);
-  $: canSend = $managedModelReady && Boolean($composerDraft.trim()) && !isGenerating && !knowledgeLocked && (!$knowledgePreviewStore.enabled || $controlPlaneStore.bridgeState === 'READY');
-  $: firstTokenMs = $inferenceRequestStore.submittedAtUnixMs && $inferenceRequestStore.firstTokenAtUnixMs
-    ? Math.max(0, $inferenceRequestStore.firstTokenAtUnixMs - $inferenceRequestStore.submittedAtUnixMs)
-    : null;
-  $: totalMs = $inferenceRequestStore.submittedAtUnixMs && $inferenceRequestStore.terminalAtUnixMs
-    ? Math.max(0, $inferenceRequestStore.terminalAtUnixMs - $inferenceRequestStore.submittedAtUnixMs)
-    : null;
+  $: canSend = $managedModelReady && Boolean($composerDraft.trim()) && !isGenerating;
   $: requestErrorKey = $inferenceRequestStore.lifecycle === 'timed_out'
     ? 'chat.request_timed_out_detail'
     : 'chat.request_failed_detail';
@@ -68,14 +58,6 @@
     if (!canSend) return;
     restoreComposerFocus = true;
     const draft = $composerDraft;
-    if ($knowledgePreviewStore.enabled) {
-      const turn = await createPendingKnowledgeTurn(draft);
-      if (!turn) return;
-      if (!appendMockMessage(draft)) return;
-      resizeDraftBox();
-      await prepareProjectKnowledge(turn.turn_id, draft);
-      return;
-    }
     await startLocalModelTurn(draft, $selectedConversationId);
     await restoreFocusAfterRequest();
     resizeDraftBox();
@@ -90,21 +72,9 @@
 </script>
 
 <div class="composer-region">
-  <KnowledgePreviewPanel />
   <form class="composer-wrap" aria-label={$t('chat.type_message')} onsubmit={(event) => event.preventDefault()}>
     <KnowledgeToggle />
     <div class="composer card-surface">
-      <div class="tools-wrap">
-        <button
-          type="button"
-          class="icon-button"
-          aria-label={$t('chat.tools_unavailable')}
-          disabled
-        >
-          <Icon name="tool" />
-        </button>
-      </div>
-
       <label class="sr-only" for="composer-draft">{$t('chat.type_message')}</label>
       <textarea
         id="composer-draft"
@@ -113,7 +83,7 @@
         maxlength="12000"
         rows="1"
         placeholder={$managedModelReady ? (isGenerating ? $t('chat.model_responding') : $t('chat.type_message')) : $t('chat.connect_model_first')}
-        disabled={!$managedModelReady || isGenerating || knowledgeLocked}
+        disabled={!$managedModelReady || isGenerating}
         oninput={(event) => {
           setComposerDraft(event.currentTarget.value);
           resizeDraftBox();
@@ -128,11 +98,6 @@
     </div>
     {#if $inferenceRequestStore.lastError}
       <p class="request-error" role="status">{$t(requestErrorKey)}</p>
-    {/if}
-    {#if $inferenceRequestStore.requestId}
-      <p class="request-metrics" data-request-id={$inferenceRequestStore.requestId}>
-        {$inferenceRequestStore.lifecycle} · chunks {$inferenceRequestStore.chunkCount} · first {firstTokenMs ?? '—'} ms · total {totalMs ?? '—'} ms
-      </p>
     {/if}
   </form>
 </div>
@@ -153,21 +118,11 @@
   .composer {
     min-height: 66px;
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
     gap: var(--lc-space-2);
     padding: var(--lc-space-3);
     box-shadow: var(--lc-shadow);
-  }
-
-  .icon-button {
-    width: 40px;
-    display: grid;
-    place-items: center;
-  }
-
-  .tools-wrap {
-    position: relative;
   }
 
   textarea {
@@ -213,13 +168,6 @@
     color: var(--lc-danger);
     font-size: 12px;
     font-weight: 700;
-  }
-
-  .request-metrics {
-    margin: var(--lc-space-2) 0 0;
-    color: var(--lc-muted);
-    font-family: var(--lc-mono);
-    font-size: 11px;
   }
 
   @media (max-width: 760px) {
