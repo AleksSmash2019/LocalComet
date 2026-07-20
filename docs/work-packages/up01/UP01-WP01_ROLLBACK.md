@@ -32,3 +32,14 @@ UP01 does not change installer architecture or scope. If installed-smoke validat
 ## Rehearsal acceptance
 
 A disposable clone/worktree rollback rehearsal must show that reverting the UP01 commit range restores the exact UP00 source tree, aside from ignored build output, and that no backend, IPC, Vault, or data migration step is needed.
+
+## Recorded rehearsal
+
+- Disposable clone: `C:\Users\DNS\Documents\LocalComet-UP01-WP01-Rollback-20260720T100932Z`
+- Feature implementation HEAD: `4698211c50058b1c4ffc6669c576bedc65871f4a`
+- Base: `821d49c2130bfacb8dcb5ccd5371bd0a24105497`
+- Command: `git revert --no-commit 821d49c2130bfacb8dcb5ccd5371bd0a24105497..4698211c50058b1c4ffc6669c576bedc65871f4a`
+- Result: exit 0, zero conflicts, five commits reverted by the sequencer.
+- Base tree and reverted index tree: `a34f5e50e23c4a5c1c097fbd53c82bce674920d0`.
+- Tracked tree vs base, index vs base, and worktree vs index comparisons all returned exit 0.
+- The inverse changes remain staged only in the disposable clone; the canonical feature repository remained clean and unchanged.

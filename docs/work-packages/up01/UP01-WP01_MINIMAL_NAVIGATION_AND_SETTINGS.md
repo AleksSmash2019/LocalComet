@@ -14,7 +14,7 @@ This work package inherits the prospective governance ratification and authority
 
 Make the desktop navigation calm and truthful by showing only the LocalComet identity, Chat, and Settings in the primary rail. Add a functional Settings drawer that consolidates theme, language, and Diagnostics controls. Remove visible placeholder promises and repair Diagnostics row overflow without changing chat, model connection, Control Plane, backend, IPC, Vault, or installer architecture.
 
-The current UI exposes disabled Tasks and Settings actions, a Diagnostics rail action that does not open Diagnostics, a separate Review Center rail action, reserved Audit/Documents sidebar rows, and duplicate language/theme controls. Diagnostics close state and long telemetry rows are also inconsistent at desktop and narrow widths.
+The UP00 baseline UI exposes disabled Tasks and Settings actions, a Diagnostics rail action that does not open Diagnostics, a separate Review Center rail action, reserved Audit/Documents sidebar rows, and duplicate language/theme controls. Diagnostics close state and long telemetry rows are also inconsistent at desktop and narrow widths.
 
 ## Exact scope
 
@@ -41,7 +41,7 @@ The current UI exposes disabled Tasks and Settings actions, a Diagnostics rail a
 | Review Center | Functional `review` workspace | Hide from the minimal rail; preserve all underlying view code |
 | Settings | Disabled placeholder with `later` / `позже` | Replace with functional bottom rail action |
 
-### Current state sources
+### Baseline state sources
 
 - Theme: `themeMode` in `src/lib/stores/shellStore.ts`; resolved against `prefers-color-scheme` by `AppShell.svelte`; tokens live in `src/app.css`; currently memory-only.
 - Locale: `locale` in `src/lib/i18n/index.ts`; currently persisted defensively under `localcomet.ui.language`.
@@ -83,12 +83,13 @@ The frontend-only record is:
 - No prompts, chat content, model data, credentials, paths, tokens, Vault data, or machine-specific values are stored.
 - No backend write, Tauri command, IPC request, network request, migration framework, or telemetry is introduced.
 
-## Proposed files
+## Implemented files
 
 Create:
 
 - `desktop/localcomet-desktop/src/lib/components/shell/SettingsPanel.svelte`
 - `desktop/localcomet-desktop/src/lib/stores/uiPreferences.ts`
+- `desktop/localcomet-desktop/tests/settings.test.ts`
 - `desktop/localcomet-desktop/tests/uiPreferences.test.ts`
 
 Modify:
@@ -98,12 +99,14 @@ Modify:
 - `desktop/localcomet-desktop/src/lib/components/shell/ConversationSidebar.svelte`
 - `desktop/localcomet-desktop/src/lib/components/shell/ChatHeader.svelte`
 - `desktop/localcomet-desktop/src/lib/components/agent/Diagnostics.svelte`
+- `desktop/localcomet-desktop/src/lib/components/common/EventStream.svelte`
 - `desktop/localcomet-desktop/src/lib/components/common/TelemetryRow.svelte`
 - `desktop/localcomet-desktop/src/lib/stores/shellStore.ts`
 - `desktop/localcomet-desktop/src/lib/i18n/index.ts`
 - `desktop/localcomet-desktop/src/lib/i18n/en.ts`
 - `desktop/localcomet-desktop/src/lib/i18n/ru.ts`
 - `desktop/localcomet-desktop/src/lib/version.ts`
+- `desktop/localcomet-desktop/src/app.css`
 - relevant bounded frontend tests under `desktop/localcomet-desktop/tests/`
 - the four UP01 work-package documents in this directory
 
@@ -139,6 +142,16 @@ The following remain unchanged:
 - Diagnostics labels and values remain separated with no overlap at 100% and 125% scaling equivalents.
 - Diagnostics remains scrollable and its close control remains visible.
 - Chat layout, model connection, title bar, Control Plane status, typography, icons, and color tokens remain recognizable and functional.
+
+## Acceptance outcome
+
+- Frontend validation: 12 test files and 202 tests passed; `svelte-check` reported 0 errors and one pre-existing warning in the unrendered legacy `LanguageSwitcher.svelte`; the production build passed.
+- Browser acceptance: Chat and Settings were the only interactive rail actions; mouse, Enter, Space, `Ctrl+,`, Escape, close-focus restoration, theme, locale, Diagnostics, persistence, and defensive preference behavior passed.
+- Layout acceptance: Settings and Diagnostics had no horizontal overflow at 1280, 1024 (125% CSS-pixel equivalent), or 800 CSS pixels. Seventeen Diagnostics rows had no measured label/value overlap, and the close control remained visible while scrolled.
+- Authority boundary: the diff contains no Python, Rust, Tauri command, IPC, backend/Vault write, network, telemetry, model-runtime, shell-authority, or installer-architecture change.
+- Installer regression: the unchanged UP00 packaging command built `LocalComet_0.0.0_x64-setup.exe` from implementation commit `4698211c50058b1c4ffc6669c576bedc65871f4a`; size 12,272,900 bytes; SHA-256 `25f4524b7bd897bccfedc128a2ae36c217c5b3884b9c082f4652efa8a5a003b7`; Authenticode status `NotSigned`.
+- Installed smoke: Start Menu app identity `com.localcomet.desktop` launched one LocalComet window; Control Plane reached Connected; model-connect remained available; Light, English, and open Diagnostics persisted across restart; duplicate launch remained single-window; normal close left no `LocalComet` or `localcomet-core` process.
+- Rollback rehearsal: reverting `821d49c2130bfacb8dcb5ccd5371bd0a24105497..4698211c50058b1c4ffc6669c576bedc65871f4a` in a disposable clone completed without conflict and reproduced the exact base tree `a34f5e50e23c4a5c1c097fbd53c82bce674920d0`.
 
 ## Rollback
 

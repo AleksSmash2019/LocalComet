@@ -101,3 +101,26 @@ After frontend acceptance and clean commits:
 ## Evidence outputs
 
 Write only bounded reports and screenshots to the external UP01 evidence directory. Do not commit screenshots, source copies, environment dumps, credentials, personal prompts, or Vault content.
+
+## Recorded result
+
+| Gate | Result |
+| --- | --- |
+| Validated implementation commit | `4698211c50058b1c4ffc6669c576bedc65871f4a` |
+| `npm test` | PASS — 12 files, 202 tests |
+| `npm run check` | PASS — 0 errors; 1 pre-existing warning in unrendered legacy `LanguageSwitcher.svelte` |
+| `npm run build` | PASS — static production bundle generated |
+| UP00 sidecar guard suite | PASS — 225 checks |
+| Cargo format/check/clippy | PASS — offline, no clippy warnings |
+| Cargo tests | PASS — 31 tests |
+| Navigation/settings keyboard flow | PASS — mouse, Enter, Space, `Ctrl+,`, Escape, and focus return |
+| Preference validation | PASS — valid, invalid, unknown, failure, persistence, and legacy locale cases |
+| Accessibility | PASS — semantic names/states, focus, close reachability, no focus trap |
+| Layout | PASS — 1280, 1024, and 800 CSS-pixel widths; no row overlap or horizontal overflow |
+| Authority-negative scan | PASS — no backend, IPC, Vault, network, telemetry, shell, or model authority added |
+| Installer | PASS — `LocalComet_0.0.0_x64-setup.exe`, 12,272,900 bytes, SHA-256 `25f4524b7bd897bccfedc128a2ae36c217c5b3884b9c082f4652efa8a5a003b7`, Authenticode `NotSigned`, `UNSIGNED_INTERNAL_BUILD` |
+| Installed Start Menu smoke | PASS — `com.localcomet.desktop`, Connected control plane, model-connect present, persisted preferences, clean shutdown |
+| Duplicate launch | PASS — one LocalComet window |
+| Rollback rehearsal | PASS — conflict-free inverse range reproduced the exact UP00 base tree |
+
+The installer helper's frozen branch guard was satisfied only inside a clean external packaging clone by assigning its required predecessor branch name to the exact UP01 implementation commit. The canonical feature branch was not renamed or moved, and the helper, installer architecture, install scope, and shortcut behavior were unchanged. An initial ordinary Windows clone was rejected by the frozen-file hash guard because global `core.autocrlf=true` changed a guarded working-tree hash; the successful clone used `core.autocrlf=false` so checked-out bytes matched the canonical blobs.
