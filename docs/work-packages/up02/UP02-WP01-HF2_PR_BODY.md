@@ -15,7 +15,7 @@ The preview and decision pipeline is implemented, but production adapter constru
 
 ## Verification
 
-Focused visible-control/knowledge/layout tests precede one complete affected frontend, Rust/Tauri, and backend pass. One final unsigned internal NSIS installer is then used for installed smoke and process cleanup. External evidence records all controls and results.
+Focused visible-control/knowledge/layout tests passed before one complete frontend, Rust/Tauri, and backend pass. The final unsigned internal NSIS installer passed Start Menu launch, two real-model responses, Stop/Retry, transcript scrolling, composer reachability, narrow-window layout, and orphan-free shutdown. External evidence records all controls and results.
 
 ## Distribution
 

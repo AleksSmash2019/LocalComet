@@ -23,3 +23,16 @@ Launch the final installed package from Start Menu. Verify the minimal rail and 
 - Project Knowledge preview requests from production unavailable UI: 0
 - new authorities: 0
 - affected regression failures: 0
+
+## Recorded results
+
+- Focused frontend: 5 files / 69 tests passed.
+- Complete frontend: 17 files / 262 tests passed.
+- Svelte/type check: 0 errors; one pre-existing LanguageSwitcher listbox tabindex warning.
+- Frontend production build: passed.
+- Sidecar supervisor: 225 checks passed.
+- Rust: fmt, locked/offline check, warnings-denied Clippy, and 75 tests passed; 2 owner-artifact tests ignored as designed.
+- Backend knowledge/security/chat: 86 + 86 + 5 + 7 + 13 tests passed; changed Python files compiled.
+- Layout matrix: 1920×1080, 1366×768, 1280×720, and 1024×640 CSS-equivalent viewports at 100%, 125%, and 150% equivalents passed.
+- Installed acceptance: 2048×1152 logical desktop on a 2560×1440 display (125% effective ratio) plus a 1024-pixel-wide snapped window passed. Composer remained above the taskbar with no horizontal or outer-page overflow.
+- Installed local model: first and second responses passed; Stop, stable partial cancellation, Retry, mouse/keyboard/drag scrolling, near-bottom follow, and clean shutdown passed.

@@ -30,3 +30,15 @@ HF2 does not add Vault, repository, file, RAG, memory, indexing, or generic IPC 
 ## Explicit exclusions
 
 No redesign, Agent, Computer Use, Browser, Swiss Knife, patch execution, cloud inference, network access, download, Vault read, repository-to-model context, arbitrary filesystem access, shell, or new IPC.
+
+## Final implementation and acceptance
+
+- Production navigation contains brand, Chat, and the recognizable Settings gear; the fixture-only cancellation conversation is not rendered.
+- Duplicate version/developer badges, disabled placeholder controls, no-op diagnostics tabs/demo controls, and request telemetry outside Diagnostics are absent.
+- Settings retains language, appearance, functional Diagnostics, About version/build, and the truthful available/unavailable capability summary.
+- Project Knowledge is a localized non-interactive unavailable state in both English and Russian. It sends no project data, does not claim long-term memory, and does not block ordinary chat.
+- The final installed build connected the owner-provisioned Qwen2.5 1.5B managed model, returned two real truthful Russian answers, preserved progressive streaming, accepted Stop, preserved the partial response, and completed Retry.
+- The transcript scrolled by mouse wheel, scrollbar drag, PageUp/PageDown, Home/End; manual upward reading was not reset during streaming and returning to the bottom resumed follow behavior. The composer stayed visible in maximized and 1024-pixel-wide snapped windows.
+- Clean application exit left no LocalComet, localcomet-core, or llama-server process.
+
+Final installer: `LocalComet_0.0.0_x64-setup.exe`, 12,536,287 bytes, SHA-256 `9ac01a6218da251b7ec24772320af22de535d68c17e5d8529b01e7d48fb8ca34`.
