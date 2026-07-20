@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const DESKTOP_STATUS_BRIDGE_VERSION: &str = "v6.84.5.1";
+const LOCALCOMET_PACKAGE_METADATA: &str = include_str!("../../package.json");
 pub const CONTROL_PLANE_EVENT_CHANNEL: &str = "localcomet://control-plane-event";
 pub const MAX_IN_FLIGHT_REQUESTS: usize = 32;
 pub const HARD_MAX_IN_FLIGHT_REQUESTS: usize = 64;
@@ -216,6 +217,91 @@ pub struct UiControlPlaneEvent {
     pub kind: Option<String>,
     pub text: Option<String>,
     pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct AssistantApplicationContext {
+    name: &'static str,
+    mode: &'static str,
+    version: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct AssistantConversationContext {
+    locale: String,
+    project_context_available: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct AssistantCapabilities {
+    local_chat: bool,
+    local_model_inference: bool,
+    internet: bool,
+    email: bool,
+    browser: bool,
+    filesystem: bool,
+    vault: bool,
+    computer_use: bool,
+    shell: bool,
+    tools: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct AssistantContext {
+    application: AssistantApplicationContext,
+    conversation: AssistantConversationContext,
+    capabilities: AssistantCapabilities,
+}
+
+impl AssistantContext {
+    fn trusted(locale: &str) -> Result<Self, BridgeError> {
+        if !matches!(locale, "ru" | "en") {
+            return Err(BridgeError::new(
+                "invalid_payload",
+                "assistant locale is unsupported",
+            ));
+        }
+        Ok(Self {
+            application: AssistantApplicationContext {
+                name: "LocalComet",
+                mode: "local_offline_desktop_assistant",
+                version: application_version_from_package_metadata()?,
+            },
+            conversation: AssistantConversationContext {
+                locale: locale.to_owned(),
+                project_context_available: false,
+            },
+            capabilities: AssistantCapabilities {
+                local_chat: true,
+                local_model_inference: true,
+                internet: false,
+                email: false,
+                browser: false,
+                filesystem: false,
+                vault: false,
+                computer_use: false,
+                shell: false,
+                tools: Vec::new(),
+            },
+        })
+    }
+}
+
+fn application_version_from_package_metadata() -> Result<String, BridgeError> {
+    let metadata: Value = serde_json::from_str(LOCALCOMET_PACKAGE_METADATA)
+        .map_err(|_| BridgeError::new("invalid_payload", "application metadata is invalid"))?;
+    let raw = metadata
+        .get("version")
+        .and_then(Value::as_str)
+        .ok_or_else(|| BridgeError::new("invalid_payload", "application version is missing"))?;
+    let version = raw.strip_prefix("0.0.0-").unwrap_or(raw);
+    if version != DESKTOP_STATUS_BRIDGE_VERSION {
+        return Err(BridgeError::new(
+            "invalid_payload",
+            "application version metadata is inconsistent",
+        ));
+    }
+    Ok(version.to_owned())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -634,6 +720,7 @@ impl ControlPlaneBridge {
         self: &Arc<Self>,
         identity: ModelRequestIdentity,
         prompt: String,
+        assistant_context: AssistantContext,
     ) -> Result<Value, BridgeError> {
         let payload = json!({
             "request_id": identity.request_id,
@@ -642,6 +729,7 @@ impl ControlPlaneBridge {
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
             "prompt": prompt,
+            "assistant_context": assistant_context,
             "binding_fingerprint": identity.binding_fingerprint,
         });
         let response = match self.request_reserved_model_start(&identity.request_id, payload) {
@@ -1946,6 +2034,7 @@ pub async fn model_turn_start(
     submitted_at_unix_ms: u64,
     max_tokens: u16,
     prompt: String,
+    locale: String,
     binding_fingerprint: String,
 ) -> Result<Value, BridgeError> {
     ensure_request_id(&request_id)?;
@@ -1964,6 +2053,7 @@ pub async fn model_turn_start(
         ));
     }
     ensure_model_prompt(&prompt)?;
+    let assistant_context = AssistantContext::trusted(&locale)?;
     ensure_fingerprint(&binding_fingerprint)?;
     let identity = ModelRequestIdentity {
         request_id,
@@ -1987,7 +2077,7 @@ pub async fn model_turn_start(
                 .remove(&identity.request_id);
             return Err(error);
         }
-        worker_state.request_model_turn_reserved(identity, prompt)
+        worker_state.request_model_turn_reserved(identity, prompt, assistant_context)
     })
     .await
     {
@@ -3056,6 +3146,7 @@ fn validate_payload_for_method(
                 "submitted_at_unix_ms",
                 "max_tokens",
                 "prompt",
+                "assistant_context",
                 "binding_fingerprint",
             ],
         ),
@@ -4101,6 +4192,7 @@ mod tests {
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
             "prompt": "hello",
+            "assistant_context": AssistantContext::trusted("ru").unwrap(),
             "binding_fingerprint": identity.binding_fingerprint,
         });
         assert!(validate_payload_for_method(ControlPlaneMethod::ModelTurnStart, &payload).is_ok());
@@ -4217,6 +4309,34 @@ mod tests {
             pending_knowledge_model(ControlPlaneMethod::KnowledgeTurnDecide, &cancel_payload)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn assistant_context_is_trusted_typed_and_fail_closed() {
+        let russian = AssistantContext::trusted("ru").unwrap();
+        let english = AssistantContext::trusted("en").unwrap();
+        assert_eq!(russian.application.name, "LocalComet");
+        assert_eq!(russian.application.mode, "local_offline_desktop_assistant");
+        assert_eq!(russian.application.version, DESKTOP_STATUS_BRIDGE_VERSION);
+        assert_eq!(russian.conversation.locale, "ru");
+        assert_eq!(english.conversation.locale, "en");
+        assert!(!russian.conversation.project_context_available);
+        assert!(russian.capabilities.local_chat);
+        assert!(russian.capabilities.local_model_inference);
+        assert!(!russian.capabilities.internet);
+        assert!(!russian.capabilities.email);
+        assert!(!russian.capabilities.browser);
+        assert!(!russian.capabilities.filesystem);
+        assert!(!russian.capabilities.vault);
+        assert!(!russian.capabilities.computer_use);
+        assert!(!russian.capabilities.shell);
+        assert!(russian.capabilities.tools.is_empty());
+        assert!(AssistantContext::trusted("fr").is_err());
+
+        let serialized = serde_json::to_string(&russian).unwrap();
+        assert!(!serialized.contains("C:\\"));
+        assert!(!serialized.contains("/home/"));
+        assert!(!serialized.to_ascii_lowercase().contains("secret"));
     }
 
     #[test]

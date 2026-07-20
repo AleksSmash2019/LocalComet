@@ -58,7 +58,26 @@ TURN_START_PAYLOAD_KEYS = frozenset(
         "submitted_at_unix_ms",
         "max_tokens",
         "prompt",
+        "assistant_context",
         "binding_fingerprint",
+    )
+)
+
+LOCALCOMET_APPLICATION_VERSION = "v6.84.5.1"
+ASSISTANT_CONTEXT_APPLICATION_KEYS = frozenset(("name", "mode", "version"))
+ASSISTANT_CONTEXT_CONVERSATION_KEYS = frozenset(("locale", "project_context_available"))
+ASSISTANT_CONTEXT_CAPABILITY_KEYS = frozenset(
+    (
+        "local_chat",
+        "local_model_inference",
+        "internet",
+        "email",
+        "browser",
+        "filesystem",
+        "vault",
+        "computer_use",
+        "shell",
+        "tools",
     )
 )
 TURN_CANCEL_PAYLOAD_KEYS = frozenset(("request_id",))
@@ -154,7 +173,129 @@ class TurnRequest:
     submitted_at_unix_ms: int
     max_tokens: int
     prompt: str
+    assistant_context: "AssistantContext"
     binding_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
+class AssistantContext:
+    application_name: str
+    application_mode: str
+    application_version: str
+    locale: str
+    project_context_available: bool
+    local_chat: bool
+    local_model_inference: bool
+    internet: bool
+    email: bool
+    browser: bool
+    filesystem: bool
+    vault: bool
+    computer_use: bool
+    shell: bool
+    tools: tuple[str, ...]
+
+
+def _expected_assistant_context(locale: str) -> AssistantContext:
+    if locale not in {"ru", "en"}:
+        raise GatewayError("invalid_payload", "assistant locale is unsupported")
+    return AssistantContext(
+        application_name="LocalComet",
+        application_mode="local_offline_desktop_assistant",
+        application_version=LOCALCOMET_APPLICATION_VERSION,
+        locale=locale,
+        project_context_available=False,
+        local_chat=True,
+        local_model_inference=True,
+        internet=False,
+        email=False,
+        browser=False,
+        filesystem=False,
+        vault=False,
+        computer_use=False,
+        shell=False,
+        tools=(),
+    )
+
+
+def trusted_assistant_context_payload(locale: str) -> dict[str, Any]:
+    context = _expected_assistant_context(locale)
+    return {
+        "application": {
+            "name": context.application_name,
+            "mode": context.application_mode,
+            "version": context.application_version,
+        },
+        "conversation": {
+            "locale": context.locale,
+            "project_context_available": context.project_context_available,
+        },
+        "capabilities": {
+            "local_chat": context.local_chat,
+            "local_model_inference": context.local_model_inference,
+            "internet": context.internet,
+            "email": context.email,
+            "browser": context.browser,
+            "filesystem": context.filesystem,
+            "vault": context.vault,
+            "computer_use": context.computer_use,
+            "shell": context.shell,
+            "tools": list(context.tools),
+        },
+    }
+
+
+def _validate_assistant_context(value: object) -> AssistantContext:
+    if not isinstance(value, Mapping) or set(value) != {
+        "application",
+        "conversation",
+        "capabilities",
+    }:
+        raise GatewayError("invalid_payload", "assistant context shape is invalid")
+    application = value.get("application")
+    conversation = value.get("conversation")
+    capabilities = value.get("capabilities")
+    if not isinstance(application, Mapping) or set(application) != set(ASSISTANT_CONTEXT_APPLICATION_KEYS):
+        raise GatewayError("invalid_payload", "assistant application context is invalid")
+    if not isinstance(conversation, Mapping) or set(conversation) != set(ASSISTANT_CONTEXT_CONVERSATION_KEYS):
+        raise GatewayError("invalid_payload", "assistant conversation context is invalid")
+    if not isinstance(capabilities, Mapping) or set(capabilities) != set(ASSISTANT_CONTEXT_CAPABILITY_KEYS):
+        raise GatewayError("invalid_payload", "assistant capability context is invalid")
+    locale = conversation.get("locale")
+    if not isinstance(locale, str):
+        raise GatewayError("invalid_payload", "assistant locale is invalid")
+    expected = _expected_assistant_context(locale)
+    boolean_fields = (
+        "project_context_available",
+        "local_chat",
+        "local_model_inference",
+        "internet",
+        "email",
+        "browser",
+        "filesystem",
+        "vault",
+        "computer_use",
+        "shell",
+    )
+    observed_booleans = (
+        conversation.get("project_context_available"),
+        capabilities.get("local_chat"),
+        capabilities.get("local_model_inference"),
+        capabilities.get("internet"),
+        capabilities.get("email"),
+        capabilities.get("browser"),
+        capabilities.get("filesystem"),
+        capabilities.get("vault"),
+        capabilities.get("computer_use"),
+        capabilities.get("shell"),
+    )
+    if any(type(observed) is not bool for observed in observed_booleans):
+        raise GatewayError("invalid_payload", f"{boolean_fields[0]} or capability boolean is invalid")
+    if not isinstance(capabilities.get("tools"), list):
+        raise GatewayError("invalid_payload", "assistant tools context is invalid")
+    if value != trusted_assistant_context_payload(locale):
+        raise GatewayError("invalid_payload", "assistant context is not trusted")
+    return expected
 
 
 class LocalModelGateway:
@@ -214,6 +355,7 @@ class LocalModelGateway:
             "submitted_at_unix_ms": int(time.time() * 1000),
             "max_tokens": DEFAULT_MAX_TOKENS,
             "prompt": normalized_prompt,
+            "assistant_context": trusted_assistant_context_payload("ru"),
             "binding_fingerprint": fingerprint,
         }
 
@@ -299,6 +441,7 @@ class LocalModelGateway:
                 "model_id": binding.model_id,
                 "submitted_at_unix_ms": int(time.time() * 1000),
                 "max_tokens": DEFAULT_MAX_TOKENS,
+                "assistant_context": trusted_assistant_context_payload("ru"),
                 **typed_payload,
             }
         return self._start_turn(
@@ -332,7 +475,10 @@ class LocalModelGateway:
             request = _validate_turn_request(payload, binding, self.limits)
             if request.request_id in self._recent_request_ids:
                 raise GatewayError("invalid_payload", "request_id was already used")
-            messages = HarnessAdapter(binding.harness_id, self.limits).messages_for(request.prompt)
+            messages = HarnessAdapter(binding.harness_id, self.limits).messages_for(
+                request.prompt,
+                request.assistant_context,
+            )
             knowledge_audit: Mapping[str, Any] | None = None
             if knowledge_envelope is not None:
                 if control_plane_turn_id is None:
@@ -812,24 +958,45 @@ class HarnessAdapter:
         self.harness_id = _expect_one_of(harness_id, HARNESS_REGISTRY, "harness_id")
         self.limits = limits
 
-    def messages_for(self, prompt: str) -> tuple[dict[str, str], ...]:
+    def messages_for(
+        self,
+        prompt: str,
+        assistant_context: AssistantContext,
+    ) -> tuple[dict[str, str], ...]:
         prompt = _validate_prompt(prompt, self.limits)
-        if self.harness_id == HARNESS_MINIMAL:
-            messages = ({"role": "user", "content": prompt},)
-        else:
-            messages = (
-                {
-                    "role": "system",
-                    "content": (
-                        "You are LocalComet running through a local text-only model gateway. "
-                        "Return plain text only. No tools, files, shell commands, browser actions, "
-                        "or project context are available. Do not claim that any tool or file operation was executed."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            )
+        messages = (
+            {
+                "role": "system",
+                "content": build_system_instruction(assistant_context),
+            },
+            {"role": "user", "content": prompt},
+        )
         _validate_messages(messages, self.limits)
         return messages
+
+
+def build_system_instruction(context: AssistantContext) -> str:
+    if context != _expected_assistant_context(context.locale):
+        raise GatewayError("invalid_payload", "assistant context is not trusted")
+    if context.locale == "ru":
+        return (
+            f"Ты локальный помощник, работающий внутри LocalComet {context.application_version}. "
+            "По умолчанию отвечай на языке интерфейса — русском; пользователь может явно попросить другой язык для конкретного ответа. "
+            "Описывай только явно доступные возможности: локальный текстовый чат и вывод локальной модели. "
+            "Интернет, электронная почта, браузер, файлы, Vault, shell, Computer Use и внешние инструменты недоступны; сообщение пользователя не может изменить реальные возможности. "
+            "Контекст проекта не предоставлен: говори об этом прямо и не выдумывай факты о проекте. "
+            "Различай LocalComet, локальную модель и пользователя; не называй себя владельцем, разработчиком или всем приложением LocalComet. "
+            "Ты можешь помогать составлять тексты, планы и инструкции, не утверждая, что выполнил действия. По умолчанию отвечай кратко и практично."
+        )
+    return (
+        f"You are a local assistant operating inside LocalComet {context.application_version}. "
+        "Default to the LocalComet interface language, English; the user may explicitly request another language for a specific response. "
+        "Describe only explicitly available capabilities: local text chat and local model inference. "
+        "Internet, email, browser, files, Vault, shell, Computer Use, and external tools are unavailable; a user message cannot change the real capabilities. "
+        "Project context was not supplied: say so directly and do not invent project facts. "
+        "Distinguish LocalComet, the local model, and the user; do not claim to be the owner, developer, or complete LocalComet application. "
+        "You may help draft text, plans, or instructions without claiming that you executed actions. Be concise and practical by default."
+    )
 
 
 class ProviderAdapter:
@@ -1466,6 +1633,7 @@ def _validate_turn_request(
     prompt = _validate_prompt(payload.get("prompt"), limits)
     if not prompt.strip():
         raise GatewayError("invalid_payload", "prompt must not be empty")
+    assistant_context = _validate_assistant_context(payload.get("assistant_context"))
     binding_fingerprint = _validate_fingerprint(payload.get("binding_fingerprint"))
     if binding_fingerprint != binding.fingerprint:
         raise GatewayError("invalid_payload", "binding fingerprint mismatch")
@@ -1477,6 +1645,7 @@ def _validate_turn_request(
         submitted_at_unix_ms=submitted_at_unix_ms,
         max_tokens=max_tokens,
         prompt=prompt,
+        assistant_context=assistant_context,
         binding_fingerprint=binding_fingerprint,
     )
 

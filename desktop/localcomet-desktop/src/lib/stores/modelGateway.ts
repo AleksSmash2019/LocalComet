@@ -44,6 +44,7 @@ import {
   finalizeAssistantMessage,
   setModelConnected
 } from '$lib/stores/shellStore';
+import { locale } from '$lib/i18n';
 
 export const MAX_GENERATED_TEXT = 262_144;
 export const MODEL_REQUEST_MAX_TOKENS = 256;
@@ -704,6 +705,7 @@ async function startClaimedLocalModelTurn(cleanPrompt: string, chatSessionId: st
       submittedAtUnixMs,
       maxTokens: MODEL_REQUEST_MAX_TOKENS,
       prompt: cleanPrompt,
+      locale: get(locale),
       bindingFingerprint: binding.binding_fingerprint
     });
     const current = get(inferenceRequestStore);

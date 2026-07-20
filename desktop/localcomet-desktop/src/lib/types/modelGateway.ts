@@ -1,5 +1,6 @@
 export type ProviderId = 'openai-compatible-local' | 'managed-llama-cpp';
 export type HarnessId = 'minimal' | 'native-localcomet';
+export type AssistantLocale = 'ru' | 'en';
 export type GatewayStatus =
   | 'Not configured'
   | 'Probing'

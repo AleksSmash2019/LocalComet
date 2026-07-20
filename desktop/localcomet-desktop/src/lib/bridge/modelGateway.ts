@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import type {
   ApprovedModelSummary,
   ApprovedRuntimeSummary,
+  AssistantLocale,
   ArtifactInstallationStatus,
   ArtifactValidationSummary,
   GatewayCatalog,
@@ -117,6 +118,7 @@ export async function startModelTurn(args: {
   submittedAtUnixMs: number;
   maxTokens: number;
   prompt: string;
+  locale: AssistantLocale;
   bindingFingerprint: string;
 }): Promise<ModelTurnStartResponse> {
   const requestId = validateTurnId(args.requestId);
@@ -132,6 +134,7 @@ export async function startModelTurn(args: {
       submittedAtUnixMs,
       maxTokens,
       prompt: bounded(args.prompt, 16_384),
+      locale: validateLocale(args.locale),
       bindingFingerprint: validateFingerprint(args.bindingFingerprint)
     })
   );
@@ -145,6 +148,11 @@ export async function startModelTurn(args: {
     result.binding_fingerprint !== args.bindingFingerprint
   ) throw invalid();
   return result;
+}
+
+function validateLocale(value: unknown): AssistantLocale {
+  if (value !== 'ru' && value !== 'en') throw invalid();
+  return value;
 }
 
 export async function cancelModelTurn(requestId: string): Promise<ModelTurnCancelResponse> {
