@@ -4,11 +4,13 @@ import codecs
 import hashlib
 import http.client
 import json
+import re
 import secrets
 import socket
 import threading
 import time
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Mapping
 
 from modules.knowledge_injection_ru import (
@@ -28,6 +30,48 @@ HARNESS_NATIVE = "native-localcomet"
 PROVIDER_REGISTRY = (PROVIDER_ID, MANAGED_PROVIDER_ID)
 HARNESS_REGISTRY = (HARNESS_MINIMAL, HARNESS_NATIVE)
 SUPPORTED_FINISH_REASONS = (None, "stop", "length", "content_filter")
+TURN_ID_RE = re.compile(r"^[0-9a-f]{24}$")
+CHAT_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MAX_SAFE_INTEGER = 9_007_199_254_740_991
+DEFAULT_MAX_TOKENS = 256
+MAX_MAX_TOKENS = 512
+MAX_RECENT_REQUEST_IDS = 256
+PUBLIC_TIMEOUT_ERROR_CODES = {
+    "first_token_timeout": "first_token_timeout",
+    "inactivity_timeout": "stream_inactivity_timeout",
+    "overall_timeout": "request_timed_out",
+}
+TIMEOUT_ERROR_CODES = frozenset(PUBLIC_TIMEOUT_ERROR_CODES)
+TERMINAL_EVENTS = frozenset(
+    (
+        "model.turn.completed",
+        "model.turn.cancelled",
+        "model.turn.timed_out",
+        "model.turn.failed",
+    )
+)
+TURN_START_PAYLOAD_KEYS = frozenset(
+    (
+        "request_id",
+        "chat_session_id",
+        "model_id",
+        "submitted_at_unix_ms",
+        "max_tokens",
+        "prompt",
+        "binding_fingerprint",
+    )
+)
+TURN_CANCEL_PAYLOAD_KEYS = frozenset(("request_id",))
+MANAGED_ATTACH_PAYLOAD_KEYS = frozenset(
+    (
+        "runtime_instance_id",
+        "port",
+        "credential",
+        "expected_model_alias",
+        "model_id",
+        "binding_fingerprint",
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +88,8 @@ class GatewayLimits:
     read_chunk_bytes: int = 512
     connect_timeout_seconds: float = 2.0
     read_timeout_seconds: float = 5.0
-    idle_timeout_seconds: float = 10.0
+    first_token_timeout_seconds: float = 30.0
+    inactivity_timeout_seconds: float = 10.0
     overall_timeout_seconds: float = 120.0
     worker_join_timeout_seconds: float = 2.0
 
@@ -75,11 +120,41 @@ class ModelBinding:
 
 @dataclass(slots=True)
 class _ActiveTurn:
+    request: "TurnRequest"
+    binding: ModelBinding
     turn_id: str
     cancel: threading.Event
     thread: threading.Thread
+    emit_event: Callable[[str, str, int, Mapping[str, Any]], None]
     closer: Callable[[], None] | None = None
     terminal: bool = False
+    events_open: bool = True
+    stop_in_progress: bool = False
+    sequence: int = 0
+    model_called: bool = False
+    generated_bytes: int = 0
+    pending_events: deque["_QueuedTurnEvent"] = field(default_factory=deque)
+    events_draining: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _QueuedTurnEvent:
+    method: str
+    request_id: str
+    sequence: int
+    payload: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class TurnRequest:
+    request_id: str
+    turn_id: str
+    chat_session_id: str
+    model_id: str
+    submitted_at_unix_ms: int
+    max_tokens: int
+    prompt: str
+    binding_fingerprint: str
 
 
 class LocalModelGateway:
@@ -91,6 +166,8 @@ class LocalModelGateway:
         self._discovered_models: tuple[str, ...] = ()
         self._managed: ModelBinding | None = None
         self._active: _ActiveTurn | None = None
+        self._recent_request_order: deque[str] = deque()
+        self._recent_request_ids: set[str] = set()
 
     def catalog(self) -> dict[str, Any]:
         return {
@@ -119,14 +196,23 @@ class LocalModelGateway:
             "tools_available": False,
         }
 
-    def bound_turn_payload(self, prompt: str) -> dict[str, str]:
+    def bound_turn_payload(self, prompt: str) -> dict[str, Any]:
         """Build an internal turn payload from the active in-memory binding."""
         normalized_prompt = _validate_prompt(prompt, self.limits)
+        if not normalized_prompt.strip():
+            raise GatewayError("invalid_payload", "prompt must not be empty")
         with self._lock:
             if self._binding is None:
                 raise GatewayError("invalid_payload", "model binding is required")
             fingerprint = self._binding.fingerprint
+            model_id = self._binding.model_id
+        request_id = secrets.token_hex(12)
         return {
+            "request_id": request_id,
+            "chat_session_id": f"knowledge-{request_id}",
+            "model_id": model_id,
+            "submitted_at_unix_ms": int(time.time() * 1000),
+            "max_tokens": DEFAULT_MAX_TOKENS,
             "prompt": normalized_prompt,
             "binding_fingerprint": fingerprint,
         }
@@ -200,8 +286,23 @@ class LocalModelGateway:
         after_outbound_request: Callable[[tuple[dict[str, str], ...]], None],
     ) -> dict[str, Any]:
         """Internal-only dispatch for an already approved Control Plane envelope."""
+        typed_payload = dict(payload)
+        if set(typed_payload) == {"prompt", "binding_fingerprint"}:
+            with self._lock:
+                binding = self._binding
+                if binding is None:
+                    raise GatewayError("invalid_payload", "model binding is required")
+            request_id = secrets.token_hex(12)
+            typed_payload = {
+                "request_id": request_id,
+                "chat_session_id": f"knowledge-{control_plane_turn_id}",
+                "model_id": binding.model_id,
+                "submitted_at_unix_ms": int(time.time() * 1000),
+                "max_tokens": DEFAULT_MAX_TOKENS,
+                **typed_payload,
+            }
         return self._start_turn(
-            payload,
+            typed_payload,
             emit_event,
             knowledge_envelope=envelope,
             control_plane_turn_id=control_plane_turn_id,
@@ -219,17 +320,19 @@ class LocalModelGateway:
         before_outbound_request: Callable[[tuple[dict[str, str], ...]], None] | None = None,
         after_outbound_request: Callable[[tuple[dict[str, str], ...]], None] | None = None,
     ) -> dict[str, Any]:
-        prompt = _validate_prompt(payload.get("prompt"), self.limits)
-        binding_fingerprint = _bounded_text(str(payload.get("binding_fingerprint", "")), 64)
+        _require_exact_payload_keys(payload, TURN_START_PAYLOAD_KEYS, "model.turn.start")
         with self._lock:
-            if self._active is not None and self._active.thread.is_alive() and not self._active.terminal:
+            if self._active is not None and self._active.thread.is_alive():
                 raise GatewayError("busy", "one model inference is already active", retryable=True)
+            if self._active is not None:
+                self._active = None
             binding = self._binding
             if binding is None:
                 raise GatewayError("invalid_payload", "model binding is required")
-            if binding.fingerprint != binding_fingerprint:
-                raise GatewayError("invalid_payload", "binding fingerprint mismatch")
-            messages = HarnessAdapter(binding.harness_id, self.limits).messages_for(prompt)
+            request = _validate_turn_request(payload, binding, self.limits)
+            if request.request_id in self._recent_request_ids:
+                raise GatewayError("invalid_payload", "request_id was already used")
+            messages = HarnessAdapter(binding.harness_id, self.limits).messages_for(request.prompt)
             knowledge_audit: Mapping[str, Any] | None = None
             if knowledge_envelope is not None:
                 if control_plane_turn_id is None:
@@ -246,13 +349,13 @@ class LocalModelGateway:
                 )
                 knowledge_audit = injection_audit_metadata(knowledge_envelope)
             _validate_messages(messages, self.limits)
-            turn_id = secrets.token_hex(12)
+            self._remember_request_id(request.request_id)
             cancel = threading.Event()
             thread = threading.Thread(
                 target=self._run_turn,
                 name="localcomet-model-turn",
                 args=(
-                    turn_id,
+                    request,
                     binding,
                     messages,
                     cancel,
@@ -263,16 +366,27 @@ class LocalModelGateway:
                 ),
                 daemon=True,
             )
-            active = _ActiveTurn(turn_id=turn_id, cancel=cancel, thread=thread)
+            active = _ActiveTurn(
+                request=request,
+                binding=binding,
+                turn_id=request.turn_id,
+                cancel=cancel,
+                thread=thread,
+                emit_event=emit_event,
+            )
             self._active = active
             thread.start()
             response = {
-                "turn_id": turn_id,
-                "state": "GENERATING",
+                "request_id": request.request_id,
+                "turn_id": request.turn_id,
+                "chat_session_id": request.chat_session_id,
+                "model_id": request.model_id,
+                "submitted_at_unix_ms": request.submitted_at_unix_ms,
+                "max_tokens": request.max_tokens,
+                "binding_fingerprint": request.binding_fingerprint,
+                "state": "Accepted",
                 "provider_id": binding.provider_id,
                 "harness_id": binding.harness_id,
-                "model_id": binding.model_id,
-                "binding_fingerprint": binding.fingerprint,
                 "model_called": False,
                 "tools_executed": 0,
                 "persistence": False,
@@ -283,25 +397,58 @@ class LocalModelGateway:
             return response
 
     def cancel_turn(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        turn_id = _validate_turn_id(payload.get("turn_id"))
+        _require_exact_payload_keys(payload, TURN_CANCEL_PAYLOAD_KEYS, "model.turn.cancel")
+        request_id = _validate_request_id(payload.get("request_id"))
         with self._lock:
             active = self._active
-            if active is None or active.turn_id != turn_id:
-                return {"turn_id": turn_id, "state": "Cancelled", "already_terminal": True}
-            active.cancel.set()
-            if active.closer is not None:
-                active.closer()
+            if (
+                active is None
+                or active.request.request_id != request_id
+                or active.terminal
+                or not active.events_open
+            ):
+                return {
+                    "request_id": request_id,
+                    "turn_id": request_id,
+                    "state": "Cancelled",
+                    "accepted": False,
+                    "already_terminal": True,
+                    "worker_alive": False,
+                }
+            active.stop_in_progress = True
+            closer = active.closer
             thread = active.thread
+            if closer is None:
+                active.cancel.set()
+            else:
+                closer()
         thread.join(self.limits.worker_join_timeout_seconds)
+        drain_events = False
         with self._lock:
             alive = thread.is_alive()
-            if not alive:
-                active.terminal = True
-                if self._active is active:
-                    self._active = None
-        return {"turn_id": turn_id, "state": "Cancelling" if alive else "Cancelled", "worker_alive": alive}
+            if self._active is active and not active.terminal:
+                drain_events = self._queue_terminal_locked(
+                    active,
+                    "model.turn.cancelled",
+                    "Cancelled",
+                )
+            active.events_open = False
+            active.terminal = True
+            if self._active is active and not alive:
+                self._active = None
+        if drain_events:
+            self._drain_turn_events(active)
+        return {
+            "request_id": request_id,
+            "turn_id": request_id,
+            "state": "Cancelling" if alive else "Cancelled",
+            "accepted": True,
+            "already_terminal": False,
+            "worker_alive": alive,
+        }
 
     def managed_attach(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        _require_exact_payload_keys(payload, MANAGED_ATTACH_PAYLOAD_KEYS, "model.managed.attach")
         runtime_instance_id = _validate_runtime_instance_id(payload.get("runtime_instance_id"))
         port = _validate_port(payload.get("port"))
         credential = _validate_credential(payload.get("credential"))
@@ -309,6 +456,26 @@ class LocalModelGateway:
         model_id = _validate_model_id(payload.get("model_id"))
         binding_fingerprint = _validate_fingerprint(payload.get("binding_fingerprint"))
         with self._lock:
+            if self._active is not None and self._active.thread.is_alive():
+                raise GatewayError("busy", "model inference is active", retryable=True)
+        adapter = ProviderAdapter(port, self.limits, api_key=credential)
+        models = adapter.list_models(timeout_code="overall_timeout")
+        if models != (expected_model_alias,):
+            raise GatewayError("invalid_payload", "managed model alias mismatch")
+        readiness_text = "".join(
+            adapter.stream_chat(
+                expected_model_alias,
+                ({"role": "user", "content": "Reply with one character."},),
+                threading.Event(),
+                lambda: None,
+                max_tokens=1,
+            )
+        )
+        if not readiness_text.strip():
+            raise GatewayError("invalid_payload", "managed inference readiness returned empty content")
+        with self._lock:
+            if self._active is not None and self._active.thread.is_alive():
+                raise GatewayError("busy", "model inference became active", retryable=True)
             self._managed = ModelBinding(
                 provider_id=MANAGED_PROVIDER_ID,
                 harness_id=HARNESS_MINIMAL,
@@ -327,6 +494,8 @@ class LocalModelGateway:
             "runtime_instance_id": runtime_instance_id,
             "model_id": model_id,
             "attached": True,
+            "model_state": "Ready",
+            "inference_ready": True,
         }
 
     def managed_detach(self) -> dict[str, Any]:
@@ -342,13 +511,36 @@ class LocalModelGateway:
             active = self._active
             if active is None:
                 return
-            active.cancel.set()
-            if active.closer is not None:
-                active.closer()
+            active.stop_in_progress = True
+            closer = active.closer
             thread = active.thread
+            if closer is None:
+                active.cancel.set()
+            else:
+                closer()
         thread.join(self.limits.worker_join_timeout_seconds)
+        drain_events = False
         with self._lock:
-            self._active = None
+            alive = thread.is_alive()
+            if self._active is active and not active.terminal:
+                drain_events = self._queue_terminal_locked(
+                    active,
+                    "model.turn.cancelled",
+                    "Cancelled",
+                )
+            active.events_open = False
+            active.terminal = True
+            if self._active is active and not alive:
+                self._active = None
+        if drain_events:
+            self._drain_turn_events(active)
+
+    def _remember_request_id(self, request_id: str) -> None:
+        self._recent_request_ids.add(request_id)
+        self._recent_request_order.append(request_id)
+        while len(self._recent_request_order) > MAX_RECENT_REQUEST_IDS:
+            expired = self._recent_request_order.popleft()
+            self._recent_request_ids.discard(expired)
 
     def _remember_discovery(self, port: int, models: tuple[str, ...]) -> None:
         if self._binding and (self._binding.port != port or self._binding.model_id not in models):
@@ -358,7 +550,7 @@ class LocalModelGateway:
 
     def _run_turn(
         self,
-        turn_id: str,
+        request: TurnRequest,
         binding: ModelBinding,
         messages: tuple[dict[str, str], ...],
         cancel: threading.Event,
@@ -367,94 +559,252 @@ class LocalModelGateway:
         before_outbound_request: Callable[[tuple[dict[str, str], ...]], None] | None = None,
         after_outbound_request: Callable[[tuple[dict[str, str], ...]], None] | None = None,
     ) -> None:
-        sequence = 0
-
-        def emit(method: str, payload: Mapping[str, Any]) -> None:
-            nonlocal sequence
-            emit_event(method, turn_id, sequence, payload)
-            sequence += 1
-
         adapter = ProviderAdapter(binding.port, self.limits, api_key=binding.credential)
         with self._lock:
-            if self._active is not None and self._active.turn_id == turn_id:
-                self._active.closer = adapter.close
-        generated = 0
-        terminal_sent = False
+            active = self._active
+            if active is None or active.request.request_id != request.request_id:
+                return
+            active.closer = lambda: adapter.cancel_and_close(cancel)
         try:
             def mark_started() -> None:
-                emit(
-                    "model.turn.started",
-                    _turn_payload(
-                        turn_id,
-                        "Generating",
-                        binding,
-                        model_called=True,
-                        text=None,
-                        audit_metadata=knowledge_audit,
-                    ),
-                )
+                drain_events = False
+                with self._lock:
+                    if self._active is not active or active.terminal or cancel.is_set():
+                        return
+                    active.model_called = True
+                    drain_events = self._queue_turn_event_locked(
+                        active,
+                        "model.turn.started",
+                        _turn_payload(
+                            request,
+                            "Streaming",
+                            binding,
+                            model_called=True,
+                            text=None,
+                            audit_metadata=knowledge_audit,
+                        ),
+                    )
+                if drain_events:
+                    self._drain_turn_events(active)
 
+            provider_model_id = (
+                binding.expected_model_alias
+                if binding.provider_id == MANAGED_PROVIDER_ID
+                else binding.model_id
+            )
+            if provider_model_id is None:
+                raise GatewayError("invalid_payload", "managed model alias is missing")
             for delta in adapter.stream_chat(
-                binding.model_id,
+                provider_model_id,
                 messages,
                 cancel,
                 mark_started,
+                max_tokens=request.max_tokens,
                 before_outbound_request=before_outbound_request,
                 after_outbound_request=after_outbound_request,
             ):
                 if cancel.is_set():
                     break
-                generated += len(delta.encode("utf-8"))
-                emit(
-                    "model.output.delta",
-                    _turn_payload(
-                        turn_id,
-                        "Generating",
-                        binding,
-                        model_called=True,
-                        text=delta,
-                        generated_bytes=generated,
-                    ),
-                )
-            if cancel.is_set():
-                emit("model.turn.cancelled", _turn_payload(turn_id, "Cancelled", binding, model_called=True))
-            else:
-                emit(
-                    "model.turn.completed",
-                    _turn_payload(turn_id, "Completed", binding, model_called=True, generated_bytes=generated),
-                )
-            terminal_sent = True
+                if not delta:
+                    continue
+                drain_events = False
+                with self._lock:
+                    if self._active is not active or active.terminal or cancel.is_set():
+                        break
+                    active.generated_bytes += len(delta.encode("utf-8"))
+                    drain_events = self._queue_turn_event_locked(
+                        active,
+                        "model.output.delta",
+                        _turn_payload(
+                            request,
+                            "Streaming",
+                            binding,
+                            model_called=True,
+                            text=delta,
+                            generated_bytes=active.generated_bytes,
+                        ),
+                    )
+                if drain_events:
+                    self._drain_turn_events(active)
+            drain_events = False
+            with self._lock:
+                if self._active is active and not active.terminal:
+                    if cancel.is_set():
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.cancelled",
+                            "Cancelled",
+                        )
+                    elif active.generated_bytes == 0:
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.failed",
+                            "Failed",
+                            GatewayError(
+                                "empty_model_output",
+                                "model completion returned no content",
+                                retryable=True,
+                            ),
+                        )
+                    else:
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.completed",
+                            "Completed",
+                        )
+            if drain_events:
+                self._drain_turn_events(active)
         except KnowledgeInjectionContractError as exc:
-            failed_payload = _turn_payload(turn_id, "Failed", binding, model_called=False)
-            failed_payload["metadata"] = {
-                **failed_payload["metadata"],
-                "error": {"code": exc.code, "message": exc.safe_message, "retryable": False},
-            }
-            emit("model.turn.failed", failed_payload)
-            terminal_sent = True
+            drain_events = False
+            with self._lock:
+                if self._active is active and not active.terminal:
+                    if cancel.is_set():
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.cancelled",
+                            "Cancelled",
+                        )
+                    else:
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.failed",
+                            "Failed",
+                            GatewayError(exc.code, exc.safe_message, retryable=False),
+                        )
+            if drain_events:
+                self._drain_turn_events(active)
         except GatewayError as exc:
-            failed_payload = _turn_payload(turn_id, "Failed", binding, model_called=False)
-            failed_payload["metadata"] = {**failed_payload["metadata"], "error": exc.as_payload()}
-            emit("model.turn.failed", failed_payload)
-            terminal_sent = True
+            drain_events = False
+            with self._lock:
+                if self._active is active and not active.terminal:
+                    if cancel.is_set():
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.cancelled",
+                            "Cancelled",
+                        )
+                    elif exc.code in TIMEOUT_ERROR_CODES:
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.timed_out",
+                            "TimedOut",
+                            exc,
+                        )
+                    else:
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.failed",
+                            "Failed",
+                            exc,
+                        )
+            if drain_events:
+                self._drain_turn_events(active)
         except Exception:
-            if cancel.is_set():
-                emit("model.turn.cancelled", _turn_payload(turn_id, "Cancelled", binding, model_called=True))
-            else:
-                failed_payload = _turn_payload(turn_id, "Failed", binding, model_called=False)
-                failed_payload["metadata"] = {
-                    **failed_payload["metadata"],
-                    "error": {"code": "internal_error", "message": "local model gateway failed", "retryable": False},
-                }
-                emit("model.turn.failed", failed_payload)
-            terminal_sent = True
+            drain_events = False
+            with self._lock:
+                if self._active is active and not active.terminal:
+                    if cancel.is_set():
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.cancelled",
+                            "Cancelled",
+                        )
+                    else:
+                        drain_events = self._queue_terminal_locked(
+                            active,
+                            "model.turn.failed",
+                            "Failed",
+                            GatewayError(
+                                "internal_error",
+                                "local model gateway failed",
+                                retryable=False,
+                            ),
+                        )
+            if drain_events:
+                self._drain_turn_events(active)
         finally:
             adapter.close()
             with self._lock:
-                active = self._active
-                if active is not None and active.turn_id == turn_id:
-                    active.terminal = terminal_sent
-                    self._active = None
+                active.closer = None
+                if self._active is active and active.terminal:
+                    active.events_open = False
+                    if not active.stop_in_progress:
+                        self._active = None
+
+    def _queue_turn_event_locked(
+        self,
+        active: _ActiveTurn,
+        method: str,
+        payload: Mapping[str, Any],
+    ) -> bool:
+        if self._active is not active or not active.events_open or active.terminal:
+            return False
+        if active.cancel.is_set() and method != "model.turn.cancelled":
+            return False
+        if method in TERMINAL_EVENTS:
+            active.terminal = True
+        sequence = active.sequence
+        active.sequence += 1
+        active.pending_events.append(
+            _QueuedTurnEvent(
+                method=method,
+                request_id=active.request.request_id,
+                sequence=sequence,
+                payload=payload,
+            )
+        )
+        if active.events_draining:
+            return False
+        active.events_draining = True
+        return True
+
+    def _queue_terminal_locked(
+        self,
+        active: _ActiveTurn,
+        method: str,
+        state: str,
+        error: GatewayError | None = None,
+    ) -> bool:
+        payload = _turn_payload(
+            active.request,
+            state,
+            active.binding,
+            model_called=active.model_called,
+            generated_bytes=active.generated_bytes,
+        )
+        if error is not None:
+            error_payload = error.as_payload()
+            if method == "model.turn.timed_out":
+                error_payload["code"] = PUBLIC_TIMEOUT_ERROR_CODES.get(
+                    error.code,
+                    "request_timed_out",
+                )
+            payload["metadata"] = {
+                **payload["metadata"],
+                "error": error_payload,
+            }
+        return self._queue_turn_event_locked(active, method, payload)
+
+    def _drain_turn_events(self, active: _ActiveTurn) -> None:
+        first_error: BaseException | None = None
+        while True:
+            with self._lock:
+                if not active.pending_events:
+                    active.events_draining = False
+                    break
+                event = active.pending_events.popleft()
+            try:
+                active.emit_event(
+                    event.method,
+                    event.request_id,
+                    event.sequence,
+                    event.payload,
+                )
+            except BaseException as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
 
 
 class HarnessAdapter:
@@ -490,20 +840,45 @@ class ProviderAdapter:
         self.limits = limits
         self.api_key = api_key
         self._connection: http.client.HTTPConnection | None = None
+        self._response: http.client.HTTPResponse | None = None
+        self._connection_lock = threading.RLock()
 
     @property
     def endpoint(self) -> str:
         return f"http://127.0.0.1:{self.port}/v1"
 
-    def list_models(self) -> tuple[str, ...]:
-        connection = self._connect()
+    def list_models(self, *, timeout_code: str = "sidecar_unavailable") -> tuple[str, ...]:
+        if timeout_code not in {"sidecar_unavailable", "overall_timeout"}:
+            raise ValueError("unsupported model readiness timeout code")
+        deadline = time.monotonic() + max(0.001, float(self.limits.read_timeout_seconds))
+        connection = self._connect(
+            timeout_seconds=min(
+                max(0.001, float(self.limits.connect_timeout_seconds)),
+                _remaining_model_readiness_seconds(deadline, timeout_code),
+            )
+        )
+        watchdog_stop, watchdog_fired = self._start_deadline_watchdog(connection, deadline)
         try:
             connection.request("GET", "/v1/models", headers=self._headers("application/json"))
+            _raise_model_readiness_timeout_if_due(deadline, timeout_code, watchdog_fired)
+            _set_connection_timeout(
+                connection,
+                _remaining_model_readiness_seconds(deadline, timeout_code),
+            )
             response = connection.getresponse()
+            self._remember_response(connection, response)
+            _raise_model_readiness_timeout_if_due(deadline, timeout_code, watchdog_fired)
             _reject_redirect(response.status)
             if response.status != 200:
                 raise GatewayError("sidecar_unavailable", "model provider returned non-200 status", retryable=True)
-            body = _read_bounded(response, self.limits.maximum_models_body_bytes)
+            body = _read_bounded(
+                connection,
+                response,
+                self.limits.maximum_models_body_bytes,
+                deadline=deadline,
+                timeout_code=timeout_code,
+                watchdog_fired=watchdog_fired,
+            )
             value = _loads_json(body)
             if not isinstance(value, Mapping):
                 raise GatewayError("invalid_payload", "model response must be an object")
@@ -521,7 +896,26 @@ class ProviderAdapter:
                 seen.add(model_id)
                 models.append(model_id)
             return tuple(models)
+        except GatewayError:
+            raise
+        except socket.timeout as exc:
+            if watchdog_fired.is_set() or time.monotonic() >= deadline:
+                raise _model_readiness_timeout(timeout_code) from exc
+            raise GatewayError(
+                "sidecar_unavailable",
+                "model provider readiness timed out",
+                retryable=True,
+            ) from exc
+        except (OSError, http.client.HTTPException) as exc:
+            if watchdog_fired.is_set() or time.monotonic() >= deadline:
+                raise _model_readiness_timeout(timeout_code) from exc
+            raise GatewayError(
+                "sidecar_unavailable",
+                "model provider readiness failed",
+                retryable=True,
+            ) from exc
         finally:
+            watchdog_stop.set()
             self.close()
 
     def stream_chat(
@@ -531,30 +925,64 @@ class ProviderAdapter:
         cancel: threading.Event,
         on_request_started: Callable[[], None],
         *,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
         before_outbound_request: Callable[[tuple[dict[str, str], ...]], None] | None = None,
         after_outbound_request: Callable[[tuple[dict[str, str], ...]], None] | None = None,
     ) -> Iterable[str]:
         model_id = _validate_model_id(model_id, self.limits)
+        max_tokens = _validate_max_tokens(max_tokens)
         _validate_messages(messages, self.limits)
         body = _json_bytes(
             {
+                "max_tokens": max_tokens,
                 "model": model_id,
                 "messages": list(messages),
                 "stream": True,
             }
         )
-        connection = self._connect()
         started = time.monotonic()
-        last_read = started
+        first_token_deadline = started + self.limits.first_token_timeout_seconds
+        overall_deadline = started + self.limits.overall_timeout_seconds
+        last_activity = started
+        first_content_seen = False
         event_count = 0
         output_bytes = 0
         event_lines: list[str] = []
         event_bytes = 0
         decoder = codecs.getincrementaldecoder("utf-8")()
         text_buffer = ""
+        preheader_watchdog_stop: threading.Event | None = None
+        preheader_watchdog_fired = threading.Event()
         try:
             if before_outbound_request is not None:
                 before_outbound_request(messages)
+            if cancel.is_set():
+                return
+            preheader_deadline = min(first_token_deadline, overall_deadline)
+            remaining = preheader_deadline - time.monotonic()
+            if remaining <= 0:
+                _raise_stream_timeout_if_due(
+                    time.monotonic(),
+                    overall_deadline=overall_deadline,
+                    first_token_deadline=first_token_deadline,
+                    first_content_seen=False,
+                    last_activity=last_activity,
+                    inactivity_timeout_seconds=self.limits.inactivity_timeout_seconds,
+                    force_phase=True,
+                )
+            connection = self._connect(
+                timeout_seconds=min(
+                    max(0.001, float(self.limits.connect_timeout_seconds)),
+                    max(0.001, remaining),
+                )
+            )
+            if cancel.is_set():
+                self._close_connection_if_current(connection)
+                return
+            preheader_watchdog_stop, preheader_watchdog_fired = self._start_deadline_watchdog(
+                connection,
+                preheader_deadline,
+            )
             connection.request(
                 "POST",
                 "/v1/chat/completions",
@@ -563,32 +991,85 @@ class ProviderAdapter:
             )
             if after_outbound_request is not None:
                 after_outbound_request(messages)
+            now = time.monotonic()
+            _raise_stream_timeout_if_due(
+                now,
+                overall_deadline=overall_deadline,
+                first_token_deadline=first_token_deadline,
+                first_content_seen=False,
+                last_activity=last_activity,
+                inactivity_timeout_seconds=self.limits.inactivity_timeout_seconds,
+            )
+            _set_connection_timeout(
+                connection,
+                min(first_token_deadline, overall_deadline) - now,
+            )
             response = connection.getresponse()
+            self._remember_response(connection, response)
+            preheader_watchdog_stop.set()
+            preheader_watchdog_stop = None
+            _raise_stream_timeout_if_due(
+                time.monotonic(),
+                overall_deadline=overall_deadline,
+                first_token_deadline=first_token_deadline,
+                first_content_seen=False,
+                last_activity=last_activity,
+                inactivity_timeout_seconds=self.limits.inactivity_timeout_seconds,
+            )
             _reject_redirect(response.status)
             if response.status != 200:
                 raise GatewayError("sidecar_unavailable", "model completion returned non-200 status", retryable=True)
             content_type = response.getheader("Content-Type", "")
-            if "text/event-stream" not in content_type.lower().split(";")[0]:
-                raise GatewayError("invalid_payload", "model completion did not return event-stream")
+            if content_type.split(";", 1)[0].strip().lower() != "text/event-stream":
+                raise GatewayError("stream_protocol_error", "model completion stream type is invalid")
             on_request_started()
             while not cancel.is_set():
                 now = time.monotonic()
-                if now - started > self.limits.overall_timeout_seconds:
-                    raise GatewayError("timeout", "model completion overall timeout", retryable=True)
-                if now - last_read > self.limits.idle_timeout_seconds:
-                    raise GatewayError("timeout", "model completion idle timeout", retryable=True)
+                _raise_stream_timeout_if_due(
+                    now,
+                    overall_deadline=overall_deadline,
+                    first_token_deadline=first_token_deadline,
+                    first_content_seen=first_content_seen,
+                    last_activity=last_activity,
+                    inactivity_timeout_seconds=self.limits.inactivity_timeout_seconds,
+                )
+                if first_content_seen:
+                    phase_deadline = last_activity + self.limits.inactivity_timeout_seconds
+                else:
+                    phase_deadline = first_token_deadline
+                _set_response_timeout(
+                    connection,
+                    response,
+                    min(overall_deadline, phase_deadline) - now,
+                )
                 try:
-                    chunk = response.read(self.limits.read_chunk_bytes)
+                    chunk = response.read1(self.limits.read_chunk_bytes)
                 except socket.timeout as exc:
-                    raise GatewayError("timeout", "model completion read timeout", retryable=True) from exc
+                    _raise_stream_timeout_if_due(
+                        time.monotonic(),
+                        overall_deadline=overall_deadline,
+                        first_token_deadline=first_token_deadline,
+                        first_content_seen=first_content_seen,
+                        last_activity=last_activity,
+                        inactivity_timeout_seconds=self.limits.inactivity_timeout_seconds,
+                        force_phase=True,
+                    )
+                    raise GatewayError(
+                        "stream_protocol_error",
+                        "model stream read timed out unexpectedly",
+                        retryable=True,
+                    ) from exc
                 if not chunk:
                     try:
                         decoder.decode(b"", final=True)
                     except UnicodeDecodeError as exc:
-                        raise GatewayError("invalid_payload", "invalid UTF-8 from provider") from exc
-                    raise GatewayError("invalid_payload", "event stream ended without DONE")
-                last_read = time.monotonic()
-                text_buffer += decoder.decode(chunk, final=False)
+                        raise GatewayError("stream_encoding_error", "model stream encoding is invalid") from exc
+                    raise GatewayError("stream_protocol_error", "model stream ended without DONE")
+                last_activity = time.monotonic()
+                try:
+                    text_buffer += decoder.decode(chunk, final=False)
+                except UnicodeDecodeError as exc:
+                    raise GatewayError("stream_encoding_error", "model stream encoding is invalid") from exc
                 while "\n" in text_buffer:
                     line, text_buffer = text_buffer.split("\n", 1)
                     if line.endswith("\r"):
@@ -600,10 +1081,19 @@ class ProviderAdapter:
                             event_count += 1
                             if event_count > self.limits.maximum_sse_events:
                                 raise GatewayError("budget_exceeded", "SSE event limit reached")
-                            delta, done = _parse_sse_event(event_lines)
+                            try:
+                                delta, done = _parse_sse_event(event_lines)
+                            except GatewayError as exc:
+                                if exc.code in {"payload_too_large", "budget_exceeded"}:
+                                    raise
+                                raise GatewayError(
+                                    "stream_protocol_error",
+                                    "model stream event is invalid",
+                                ) from exc
                             event_lines = []
                             event_bytes = 0
                             if delta:
+                                first_content_seen = True
                                 output_bytes += len(delta.encode("utf-8"))
                                 if output_bytes > self.limits.maximum_output_bytes:
                                     raise GatewayError("payload_too_large", "generated text limit reached")
@@ -624,23 +1114,127 @@ class ProviderAdapter:
                     elif line.startswith("event:") or line.startswith("id:") or line.startswith("retry:"):
                         continue
                     else:
-                        raise GatewayError("invalid_payload", "unsupported SSE line")
+                        raise GatewayError("stream_protocol_error", "model stream line is unsupported")
+                if len(text_buffer.encode("utf-8")) > self.limits.maximum_sse_line_bytes:
+                    raise GatewayError("payload_too_large", "SSE line limit reached")
+        except GatewayError:
+            raise
+        except socket.timeout as exc:
+            _raise_stream_timeout_if_due(
+                time.monotonic(),
+                overall_deadline=overall_deadline,
+                first_token_deadline=first_token_deadline,
+                first_content_seen=first_content_seen,
+                last_activity=last_activity,
+                inactivity_timeout_seconds=self.limits.inactivity_timeout_seconds,
+                force_phase=True,
+            )
+            raise GatewayError(
+                "sidecar_unavailable",
+                "model provider timed out",
+                retryable=True,
+            ) from exc
+        except (OSError, http.client.HTTPException) as exc:
+            _raise_stream_timeout_if_due(
+                time.monotonic(),
+                overall_deadline=overall_deadline,
+                first_token_deadline=first_token_deadline,
+                first_content_seen=first_content_seen,
+                last_activity=last_activity,
+                inactivity_timeout_seconds=self.limits.inactivity_timeout_seconds,
+                force_phase=preheader_watchdog_fired.is_set(),
+            )
+            raise GatewayError(
+                "sidecar_unavailable",
+                "model provider connection failed",
+                retryable=True,
+            ) from exc
         finally:
+            if preheader_watchdog_stop is not None:
+                preheader_watchdog_stop.set()
             self.close()
 
     def close(self) -> None:
+        with self._connection_lock:
+            self._close_locked()
+
+    def cancel_and_close(self, cancel: threading.Event) -> None:
+        with self._connection_lock:
+            cancel.set()
+            self._close_locked()
+
+    def _start_deadline_watchdog(
+        self,
+        connection: http.client.HTTPConnection,
+        deadline: float,
+    ) -> tuple[threading.Event, threading.Event]:
+        stop = threading.Event()
+        fired = threading.Event()
+
+        def close_at_deadline() -> None:
+            if stop.wait(max(0.0, deadline - time.monotonic())):
+                return
+            fired.set()
+            self._close_connection_if_current(connection)
+
+        threading.Thread(
+            target=close_at_deadline,
+            name="localcomet-provider-deadline",
+            daemon=True,
+        ).start()
+        return stop, fired
+
+    def _close_connection_if_current(self, connection: http.client.HTTPConnection) -> None:
+        with self._connection_lock:
+            if self._connection is not connection:
+                return
+            self._close_locked()
+
+    def _remember_response(
+        self,
+        connection: http.client.HTTPConnection,
+        response: http.client.HTTPResponse,
+    ) -> None:
+        with self._connection_lock:
+            if self._connection is connection:
+                self._response = response
+
+    def _close_locked(self) -> None:
         if self._connection is not None:
             try:
+                sock = self._connection.sock
+                if sock is None and self._response is not None:
+                    raw = getattr(getattr(self._response, "fp", None), "raw", None)
+                    sock = getattr(raw, "_sock", None)
+                if sock is not None:
+                    try:
+                        sock.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+                if self._response is not None:
+                    self._response.close()
                 self._connection.close()
             finally:
+                self._response = None
                 self._connection = None
 
-    def _connect(self) -> http.client.HTTPConnection:
-        self.close()
+    def _connect(self, *, timeout_seconds: float | None = None) -> http.client.HTTPConnection:
+        with self._connection_lock:
+            return self._connect_locked(timeout_seconds=timeout_seconds)
+
+    def _connect_locked(self, *, timeout_seconds: float | None = None) -> http.client.HTTPConnection:
+        self._close_locked()
         self._connection = http.client.HTTPConnection(
             "127.0.0.1",
             self.port,
-            timeout=self.limits.read_timeout_seconds,
+            timeout=max(
+                0.001,
+                float(
+                    self.limits.connect_timeout_seconds
+                    if timeout_seconds is None
+                    else timeout_seconds
+                ),
+            ),
         )
         return self._connection
 
@@ -661,9 +1255,9 @@ def validate_gateway_payload(method: str, payload: Mapping[str, Any]) -> tuple[s
         "model.gateway.probe": {"port"},
         "model.models.list": {"port"},
         "model.binding.set": {"provider_id", "harness_id", "port", "model_id", "confirmed", "runtime_instance_id"},
-        "model.turn.start": {"prompt", "binding_fingerprint"},
-        "model.turn.cancel": {"turn_id"},
-        "model.managed.attach": {"runtime_instance_id", "port", "credential", "expected_model_alias", "model_id", "binding_fingerprint"},
+        "model.turn.start": set(TURN_START_PAYLOAD_KEYS),
+        "model.turn.cancel": set(TURN_CANCEL_PAYLOAD_KEYS),
+        "model.managed.attach": set(MANAGED_ATTACH_PAYLOAD_KEYS),
         "model.managed.detach": set(),
     }
     allowed = schemas[method]
@@ -687,6 +1281,7 @@ MODEL_GATEWAY_EVENTS = (
     "model.output.delta",
     "model.turn.completed",
     "model.turn.cancelled",
+    "model.turn.timed_out",
     "model.turn.failed",
 )
 
@@ -700,7 +1295,7 @@ def harness_registry() -> tuple[str, ...]:
 
 
 def _turn_payload(
-    turn_id: str,
+    request: TurnRequest,
     state: str,
     binding: ModelBinding,
     *,
@@ -712,7 +1307,9 @@ def _turn_payload(
     payload = {
         "control_plane_version": "v6.84.5.1",
         "model_gateway_version": LOCAL_MODEL_GATEWAY_VERSION,
-        "turn_id": turn_id,
+        "request_id": request.request_id,
+        "turn_id": request.turn_id,
+        "chat_session_id": request.chat_session_id,
         "session_id": None,
         "thread_id": None,
         "item_id": None,
@@ -720,8 +1317,10 @@ def _turn_payload(
         "state": state,
         "provider_id": binding.provider_id,
         "harness_id": binding.harness_id,
-        "model_id": binding.model_id,
-        "binding_fingerprint": binding.fingerprint,
+        "model_id": request.model_id,
+        "submitted_at_unix_ms": request.submitted_at_unix_ms,
+        "max_tokens": request.max_tokens,
+        "binding_fingerprint": request.binding_fingerprint,
         "text": _bounded_text(text or "", 65_536) if text is not None else None,
         "model_called": bool(model_called),
         "tools_executed": 0,
@@ -730,8 +1329,13 @@ def _turn_payload(
         "metadata": {
             "provider_id": binding.provider_id,
             "harness_id": binding.harness_id,
-            "model_id": binding.model_id,
-            "binding_fingerprint": binding.fingerprint,
+            "request_id": request.request_id,
+            "turn_id": request.turn_id,
+            "chat_session_id": request.chat_session_id,
+            "model_id": request.model_id,
+            "submitted_at_unix_ms": request.submitted_at_unix_ms,
+            "max_tokens": request.max_tokens,
+            "binding_fingerprint": request.binding_fingerprint,
             "model_called": bool(model_called),
             "tools_executed": 0,
             "persistence": False,
@@ -811,10 +1415,70 @@ def _validate_model_id(value: object, limits: GatewayLimits | None = None) -> st
     return value
 
 
+def _validate_request_id(value: object) -> str:
+    if isinstance(value, str) and TURN_ID_RE.fullmatch(value):
+        return value
+    raise GatewayError("invalid_payload", "request_id is invalid")
+
+
 def _validate_turn_id(value: object) -> str:
-    if isinstance(value, str) and len(value) == 24 and all(ch in "0123456789abcdef" for ch in value):
+    if isinstance(value, str) and TURN_ID_RE.fullmatch(value):
         return value
     raise GatewayError("invalid_payload", "turn_id is invalid")
+
+
+def _validate_chat_session_id(value: object) -> str:
+    if isinstance(value, str) and CHAT_SESSION_ID_RE.fullmatch(value):
+        return value
+    raise GatewayError("invalid_payload", "chat_session_id is invalid")
+
+
+def _validate_safe_integer(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise GatewayError("invalid_payload", f"{name} must be an integer")
+    if value < 0 or value > MAX_SAFE_INTEGER:
+        raise GatewayError("invalid_payload", f"{name} is outside the safe range")
+    return value
+
+
+def _validate_max_tokens(value: object) -> int:
+    max_tokens = _validate_safe_integer(value, "max_tokens")
+    if not 1 <= max_tokens <= MAX_MAX_TOKENS:
+        raise GatewayError("invalid_payload", "max_tokens is outside the allowed range")
+    return max_tokens
+
+
+def _validate_turn_request(
+    payload: Mapping[str, Any],
+    binding: ModelBinding,
+    limits: GatewayLimits,
+) -> TurnRequest:
+    request_id = _validate_request_id(payload.get("request_id"))
+    chat_session_id = _validate_chat_session_id(payload.get("chat_session_id"))
+    model_id = _validate_model_id(payload.get("model_id"), limits)
+    if model_id != binding.model_id:
+        raise GatewayError("invalid_payload", "model_id does not match the active binding")
+    submitted_at_unix_ms = _validate_safe_integer(
+        payload.get("submitted_at_unix_ms"),
+        "submitted_at_unix_ms",
+    )
+    max_tokens = _validate_max_tokens(payload.get("max_tokens"))
+    prompt = _validate_prompt(payload.get("prompt"), limits)
+    if not prompt.strip():
+        raise GatewayError("invalid_payload", "prompt must not be empty")
+    binding_fingerprint = _validate_fingerprint(payload.get("binding_fingerprint"))
+    if binding_fingerprint != binding.fingerprint:
+        raise GatewayError("invalid_payload", "binding fingerprint mismatch")
+    return TurnRequest(
+        request_id=request_id,
+        turn_id=request_id,
+        chat_session_id=chat_session_id,
+        model_id=model_id,
+        submitted_at_unix_ms=submitted_at_unix_ms,
+        max_tokens=max_tokens,
+        prompt=prompt,
+        binding_fingerprint=binding_fingerprint,
+    )
 
 
 def _validate_runtime_instance_id(value: object) -> str:
@@ -862,6 +1526,15 @@ def _validate_messages(messages: tuple[dict[str, str], ...], limits: GatewayLimi
         raise GatewayError("payload_too_large", "harness message byte limit reached")
 
 
+def _require_exact_payload_keys(
+    payload: Mapping[str, Any],
+    expected: frozenset[str],
+    method: str,
+) -> None:
+    if not isinstance(payload, Mapping) or set(payload) != set(expected):
+        raise GatewayError("invalid_payload", f"{method} payload shape is invalid")
+
+
 def _expect_exact(value: object, expected: str, name: str) -> str:
     if value != expected:
         raise GatewayError("invalid_payload", f"{name} is unsupported")
@@ -901,7 +1574,7 @@ def _parse_sse_event(lines: list[str]) -> tuple[str, bool]:
         content = ""
     if not isinstance(content, str):
         raise GatewayError("invalid_payload", "SSE content delta is invalid")
-    return content, finish_reason is not None
+    return content, False
 
 
 def _reject_tool_markers(value: object) -> None:
@@ -917,11 +1590,105 @@ def _reject_tool_markers(value: object) -> None:
             _reject_tool_markers(child)
 
 
-def _read_bounded(response: http.client.HTTPResponse, limit: int) -> bytes:
+def _set_connection_timeout(connection: http.client.HTTPConnection, seconds: float) -> None:
+    sock = connection.sock
+    if sock is not None:
+        sock.settimeout(max(0.001, float(seconds)))
+
+
+def _set_response_timeout(
+    connection: http.client.HTTPConnection,
+    response: http.client.HTTPResponse,
+    seconds: float,
+) -> None:
+    sock = connection.sock
+    if sock is None:
+        raw = getattr(getattr(response, "fp", None), "raw", None)
+        sock = getattr(raw, "_sock", None)
+    if sock is not None:
+        sock.settimeout(max(0.001, float(seconds)))
+
+
+def _model_readiness_timeout(code: str) -> GatewayError:
+    return GatewayError(
+        code,
+        "model provider readiness timed out",
+        retryable=True,
+    )
+
+
+def _remaining_model_readiness_seconds(deadline: float, timeout_code: str) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise _model_readiness_timeout(timeout_code)
+    return max(0.001, remaining)
+
+
+def _raise_model_readiness_timeout_if_due(
+    deadline: float,
+    timeout_code: str,
+    watchdog_fired: threading.Event,
+) -> None:
+    if watchdog_fired.is_set() or time.monotonic() >= deadline:
+        raise _model_readiness_timeout(timeout_code)
+
+
+def _raise_stream_timeout_if_due(
+    now: float,
+    *,
+    overall_deadline: float,
+    first_token_deadline: float,
+    first_content_seen: bool,
+    last_activity: float,
+    inactivity_timeout_seconds: float,
+    force_phase: bool = False,
+) -> None:
+    if force_phase or now >= overall_deadline:
+        if now >= overall_deadline:
+            raise GatewayError(
+                "overall_timeout",
+                "model completion exceeded the overall deadline",
+                retryable=True,
+            )
+    if not first_content_seen:
+        if force_phase or now >= first_token_deadline:
+            raise GatewayError(
+                "first_token_timeout",
+                "model completion did not produce a first token in time",
+                retryable=True,
+            )
+        return
+    if force_phase or now >= last_activity + inactivity_timeout_seconds:
+        raise GatewayError(
+            "inactivity_timeout",
+            "model completion stream became inactive",
+            retryable=True,
+        )
+
+
+def _read_bounded(
+    connection: http.client.HTTPConnection,
+    response: http.client.HTTPResponse,
+    limit: int,
+    *,
+    deadline: float,
+    timeout_code: str,
+    watchdog_fired: threading.Event,
+) -> bytes:
     chunks: list[bytes] = []
     total = 0
     while True:
-        chunk = response.read(8192)
+        _raise_model_readiness_timeout_if_due(deadline, timeout_code, watchdog_fired)
+        _set_response_timeout(
+            connection,
+            response,
+            _remaining_model_readiness_seconds(deadline, timeout_code),
+        )
+        try:
+            chunk = response.read1(min(8192, limit - total + 1))
+        except socket.timeout as exc:
+            raise _model_readiness_timeout(timeout_code) from exc
+        _raise_model_readiness_timeout_if_due(deadline, timeout_code, watchdog_fired)
         if not chunk:
             break
         total += len(chunk)

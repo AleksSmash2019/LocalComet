@@ -1312,7 +1312,7 @@ class DesktopControlPlane:
             elif method == "model.turn.cancelled":
                 turn.model_called = payload.get("model_called") is True
                 self._finish_pending_turn_without_model(control_plane_turn_id, "CANCELLED")
-            elif method == "model.turn.failed":
+            elif method in {"model.turn.timed_out", "model.turn.failed"}:
                 turn.model_called = payload.get("model_called") is True
                 self._finish_pending_turn_without_model(control_plane_turn_id, "FAILED")
 

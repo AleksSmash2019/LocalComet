@@ -32,6 +32,7 @@ from modules.knowledge_change_review_ru import KnowledgeChangeReviewArtifact
 from modules.local_model_gateway_ru import (
     LOCAL_MODEL_GATEWAY_VERSION,
     MODEL_GATEWAY_METHODS,
+    TIMEOUT_ERROR_CODES,
     GatewayError,
     LocalModelGateway,
     validate_gateway_payload,
@@ -119,6 +120,10 @@ class DesktopSidecarRuntime:
 
     def set_async_message_writer(self, writer: Callable[[tuple[dict[str, Any], ...]], None]) -> None:
         self._async_message_writer = writer
+
+    def close(self) -> None:
+        """Boundedly stop the model worker when the runner loses its IPC peer."""
+        self._model_gateway.shutdown()
 
     def handle_message(self, message: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
         findings = validate_envelope(message)
@@ -284,7 +289,10 @@ class DesktopSidecarRuntime:
             else:
                 return (self._error(request_id, "unsupported_method", "unsupported model gateway method"),)
         except GatewayError as exc:
-            code = exc.code if exc.code in ERROR_CODES else "invalid_payload"
+            if method == "model.managed.attach" and exc.code in TIMEOUT_ERROR_CODES:
+                code = "timeout"
+            else:
+                code = exc.code if exc.code in ERROR_CODES else "invalid_payload"
             return (self._error(request_id, code, exc.message),)
         return (
             make_response(
