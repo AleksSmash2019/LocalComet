@@ -2,6 +2,58 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::{Duration, Instant};
+
+const PIPE_WRITE_RETRY_DELAY: Duration = Duration::from_millis(2);
+
+fn write_all_bounded<W: Write>(
+    writer: &mut W,
+    mut bytes: &[u8],
+    timeout: Duration,
+) -> io::Result<()> {
+    let started = Instant::now();
+    while !bytes.is_empty() {
+        match writer.write(bytes) {
+            Ok(0) => {
+                if started.elapsed() >= timeout {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "sidecar pipe write timed out",
+                    ));
+                }
+                thread::sleep(PIPE_WRITE_RETRY_DELAY);
+            }
+            Ok(written) => bytes = &bytes[written..],
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) if retryable_pipe_backpressure(&error) => {
+                if started.elapsed() >= timeout {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "sidecar pipe write timed out",
+                    ));
+                }
+                thread::sleep(PIPE_WRITE_RETRY_DELAY);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+fn retryable_pipe_backpressure(error: &io::Error) -> bool {
+    if error.kind() == io::ErrorKind::WouldBlock {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        error.raw_os_error() == Some(windows_sys::Win32::Foundation::ERROR_NO_DATA as i32)
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct SidecarLaunchSpec {
@@ -37,7 +89,7 @@ mod platform {
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
-    use windows_sys::Win32::System::Pipes::CreatePipe;
+    use windows_sys::Win32::System::Pipes::{CreatePipe, SetNamedPipeHandleState, PIPE_NOWAIT};
     use windows_sys::Win32::System::Threading::{
         CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
         ResumeThread, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
@@ -73,6 +125,10 @@ mod platform {
 
         pub fn take_stderr(&mut self) -> Option<File> {
             self.stderr.take()
+        }
+
+        pub fn write_frame_bounded(&mut self, frame: &[u8], timeout: Duration) -> io::Result<()> {
+            write_all_bounded(&mut self.stdin, frame, timeout)
         }
 
         pub fn is_running(&self) -> bool {
@@ -132,16 +188,6 @@ mod platform {
                     WaitForSingleObject(self.process.raw(), 2_000);
                 }
             }
-        }
-    }
-
-    impl Write for ContainedSidecarProcess {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.stdin.write(buf)
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            self.stdin.flush()
         }
     }
 
@@ -282,6 +328,7 @@ mod platform {
         set_parent_only(parent_stdin.raw())?;
         set_parent_only(parent_stdout.raw())?;
         set_parent_only(parent_stderr.raw())?;
+        set_pipe_nowait(parent_stdin.raw())?;
 
         let inheritable_handles = [child_stdin.raw(), child_stdout.raw(), child_stderr.raw()];
         let attributes = AttributeList::for_handles(&inheritable_handles)?;
@@ -480,6 +527,18 @@ mod platform {
         }
     }
 
+    fn set_pipe_nowait(handle: HANDLE) -> io::Result<()> {
+        let mode = PIPE_NOWAIT;
+        let changed = unsafe {
+            SetNamedPipeHandleState(handle, &mode, std::ptr::null(), std::ptr::null()) != 0
+        };
+        if changed {
+            Ok(())
+        } else {
+            Err(last_error())
+        }
+    }
+
     fn build_command_line(executable: &Path, args: &[OsString]) -> Vec<u16> {
         let mut parts = Vec::with_capacity(args.len() + 1);
         parts.push(quote_windows_arg(executable.as_os_str()));
@@ -609,6 +668,10 @@ mod platform {
             None
         }
 
+        pub fn write_frame_bounded(&mut self, _frame: &[u8], _timeout: Duration) -> io::Result<()> {
+            Err(io::Error::other("Windows sidecar containment is required"))
+        }
+
         pub fn is_running(&self) -> bool {
             false
         }
@@ -649,16 +712,78 @@ mod platform {
             true
         }
     }
-
-    impl Write for ContainedSidecarProcess {
-        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
-            Err(io::Error::other("Windows sidecar containment is required"))
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Err(io::Error::other("Windows sidecar containment is required"))
-        }
-    }
 }
 
 pub use platform::{ContainedManagedRuntimeProcess, ContainedSidecarProcess};
+
+#[cfg(test)]
+mod bounded_write_tests {
+    use super::*;
+
+    struct PartialWriter {
+        bytes: Vec<u8>,
+        chunk_size: usize,
+    }
+
+    impl Write for PartialWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            let written = bytes.len().min(self.chunk_size);
+            self.bytes.extend_from_slice(&bytes[..written]);
+            Ok(written)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct StalledWriter;
+
+    impl Write for StalledWriter {
+        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::WouldBlock, "pipe full"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct FailedWriter;
+
+    impl Write for FailedWriter {
+        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "sidecar exited"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn bounded_writer_preserves_complete_frame_order_across_partial_writes() {
+        let mut writer = PartialWriter {
+            bytes: Vec::new(),
+            chunk_size: 3,
+        };
+        write_all_bounded(&mut writer, b"first-frame", Duration::from_secs(1)).unwrap();
+        write_all_bounded(&mut writer, b"second-frame", Duration::from_secs(1)).unwrap();
+        assert_eq!(writer.bytes, b"first-framesecond-frame");
+    }
+
+    #[test]
+    fn bounded_writer_times_out_when_pipe_never_accepts_data() {
+        let started = Instant::now();
+        let error = write_all_bounded(&mut StalledWriter, b"frame", Duration::ZERO).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn bounded_writer_propagates_sidecar_failure_without_retrying() {
+        let error =
+            write_all_bounded(&mut FailedWriter, b"frame", Duration::from_secs(1)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    }
+}

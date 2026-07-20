@@ -2,7 +2,7 @@ use crate::ipc;
 use crate::windows_job::{ContainedSidecarProcess, SidecarLaunchSpec};
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -19,6 +19,7 @@ pub const RELEASE_SIDECAR_EXE: &str = "localcomet-core.exe";
 pub const RELEASE_SIDECAR_RUNNER: &str = "app/tools/run_localcomet_desktop_sidecar.py";
 pub const HEALTH_METHOD: &str = "app.health";
 pub const SHUTDOWN_METHOD: &str = "app.shutdown";
+const IPC_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub trait SidecarFrameRouter: Send + Sync {
     fn route_frame(&self, frame: Vec<u8>);
@@ -289,11 +290,8 @@ impl DesktopSidecarSupervisor {
             spawn_stderr_reader(stderr, Arc::clone(&self.shared));
         }
 
-        process.write_all(&ipc::desktop_hello_frame(
-            "desk-hello-000001",
-            "localcomet-desktop",
-        )?)?;
-        process.flush()?;
+        let hello = ipc::desktop_hello_frame("desk-hello-000001", "localcomet-desktop")?;
+        process.write_frame_bounded(&hello, IPC_WRITE_TIMEOUT)?;
         state.process = Some(process);
         Ok(())
     }
@@ -332,34 +330,45 @@ impl DesktopSidecarSupervisor {
     }
 
     pub fn send_ipc_frame(&self, frame: Vec<u8>) -> Result<(), SupervisorError> {
-        let mut state = self.state.lock().expect("sidecar supervisor lock poisoned");
-        if state.shutting_down {
-            return Err(SupervisorError::Unavailable("sidecar is stopping".into()));
+        let (result, failed_process) = {
+            let mut state = self.state.lock().expect("sidecar supervisor lock poisoned");
+            if state.shutting_down {
+                return Err(SupervisorError::Unavailable("sidecar is stopping".into()));
+            }
+            let result = state
+                .process
+                .as_mut()
+                .ok_or_else(|| {
+                    SupervisorError::Unavailable("sidecar process is not running".into())
+                })
+                .and_then(|process| {
+                    process
+                        .write_frame_bounded(&frame, IPC_WRITE_TIMEOUT)
+                        .map_err(SupervisorError::Io)
+                });
+            let failed_process = result.as_ref().err().and_then(|_| state.process.take());
+            (result, failed_process)
+        };
+        if let Some(process) = failed_process {
+            process.terminate(1);
+            let _ = process.wait_bounded(1_000);
+            self.fail_pending("sidecar_write_failed", "sidecar pipe write failed");
         }
-        let process = state
-            .process
-            .as_mut()
-            .ok_or_else(|| SupervisorError::Unavailable("sidecar process is not running".into()))?;
-        process.write_all(&frame)?;
-        process.flush()?;
-        Ok(())
+        result
     }
 
     pub fn send_health_probe(&self) -> Result<(), SupervisorError> {
-        let mut state = self.state.lock().expect("sidecar supervisor lock poisoned");
-        let sequence = state.next_request;
-        state.next_request += 1;
-        let process = state
-            .process
-            .as_mut()
-            .ok_or_else(|| SupervisorError::Unavailable("sidecar process is not running".into()))?;
-        process.write_all(&ipc::lifecycle_request_frame(
+        let sequence = {
+            let mut state = self.state.lock().expect("sidecar supervisor lock poisoned");
+            let sequence = state.next_request;
+            state.next_request += 1;
+            sequence
+        };
+        self.send_ipc_frame(ipc::lifecycle_request_frame(
             &format!("desk-health-{sequence:06}"),
             HEALTH_METHOD,
             sequence,
-        )?)?;
-        process.flush()?;
-        Ok(())
+        )?)
     }
 
     pub fn snapshot(&self) -> SupervisorSnapshot {
@@ -404,16 +413,14 @@ impl DesktopSidecarSupervisor {
         };
 
         let send_result = if let Some(process) = process.as_mut() {
-            ipc::lifecycle_request_frame(
+            let frame = ipc::lifecycle_request_frame(
                 &format!("desk-shutdown-{sequence:06}"),
                 SHUTDOWN_METHOD,
                 sequence,
-            )
-            .and_then(|frame| {
-                process.write_all(&frame)?;
-                process.flush()
-            })
-            .map_err(SupervisorError::Io)
+            )?;
+            process
+                .write_frame_bounded(&frame, IPC_WRITE_TIMEOUT)
+                .map_err(SupervisorError::Io)
         } else {
             Ok(())
         };
@@ -452,13 +459,13 @@ impl DesktopSidecarSupervisor {
     }
 
     fn fail_pending(&self, code: &str, message: &str) {
-        if let Some(router) = self
+        let router = self
             .shared
             .router
             .lock()
             .expect("sidecar router lock poisoned")
-            .clone()
-        {
+            .clone();
+        if let Some(router) = router {
             router.fail_pending(code, message);
         }
     }
@@ -487,21 +494,21 @@ fn spawn_stdout_reader(mut stdout: File, shared: Arc<SupervisorShared>) {
                     .last_frame
                     .lock()
                     .expect("sidecar frame lock poisoned") = Some(limit_text(&text, 4096));
-                if let Some(router) = shared
+                let router = shared
                     .router
                     .lock()
                     .expect("sidecar router lock poisoned")
-                    .clone()
-                {
+                    .clone();
+                if let Some(router) = router {
                     router.route_frame(frame);
                 }
             }
-            if let Some(router) = shared
+            let router = shared
                 .router
                 .lock()
                 .expect("sidecar router lock poisoned")
-                .clone()
-            {
+                .clone();
+            if let Some(router) = router {
                 router.fail_pending("sidecar_unavailable", "sidecar stdout closed");
             }
         });
@@ -775,6 +782,56 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, SupervisorError::ReadinessTimeout));
         assert!(!supervisor.snapshot().running);
+    }
+
+    #[test]
+    fn nonreading_sidecar_pipe_write_is_bounded_and_releases_supervisor() {
+        let Some(root) = std::env::var_os("LOCALCOMET_TEST_PROJECT_ROOT").map(PathBuf::from) else {
+            return;
+        };
+        let Some(python) = std::env::var_os("LOCALCOMET_TEST_PYTHON").map(PathBuf::from) else {
+            return;
+        };
+        let runner = root.join("tools/test_up00_unready_sidecar.py");
+        let config = SupervisorConfig {
+            program: SidecarProgram::DebugPython {
+                python_exe: python.clone(),
+                project_root: root,
+                runner,
+            },
+            env: minimal_sidecar_environment(Some(&python)),
+        };
+        let supervisor = DesktopSidecarSupervisor::new(config);
+        supervisor.start().unwrap();
+
+        let body = serde_json::json!({
+            "protocol": ipc::IPC_PROTOCOL,
+            "version": ipc::IPC_PROTOCOL_VERSION,
+            "type": "request",
+            "id": "desk-timeout-000001",
+            "method": HEALTH_METHOD,
+            "run_id": null,
+            "sequence": 0,
+            "reply_to": null,
+            "payload": {"padding": "x".repeat(64 * 1024)},
+        })
+        .to_string();
+        let frame = ipc::json_frame(&body).unwrap();
+        let started = Instant::now();
+        let error = supervisor.send_ipc_frame(frame).unwrap_err();
+        assert!(matches!(
+            error,
+            SupervisorError::Io(ref error) if error.kind() == io::ErrorKind::TimedOut
+        ));
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(!supervisor.snapshot().running);
+
+        let retry_started = Instant::now();
+        assert!(matches!(
+            supervisor.send_ipc_frame(ipc::desktop_hello_frame("desk-retry", "test").unwrap()),
+            Err(SupervisorError::Unavailable(_))
+        ));
+        assert!(retry_started.elapsed() < Duration::from_millis(100));
     }
 
     #[test]

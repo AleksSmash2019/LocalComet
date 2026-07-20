@@ -8,6 +8,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -35,8 +36,11 @@ use windows_sys::Win32::Security::Cryptography::{
 const ENGINE_ID: &str = "llama.cpp";
 const MAX_LOG_BYTES: usize = 256 * 1024;
 const MAX_LOG_LINES: usize = 200;
+const MAX_LOG_CARRY_BYTES: usize = 512 * 1024;
 const MAX_PROBE_BYTES: usize = 64 * 1024;
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(300);
+const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(300);
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+const PROCESS_DROP_WAIT_RESERVE: Duration = Duration::from_secs(2);
 const REQUIRED_FLAGS: &[&str] = &[
     "--model",
     "--host",
@@ -59,10 +63,22 @@ pub enum ManagedRuntimeState {
     Failed,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub enum ManagedModelState {
+    Unavailable,
+    Validating,
+    Loading,
+    Ready,
+    Failed,
+    Unloading,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ManagedRuntimeStatus {
     pub engine: &'static str,
     pub state: ManagedRuntimeState,
+    pub model_state: ManagedModelState,
+    pub inference_ready: bool,
     pub installation: String,
     pub runtime_version: Option<String>,
     pub runtime_instance_id: Option<String>,
@@ -76,6 +92,8 @@ pub struct ManagedRuntimeStatus {
 #[derive(Clone, Debug, Serialize)]
 pub struct ManagedRuntimeStartResponse {
     pub state: ManagedRuntimeState,
+    pub model_state: ManagedModelState,
+    pub inference_ready: bool,
     pub provider_id: &'static str,
     pub model_id: String,
     pub model_display_name: String,
@@ -86,6 +104,8 @@ pub struct ManagedRuntimeStartResponse {
 #[derive(Clone, Debug, Serialize)]
 pub struct ManagedRuntimeStopResponse {
     pub state: ManagedRuntimeState,
+    pub model_state: ManagedModelState,
+    pub inference_ready: bool,
     pub stopped: bool,
 }
 
@@ -120,7 +140,8 @@ impl From<ManagedRuntimeError> for BridgeError {
 }
 
 struct ActiveRuntime {
-    process: ContainedManagedRuntimeProcess,
+    process: Arc<Mutex<ContainedManagedRuntimeProcess>>,
+    startup_generation: u64,
     stdout_reader: Option<thread::JoinHandle<()>>,
     stderr_reader: Option<thread::JoinHandle<()>>,
     api_key_file: PathBuf,
@@ -138,6 +159,33 @@ struct ActiveRuntime {
     _state_directory_handles: Vec<File>,
 }
 
+#[derive(Clone)]
+struct StartupAttempt {
+    generation: u64,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl StartupAttempt {
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+
+    fn ensure_active(&self) -> Result<(), ManagedRuntimeError> {
+        if self.is_cancelled() {
+            Err(ManagedRuntimeError::new(
+                "start_cancelled",
+                "managed runtime start was cancelled",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
 #[derive(Default, Debug)]
 struct LogTail {
     bytes: usize,
@@ -146,9 +194,13 @@ struct LogTail {
 
 struct ManagedRuntimeInner {
     state: ManagedRuntimeState,
+    model_state: ManagedModelState,
+    inference_ready: bool,
     runtime_version: Option<String>,
     last_error: Option<String>,
     active: Option<ActiveRuntime>,
+    startup: Option<StartupAttempt>,
+    next_startup_generation: u64,
     stdout_tail: Arc<Mutex<LogTail>>,
     stderr_tail: Arc<Mutex<LogTail>>,
 }
@@ -157,9 +209,13 @@ impl Default for ManagedRuntimeInner {
     fn default() -> Self {
         Self {
             state: ManagedRuntimeState::NotInstalled,
+            model_state: ManagedModelState::Unavailable,
+            inference_ready: false,
             runtime_version: None,
             last_error: None,
             active: None,
+            startup: None,
+            next_startup_generation: 0,
             stdout_tail: Arc::new(Mutex::new(LogTail::default())),
             stderr_tail: Arc::new(Mutex::new(LogTail::default())),
         }
@@ -168,7 +224,7 @@ impl Default for ManagedRuntimeInner {
 
 pub struct ManagedRuntimeSupervisor {
     artifacts: Arc<ArtifactTrustService>,
-    lifecycle: Mutex<()>,
+    transition: Mutex<()>,
     inner: Mutex<ManagedRuntimeInner>,
 }
 
@@ -176,25 +232,30 @@ impl ManagedRuntimeSupervisor {
     pub fn new(artifacts: Arc<ArtifactTrustService>) -> Self {
         Self {
             artifacts,
-            lifecycle: Mutex::new(()),
+            transition: Mutex::new(()),
             inner: Mutex::new(ManagedRuntimeInner::default()),
         }
     }
 
     pub fn status(&self, bridge: &ControlPlaneBridge) -> ManagedRuntimeStatus {
-        let _lifecycle = self
-            .lifecycle
-            .lock()
-            .expect("managed runtime lifecycle lock poisoned");
         let exited = {
+            let _transition = self
+                .transition
+                .lock()
+                .expect("managed runtime transition lock poisoned");
             let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
             if inner
                 .active
                 .as_ref()
-                .is_some_and(|active| !active.process.is_running())
+                .is_some_and(|active| !managed_process_is_running(&active.process))
             {
                 let active = inner.active.take();
-                inner.state = ManagedRuntimeState::Failed;
+                if let Some(startup) = inner.startup.take() {
+                    startup.cancel();
+                }
+                inner.state = ManagedRuntimeState::Stopping;
+                inner.model_state = ManagedModelState::Unloading;
+                inner.inference_ready = false;
                 inner.runtime_version = None;
                 inner.last_error = Some("managed runtime exited".into());
                 active
@@ -204,20 +265,36 @@ impl ManagedRuntimeSupervisor {
         };
         if let Some(active) = exited {
             let _ = bridge.request(ControlPlaneMethod::ModelManagedDetach, json!({}));
-            Self::dispose_active(active, false);
+            Self::dispose_active(active, false, SHUTDOWN_TIMEOUT);
+            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+            if inner.state == ManagedRuntimeState::Stopping && inner.active.is_none() {
+                inner.state = ManagedRuntimeState::Failed;
+                inner.model_state = ManagedModelState::Failed;
+                inner.inference_ready = false;
+            }
         }
 
-        let runtime_installed = self.artifacts.has_valid_runtime();
+        let runtime_in_use = {
+            let inner = self.inner.lock().expect("managed runtime lock poisoned");
+            inner.active.is_some() || inner.startup.is_some()
+        };
+        let runtime_installed = runtime_in_use || self.artifacts.has_valid_runtime();
         let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
         if inner.active.is_none() && !runtime_installed {
             inner.state = ManagedRuntimeState::NotInstalled;
+            inner.model_state = ManagedModelState::Unavailable;
+            inner.inference_ready = false;
         } else if inner.active.is_none() && inner.state == ManagedRuntimeState::NotInstalled {
             inner.state = ManagedRuntimeState::Stopped;
+            inner.model_state = ManagedModelState::Unavailable;
+            inner.inference_ready = false;
         }
         let active = inner.active.as_ref();
         ManagedRuntimeStatus {
             engine: ENGINE_ID,
             state: inner.state.clone(),
+            model_state: inner.model_state.clone(),
+            inference_ready: inner.inference_ready,
             installation: if runtime_installed {
                 "Installed".into()
             } else {
@@ -254,51 +331,84 @@ impl ManagedRuntimeSupervisor {
         }
     }
 
+    pub(crate) fn ensure_model_ready(&self, model_id: &str) -> Result<(), BridgeError> {
+        let _transition = self
+            .transition
+            .lock()
+            .expect("managed runtime transition lock poisoned");
+        let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+        let process_running = inner
+            .active
+            .as_ref()
+            .is_some_and(|active| managed_process_is_running(&active.process));
+        if !process_running {
+            if inner.active.is_some() {
+                inner.state = ManagedRuntimeState::Failed;
+                inner.model_state = ManagedModelState::Failed;
+                inner.inference_ready = false;
+                inner.last_error = Some("managed runtime exited".into());
+            }
+            return Err(ManagedRuntimeError::new(
+                "runtime_not_ready",
+                "managed runtime is not ready",
+            )
+            .into());
+        }
+        if inner.state != ManagedRuntimeState::Ready {
+            return Err(ManagedRuntimeError::new(
+                "runtime_not_ready",
+                "managed runtime is not ready",
+            )
+            .into());
+        }
+        let model_ready = inner.model_state == ManagedModelState::Ready
+            && inner.inference_ready
+            && inner
+                .active
+                .as_ref()
+                .is_some_and(|active| active.model_id == model_id);
+        if !model_ready {
+            return Err(
+                ManagedRuntimeError::new("model_not_ready", "managed model is not ready").into(),
+            );
+        }
+        Ok(())
+    }
+
     pub fn start(
         &self,
         model_id: &str,
         bridge: &ControlPlaneBridge,
     ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
-        let _lifecycle = self
-            .lifecycle
-            .lock()
-            .expect("managed runtime lifecycle lock poisoned");
-        {
-            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
-            if inner.active.is_some()
-                || matches!(
-                    inner.state,
-                    ManagedRuntimeState::Validating
-                        | ManagedRuntimeState::Starting
-                        | ManagedRuntimeState::Ready
-                        | ManagedRuntimeState::Stopping
-                )
-            {
-                return Err(ManagedRuntimeError::new("busy", "managed runtime is busy").into());
-            }
-            inner.state = ManagedRuntimeState::Validating;
-            inner.last_error = None;
-        }
-
-        let start_result = self.start_inner(model_id);
-        match start_result {
-            Ok(response) => {
-                let attach = self.attach_payload_for_active()?;
-                if let Err(error) = bridge.request(ControlPlaneMethod::ModelManagedAttach, attach) {
-                    let _ = self.stop_inner(bridge);
-                    self.set_state(
-                        ManagedRuntimeState::Failed,
-                        Some("managed provider attach failed"),
-                    );
-                    return Err(error);
-                }
-                self.set_state(ManagedRuntimeState::Ready, None);
-                Ok(response)
-            }
+        let attempt = self.begin_start()?;
+        let model_load_deadline = Instant::now() + MODEL_LOAD_TIMEOUT;
+        let response = match self.start_inner(model_id, model_load_deadline, &attempt) {
+            Ok(response) => response,
             Err(error) => {
-                self.set_state(ManagedRuntimeState::Failed, Some(&error.message));
-                Err(error)
+                return Err(self.settle_start_failure(&attempt, error, bridge, false));
             }
+        };
+        let attach = match self.attach_payload_for_attempt(&attempt) {
+            Ok(attach) => attach,
+            Err(error) => {
+                return Err(self.settle_start_failure(&attempt, error, bridge, false));
+            }
+        };
+        let attach_response = remaining_model_load_timeout(model_load_deadline)
+            .map_err(BridgeError::from)
+            .and_then(|timeout| {
+                bridge.request_with_timeout(ControlPlaneMethod::ModelManagedAttach, attach, timeout)
+            })
+            .and_then(|value| {
+                validate_managed_attach_response(&value, &response).map_err(BridgeError::from)
+            });
+        if let Err(error) = attach_response {
+            let error = normalize_managed_attach_error(error);
+            return Err(self.settle_start_failure(&attempt, error, bridge, true));
+        }
+        match self.complete_start(&attempt) {
+            Ok(()) => Ok(response),
+            Err(error) => Err(self.settle_start_failure(&attempt, error, bridge, true)),
         }
     }
 
@@ -306,44 +416,114 @@ impl ManagedRuntimeSupervisor {
         &self,
         bridge: &ControlPlaneBridge,
     ) -> Result<ManagedRuntimeStopResponse, BridgeError> {
-        let _lifecycle = self
-            .lifecycle
-            .lock()
-            .expect("managed runtime lifecycle lock poisoned");
-        self.stop_inner(bridge)
-    }
-
-    fn stop_inner(
-        &self,
-        bridge: &ControlPlaneBridge,
-    ) -> Result<ManagedRuntimeStopResponse, BridgeError> {
-        self.set_state(ManagedRuntimeState::Stopping, None);
-        let _ = bridge.request(ControlPlaneMethod::ModelManagedDetach, json!({}));
-        let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
-        if let Some(active) = inner.active.take() {
-            Self::dispose_active(active, true);
-        }
-        inner.runtime_version = None;
-        inner.state = if self.artifacts.has_valid_runtime() {
-            ManagedRuntimeState::Stopped
-        } else {
-            ManagedRuntimeState::NotInstalled
+        let deadline = Instant::now() + SHUTDOWN_TIMEOUT;
+        let (active, final_state) = {
+            let _transition = self
+                .transition
+                .lock()
+                .expect("managed runtime transition lock poisoned");
+            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+            if inner.state == ManagedRuntimeState::Stopping {
+                return Err(ManagedRuntimeError::new("busy", "managed runtime is stopping").into());
+            }
+            let final_state = if inner.state == ManagedRuntimeState::NotInstalled {
+                ManagedRuntimeState::NotInstalled
+            } else {
+                ManagedRuntimeState::Stopped
+            };
+            if let Some(startup) = inner.startup.take() {
+                startup.cancel();
+            }
+            inner.state = ManagedRuntimeState::Stopping;
+            inner.model_state = ManagedModelState::Unloading;
+            inner.inference_ready = false;
+            inner.last_error = None;
+            (inner.active.take(), final_state)
         };
-        Ok(ManagedRuntimeStopResponse {
+
+        let detach_result = remaining_shutdown_timeout(deadline).and_then(|timeout| {
+            bridge.request_with_timeout(
+                ControlPlaneMethod::ModelManagedDetach,
+                json!({}),
+                timeout.min(Duration::from_secs(2)),
+            )
+        });
+        if let Some(active) = active {
+            Self::dispose_active(
+                active,
+                true,
+                deadline.saturating_duration_since(Instant::now()),
+            );
+        }
+        let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+        inner.runtime_version = None;
+        inner.state = final_state;
+        inner.model_state = ManagedModelState::Unavailable;
+        inner.inference_ready = false;
+        let response = ManagedRuntimeStopResponse {
             state: inner.state.clone(),
+            model_state: inner.model_state.clone(),
+            inference_ready: false,
             stopped: true,
-        })
+        };
+        if detach_result.is_err() {
+            inner.last_error = Some("managed provider detach failed".into());
+            return Err(ManagedRuntimeError::new(
+                "shutdown_failed",
+                "managed provider detach failed; runtime process was stopped",
+            )
+            .into());
+        }
+        inner.last_error = None;
+        Ok(response)
     }
 
-    fn start_inner(&self, model_id: &str) -> Result<ManagedRuntimeStartResponse, BridgeError> {
+    fn begin_start(&self) -> Result<StartupAttempt, BridgeError> {
+        let _transition = self
+            .transition
+            .lock()
+            .expect("managed runtime transition lock poisoned");
+        let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+        if inner.active.is_some()
+            || inner.startup.is_some()
+            || matches!(
+                inner.state,
+                ManagedRuntimeState::Validating
+                    | ManagedRuntimeState::Starting
+                    | ManagedRuntimeState::Ready
+                    | ManagedRuntimeState::Stopping
+            )
+        {
+            return Err(ManagedRuntimeError::new("busy", "managed runtime is busy").into());
+        }
+        inner.next_startup_generation = inner.next_startup_generation.wrapping_add(1).max(1);
+        let attempt = StartupAttempt {
+            generation: inner.next_startup_generation,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        };
+        inner.startup = Some(attempt.clone());
+        inner.state = ManagedRuntimeState::Validating;
+        inner.model_state = ManagedModelState::Validating;
+        inner.inference_ready = false;
+        inner.runtime_version = None;
+        inner.last_error = None;
+        Ok(attempt)
+    }
+
+    fn start_inner(
+        &self,
+        model_id: &str,
+        model_load_deadline: Instant,
+        attempt: &StartupAttempt,
+    ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
         let roots = self.artifacts.roots();
         let launch = self.artifacts.resolve_launch(model_id)?;
-        verify_runtime_capabilities(&launch)?;
+        attempt.ensure_active()?;
+        verify_runtime_capabilities(&launch, attempt)?;
+        attempt.ensure_active()?;
         let state_directory_handles = self.artifacts.guard_runtime_state_root()?;
         let credential = generate_credential()?;
         let port = select_ephemeral_loopback_port()?;
-        let (api_key_file, api_key_handle) =
-            write_private_api_key_file(&roots.state_root, &credential)?;
         let alias = safe_alias(&launch.model_id);
         let runtime_instance_id = hex_bytes(&random_bytes(16)?);
         let runtime_instance_fingerprint = sha256_text(&format!(
@@ -354,96 +534,190 @@ impl ManagedRuntimeSupervisor {
             "managed:{}:{}",
             runtime_instance_id, launch.model_id
         ));
-
-        self.set_state(ManagedRuntimeState::Starting, None);
-        let spec = ManagedRuntimeLaunchSpec {
-            executable: launch.executable.clone(),
-            args: runtime_args(&launch.model_path, port, &api_key_file, &alias),
-            current_dir: launch.package_dir.clone(),
-            env: sanitized_runtime_environment(),
-        };
-        let mut process = match ContainedManagedRuntimeProcess::spawn(&spec) {
-            Ok(process) => process,
-            Err(_) => {
-                drop(api_key_handle);
-                let _ = fs::remove_file(&api_key_file);
-                return Err(ManagedRuntimeError::new(
-                    "launch_failed",
-                    "managed runtime launch failed",
-                )
-                .into());
-            }
-        };
-        let inner = self.inner.lock().expect("managed runtime lock poisoned");
-        let stdout_tail = Arc::clone(&inner.stdout_tail);
-        let stderr_tail = Arc::clone(&inner.stderr_tail);
-        drop(inner);
-        let mut stdout_reader = process.take_stdout().map(|stdout| {
-            spawn_log_reader(
-                stdout,
-                stdout_tail,
-                self.redaction_markers(&credential, &api_key_file),
-            )
-        });
-        let mut stderr_reader = process.take_stderr().map(|stderr| {
-            spawn_log_reader(
-                stderr,
-                stderr_tail,
-                self.redaction_markers(&credential, &api_key_file),
-            )
-        });
-
-        let ready = wait_ready(&process, port, &credential, &alias, STARTUP_TIMEOUT);
-        if let Err(error) = ready {
-            process.terminate(1);
-            let _ = process.wait_bounded(3000);
-            if let Some(handle) = stdout_reader.take() {
-                let _ = handle.join();
-            }
-            if let Some(handle) = stderr_reader.take() {
-                let _ = handle.join();
-            }
-            drop(api_key_handle);
-            let _ = fs::remove_file(&api_key_file);
-            return Err(error.into());
-        }
-
         let response = ManagedRuntimeStartResponse {
             state: ManagedRuntimeState::Ready,
+            model_state: ManagedModelState::Ready,
+            inference_ready: true,
             provider_id: "managed-llama-cpp",
             model_id: launch.model_id.clone(),
             model_display_name: launch.model_display_name.clone(),
             runtime_instance_id: runtime_instance_id.clone(),
             runtime_instance_fingerprint: runtime_instance_fingerprint.clone(),
         };
-        let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
-        inner.runtime_version = Some(launch.runtime_release_tag);
-        inner.active = Some(ActiveRuntime {
-            process,
-            stdout_reader,
-            stderr_reader,
-            api_key_file,
-            api_key_handle: Some(api_key_handle),
-            credential,
-            port,
-            runtime_instance_id,
-            runtime_instance_fingerprint,
-            binding_fingerprint,
-            model_id: launch.model_id,
-            model_display_name: launch.model_display_name,
-            _model_handle: launch.model_handle,
-            _runtime_handles: launch.runtime_handles,
-            _directory_handles: launch.directory_handles,
-            _state_directory_handles: state_directory_handles,
-        });
+
+        let process = {
+            let _transition = self
+                .transition
+                .lock()
+                .expect("managed runtime transition lock poisoned");
+            {
+                let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+                if !startup_is_current(&inner, attempt) || attempt.is_cancelled() {
+                    return Err(ManagedRuntimeError::new(
+                        "start_cancelled",
+                        "managed runtime start was cancelled",
+                    )
+                    .into());
+                }
+                inner.state = ManagedRuntimeState::Starting;
+                inner.model_state = ManagedModelState::Loading;
+                inner.inference_ready = false;
+            }
+            let (api_key_file, api_key_handle) =
+                write_private_api_key_file(&roots.state_root, &credential)?;
+            let spec = ManagedRuntimeLaunchSpec {
+                executable: launch.executable.clone(),
+                args: runtime_args(&launch.model_path, port, &api_key_file, &alias),
+                current_dir: launch.package_dir.clone(),
+                env: sanitized_runtime_environment(),
+            };
+            let mut process = match ContainedManagedRuntimeProcess::spawn(&spec) {
+                Ok(process) => process,
+                Err(_) => {
+                    drop(api_key_handle);
+                    let _ = fs::remove_file(&api_key_file);
+                    return Err(ManagedRuntimeError::new(
+                        "launch_failed",
+                        "managed runtime launch failed",
+                    )
+                    .into());
+                }
+            };
+            let inner = self.inner.lock().expect("managed runtime lock poisoned");
+            let stdout_tail = Arc::clone(&inner.stdout_tail);
+            let stderr_tail = Arc::clone(&inner.stderr_tail);
+            drop(inner);
+            let mut stdout_reader = None;
+            if let Some(stdout) = process.take_stdout() {
+                match spawn_log_reader(
+                    stdout,
+                    stdout_tail,
+                    self.redaction_markers(&credential, &api_key_file),
+                ) {
+                    Ok(reader) => stdout_reader = Some(reader),
+                    Err(_) => {
+                        process.terminate(1);
+                        let _ = process.wait_bounded(3000);
+                        drop(api_key_handle);
+                        let _ = fs::remove_file(&api_key_file);
+                        return Err(ManagedRuntimeError::new(
+                            "launch_failed",
+                            "managed runtime log reader could not start",
+                        )
+                        .into());
+                    }
+                }
+            }
+            let stderr_reader = if let Some(stderr) = process.take_stderr() {
+                match spawn_log_reader(
+                    stderr,
+                    stderr_tail,
+                    self.redaction_markers(&credential, &api_key_file),
+                ) {
+                    Ok(reader) => Some(reader),
+                    Err(_) => {
+                        process.terminate(1);
+                        let _ = process.wait_bounded(3000);
+                        if let Some(reader) = stdout_reader.take() {
+                            join_reader_bounded(reader, Instant::now() + Duration::from_secs(1));
+                        }
+                        drop(api_key_handle);
+                        let _ = fs::remove_file(&api_key_file);
+                        return Err(ManagedRuntimeError::new(
+                            "launch_failed",
+                            "managed runtime log reader could not start",
+                        )
+                        .into());
+                    }
+                }
+            } else {
+                None
+            };
+            let process = Arc::new(Mutex::new(process));
+            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+            if !startup_is_current(&inner, attempt) || attempt.is_cancelled() {
+                drop(inner);
+                let active = ActiveRuntime {
+                    process,
+                    startup_generation: attempt.generation,
+                    stdout_reader,
+                    stderr_reader,
+                    api_key_file,
+                    api_key_handle: Some(api_key_handle),
+                    credential,
+                    port,
+                    runtime_instance_id,
+                    runtime_instance_fingerprint,
+                    binding_fingerprint,
+                    model_id: launch.model_id,
+                    model_display_name: launch.model_display_name,
+                    _model_handle: launch.model_handle,
+                    _runtime_handles: launch.runtime_handles,
+                    _directory_handles: launch.directory_handles,
+                    _state_directory_handles: state_directory_handles,
+                };
+                Self::dispose_active(active, true, SHUTDOWN_TIMEOUT);
+                return Err(ManagedRuntimeError::new(
+                    "start_cancelled",
+                    "managed runtime start was cancelled",
+                )
+                .into());
+            }
+            inner.runtime_version = Some(launch.runtime_release_tag);
+            inner.active = Some(ActiveRuntime {
+                process: Arc::clone(&process),
+                startup_generation: attempt.generation,
+                stdout_reader,
+                stderr_reader,
+                api_key_file,
+                api_key_handle: Some(api_key_handle),
+                credential: credential.clone(),
+                port,
+                runtime_instance_id,
+                runtime_instance_fingerprint,
+                binding_fingerprint,
+                model_id: launch.model_id,
+                model_display_name: launch.model_display_name,
+                _model_handle: launch.model_handle,
+                _runtime_handles: launch.runtime_handles,
+                _directory_handles: launch.directory_handles,
+                _state_directory_handles: state_directory_handles,
+            });
+            process
+        };
+
+        remaining_model_load_timeout(model_load_deadline).and_then(|timeout| {
+            wait_ready(
+                &process,
+                port,
+                &credential,
+                &alias,
+                timeout,
+                &attempt.cancelled,
+            )
+        })?;
         Ok(response)
     }
 
-    fn attach_payload_for_active(&self) -> Result<Value, BridgeError> {
+    fn attach_payload_for_attempt(&self, attempt: &StartupAttempt) -> Result<Value, BridgeError> {
         let inner = self.inner.lock().expect("managed runtime lock poisoned");
+        if !startup_is_current(&inner, attempt) || attempt.is_cancelled() {
+            return Err(ManagedRuntimeError::new(
+                "start_cancelled",
+                "managed runtime start was cancelled",
+            )
+            .into());
+        }
         let active = inner.active.as_ref().ok_or_else(|| {
             ManagedRuntimeError::new("sidecar_unavailable", "managed runtime is not active")
         })?;
+        if active.startup_generation != attempt.generation {
+            return Err(ManagedRuntimeError::new(
+                "start_cancelled",
+                "managed runtime start was superseded",
+            )
+            .into());
+        }
         Ok(json!({
             "runtime_instance_id": active.runtime_instance_id,
             "port": active.port,
@@ -454,22 +728,123 @@ impl ManagedRuntimeSupervisor {
         }))
     }
 
-    fn set_state(&self, state: ManagedRuntimeState, error: Option<&str>) {
+    fn complete_start(&self, attempt: &StartupAttempt) -> Result<(), BridgeError> {
+        let _transition = self
+            .transition
+            .lock()
+            .expect("managed runtime transition lock poisoned");
         let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
-        inner.state = state;
-        inner.last_error = error.map(|item| sanitize_text(item, 240));
+        let process_ready = inner.active.as_ref().is_some_and(|active| {
+            active.startup_generation == attempt.generation
+                && managed_process_is_running(&active.process)
+        });
+        if !startup_is_current(&inner, attempt) || attempt.is_cancelled() || !process_ready {
+            return Err(ManagedRuntimeError::new(
+                "start_cancelled",
+                "managed runtime start was cancelled",
+            )
+            .into());
+        }
+        inner.startup = None;
+        inner.state = ManagedRuntimeState::Ready;
+        inner.model_state = ManagedModelState::Ready;
+        inner.inference_ready = true;
+        inner.last_error = None;
+        Ok(())
     }
 
-    fn dispose_active(mut active: ActiveRuntime, terminate: bool) {
-        if terminate && active.process.is_running() {
-            active.process.terminate(0);
+    fn settle_start_failure(
+        &self,
+        attempt: &StartupAttempt,
+        error: BridgeError,
+        bridge: &ControlPlaneBridge,
+        detach_attempted: bool,
+    ) -> BridgeError {
+        let process = {
+            let _transition = self
+                .transition
+                .lock()
+                .expect("managed runtime transition lock poisoned");
+            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+            if !startup_is_current(&inner, attempt) {
+                return ManagedRuntimeError::new(
+                    "start_cancelled",
+                    "managed runtime start was cancelled",
+                )
+                .into();
+            }
+            inner.startup = None;
+            inner.state = ManagedRuntimeState::Failed;
+            inner.model_state = ManagedModelState::Failed;
+            inner.inference_ready = false;
+            inner.runtime_version = None;
+            inner.last_error = Some(sanitize_text(&error.message, 240));
+            inner
+                .active
+                .as_ref()
+                .filter(|active| active.startup_generation == attempt.generation)
+                .map(|active| Arc::clone(&active.process))
+        };
+        if let Some(process) = process {
+            terminate_managed_process(&process, 1);
         }
-        let _ = active.process.wait_bounded(3000);
+
+        let cleanup_deadline = Instant::now() + SHUTDOWN_TIMEOUT;
+        if detach_attempted {
+            if let Ok(timeout) = remaining_shutdown_timeout(cleanup_deadline) {
+                let _ = bridge.request_with_timeout(
+                    ControlPlaneMethod::ModelManagedDetach,
+                    json!({}),
+                    timeout.min(Duration::from_secs(2)),
+                );
+            }
+        }
+        let active = {
+            let _transition = self
+                .transition
+                .lock()
+                .expect("managed runtime transition lock poisoned");
+            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+            if inner
+                .active
+                .as_ref()
+                .is_some_and(|active| active.startup_generation == attempt.generation)
+            {
+                inner.active.take()
+            } else {
+                None
+            }
+        };
+        if let Some(active) = active {
+            Self::dispose_active(
+                active,
+                true,
+                cleanup_deadline.saturating_duration_since(Instant::now()),
+            );
+        }
+        error
+    }
+
+    fn dispose_active(mut active: ActiveRuntime, terminate: bool, timeout: Duration) {
+        let cleanup_budget = timeout
+            .min(SHUTDOWN_TIMEOUT)
+            .saturating_sub(PROCESS_DROP_WAIT_RESERVE);
+        let deadline = Instant::now() + cleanup_budget;
+        {
+            let process = active
+                .process
+                .lock()
+                .expect("managed runtime process lock poisoned");
+            if terminate && process.is_running() {
+                process.terminate(0);
+            }
+            let _ = process.wait_bounded(remaining_millis(deadline).min(3_000));
+        }
         if let Some(handle) = active.stdout_reader.take() {
-            let _ = handle.join();
+            join_reader_bounded(handle, deadline);
         }
         if let Some(handle) = active.stderr_reader.take() {
-            let _ = handle.join();
+            join_reader_bounded(handle, deadline);
         }
         drop(active.api_key_handle.take());
         let _ = fs::remove_file(&active.api_key_file);
@@ -502,23 +877,140 @@ impl ManagedRuntimeSupervisor {
 
 impl Drop for ManagedRuntimeSupervisor {
     fn drop(&mut self) {
-        if let Ok(mut inner) = self.inner.lock() {
-            if let Some(active) = inner.active.take() {
-                Self::dispose_active(active, true);
+        let active = if let Ok(mut inner) = self.inner.lock() {
+            if let Some(startup) = inner.startup.take() {
+                startup.cancel();
             }
+            inner.active.take()
+        } else {
+            None
+        };
+        if let Some(active) = active {
+            Self::dispose_active(active, true, SHUTDOWN_TIMEOUT);
         }
     }
 }
 
-fn verify_runtime_capabilities(runtime: &ValidatedRuntimeModel) -> Result<(), ManagedRuntimeError> {
-    let version_output = run_capability_probe(runtime, "--version")?;
+fn startup_is_current(inner: &ManagedRuntimeInner, attempt: &StartupAttempt) -> bool {
+    inner
+        .startup
+        .as_ref()
+        .is_some_and(|startup| startup.generation == attempt.generation)
+}
+
+fn managed_process_is_running(process: &Arc<Mutex<ContainedManagedRuntimeProcess>>) -> bool {
+    process
+        .lock()
+        .expect("managed runtime process lock poisoned")
+        .is_running()
+}
+
+fn terminate_managed_process(process: &Arc<Mutex<ContainedManagedRuntimeProcess>>, exit_code: u32) {
+    let process = process
+        .lock()
+        .expect("managed runtime process lock poisoned");
+    if process.is_running() {
+        process.terminate(exit_code);
+    }
+}
+
+fn validate_managed_attach_response(
+    response: &Value,
+    expected: &ManagedRuntimeStartResponse,
+) -> Result<(), ManagedRuntimeError> {
+    let object = response.as_object().ok_or_else(|| {
+        ManagedRuntimeError::new("model_load_failed", "managed attach response rejected")
+    })?;
+    if object.get("provider_id").and_then(Value::as_str) != Some("managed-llama-cpp")
+        || object.get("runtime_instance_id").and_then(Value::as_str)
+            != Some(expected.runtime_instance_id.as_str())
+        || object.get("model_id").and_then(Value::as_str) != Some(expected.model_id.as_str())
+        || object.get("model_state").and_then(Value::as_str) != Some("Ready")
+        || object.get("attached").and_then(Value::as_bool) != Some(true)
+        || object.get("inference_ready").and_then(Value::as_bool) != Some(true)
+    {
+        return Err(ManagedRuntimeError::new(
+            "model_load_failed",
+            "managed attach identity or inference readiness mismatch",
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_managed_attach_error(error: BridgeError) -> BridgeError {
+    let code = match error.code.as_str() {
+        "timeout"
+        | "model_load_timed_out"
+        | "first_token_timeout"
+        | "inactivity_timeout"
+        | "overall_timeout" => "model_load_timed_out",
+        _ => "model_load_failed",
+    };
+    ManagedRuntimeError::new(
+        code,
+        if code == "model_load_timed_out" {
+            "approved model inference readiness timed out"
+        } else {
+            "approved model inference readiness failed"
+        },
+    )
+    .into()
+}
+
+fn remaining_model_load_timeout(deadline: Instant) -> Result<Duration, ManagedRuntimeError> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        Err(ManagedRuntimeError::new(
+            "model_load_timed_out",
+            "approved model load timed out",
+        ))
+    } else {
+        Ok(remaining.min(MODEL_LOAD_TIMEOUT))
+    }
+}
+
+fn remaining_shutdown_timeout(deadline: Instant) -> Result<Duration, BridgeError> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        Err(BridgeError::new(
+            "shutdown_failed",
+            "managed runtime shutdown timed out",
+        ))
+    } else {
+        Ok(remaining.min(SHUTDOWN_TIMEOUT))
+    }
+}
+
+fn remaining_millis(deadline: Instant) -> u32 {
+    deadline
+        .saturating_duration_since(Instant::now())
+        .as_millis()
+        .min(u128::from(u32::MAX)) as u32
+}
+
+fn join_reader_bounded(handle: thread::JoinHandle<()>, deadline: Instant) {
+    while !handle.is_finished() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
+    }
+    if handle.is_finished() {
+        let _ = handle.join();
+    }
+}
+
+fn verify_runtime_capabilities(
+    runtime: &ValidatedRuntimeModel,
+    attempt: &StartupAttempt,
+) -> Result<(), ManagedRuntimeError> {
+    attempt.ensure_active()?;
+    let version_output = run_capability_probe(runtime, "--version", attempt)?;
     if version_output.len() > 4096 {
         return Err(ManagedRuntimeError::new(
             "runtime_incompatible",
             "runtime version output too large",
         ));
     }
-    let help_output = run_capability_probe(runtime, "--help")?;
+    attempt.ensure_active()?;
+    let help_output = run_capability_probe(runtime, "--help", attempt)?;
     for flag in REQUIRED_FLAGS {
         if !help_output.contains(flag) {
             return Err(ManagedRuntimeError::new(
@@ -533,6 +1025,7 @@ fn verify_runtime_capabilities(runtime: &ValidatedRuntimeModel) -> Result<(), Ma
 fn run_capability_probe(
     runtime: &ValidatedRuntimeModel,
     flag: &str,
+    attempt: &StartupAttempt,
 ) -> Result<String, ManagedRuntimeError> {
     let spec = ManagedRuntimeLaunchSpec {
         executable: runtime.executable.clone(),
@@ -542,15 +1035,42 @@ fn run_capability_probe(
     };
     let mut process = ContainedManagedRuntimeProcess::spawn(&spec)
         .map_err(|_| ManagedRuntimeError::new("runtime_incompatible", "runtime probe failed"))?;
-    let stdout_reader = process.take_stdout().map(spawn_probe_reader);
-    let stderr_reader = process.take_stderr().map(spawn_probe_reader);
-    let completed = process.wait_bounded(5000);
+    let stdout_reader = match process.take_stdout() {
+        Some(stdout) => Some(spawn_probe_reader(stdout).map_err(|_| {
+            ManagedRuntimeError::new("runtime_incompatible", "probe reader could not start")
+        })?),
+        None => None,
+    };
+    let stderr_reader = match process.take_stderr() {
+        Some(stderr) => match spawn_probe_reader(stderr) {
+            Ok(reader) => Some(reader),
+            Err(_) => {
+                process.terminate(1);
+                let _ = process.wait_bounded(3000);
+                let _ = join_probe_reader(stdout_reader, Instant::now() + Duration::from_secs(1));
+                return Err(ManagedRuntimeError::new(
+                    "runtime_incompatible",
+                    "probe reader could not start",
+                ));
+            }
+        },
+        None => None,
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut completed = false;
+    while Instant::now() < deadline && !attempt.is_cancelled() {
+        if process.wait_bounded(50) {
+            completed = true;
+            break;
+        }
+    }
     if !completed {
         process.terminate(1);
         let _ = process.wait_bounded(3000);
     }
-    let stdout = join_probe_reader(stdout_reader)?;
-    let stderr = join_probe_reader(stderr_reader)?;
+    let stdout = join_probe_reader(stdout_reader, deadline)?;
+    let stderr = join_probe_reader(stderr_reader, deadline)?;
+    attempt.ensure_active()?;
     if !completed {
         return Err(ManagedRuntimeError::new(
             "runtime_incompatible",
@@ -578,7 +1098,7 @@ struct ProbeOutput {
     overflow: bool,
 }
 
-fn spawn_probe_reader(mut file: File) -> thread::JoinHandle<ProbeOutput> {
+fn spawn_probe_reader(mut file: File) -> std::io::Result<thread::JoinHandle<ProbeOutput>> {
     thread::Builder::new()
         .name("localcomet-runtime-probe-log".into())
         .spawn(move || {
@@ -598,16 +1118,27 @@ fn spawn_probe_reader(mut file: File) -> thread::JoinHandle<ProbeOutput> {
             }
             output
         })
-        .expect("runtime probe reader spawn failed")
 }
 
 fn join_probe_reader(
     reader: Option<thread::JoinHandle<ProbeOutput>>,
+    deadline: Instant,
 ) -> Result<ProbeOutput, ManagedRuntimeError> {
     match reader {
-        Some(handle) => handle
-            .join()
-            .map_err(|_| ManagedRuntimeError::new("runtime_incompatible", "probe reader failed")),
+        Some(handle) => {
+            while !handle.is_finished() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            if !handle.is_finished() {
+                return Err(ManagedRuntimeError::new(
+                    "runtime_incompatible",
+                    "probe reader timed out",
+                ));
+            }
+            handle.join().map_err(|_| {
+                ManagedRuntimeError::new("runtime_incompatible", "probe reader failed")
+            })
+        }
         None => Ok(ProbeOutput {
             bytes: Vec::new(),
             overflow: false,
@@ -653,29 +1184,59 @@ fn sanitized_runtime_environment() -> Vec<(OsString, OsString)> {
 }
 
 fn wait_ready(
-    process: &ContainedManagedRuntimeProcess,
+    process: &Arc<Mutex<ContainedManagedRuntimeProcess>>,
     port: u16,
     credential: &str,
     expected_alias: &str,
     timeout: Duration,
+    cancelled: &AtomicBool,
 ) -> Result<(), ManagedRuntimeError> {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if !process.is_running() {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(ManagedRuntimeError::new(
+                "start_cancelled",
+                "managed runtime start was cancelled",
+            ));
+        }
+        let (running, process_id) = {
+            let process = process
+                .lock()
+                .expect("managed runtime process lock poisoned");
+            (process.is_running(), process.process_id())
+        };
+        if !running {
             return Err(ManagedRuntimeError::new(
                 "runtime_exited",
                 "managed runtime exited before readiness",
             ));
         }
-        match http_get_json(port, "/health", credential) {
+        match loopback_listener_owner(port)? {
+            None => {
+                sleep_until_cancelled(
+                    cancelled,
+                    Duration::from_millis(250)
+                        .min(deadline.saturating_duration_since(Instant::now())),
+                );
+                continue;
+            }
+            Some(owner) if owner != process_id => {
+                return Err(ManagedRuntimeError::new(
+                    "endpoint_owner_mismatch",
+                    "managed endpoint owner mismatch",
+                ));
+            }
+            Some(_) => {}
+        }
+        match http_get_json(port, "/health", credential, process_id, deadline) {
             Ok(value) if health_payload_ready(&value)? => {
-                if !loopback_listener_owned_by_process(port, process.process_id())? {
+                if !loopback_listener_owned_by_process(port, process_id)? {
                     return Err(ManagedRuntimeError::new(
                         "endpoint_owner_mismatch",
                         "managed endpoint owner mismatch",
                     ));
                 }
-                let models = http_get_json(port, "/v1/models", credential)?;
+                let models = http_get_json(port, "/v1/models", credential, process_id, deadline)?;
                 if model_list_contains_exact_alias(&models, expected_alias)? {
                     return Ok(());
                 }
@@ -684,21 +1245,67 @@ fn wait_ready(
                     "managed model alias mismatch",
                 ));
             }
-            _ => thread::sleep(Duration::from_millis(250)),
+            _ => sleep_until_cancelled(
+                cancelled,
+                Duration::from_millis(250).min(deadline.saturating_duration_since(Instant::now())),
+            ),
         }
     }
     Err(ManagedRuntimeError::new(
-        "timeout",
-        "managed runtime startup timed out",
+        "model_load_timed_out",
+        "approved model load timed out",
     ))
 }
 
-fn http_get_json(port: u16, path: &str, credential: &str) -> Result<String, ManagedRuntimeError> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).map_err(|_| {
+fn sleep_until_cancelled(cancelled: &AtomicBool, duration: Duration) {
+    let deadline = Instant::now() + duration;
+    while !cancelled.load(Ordering::SeqCst) && Instant::now() < deadline {
+        thread::sleep(
+            Duration::from_millis(25).min(deadline.saturating_duration_since(Instant::now())),
+        );
+    }
+}
+
+fn http_get_json(
+    port: u16,
+    path: &str,
+    credential: &str,
+    expected_process_id: u32,
+    deadline: Instant,
+) -> Result<String, ManagedRuntimeError> {
+    let timeout = deadline
+        .saturating_duration_since(Instant::now())
+        .min(Duration::from_secs(2));
+    if timeout.is_zero() {
+        return Err(ManagedRuntimeError::new(
+            "model_load_timed_out",
+            "approved model load timed out",
+        ));
+    }
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let mut stream = TcpStream::connect_timeout(&address, timeout).map_err(|_| {
         ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint unavailable")
     })?;
+    if !loopback_listener_owned_by_process(port, expected_process_id)? {
+        return Err(ManagedRuntimeError::new(
+            "endpoint_owner_mismatch",
+            "managed endpoint owner mismatch",
+        ));
+    }
     stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
+        .set_read_timeout(Some(timeout))
+        .map_err(|_| ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint timeout"))?;
+    let write_timeout = deadline
+        .saturating_duration_since(Instant::now())
+        .min(Duration::from_secs(2));
+    if write_timeout.is_zero() {
+        return Err(ManagedRuntimeError::new(
+            "model_load_timed_out",
+            "approved model load timed out",
+        ));
+    }
+    stream
+        .set_write_timeout(Some(write_timeout))
         .map_err(|_| ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint timeout"))?;
     let request = format!(
         "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {credential}\r\nConnection: close\r\nAccept: application/json\r\n\r\n"
@@ -707,17 +1314,33 @@ fn http_get_json(port: u16, path: &str, credential: &str) -> Result<String, Mana
         ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint write failed")
     })?;
     let mut response = Vec::new();
-    stream
-        .take(65_537)
-        .read_to_end(&mut response)
-        .map_err(|_| {
+    let mut chunk = [0_u8; 4096];
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(ManagedRuntimeError::new(
+                "model_load_timed_out",
+                "approved model load timed out",
+            ));
+        }
+        stream
+            .set_read_timeout(Some(remaining.min(Duration::from_secs(2))))
+            .map_err(|_| {
+                ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint timeout")
+            })?;
+        let count = stream.read(&mut chunk).map_err(|_| {
             ManagedRuntimeError::new("sidecar_unavailable", "managed endpoint read failed")
         })?;
-    if response.len() > 65_536 {
-        return Err(ManagedRuntimeError::new(
-            "invalid_payload",
-            "managed endpoint response too large",
-        ));
+        if count == 0 {
+            break;
+        }
+        response.extend_from_slice(&chunk[..count]);
+        if response.len() > 65_536 {
+            return Err(ManagedRuntimeError::new(
+                "invalid_payload",
+                "managed endpoint response too large",
+            ));
+        }
     }
     let separator = response
         .windows(4)
@@ -845,10 +1468,7 @@ fn model_list_contains_exact_alias(
 }
 
 #[cfg(windows)]
-fn loopback_listener_owned_by_process(
-    port: u16,
-    process_id: u32,
-) -> Result<bool, ManagedRuntimeError> {
+fn loopback_listener_owner(port: u16) -> Result<Option<u32>, ManagedRuntimeError> {
     const MAX_TCP_TABLE_BYTES: u32 = 16 * 1024 * 1024;
     let mut table_bytes = 0_u32;
     let initial = unsafe {
@@ -916,21 +1536,25 @@ fn loopback_listener_owned_by_process(
         };
         let row_port = u16::from_be((row.dwLocalPort & 0xffff) as u16);
         if row.dwLocalAddr == loopback && row_port == port {
-            return Ok(row.dwOwningPid == process_id);
+            return Ok(Some(row.dwOwningPid));
         }
     }
-    Ok(false)
+    Ok(None)
 }
 
 #[cfg(not(windows))]
-fn loopback_listener_owned_by_process(
-    _port: u16,
-    _process_id: u32,
-) -> Result<bool, ManagedRuntimeError> {
+fn loopback_listener_owner(_port: u16) -> Result<Option<u32>, ManagedRuntimeError> {
     Err(ManagedRuntimeError::new(
         "endpoint_owner_unavailable",
         "Windows TCP ownership is required",
     ))
+}
+
+fn loopback_listener_owned_by_process(
+    port: u16,
+    process_id: u32,
+) -> Result<bool, ManagedRuntimeError> {
+    Ok(loopback_listener_owner(port)? == Some(process_id))
 }
 
 fn select_ephemeral_loopback_port() -> Result<u16, ManagedRuntimeError> {
@@ -966,10 +1590,18 @@ fn write_private_api_key_file(
     let mut file = options
         .open(&path)
         .map_err(|_| ManagedRuntimeError::new("io_error", "credential file creation failed"))?;
-    file.write_all(credential.as_bytes())
+    let write_result = file
+        .write_all(credential.as_bytes())
         .and_then(|_| file.write_all(b"\n"))
-        .and_then(|_| file.sync_all())
-        .map_err(|_| ManagedRuntimeError::new("io_error", "credential file write failed"))?;
+        .and_then(|_| file.sync_all());
+    if write_result.is_err() {
+        drop(file);
+        let _ = fs::remove_file(&path);
+        return Err(ManagedRuntimeError::new(
+            "io_error",
+            "credential file write failed",
+        ));
+    }
     Ok((path, file))
 }
 
@@ -1146,51 +1778,123 @@ fn spawn_log_reader(
     mut file: File,
     tail: Arc<Mutex<LogTail>>,
     markers: Vec<(String, String)>,
-) -> thread::JoinHandle<()> {
+) -> std::io::Result<thread::JoinHandle<()>> {
     thread::Builder::new()
         .name("localcomet-managed-runtime-log".into())
         .spawn(move || {
             let mut buffer = [0_u8; 1024];
+            let mut carry = Vec::new();
             while let Ok(count) = file.read(&mut buffer) {
                 if count == 0 {
                     break;
                 }
-                let mut text = String::from_utf8_lossy(&buffer[..count]).into_owned();
-                for (needle, replacement) in &markers {
-                    if !needle.is_empty() {
-                        text = text.replace(needle, replacement);
-                    }
-                }
                 let mut guard = tail.lock().expect("managed log tail poisoned");
-                for line in text.lines() {
-                    guard.bytes = guard.bytes.saturating_add(line.len());
-                    guard.lines.push(sanitize_text(line, 512));
-                    while guard.lines.len() > MAX_LOG_LINES || guard.bytes > MAX_LOG_BYTES {
-                        if let Some(first) = guard.lines.first() {
-                            guard.bytes = guard.bytes.saturating_sub(first.len());
-                        }
-                        if !guard.lines.is_empty() {
-                            guard.lines.remove(0);
-                        } else {
-                            break;
-                        }
+                consume_log_bytes(&mut carry, &buffer[..count], false, &markers, &mut guard);
+            }
+            let mut guard = tail.lock().expect("managed log tail poisoned");
+            consume_log_bytes(&mut carry, &[], true, &markers, &mut guard);
+        })
+}
+
+fn consume_log_bytes(
+    carry: &mut Vec<u8>,
+    incoming: &[u8],
+    eof: bool,
+    markers: &[(String, String)],
+    tail: &mut LogTail,
+) {
+    carry.extend_from_slice(incoming);
+    while let Some(newline) = carry.iter().position(|byte| *byte == b'\n') {
+        let line: Vec<u8> = carry.drain(..=newline).collect();
+        push_redacted_log_line(&line, markers, tail);
+    }
+    while carry.len() > MAX_LOG_CARRY_BYTES {
+        let reserve = markers
+            .iter()
+            .map(|(needle, _)| needle.len().saturating_sub(1))
+            .max()
+            .unwrap_or(0)
+            .min(MAX_LOG_CARRY_BYTES / 2);
+        let mut split = carry.len().saturating_sub(reserve);
+        loop {
+            let mut adjusted = split;
+            for (needle, _) in markers {
+                let needle = needle.as_bytes();
+                if needle.is_empty() || needle.len() > carry.len() {
+                    continue;
+                }
+                for (start, window) in carry.windows(needle.len()).enumerate() {
+                    if window == needle && start < split && start + needle.len() > split {
+                        adjusted = adjusted.min(start);
                     }
                 }
             }
-        })
-        .expect("managed runtime log reader spawn failed")
+            if adjusted == split {
+                break;
+            }
+            split = adjusted;
+        }
+        if split == 0 {
+            break;
+        }
+        let fragment: Vec<u8> = carry.drain(..split).collect();
+        push_redacted_log_line(&fragment, markers, tail);
+    }
+    if eof && !carry.is_empty() {
+        let trailing = std::mem::take(carry);
+        push_redacted_log_line(&trailing, markers, tail);
+    }
+}
+
+fn push_redacted_log_line(bytes: &[u8], markers: &[(String, String)], tail: &mut LogTail) {
+    let mut end = bytes.len();
+    if end > 0 && bytes[end - 1] == b'\n' {
+        end -= 1;
+    }
+    if end > 0 && bytes[end - 1] == b'\r' {
+        end -= 1;
+    }
+    let bytes = &bytes[..end];
+    let mut text = String::from_utf8_lossy(bytes).into_owned();
+    for (needle, replacement) in markers {
+        if !needle.is_empty() {
+            text = text.replace(needle, replacement);
+        }
+    }
+    let line = sanitize_text(&text, 512);
+    tail.bytes = tail.bytes.saturating_add(line.len());
+    tail.lines.push(line);
+    while tail.lines.len() > MAX_LOG_LINES || tail.bytes > MAX_LOG_BYTES {
+        if let Some(first) = tail.lines.first() {
+            tail.bytes = tail.bytes.saturating_sub(first.len());
+        }
+        if !tail.lines.is_empty() {
+            tail.lines.remove(0);
+        } else {
+            break;
+        }
+    }
 }
 
 #[tauri::command]
-pub fn managed_runtime_status(
+pub async fn managed_runtime_status(
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     bridge: State<'_, Arc<ControlPlaneBridge>>,
-) -> ManagedRuntimeStatus {
-    runtime.status(&bridge)
+) -> Result<ManagedRuntimeStatus, BridgeError> {
+    let runtime = Arc::clone(&runtime);
+    let bridge = Arc::clone(&bridge);
+    tauri::async_runtime::spawn_blocking(move || runtime.status(&bridge))
+        .await
+        .map_err(|_| {
+            BridgeError::new(
+                "runtime_unavailable",
+                "managed runtime status worker failed",
+            )
+        })
 }
 
 #[tauri::command]
-pub fn managed_runtime_start(
+pub async fn managed_runtime_start(
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     bridge: State<'_, Arc<ControlPlaneBridge>>,
     model_id: String,
@@ -1198,15 +1902,27 @@ pub fn managed_runtime_start(
     if model_id.is_empty() || model_id.len() > 96 || model_id.chars().any(char::is_whitespace) {
         return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
     }
-    runtime.start(&model_id, &bridge)
+    let runtime = Arc::clone(&runtime);
+    let bridge = Arc::clone(&bridge);
+    tauri::async_runtime::spawn_blocking(move || runtime.start(&model_id, &bridge))
+        .await
+        .map_err(|_| {
+            BridgeError::new("runtime_unavailable", "managed runtime start worker failed")
+        })?
 }
 
 #[tauri::command]
-pub fn managed_runtime_stop(
+pub async fn managed_runtime_stop(
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     bridge: State<'_, Arc<ControlPlaneBridge>>,
 ) -> Result<ManagedRuntimeStopResponse, BridgeError> {
-    runtime.stop(&bridge)
+    let runtime = Arc::clone(&runtime);
+    let bridge = Arc::clone(&bridge);
+    tauri::async_runtime::spawn_blocking(move || runtime.stop(&bridge))
+        .await
+        .map_err(|_| {
+            BridgeError::new("runtime_unavailable", "managed runtime stop worker failed")
+        })?
 }
 
 #[tauri::command]
@@ -1272,6 +1988,124 @@ mod tests {
         assert!(model_list_contains_exact_alias(r#"{"data":"expected"}"#, "expected").is_err());
     }
 
+    #[test]
+    fn managed_attach_requires_exact_identity_and_inference_readiness() {
+        let expected = ManagedRuntimeStartResponse {
+            state: ManagedRuntimeState::Ready,
+            model_state: ManagedModelState::Ready,
+            inference_ready: true,
+            provider_id: "managed-llama-cpp",
+            model_id: "approved-model".into(),
+            model_display_name: "Approved Model".into(),
+            runtime_instance_id: "a".repeat(32),
+            runtime_instance_fingerprint: "b".repeat(64),
+        };
+        let valid = json!({
+            "provider_id": "managed-llama-cpp",
+            "runtime_instance_id": expected.runtime_instance_id,
+            "model_id": expected.model_id,
+            "model_state": "Ready",
+            "attached": true,
+            "inference_ready": true,
+        });
+        assert!(validate_managed_attach_response(&valid, &expected).is_ok());
+        let mut wrong_state = valid.clone();
+        wrong_state["model_state"] = json!("Loading");
+        assert!(validate_managed_attach_response(&wrong_state, &expected).is_err());
+        let mut not_ready = valid.clone();
+        not_ready["inference_ready"] = json!(false);
+        assert!(validate_managed_attach_response(&not_ready, &expected).is_err());
+        let mut wrong_model = valid;
+        wrong_model["model_id"] = json!("other-model");
+        assert!(validate_managed_attach_response(&wrong_model, &expected).is_err());
+
+        let timeout = normalize_managed_attach_error(BridgeError::new(
+            "first_token_timeout",
+            "provider detail",
+        ));
+        assert_eq!(timeout.code, "model_load_timed_out");
+        assert!(!timeout.message.contains("provider detail"));
+        let failed =
+            normalize_managed_attach_error(BridgeError::new("invalid_payload", "provider detail"));
+        assert_eq!(failed.code, "model_load_failed");
+    }
+
+    #[test]
+    fn model_load_deadline_returns_only_remaining_shared_budget() {
+        let deadline = Instant::now() + Duration::from_millis(500);
+        let remaining = remaining_model_load_timeout(deadline).unwrap();
+        assert!(remaining > Duration::ZERO);
+        assert!(remaining <= Duration::from_millis(500));
+        assert!(remaining <= MODEL_LOAD_TIMEOUT);
+
+        let expired = Instant::now() - Duration::from_millis(1);
+        let error = remaining_model_load_timeout(expired).unwrap_err();
+        assert_eq!(error.code, "model_load_timed_out");
+    }
+
+    #[test]
+    fn startup_cancellation_is_immediate_and_generation_scoped() {
+        let attempt = StartupAttempt {
+            generation: 7,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        };
+        let mut inner = ManagedRuntimeInner {
+            startup: Some(attempt.clone()),
+            ..ManagedRuntimeInner::default()
+        };
+        assert!(startup_is_current(&inner, &attempt));
+        assert!(attempt.ensure_active().is_ok());
+
+        attempt.cancel();
+        assert!(attempt.ensure_active().is_err());
+        inner.startup = Some(StartupAttempt {
+            generation: 8,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        });
+        assert!(!startup_is_current(&inner, &attempt));
+    }
+
+    #[test]
+    fn log_redaction_survives_split_read_boundaries() {
+        let markers = vec![("supersecret".into(), "<CREDENTIAL>".into())];
+        let mut carry = Vec::new();
+        let mut tail = LogTail::default();
+        consume_log_bytes(&mut carry, b"prefix super", false, &markers, &mut tail);
+        assert!(tail.lines.is_empty());
+        consume_log_bytes(&mut carry, b"secret suffix\r\n", false, &markers, &mut tail);
+        assert_eq!(tail.lines, vec!["prefix <CREDENTIAL> suffix"]);
+        assert!(!tail.lines[0].contains("supersecret"));
+    }
+
+    #[test]
+    fn runtime_and_model_states_serialize_separately() {
+        let status = ManagedRuntimeStatus {
+            engine: ENGINE_ID,
+            state: ManagedRuntimeState::Starting,
+            model_state: ManagedModelState::Loading,
+            inference_ready: false,
+            installation: "Installed".into(),
+            runtime_version: None,
+            runtime_instance_id: None,
+            runtime_instance_fingerprint: None,
+            model_id: Some("approved-model".into()),
+            model_display_name: Some("Approved Model".into()),
+            binding_fingerprint: None,
+            last_error: None,
+        };
+        let value = serde_json::to_value(status).expect("serialize managed status");
+        assert_eq!(value["state"], "Starting");
+        assert_eq!(value["model_state"], "Loading");
+        assert_eq!(value["inference_ready"], false);
+    }
+
+    #[test]
+    fn bounded_reader_join_does_not_wait_past_finished_reader() {
+        let reader = thread::spawn(|| {});
+        join_reader_bounded(reader, Instant::now() + Duration::from_millis(100));
+        assert!(SHUTDOWN_TIMEOUT <= Duration::from_secs(5));
+    }
+
     #[cfg(windows)]
     #[test]
     fn loopback_listener_ownership_is_exact() {
@@ -1283,5 +2117,34 @@ mod tests {
             !loopback_listener_owned_by_process(port, std::process::id().wrapping_add(1))
                 .expect("query mismatched listener owner")
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn managed_http_slow_drip_cannot_extend_absolute_deadline() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind slow drip listener");
+        let port = listener.local_addr().expect("listener address").port();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept slow drip client");
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            for byte in b"HTTP/1.1 200 OK\r\n" {
+                if stream.write_all(&[*byte]).is_err() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+        });
+        let started = Instant::now();
+        let result = http_get_json(
+            port,
+            "/health",
+            &"a".repeat(64),
+            std::process::id(),
+            Instant::now() + Duration::from_millis(80),
+        );
+        assert!(result.is_err());
+        assert!(started.elapsed() < Duration::from_millis(500));
+        server.join().expect("join slow drip server");
     }
 }
