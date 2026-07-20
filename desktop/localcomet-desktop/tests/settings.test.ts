@@ -26,7 +26,7 @@ describe('minimal Settings surface', () => {
     for (const section of ['Appearance', 'Language', 'Diagnostics', 'About']) {
       expect(html).toContain(section);
     }
-    for (const excluded of ['API key', 'Account', 'Cloud', 'Telemetry', 'Model download', 'Vault']) {
+    for (const excluded of ['API key', 'Account', 'Cloud', 'Telemetry', 'Model download']) {
       expect(html).not.toContain(excluded);
     }
   });
@@ -47,6 +47,19 @@ describe('minimal Settings surface', () => {
     expect(html).toContain('v6.84.5.1');
     expect(html).toContain('v6.84.5.1b');
     expect(html).toContain('UNSIGNED_INTERNAL_BUILD');
+  });
+
+  it('shows localized read-only capability boundaries without enable controls', () => {
+    const english = settingsHtml('en');
+    for (const value of ['Current capabilities', 'Local chat', 'Local model inference', 'Internet', 'Email', 'Browser', 'Files', 'Vault', 'Computer Use', 'Shell', 'External tools']) {
+      expect(english).toContain(value);
+    }
+    expect(english).toContain('Project-specific context is not supplied');
+    expect(english).not.toContain('Enable internet');
+
+    const russian = settingsHtml('ru');
+    expect(russian).toContain('Текущие возможности');
+    expect(russian).toContain('Контекст проекта не предоставлен');
   });
 
   it('shows the existing Control Plane state read-only', () => {

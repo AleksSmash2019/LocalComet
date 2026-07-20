@@ -37,6 +37,7 @@ from modules.local_model_gateway_ru import (  # noqa: E402
     GatewayLimits,
     LocalModelGateway,
     ProviderAdapter,
+    trusted_assistant_context_payload,
     validate_gateway_payload,
 )
 from tools import run_localcomet_desktop_sidecar as sidecar_runner  # noqa: E402
@@ -278,6 +279,7 @@ def _turn_request(
         "submitted_at_unix_ms": 1_700_000_000_000,
         "max_tokens": max_tokens,
         "prompt": prompt,
+        "assistant_context": trusted_assistant_context_payload("ru"),
         "binding_fingerprint": str(binding["binding_fingerprint"]),
     }
 
@@ -456,6 +458,10 @@ class ModelChatBackendTests(unittest.TestCase):
                     self.assertEqual("local-model", payload["model_id"], method)
                     self.assertEqual(23, payload["max_tokens"], method)
             self.assertEqual([23, 23], [post["max_tokens"] for post in server.posts])
+            for post in server.posts:
+                self.assertEqual(["system", "user"], [message["role"] for message in post["messages"]])
+                self.assertIn("LocalComet", post["messages"][0]["content"])
+                self.assertEqual("hello", post["messages"][1]["content"])
 
     def test_managed_readiness_alias_and_stable_public_model(self) -> None:
         credential = "b" * 64

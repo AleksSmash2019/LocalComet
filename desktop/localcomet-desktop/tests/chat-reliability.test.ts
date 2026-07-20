@@ -9,6 +9,7 @@ import {
   managedRuntimeStore,
   modelGatewayStore,
   resetModelGatewayStore,
+  retryLocalModelTurn,
   shutdownModelGateway,
   startLocalModelTurn
 } from '../src/lib/stores/modelGateway';
@@ -18,6 +19,7 @@ import {
   resetShellStores,
   setComposerDraft
 } from '../src/lib/stores/shellStore';
+import { setLocale } from '../src/lib/i18n';
 import type { ModelGatewayEvent } from '../src/lib/types/modelGateway';
 
 const MODEL_ID = 'qwen2.5-1.5b-instruct-q4-k-m';
@@ -187,6 +189,7 @@ beforeEach(() => {
   vi.useRealTimers();
   resetModelGatewayStore();
   resetShellStores();
+  setLocale('ru');
   listener = null;
   listenCount = 0;
   cleanupCount = 0;
@@ -314,6 +317,23 @@ describe('typed real-model chat lifecycle', () => {
     await startAccepted('bad harness');
     applyModelGatewayEvent(event('model.turn.started', 0, null, { harness_id: 'native-localcomet' }));
     expect(get(inferenceRequestStore)).toMatchObject({ lifecycle: 'failed', lastError: { code: 'protocol_mismatch' } });
+  });
+
+  it('snapshots the selected UI locale into the typed turn request', async () => {
+    setLocale('en');
+    await startAccepted('language context');
+    expect(invokeCalls.find((call) => call.command === 'model_turn_start')?.args?.locale).toBe('en');
+  });
+
+  it('retries a terminal failed turn with a fresh isolated request', async () => {
+    const firstId = await startAccepted('retry this request');
+    applyModelGatewayEvent(event('model.turn.started', 0));
+    applyModelGatewayEvent(event('model.turn.failed', 1, null, { error: { code: 'model_request_failed', message: 'safe failure', retryable: true } }));
+    expect(get(chatMessages).at(-1)).toMatchObject({ requestId: firstId, state: 'failed' });
+    expect(await retryLocalModelTurn(firstId, 'local-chat')).toBe(true);
+    const secondId = get(inferenceRequestStore).requestId;
+    expect(secondId).not.toBe(firstId);
+    expect(invokeCalls.filter((call) => call.command === 'model_turn_start')).toHaveLength(2);
   });
 
   it('rejects duplicate terminals and late tokens without changing finalized content', async () => {

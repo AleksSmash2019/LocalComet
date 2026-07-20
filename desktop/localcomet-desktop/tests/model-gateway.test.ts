@@ -115,7 +115,7 @@ describe('Local Model Gateway frontend', () => {
     await probeModelGateway(1234);
     await listModelGatewayModels(1234);
     await setModelBinding({ providerId: 'openai-compatible-local', harnessId: 'minimal', port: 1234, modelId: 'local-model' });
-    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', bindingFingerprint: FINGERPRINT });
+    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'ru', bindingFingerprint: FINGERPRINT });
     expect(invokeCalls.map((call) => call.command)).toEqual([
       'model_gateway_catalog',
       'model_gateway_probe',
@@ -125,6 +125,7 @@ describe('Local Model Gateway frontend', () => {
     ]);
     expect(JSON.stringify(invokeCalls)).not.toContain('http://');
     expect(JSON.stringify(invokeCalls)).not.toContain('api');
+    expect(invokeCalls.at(-1)?.args).toMatchObject({ prompt: 'hello', locale: 'ru' });
   });
 
   it('rejects invalid ports before invoking Tauri', async () => {
@@ -132,6 +133,11 @@ describe('Local Model Gateway frontend', () => {
     expect(invokeCalls).toHaveLength(0);
     setGatewayPortText('12x34');
     expect(get(modelGatewayStore).portText).toBe('1234');
+  });
+
+  it('rejects an unsupported assistant locale before invoking Tauri', async () => {
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT })).rejects.toMatchObject({ code: 'invalid_payload' });
+    expect(invokeCalls).toHaveLength(0);
   });
 
   it('subscribes to model events and updates truthful telemetry', async () => {

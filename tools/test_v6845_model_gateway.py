@@ -31,7 +31,9 @@ from modules.local_model_gateway_ru import (  # noqa: E402
     ModelBinding,
     ProviderAdapter,
     TurnRequest,
+    _validate_assistant_context,
     _turn_payload,
+    trusted_assistant_context_payload,
 )
 
 
@@ -178,6 +180,7 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         submitted_at_unix_ms=1,
         max_tokens=64,
         prompt="hello",
+        assistant_context=_validate_assistant_context(trusted_assistant_context_payload("ru")),
         binding_fingerprint="a" * 64,
     )
     payload = _turn_payload(
@@ -298,11 +301,12 @@ def test_provider_rejects_malformed_responses() -> None:
 
 
 def test_harnesses_are_deterministic_and_text_only() -> None:
-    minimal = HarnessAdapter("minimal", GatewayLimits()).messages_for("hello")
-    native = HarnessAdapter("native-localcomet", GatewayLimits()).messages_for("hello")
-    _assert(minimal == ({"role": "user", "content": "hello"},), "minimal harness changed")
-    _assert(native == HarnessAdapter("native-localcomet", GatewayLimits()).messages_for("hello"), "native harness not deterministic")
-    _assert("No tools" in native[0]["content"] and "project context" in native[0]["content"], "native safety prompt missing")
+    context = _validate_assistant_context(trusted_assistant_context_payload("en"))
+    minimal = HarnessAdapter("minimal", GatewayLimits()).messages_for("hello", context)
+    native = HarnessAdapter("native-localcomet", GatewayLimits()).messages_for("hello", context)
+    _assert([message["role"] for message in minimal] == ["system", "user"], "trusted system message order changed")
+    _assert(native == HarnessAdapter("native-localcomet", GatewayLimits()).messages_for("hello", context), "native harness not deterministic")
+    _assert("external tools are unavailable" in native[0]["content"] and "Project context was not supplied" in native[0]["content"], "assistant safety context missing")
 
 
 def test_sse_streaming_and_fail_closed() -> None:
@@ -331,6 +335,7 @@ def test_single_active_and_cancellation_cleanup() -> None:
             "submitted_at_unix_ms": 1,
             "max_tokens": 32,
             "prompt": "hello",
+            "assistant_context": trusted_assistant_context_payload("en"),
             "binding_fingerprint": binding["binding_fingerprint"],
         }
         started = gateway.start_turn(request, lambda m, t, s, p: events.append((m, str(p.get("state")))))
