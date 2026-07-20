@@ -88,11 +88,12 @@ describe('Diagnostics localization closure', () => {
     modelGatewayStore.update((state) => ({ ...state, status: 'Binding required' }));
     const html = diagnosticsHtml('en');
     for (const text of [
-      'Runtime State', 'EVENT STREAM', 'No validated events received.', 'POLICY DECISION',
-      'Not evaluated', 'Binding required', 'Off'
+      'Runtime State', 'EVENT STREAM', 'No validated events received.', 'Binding required', 'Off'
     ]) {
       expect(html).toContain(text);
     }
+    expect(html).not.toContain('POLICY DECISION');
+    expect(html).not.toContain('Not evaluated');
   });
 
   it('translates Runtime State to Состояние системы', () => {
@@ -110,14 +111,14 @@ describe('Diagnostics localization closure', () => {
     expect(diagnosticsHtml('en')).toContain('No validated events received.');
   });
 
-  it('localizes the policy decision label', () => {
-    expect(diagnosticsHtml('ru')).toContain('РЕШЕНИЕ ПОЛИТИКИ');
-    expect(diagnosticsHtml('en')).toContain('POLICY DECISION');
+  it('does not render the unavailable policy placeholder', () => {
+    expect(diagnosticsHtml('ru')).not.toContain('РЕШЕНИЕ ПОЛИТИКИ');
+    expect(diagnosticsHtml('en')).not.toContain('POLICY DECISION');
   });
 
-  it('localizes the not-evaluated policy status', () => {
-    expect(diagnosticsHtml('ru')).toContain('Не оценивалось');
-    expect(diagnosticsHtml('en')).toContain('Not evaluated');
+  it('does not render the placeholder not-evaluated status', () => {
+    expect(diagnosticsHtml('ru')).not.toContain('Не оценивалось');
+    expect(diagnosticsHtml('en')).not.toContain('Not evaluated');
   });
 
   it('localizes Binding required for display only', () => {

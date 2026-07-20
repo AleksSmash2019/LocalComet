@@ -545,22 +545,6 @@
     cursor: not-allowed;
   }
 
-  .secondary-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--lc-space-2);
-    min-height: 40px;
-    padding: 0 var(--lc-space-4);
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-panel-soft);
-    color: var(--lc-muted);
-    font-weight: 700;
-    font-size: 13px;
-    cursor: not-allowed;
-  }
-
   .fingerprint {
     display: grid;
     gap: var(--lc-space-1);

@@ -802,7 +802,11 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
         try:
             _wait_terminal(events)
             body_text = json.dumps(CaptureProvider.posts[0], ensure_ascii=False)
-            self.assertEqual({"max_tokens", "model", "messages", "stream"}, set(CaptureProvider.posts[0]))
+            self.assertEqual(
+                {"max_tokens", "model", "messages", "stream", "temperature"},
+                set(CaptureProvider.posts[0]),
+            )
+            self.assertEqual(0, CaptureProvider.posts[0]["temperature"])
             self.assertNotIn("LocalCometVault", body_text)
             self.assertNotIn(r"C:\Users", body_text)
         finally:
