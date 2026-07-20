@@ -2344,4 +2344,30 @@ mod tests {
             .artifact_validation_status("unapproved-runtime")
             .is_err());
     }
+
+    #[test]
+    #[ignore = "requires the owner-provisioned UP05-WP00 bootstrap artifacts to be temporarily moved"]
+    fn production_bootstrap_absence_is_live_derived() {
+        let local_data = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA is required");
+        let service = ArtifactTrustService::production(Path::new(&local_data))
+            .expect("embedded production catalog");
+        let installed = service.installed_artifacts();
+        assert_eq!(installed.artifacts.len(), 2);
+        assert!(installed.artifacts.iter().all(|artifact| {
+            artifact.installation_status == InstallationStatus::NotInstalled
+                && artifact.observed_bytes.is_none()
+                && artifact.observed_sha256.is_none()
+        }));
+        let readiness = service
+            .model_readiness("qwen2.5-1.5b-instruct-q4-k-m")
+            .expect("approved model readiness");
+        assert_eq!(readiness.readiness, ModelReadiness::ModelNotInstalled);
+        assert!(!readiness.launchable);
+        assert!(service
+            .resolve_launch("qwen2.5-1.5b-instruct-q4-k-m")
+            .is_err());
+        assert!(service
+            .artifact_validation_status("unapproved-runtime")
+            .is_err());
+    }
 }
