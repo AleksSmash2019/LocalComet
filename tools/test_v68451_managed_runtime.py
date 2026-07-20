@@ -3,18 +3,32 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import socket
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tools" / "test_fixtures" / "fake_managed_llama_server.py"
 RUST_MANAGED = ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "src" / "managed_runtime.rs"
+RUST_TRUST = ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "src" / "artifact_trust.rs"
+RUST_LIB = ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "src" / "lib.rs"
 RUST_JOB = ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "src" / "windows_job.rs"
+PERMISSIONS = ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "permissions"
+CAPABILITY = ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "capabilities" / "main.json"
+
+TRUST_COMMAND_PERMISSIONS = {
+    "managed_runtime_catalog": "allow-managed-runtime-catalog",
+    "managed_model_catalog": "allow-managed-model-catalog",
+    "managed_installed_artifacts": "allow-managed-installed-artifacts",
+    "managed_artifact_validation_status": "allow-managed-artifact-validation-status",
+    "managed_model_readiness": "allow-managed-model-readiness",
+}
 
 
 def check(condition: bool, message: str) -> None:
@@ -110,14 +124,123 @@ def run_fixture_protocol() -> None:
         check(not key_file.exists() or key_file.read_text(encoding="utf-8").strip() == token, "fixture mutated credential")
 
 
+def rust_function_block(source: str, function_name: str) -> str:
+    marker = f"pub fn {function_name}("
+    start = source.find(marker)
+    check(start >= 0, f"Rust command definition missing: {function_name}")
+    opening = source.find("{", start)
+    check(opening >= 0, f"Rust command body missing: {function_name}")
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : index + 1]
+    raise AssertionError(f"Rust command body is unterminated: {function_name}")
+
+
+def load_permission_entries() -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    for path in sorted(PERMISSIONS.glob("*.toml")):
+        with path.open("rb") as handle:
+            document = tomllib.load(handle)
+        permissions = document.get("permission", [])
+        check(isinstance(permissions, list), f"permission array missing in {path.name}")
+        entries.extend(permissions)
+    return entries
+
+
+def run_trust_command_guards() -> None:
+    trust_text = RUST_TRUST.read_text(encoding="utf-8")
+    lib_text = RUST_LIB.read_text(encoding="utf-8")
+    capability = json.loads(CAPABILITY.read_text(encoding="utf-8"))
+    entries = load_permission_entries()
+
+    handler_marker = ".invoke_handler(tauri::generate_handler!["
+    handler_start = lib_text.find(handler_marker)
+    check(handler_start >= 0, "Tauri invoke handler missing")
+    handler_end = lib_text.find("])\n", handler_start)
+    check(handler_end >= 0, "Tauri invoke handler is unterminated")
+    handler = lib_text[handler_start:handler_end]
+
+    expected_calls = {
+        "managed_runtime_catalog": "state.runtime_catalog()",
+        "managed_model_catalog": "state.model_catalog()",
+        "managed_installed_artifacts": "state.installed_artifacts()",
+        "managed_artifact_validation_status": ".artifact_validation_status(&artifact_id)",
+        "managed_model_readiness": "state.model_readiness(&model_id)",
+    }
+    for command in TRUST_COMMAND_PERMISSIONS:
+        definition = re.compile(rf"#\[tauri::command\]\s*pub fn {re.escape(command)}\s*\(")
+        check(len(definition.findall(trust_text)) == 1, f"typed Tauri command is not defined exactly once: {command}")
+        check(len(re.findall(rf"\b{re.escape(command)}\b", handler)) == 1, f"invoke handler exposure is not exact: {command}")
+        block = rust_function_block(trust_text, command)
+        signature = block[: block.find("{")]
+        check("State<'_, Arc<ArtifactTrustService>>" in signature, f"trust service state missing: {command}")
+        check(expected_calls[command] in block, f"read-only trust service projection missing: {command}")
+        for forbidden in ("Path", "PathBuf", "serde_json::Value", "catalog_json", "raw_command", "arguments"):
+            check(forbidden not in signature, f"unsafe command input {forbidden!r}: {command}")
+
+    check("artifact_id: String" in rust_function_block(trust_text, "managed_artifact_validation_status"), "artifact status is not keyed by stable ID")
+    check("model_id: String" in rust_function_block(trust_text, "managed_model_readiness"), "model readiness is not keyed by stable ID")
+    for command in ("managed_runtime_catalog", "managed_model_catalog", "managed_installed_artifacts"):
+        signature = rust_function_block(trust_text, command).split("{", 1)[0]
+        check("String" not in signature, f"list command accepts frontend-controlled text: {command}")
+
+    identifiers = [entry.get("identifier") for entry in entries]
+    check(len(identifiers) == len(set(identifiers)), "duplicate Tauri permission identifier")
+    for command, permission_id in TRUST_COMMAND_PERMISSIONS.items():
+        matches = [entry for entry in entries if entry.get("identifier") == permission_id]
+        check(len(matches) == 1, f"permission is not defined exactly once: {permission_id}")
+        permission = matches[0]
+        commands = permission.get("commands")
+        check(isinstance(commands, dict), f"permission commands missing: {permission_id}")
+        check(commands.get("allow") == [command], f"permission is not narrowly bound: {permission_id}")
+        check("deny" not in commands, f"unexpected deny rule in narrow permission: {permission_id}")
+        description = str(permission.get("description", "")).lower()
+        check("reading" in description and "write" not in description and "mutat" not in description, f"permission is not documented read-only: {permission_id}")
+        command_matches = [
+            entry
+            for entry in entries
+            if command in entry.get("commands", {}).get("allow", [])
+        ]
+        check(len(command_matches) == 1, f"command is allowed by more than one permission: {command}")
+
+    capability_permissions = capability.get("permissions")
+    check(isinstance(capability_permissions, list), "main capability permissions missing")
+    check(len(capability_permissions) == len(set(capability_permissions)), "duplicate main capability permission")
+    for permission_id in TRUST_COMMAND_PERMISSIONS.values():
+        check(capability_permissions.count(permission_id) == 1, f"main capability exposure is not exact: {permission_id}")
+    check(capability.get("windows") == ["main"], "artifact trust commands escaped the main-window capability")
+
+    allowed_commands = [
+        command
+        for entry in entries
+        for command in entry.get("commands", {}).get("allow", [])
+        if isinstance(command, str)
+    ]
+    for forbidden in (
+        "managed_artifact_approve",
+        "managed_artifact_write",
+        "managed_catalog_load",
+        "managed_catalog_replace",
+        "managed_registry_write",
+    ):
+        check(forbidden not in allowed_commands, f"approval mutation permission exposed: {forbidden}")
+
+
 def run_source_guards() -> None:
     fixture_text = FIXTURE.read_text(encoding="utf-8")
     managed_text = RUST_MANAGED.read_text(encoding="utf-8")
+    trust_text = RUST_TRUST.read_text(encoding="utf-8")
     job_text = RUST_JOB.read_text(encoding="utf-8")
     check("subprocess" not in fixture_text, "fixture imports subprocess")
     check("urllib" not in fixture_text and "requests" not in fixture_text, "fixture has outbound network client")
-    check('EXECUTABLE_NAME: &str = "llama-server.exe"' in managed_text, "production executable rule missing")
-    check("const APPROVED_RUNTIME_REGISTRY: &[ApprovedRuntime] = &[];" in managed_text, "production registry is not empty")
+    check('include_bytes!("../resources/localcomet/approved-artifacts.v1.json")' in trust_text, "approved catalog is not source-embedded")
+    check("resolve_launch(model_id)" in managed_text, "managed launch does not resolve a stable model ID")
+    check("model_path: String" not in rust_function_block(managed_text, "managed_runtime_start"), "managed runtime start accepts a raw model path")
     check("ManagedRuntimeLaunchSpec" in job_text, "managed launch spec missing")
     check("CREATE_SUSPENDED" in job_text and "AssignProcessToJobObject" in job_text and "ResumeThread" in job_text, "suspended containment sequence missing")
     check("JOB_OBJECT_LIMIT_ACTIVE_PROCESS" in job_text, "active process job limit missing")
@@ -141,6 +264,7 @@ def main() -> None:
     bad_result = subprocess.run([sys.executable, str(FIXTURE), "--bad"], text=True, capture_output=True)
     check(bad_result.returncode != 0, "fixture accepted unknown flag")
     run_fixture_protocol()
+    run_trust_command_guards()
     run_source_guards()
     print("ALL v6.84.5.1 MANAGED RUNTIME TESTS PASSED")
 

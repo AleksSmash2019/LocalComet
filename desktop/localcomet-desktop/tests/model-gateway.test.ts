@@ -21,6 +21,12 @@ import type { ModelGatewayEvent } from '../src/lib/types/modelGateway';
 
 const TURN_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
 const FINGERPRINT = 'b'.repeat(64);
+const TRUST_CATALOG = {
+  schema_version: 1,
+  catalog_id: 'localcomet-approved-artifacts',
+  catalog_version: '1.0.0',
+  catalog_digest: 'c'.repeat(64)
+};
 let invokeCalls: { command: string; args?: Record<string, unknown> }[] = [];
 let listener: ((event: { payload: unknown }) => void) | null = null;
 
@@ -29,7 +35,9 @@ vi.mock('@tauri-apps/api/core', () => ({
     invokeCalls.push({ command, args });
     if (command === 'model_gateway_catalog') return catalogFixture();
     if (command === 'managed_runtime_status') return { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, last_error: null };
-    if (command === 'managed_model_catalog') return { engine: 'llama.cpp', model_root: '<MODEL_ROOT>', models: [], maximum_models: 64 };
+    if (command === 'managed_runtime_catalog') return { ...TRUST_CATALOG, runtimes: [] };
+    if (command === 'managed_model_catalog') return { ...TRUST_CATALOG, engine: 'llama.cpp', model_root: '<MANAGED_MODEL_ROOT>', models: [], maximum_models: 32 };
+    if (command === 'managed_installed_artifacts') return { ...TRUST_CATALOG, artifacts: [] };
     if (command === 'managed_runtime_logs') return { stdout_tail: [], stderr_tail: [] };
     if (command === 'model_gateway_probe') return { status: 'Ready', provider_id: 'openai-compatible-local', host: '127.0.0.1', port: args?.port, base_path: '/v1', model_count: 1 };
     if (command === 'model_gateway_list_models') return { provider_id: 'openai-compatible-local', host: '127.0.0.1', port: args?.port, models: [{ model_id: 'local-model' }], discovered_fingerprint: FINGERPRINT };
