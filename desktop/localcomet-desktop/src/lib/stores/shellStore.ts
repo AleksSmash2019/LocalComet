@@ -8,7 +8,7 @@ export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 
 export type WorkspaceMode = 'chat' | 'review';
 
-const DEFAULT_CONVERSATION = 'control-plane-demo';
+const DEFAULT_CONVERSATION = 'local-chat';
 let messageCounter = 0;
 const initialUiPreferences = loadUiPreferences();
 

@@ -2,7 +2,6 @@
   import Icon from '$lib/components/common/Icon.svelte';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import { conversationTitleById } from '$lib/data/mockData';
-  import { controlPlaneStore } from '$lib/stores/controlPlane';
   import { approvedManagedModelInstalled, inferenceRequestStore, managedModelReady, managedRuntimeStore, modelGatewayStore } from '$lib/stores/modelGateway';
   import { selectedConversationId, sidebarExpanded, openModelSetup, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
@@ -23,33 +22,14 @@
   })();
   $: safeModelIdentity = $managedRuntimeStore.status?.model_display_name ?? $managedRuntimeStore.status?.model_id ?? '';
 
-  $: bridgeLabel =
-    $controlPlaneStore.bridgeState === 'READY'
-      ? 'Control Plane: Connected'
-      : $controlPlaneStore.bridgeState === 'CONNECTING'
-        ? 'Control Plane: Starting'
-        : $controlPlaneStore.bridgeState === 'UNAVAILABLE'
-          ? 'Control Plane: Unavailable'
-          : $controlPlaneStore.bridgeState === 'ERROR'
-            ? 'Control Plane: Error'
-            : 'Control Plane: Unknown';
-  $: bridgeTone =
-    $controlPlaneStore.bridgeState === 'READY'
-      ? 'ready'
-      : $controlPlaneStore.bridgeState === 'CONNECTING'
-        ? 'info'
-        : $controlPlaneStore.bridgeState === 'ERROR'
-          ? 'danger'
-          : $controlPlaneStore.bridgeState === 'UNAVAILABLE'
-            ? 'disabled'
-            : 'unknown';
 </script>
 
 <header class="chat-header">
   <button
     type="button"
     class="icon-button sidebar-toggle"
-    aria-label="Toggle session sidebar"
+    aria-label={$t('sidebar.toggle')}
+    title={$t('sidebar.toggle')}
     aria-expanded={$sidebarExpanded}
     onclick={() => sidebarExpanded.update((value) => !value)}
   >
@@ -86,7 +66,8 @@
     <button
       type="button"
       class="icon-button"
-      aria-label="Toggle Diagnostics"
+      aria-label={$t('diag.toggle')}
+      title={$t('diag.toggle')}
       aria-expanded={$inspectorVisible || $inspectorDrawerOpen}
       onclick={() => {
         const next = !($inspectorVisible || $inspectorDrawerOpen);
@@ -128,7 +109,7 @@
   }
 
   .sidebar-toggle {
-    display: grid;
+    display: none;
   }
 
   .title-block {
@@ -212,6 +193,12 @@
 
     .ready-details > span {
       display: none;
+    }
+  }
+
+  @media (max-width: 920px) {
+    .sidebar-toggle {
+      display: grid;
     }
   }
 </style>

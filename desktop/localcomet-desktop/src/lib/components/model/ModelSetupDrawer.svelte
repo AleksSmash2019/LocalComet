@@ -249,7 +249,6 @@
             <div class="empty-state">
               <p class="empty-title">{$t('setup.runtime_not_installed')}</p>
               <p class="empty-desc">{$t('setup.install_available')}</p>
-              <button type="button" class="secondary-button" disabled>{$t('setup.install_available')}</button>
             </div>
           {:else}
             <div class="action-row">

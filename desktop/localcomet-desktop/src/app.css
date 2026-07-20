@@ -189,12 +189,6 @@ a:focus-visible {
   margin-right: auto;
 }
 
-.title-version {
-  color: var(--lc-faint);
-  font-family: var(--lc-mono);
-  font-size: 12px;
-}
-
 .shell-body {
   min-height: 0;
   display: grid;

@@ -1,15 +1,11 @@
 <script lang="ts">
-  import { DESKTOP_SHELL_VERSION } from '$lib/version';
   import EventStream from '$lib/components/common/EventStream.svelte';
   import Icon from '$lib/components/common/Icon.svelte';
-  import PolicyDecision from '$lib/components/common/PolicyDecision.svelte';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import TelemetryRow from '$lib/components/common/TelemetryRow.svelte';
-  import { controlPlaneStore, cancelCurrentDemoTurn, startCancellationDemo } from '$lib/stores/controlPlane';
+  import { controlPlaneStore } from '$lib/stores/controlPlane';
   import { modelGatewayStore } from '$lib/stores/modelGateway';
-  import { activeInspectorSection, inspectorVisible, setActiveInspectorSection } from '$lib/stores/shellStore';
-  import type { InspectorSection } from '$lib/data/mockData';
-  import { inspectorSections } from '$lib/data/mockData';
+  import { inspectorVisible } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
   export let className = '';
@@ -20,9 +16,6 @@
   $: turnShort = shortId($controlPlaneStore.currentTurn?.turn_id, $t);
   $: currentItem = $controlPlaneStore.items[$controlPlaneStore.items.length - 1];
   $: turnState = $controlPlaneStore.currentTurn?.state ?? $t('diag.not_started');
-  $: cancelEnabled = $controlPlaneStore.currentTurn?.state === 'RUNNING';
-  $: startEnabled = $controlPlaneStore.bridgeState === 'READY';
-
   $: bridgeLabel =
     $controlPlaneStore.bridgeState === 'READY'
       ? $t('diag.control_plane_connected')
@@ -101,20 +94,6 @@
     </button>
   </header>
 
-  <div class="tabs" role="tablist" aria-label={$t('diag.sections_label')}>
-    {#each inspectorSections as section}
-      <button
-        type="button"
-        class="section-tab"
-        role="tab"
-        aria-selected={$activeInspectorSection === section}
-        onclick={() => setActiveInspectorSection(section as InspectorSection)}
-      >
-        {$t('diag.tab_' + section)}
-      </button>
-    {/each}
-  </div>
-
   <section class="summary" aria-label={$t('diag.summary')}>
     <StatusBadge label={bridgeLabel} tone={bridgeTone} />
     <StatusBadge label={sidecarLabel} tone={sidecarTone} />
@@ -142,9 +121,6 @@
       <TelemetryRow label={$t('diag.persistence')} value={translatePersistence($modelGatewayStore.persistence, $t)} tone="disabled" />
       <TelemetryRow label={$t('diag.provider')} value={$modelGatewayStore.binding?.provider_id ?? $t('diag.not_configured')} tone={$modelGatewayStore.binding ? 'ready' : 'disabled'} mono />
       <TelemetryRow label={$t('diag.response_mode')} value={$modelGatewayStore.binding?.harness_id ?? $t('diag.not_configured')} tone={$modelGatewayStore.binding ? 'ready' : 'disabled'} mono />
-      <TelemetryRow label={$t('diag.autonomous')} value={$t('diag.disabled')} tone="disabled" />
-      <TelemetryRow label={$t('diag.confirmation')} value={$t('diag.disabled')} tone="disabled" />
-      <TelemetryRow label={$t('diag.result_check')} value={$t('diag.result_not_run')} tone="disabled" />
     </dl>
   </section>
 
@@ -153,35 +129,6 @@
     <EventStream events={$controlPlaneStore.recentEvents} />
   </section>
 
-  <PolicyDecision />
-
-  <section aria-label={$t('diag.tab_Проверка')}>
-    <h3>{$t('diag.tab_Проверка')}</h3>
-    <dl>
-      <TelemetryRow label={$t('diag.status')} value={$t('diag.not_run')} tone="disabled" />
-    </dl>
-  </section>
-
-  <section aria-label={$t('diag.demo_controls')}>
-    <h3>{$t('diag.demo_controls')}</h3>
-    <div class="control-row">
-      <button
-        type="button"
-        onclick={() => void startCancellationDemo()}
-        disabled={!startEnabled}
-        title={startEnabled ? $t('diag.start_demo') : $t('diag.control_plane_not_connected')}
-      >
-        {$t('diag.start_demo')}
-      </button>
-      <button type="button" onclick={() => void cancelCurrentDemoTurn()} disabled={!cancelEnabled}>
-        {$t('diag.cancel_demo')}
-      </button>
-    </div>
-  </section>
-
-  <footer aria-label={$t('diag.about_versions')}>
-    <span>{$t('diag.desktop_shell')} {DESKTOP_SHELL_VERSION}</span>
-  </footer>
 </aside>
 
 <style>
@@ -225,8 +172,7 @@
     min-width: 0;
   }
 
-  .eyebrow,
-  footer {
+  .eyebrow {
     color: var(--lc-muted);
     font-size: 12px;
     font-weight: 760;
@@ -265,61 +211,16 @@
     color: var(--lc-text);
   }
 
-  .tabs,
-  .summary,
-  .control-row {
+  .summary {
     display: flex;
     flex-wrap: wrap;
     gap: var(--lc-space-2);
-  }
-
-  .tabs {
-    margin: var(--lc-space-3) 0;
-    border-bottom: var(--border-thin);
-    padding-bottom: var(--lc-space-2);
-  }
-
-  .section-tab,
-  .control-row button {
-    min-height: 32px;
-    padding: 0 var(--lc-space-3);
-    color: var(--lc-muted);
-    font-size: 12px;
-    font-weight: 700;
-    background: transparent;
-    border: none;
-  }
-
-  .section-tab:hover {
-    color: var(--lc-text);
-  }
-
-  .section-tab[aria-selected='true'] {
-    color: var(--lc-accent);
-    border-bottom: 2px solid var(--lc-accent);
-    margin-bottom: -1px;
   }
 
   dl {
     display: grid;
     gap: var(--lc-space-1);
     margin: 0;
-  }
-
-  .control-row button {
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-panel-solid);
-  }
-
-  .control-row button:hover:not(:disabled) {
-    background: var(--lc-panel-soft);
-    border-color: var(--lc-line);
-  }
-
-  .control-row button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .summary {
@@ -332,12 +233,6 @@
     max-width: 100%;
     white-space: normal;
     overflow-wrap: anywhere;
-  }
-
-  footer {
-    margin-top: var(--lc-space-6);
-    border-top: var(--border-thin);
-    padding-top: var(--lc-space-4);
   }
 
   @media (max-width: 1199px) {

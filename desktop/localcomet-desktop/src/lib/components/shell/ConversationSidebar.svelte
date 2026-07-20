@@ -1,17 +1,17 @@
 <script lang="ts">
   import Icon from '$lib/components/common/Icon.svelte';
-  import { conversationGroups, pinnedProject, projectLabels } from '$lib/data/mockData';
+  import { conversationGroups, pinnedProject } from '$lib/data/mockData';
   import { selectedConversationId, setSelectedConversation, sidebarExpanded } from '$lib/stores/shellStore';
-  import { controlPlaneStore } from '$lib/stores/controlPlane';
   import { t } from '$lib/i18n';
 
-  $: sessionState = $controlPlaneStore.currentSession?.state ?? 'Unknown';
-  $: sessionTone = $controlPlaneStore.currentSession ? 'ready' : 'unknown';
-
   const hiddenConversationGroupLabels = new Set(['Зарезервировано', 'Отключено']);
-  const visibleConversationGroups = conversationGroups.filter(
-    (group) => !hiddenConversationGroupLabels.has(group.label)
-  );
+  const visibleConversationGroups = conversationGroups
+    .filter((group) => !hiddenConversationGroupLabels.has(group.label))
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.id !== 'cancellation-demo')
+    }))
+    .filter((group) => group.items.length > 0);
 
   type Translate = (key: string) => string;
 
@@ -25,11 +25,6 @@
     return v.startsWith('item.') ? value : v;
   }
 
-  function tProjectLabel(label: string, translate: Translate): string {
-    const key = label === 'Frontend' ? 'project.label_frontend' : label === 'Русский UX' ? 'project.label_russian_ux' : label;
-    const v = translate(key);
-    return v.startsWith('project.') ? label : v;
-  }
 </script>
 
 <aside class="sidebar" class:sidebar-open={$sidebarExpanded} aria-label={$t('sidebar.label')}>
@@ -46,14 +41,8 @@
   </div>
 
   <section class="pinned" aria-label={$t('sidebar.pinned_label')}>
-    <span class="eyebrow">{$t('sidebar.pinned')}</span>
     <strong>{pinnedProject.title}</strong>
     <span>{$t('project.detail')}</span>
-    <div class="labels" aria-label={$t('sidebar.project_labels')}>
-      {#each projectLabels as label}
-        <span>{tProjectLabel(label, $t)}</span>
-      {/each}
-    </div>
   </section>
 
   <div class="conversation-groups">
@@ -111,7 +100,6 @@
     background: var(--lc-panel-solid);
   }
 
-  .eyebrow,
   .pinned span,
   small {
     color: var(--lc-muted);
@@ -120,19 +108,6 @@
 
   strong {
     overflow-wrap: anywhere;
-  }
-
-  .labels {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--lc-space-2);
-  }
-
-  .labels span {
-    border: var(--border-thin);
-    border-radius: 999px;
-    padding: var(--lc-space-1) var(--lc-space-2);
-    background: var(--lc-panel-soft);
   }
 
   h2 {

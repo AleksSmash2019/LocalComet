@@ -8,6 +8,7 @@ export const ru: TranslationMap = {
   'nav.audit': 'Аудит',
   'nav.settings': 'Настройки',
   'nav.main': 'Основная навигация',
+  'app.title_bar': 'Панель приложения LocalComet',
   'nav.later': 'позже',
 
   // Sidebar
@@ -15,6 +16,7 @@ export const ru: TranslationMap = {
   'sidebar.new_thread': 'Новый тред',
   'sidebar.new_thread_title': 'Создание треда происходит при старте демо Control Plane',
   'sidebar.collapse': 'Свернуть/развернуть боковую панель',
+  'sidebar.toggle': 'Показать или скрыть боковую панель чатов',
   'sidebar.pinned_label': 'Закреплённый Control Plane',
   'sidebar.pinned': 'Закреплено',
   'sidebar.project_labels': 'Метки проекта',
@@ -68,6 +70,8 @@ export const ru: TranslationMap = {
 
   // Project Knowledge
   'knowledge.title': 'Знания проекта',
+  'knowledge.unavailable': 'Контекст проекта пока недоступен',
+  'knowledge.unavailable_detail': 'Данные проекта не отправляются. Это не долговременная память.',
   'knowledge.enabled': 'Включено для этой сессии',
   'knowledge.disabled': 'Отключено',
   'knowledge.toggle_label': 'Включить знания проекта для следующего запроса',
@@ -155,6 +159,7 @@ export const ru: TranslationMap = {
 
   // Diagnostics
   'diag.title': 'Диагностика',
+  'diag.toggle': 'Показать или скрыть диагностику',
   'diag.runtime': 'Среда выполнения',
   'diag.runtime_state': 'Состояние системы',
   'diag.close': 'Закрыть',
@@ -263,7 +268,7 @@ export const ru: TranslationMap = {
   'settings.capabilities': 'Текущие возможности',
   'settings.available': 'Доступно',
   'settings.unavailable': 'Недоступно',
-  'settings.project_context_unavailable': 'Контекст проекта не предоставлен. Помощник не просматривает репозитории, файлы или содержимое Vault.',
+  'settings.project_context_unavailable': 'Контекст проекта недоступен: данные проекта не отправляются. Это не долговременная память; помощник не просматривает репозитории, файлы или Vault.',
   'capability.local_chat': 'Локальный чат',
   'capability.local_model_inference': 'Вывод локальной модели',
   'capability.internet': 'Интернет',

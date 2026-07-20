@@ -8,6 +8,7 @@ export const en: TranslationMap = {
   'nav.audit': 'Audit',
   'nav.settings': 'Settings',
   'nav.main': 'Main navigation',
+  'app.title_bar': 'LocalComet application bar',
   'nav.later': 'later',
 
   // Sidebar
@@ -15,6 +16,7 @@ export const en: TranslationMap = {
   'sidebar.new_thread': 'New thread',
   'sidebar.new_thread_title': 'Thread creation happens when Control Plane demo starts',
   'sidebar.collapse': 'Collapse/expand sidebar',
+  'sidebar.toggle': 'Show or hide the chat sidebar',
   'sidebar.pinned_label': 'Pinned Control Plane',
   'sidebar.pinned': 'Pinned',
   'sidebar.project_labels': 'Project labels',
@@ -68,6 +70,8 @@ export const en: TranslationMap = {
 
   // Project Knowledge
   'knowledge.title': 'Project Knowledge',
+  'knowledge.unavailable': 'Project context is currently unavailable',
+  'knowledge.unavailable_detail': 'No project data is being sent. This is not long-term memory.',
   'knowledge.enabled': 'On for this session',
   'knowledge.disabled': 'Off',
   'knowledge.toggle_label': 'Enable Project Knowledge for the next turn',
@@ -155,6 +159,7 @@ export const en: TranslationMap = {
 
   // Diagnostics
   'diag.title': 'Diagnostics',
+  'diag.toggle': 'Show or hide diagnostics',
   'diag.runtime': 'Runtime',
   'diag.runtime_state': 'Runtime State',
   'diag.close': 'Close',
@@ -263,7 +268,7 @@ export const en: TranslationMap = {
   'settings.capabilities': 'Current capabilities',
   'settings.available': 'Available',
   'settings.unavailable': 'Unavailable',
-  'settings.project_context_unavailable': 'Project-specific context is not supplied. The assistant does not inspect repositories, files, or Vault content.',
+  'settings.project_context_unavailable': 'Project context is unavailable: no project data is being sent. This is not long-term memory; the assistant does not inspect repositories, files, or Vault.',
   'capability.local_chat': 'Local chat',
   'capability.local_model_inference': 'Local model inference',
   'capability.internet': 'Internet',

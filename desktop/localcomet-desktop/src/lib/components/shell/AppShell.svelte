@@ -32,7 +32,6 @@
   import { initializeKnowledgePreviewEvents, shutdownKnowledgePreviewEvents } from '$lib/stores/knowledgePreview';
   import { locale, t } from '$lib/i18n';
   import type { ResolvedTheme } from '$lib/data/mockData';
-  import { DESKTOP_BUILD_LABEL } from '$lib/version';
   import { followTranscriptToEnd, isTranscriptNearBottom } from '$lib/components/chat/transcriptScroll';
 
   let systemDark = false;
@@ -152,14 +151,14 @@
 
   $: controlPlaneLabel =
     $controlPlaneStore.bridgeState === 'READY'
-      ? 'Control Plane: Connected'
+      ? $t('diag.control_plane_connected')
       : $controlPlaneStore.bridgeState === 'CONNECTING'
-        ? 'Control Plane: Starting'
+        ? $t('diag.control_plane_starting')
         : $controlPlaneStore.bridgeState === 'UNAVAILABLE'
-          ? 'Control Plane: Unavailable'
+          ? $t('diag.control_plane_unavailable')
           : $controlPlaneStore.bridgeState === 'ERROR'
-            ? 'Control Plane: Error'
-            : 'Control Plane: Unknown';
+            ? $t('diag.control_plane_error')
+            : $t('diag.control_plane_unknown');
   $: controlPlaneTone =
     $controlPlaneStore.bridgeState === 'READY'
       ? 'ready'
@@ -179,13 +178,12 @@
   >
     {$activeWorkspace === 'review' ? $t('review.skip_link') : $t('common.skip_link')}
   </a>
-  <header class="title-bar" aria-label="LocalComet title bar">
+  <header class="title-bar" aria-label={$t('app.title_bar')}>
     <div class="brand">
       <LocalCometLogo size={26} />
       <span class="wordmark"><span class="wordmark-local">Local</span><span class="wordmark-comet">Comet</span></span>
     </div>
     <StatusBadge label={controlPlaneLabel} tone={controlPlaneTone} />
-    <span class="title-version">{DESKTOP_BUILD_LABEL}</span>
   </header>
 
   <div
