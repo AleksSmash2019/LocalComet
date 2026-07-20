@@ -47,11 +47,24 @@ Artifact acquisition and extraction face supply-chain substitution, malicious re
 
 Managed AppData faces unknown or tampered models/runtimes, filename spoofing, stale caches, path traversal, junction/reparse escape, time-of-check/time-of-use changes, and compatibility confusion. Mitigations are source-only approval, exact revalidation, safe relative paths, canonical descendant checks, reparse rejection, held model identity, stable IDs, and runtime/model compatibility references.
 
+WP00 deliberately keeps installed state live-derived and creates no persistent inventory. A future optional cache cannot become authority: it must use a sibling temporary file, schema validation, flush and close, Windows-supported atomic replacement, reread, exact post-write validation, and reconciliation with the embedded catalog digest and current bytes. Missing, corrupt, stale, traversal-bearing, or unknown-ID cache content must cause safe reconstruction or rejection without granting approval.
+
 Frontend/Tauri IPC faces malformed data, extra-field smuggling, ID/path confusion, unauthorized commands, and stale readiness. Mitigations are strict Rust ownership, Tauri permission allowlists, reconstructed safe TypeScript projections, stable-ID-only start commands, no mutation API, and fail-closed digest/schema matching.
 
 Sidecar and model runtime protocols face spoofed readiness, duplicate/late/cross-request events, zero-token success, indefinite streams, cancellation races, oversized output, and credential leakage. Existing controls include bounded loopback transport, typed methods, per-turn IDs, output limits, contained processes, and sanitized logs. UP05-WP01 remains responsible for completing the chat lifecycle repairs.
 
 Realistic attacker stories include a same-user process replacing a GGUF after provisioning, a crafted archive attempting path escape, a frontend payload containing traversal-like IDs, an AppData file claiming an unknown artifact is approved, or an unapproved executable placed under a plausible runtime filename. All must fail closed.
+
+### WP00 control realization record
+
+The reviewed schema-1 trust root has catalog digest `e50530563403c5e750205581576bcaf108daf08d05223d91b4ed31e107a8b33c`. It approves only:
+
+- runtime `llama-cpp-windows-x86-64-cpu-bootstrap`: official llama.cpp `b10068`, revision `571d0d540df04f25298d0e159e520d9fc62ed121`, archive SHA-256 `01d5f30876acfb4a0be59396710f450213495c7181d8fbcce2fad045835ceb89`, MIT;
+- model `qwen2.5-1.5b-instruct-q4-k-m`: official `Qwen/Qwen2.5-1.5B-Instruct-GGUF` revision `91cad51170dc346986eccefdc2dd33a9da36ead9`, GGUF SHA-256 `6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e`, Apache-2.0.
+
+Both were provisioned to catalog-declared managed paths and revalidated as contained and compatible. A real loopback inference produced `AI` with one non-empty content chunk and exactly one `[DONE]`; load-to-listen was 0.953 seconds, first content 114.378 milliseconds, total inference 123.099 milliseconds, three JSON SSE chunks were observed, and peak working set was 1,749,966,848 bytes. Graceful Ctrl+C shutdown left no orphan process.
+
+Frontend 211/211 tests, Svelte check, production build, Rust fmt/check/warnings-denied clippy/tests, the production installed-artifact test, offline locked release build, Python checks, negative authority tests, and source/physical rollback rehearsals passed. The supplemental fast stability result was 17/19 solely because of two legacy checks in untouched control-panel code; all WP00-affected checks passed.
 
 Out-of-scope stories include cloud multi-tenant isolation, remote account takeover, kernel-level process injection, administrator compromise, and physical attacks. Localhost-only exposure does not make malformed local protocol input irrelevant, but it generally lowers unauthenticated remote reachability.
 
@@ -85,4 +98,4 @@ Low:
 Severity falls when exploitation requires prior administrator/kernel control or replacement of the trusted packaged application. It rises when a same-user mutable input crosses into executable approval, arbitrary filesystem access, generic process authority, secret disclosure, or irreversible user-data impact.
 
 Repository: git-remote-sha256:344e82ae9595cf6d13c8b89d3e77f32a310fd1a1c57eb9c4af39126e2086e2ba
-Version: 0467cf71e1cf0e0400d687c1829e7bd0de91eebc
+Version: feat/up05-wp00-managed-artifact-trust; base 0467cf71e1cf0e0400d687c1829e7bd0de91eebc; final HEAD recorded in external UP05-WP00 evidence
