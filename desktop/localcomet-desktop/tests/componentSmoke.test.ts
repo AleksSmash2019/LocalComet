@@ -33,6 +33,9 @@ describe('component smoke tests', () => {
     expect(html).not.toContain('Зарезервировано');
     expect(html).not.toContain('Документы');
     expect(html).not.toContain('Новый тред');
+    expect(html).not.toContain('Демо отмены');
+    expect(html).not.toContain('v6.84.5.1b');
+    expect(html).not.toContain('Frontend');
     expect(html).not.toContain('Использовать системную тему');
     expect(html).toContain('aria-expanded="true"');
   });
@@ -58,12 +61,12 @@ describe('component smoke tests', () => {
     expect(html).toContain('Отклонить');
   });
 
-  it('renders the Diagnostics with truthful disabled state', () => {
+  it('renders useful Diagnostics without demo controls or no-op tabs', () => {
     const html = render(Diagnostics).body;
     expect(html).toContain('Провайдер');
     expect(html).toContain('Не настроено');
-    expect(html).toContain('Подтверждение');
-    expect(html).toContain('Отключено');
+    expect(html).not.toContain('Запустить демо');
+    expect(html).not.toContain('role="tablist"');
   });
 
   it('renders composer with an associated accessible label', () => {
@@ -71,6 +74,9 @@ describe('component smoke tests', () => {
     expect(html).toContain('for="composer-draft"');
     expect(html).toContain('id="composer-draft"');
     expect(html).toContain('aria-label="Введите сообщение…"');
+    expect(html).toContain('Контекст проекта пока недоступен');
+    expect(html).not.toContain('Инструменты (пока недоступны)');
+    expect(html).not.toContain('request-metrics');
   });
 
   it('marks disabled approval buttons semantically', () => {

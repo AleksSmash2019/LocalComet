@@ -82,7 +82,13 @@ beforeEach(() => {
 describe('desktop knowledge preview and approval', () => {
   it('01 defaults OFF', () => expect(get(knowledgePreviewStore).enabled).toBe(false));
   it('02 starts in OFF lifecycle', () => expect(get(knowledgePreviewStore).lifecycle).toBe('OFF'));
-  it('03 OFF toggle renders unchecked', () => expect(render(KnowledgeToggle).body).toContain('aria-checked="false"'));
+  it('03 production control is truthfully unavailable and non-interactive', () => {
+    const html = render(KnowledgeToggle).body;
+    expect(html).toContain('Контекст проекта пока недоступен');
+    expect(html).toContain('Это не долговременная память');
+    expect(html).not.toContain('role="switch"');
+    expect(html).not.toContain('<button');
+  });
   it('04 enabling is session state', () => { setProjectKnowledgeEnabled(true); expect(get(knowledgePreviewStore).enabled).toBe(true); });
   it('05 disabling clears preview identity', () => { setProjectKnowledgeEnabled(true); setProjectKnowledgeEnabled(false); expect(get(knowledgePreviewStore).turnId).toBeNull(); });
   it('06 OFF prepare performs no invoke', async () => { await prepareProjectKnowledge(TURN_ID, 'prompt'); expect(commands).toHaveLength(0); });

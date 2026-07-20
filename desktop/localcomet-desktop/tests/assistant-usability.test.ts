@@ -120,6 +120,7 @@ describe('truthful assistant usability states', () => {
     expect(html).toContain('Unavailable');
     expect(html).toContain('Internet');
     expect(html).toContain('Computer Use');
-    expect(html).toContain('Project-specific context is not supplied');
+    expect(html).toContain('Project context is unavailable');
+    expect(html).toContain('This is not long-term memory');
   });
 });

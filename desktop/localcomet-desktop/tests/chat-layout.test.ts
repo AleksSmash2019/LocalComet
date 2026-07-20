@@ -26,15 +26,32 @@ describe('bounded chat layout', () => {
     expect(css).toMatch(/\.chat-scroll\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overflow-x:\s*hidden;[^}]*overscroll-behavior:\s*contain;/s);
   });
 
-  it('keeps knowledge preview and composer in one bounded footer grid item', () => {
+  it('keeps the truthful knowledge status and composer in one bounded footer grid item', () => {
     const composer = source('../src/lib/components/chat/MessageComposer.svelte');
     expect(composer).toContain('<div class="composer-region">');
-    expect(composer).toMatch(/<div class="composer-region">\s*<KnowledgePreviewPanel \/>\s*<form class="composer-wrap"/s);
+    expect(composer).toMatch(/<div class="composer-region">\s*<form class="composer-wrap"/s);
+    expect(composer).toContain('<KnowledgeToggle />');
+    expect(composer).not.toContain('<KnowledgePreviewPanel />');
     expect(composer).toMatch(/\.composer-region\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*0;/s);
     expect(composer.match(/await restoreFocusAfterRequest\(\);/g)).toHaveLength(2);
     expect(composer).toContain('active === document.documentElement');
     expect(composer).toMatch(/if \(!textarea \|\| textarea\.disabled\) return;\s*restoreComposerFocus = false;/s);
     expect(composer).toMatch(/const generatingNow = isGenerating;\s*if \(previouslyGenerating && !generatingNow\)[\s\S]*previouslyGenerating = generatingNow;/);
+  });
+
+  it.each([
+    ['1920×1080', 1920, 1080, 1],
+    ['1366×768', 1366, 768, 1],
+    ['1280×720', 1280, 720, 1],
+    ['1024×640', 1024, 640, 1],
+    ['125% equivalent', 1280, 720, 1.25],
+    ['150% equivalent', 1024, 640, 1.5]
+  ])('keeps a bounded positive transcript viewport at %s', (_name, width, height, scale) => {
+    const titleBar = 38 * scale;
+    const header = 56 * scale;
+    const composer = 118 * scale;
+    expect(width / scale).toBeGreaterThanOrEqual(682);
+    expect(height - titleBar - header - composer).toBeGreaterThan(300);
   });
 
   it('makes the transcript keyboard-focusable and records manual scroll position', () => {
