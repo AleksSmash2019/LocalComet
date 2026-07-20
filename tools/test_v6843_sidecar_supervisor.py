@@ -357,11 +357,24 @@ def run_source_scans() -> None:
     runner_text = read(RUNNER)
     lib_text = read(TAURI_SRC / "lib.rs")
     ipc_text = read(TAURI_SRC / "ipc.rs")
+    single_instance_text = read(TAURI_SRC / "single_instance.rs")
+    startup_text = read(TAURI_SRC / "startup.rs")
     supervisor_text = read(TAURI_SRC / "supervisor.rs")
     windows_job_text = read(TAURI_SRC / "windows_job.rs")
-    rust_text = "\n".join([lib_text, ipc_text, supervisor_text, windows_job_text])
+    tauri_config_text = read(DESKTOP / "src-tauri" / "tauri.conf.json")
+    rust_text = "\n".join(
+        [lib_text, ipc_text, single_instance_text, startup_text, supervisor_text, windows_job_text]
+    )
 
-    for path in [RUNTIME, RUNNER, TAURI_SRC / "ipc.rs", TAURI_SRC / "supervisor.rs", TAURI_SRC / "windows_job.rs"]:
+    for path in [
+        RUNTIME,
+        RUNNER,
+        TAURI_SRC / "ipc.rs",
+        TAURI_SRC / "single_instance.rs",
+        TAURI_SRC / "startup.rs",
+        TAURI_SRC / "supervisor.rs",
+        TAURI_SRC / "windows_job.rs",
+    ]:
         check(path.exists(), f"missing {path}")
     check("DESKTOP_SIDECAR_RUNTIME_VERSION = \"v6.84.3\"" in runtime_text, "runtime version constant missing")
     check("ALLOWED_REQUEST_METHODS" in runtime_text and "app.health" in runtime_text and "app.shutdown" in runtime_text, "runtime lifecycle allowlist missing")
@@ -374,8 +387,25 @@ def run_source_scans() -> None:
     check("FrameDecoder" in runner_text, "runner does not use contract frame decoder")
     check("stdout.buffer.write" in runner_text and "stderr.write(\"localcomet sidecar fatal" in runner_text, "runner stdout/stderr handling changed")
 
-    check("mod supervisor;" in lib_text and "mod windows_job;" in lib_text and "mod ipc;" in lib_text, "lib.rs modules not wired")
-    check(".setup(|app|" in lib_text and "supervisor.start()" in lib_text, "Tauri setup does not start supervisor")
+    check(
+        all(
+            marker in lib_text
+            for marker in [
+                "mod ipc;",
+                "mod single_instance;",
+                "mod startup;",
+                "mod supervisor;",
+                "mod windows_job;",
+            ]
+        ),
+        "lib.rs launch modules not wired",
+    )
+    check(
+        ".setup(|app|" in lib_text
+        and "supervisor.start_and_wait_ready(BACKEND_READINESS_TIMEOUT)" in lib_text,
+        "Tauri setup does not wait for bounded supervisor readiness",
+    )
+    check('"visible": false' in tauri_config_text and 'window.show()' in lib_text, "window is not gated on readiness")
     check("CloseRequested" in lib_text and "supervisor.shutdown()" in lib_text, "Tauri close does not stop supervisor")
     check("invoke_handler" in rust_text and "control_plane_bootstrap" in rust_text, "static control-plane invoke handler missing")
     check("control_plane_request" not in rust_text and "generic_request" not in rust_text, "generic invoke command present")
@@ -403,6 +433,12 @@ def run_source_scans() -> None:
     check("UpdateProcThreadAttribute" in windows_job_text, "handle list update missing")
     check("CreateProcessW" not in lib_text + ipc_text + supervisor_text, "CreateProcessW leaked outside windows_job.rs")
 
+    check("CreateMutexW" in single_instance_text, "single-instance mutex is missing")
+    check("ERROR_ALREADY_EXISTS" in single_instance_text, "duplicate-instance detection is missing")
+    check("MessageBoxW" in startup_text, "native startup failure dialog is missing")
+    check("%LOCALAPPDATA%\\LocalComet\\logs\\startup.log" in startup_text, "sanitized startup log path is missing")
+    check(r"C:\Users\DNS" not in startup_text, "startup handling contains a machine-specific path")
+
     check('PYTHON_ISOLATED_ARG: &str = "-I"' in supervisor_text, "isolated Python arg not fixed")
     check('PYTHON_NO_BYTECODE_ARG: &str = "-B"' in supervisor_text, "no-bytecode Python arg not fixed")
     check("tools/run_localcomet_desktop_sidecar.py" in supervisor_text, "runner path constant missing")
@@ -412,6 +448,10 @@ def run_source_scans() -> None:
     check("OPENAI_API_KEY" not in supervisor_text and "std::env::vars" not in supervisor_text, "broad environment forwarding present")
     check("HEALTH_METHOD" in supervisor_text and "SHUTDOWN_METHOD" in supervisor_text, "lifecycle method constants missing")
     check("send_health_probe" in supervisor_text, "health probe method missing")
+    check("ReadinessTimeout" in supervisor_text, "bounded readiness timeout missing")
+    check("saw_health_ok" in supervisor_text, "health response gate missing")
+    check("wait_bounded" in supervisor_text and "wait_bounded" in windows_job_text, "bounded process wait missing")
+    check("INFINITE" not in windows_job_text, "unbounded Windows process wait remains")
     check("snapshot" in supervisor_text, "supervisor snapshot missing")
 
 

@@ -753,6 +753,31 @@ mod tests {
     }
 
     #[test]
+    fn failed_readiness_stops_the_contained_sidecar() {
+        let Some(root) = std::env::var_os("LOCALCOMET_TEST_PROJECT_ROOT").map(PathBuf::from) else {
+            return;
+        };
+        let Some(python) = std::env::var_os("LOCALCOMET_TEST_PYTHON").map(PathBuf::from) else {
+            return;
+        };
+        let runner = root.join("tools/test_up00_unready_sidecar.py");
+        let config = SupervisorConfig {
+            program: SidecarProgram::DebugPython {
+                python_exe: python.clone(),
+                project_root: root,
+                runner,
+            },
+            env: minimal_sidecar_environment(Some(&python)),
+        };
+        let supervisor = DesktopSidecarSupervisor::new(config);
+        let error = supervisor
+            .start_and_wait_ready(Duration::from_millis(150))
+            .unwrap_err();
+        assert!(matches!(error, SupervisorError::ReadinessTimeout));
+        assert!(!supervisor.snapshot().running);
+    }
+
+    #[test]
     fn lifecycle_frame_observation_requires_exact_health_response_shape() {
         let shared = SupervisorShared::default();
         observe_lifecycle_frame(

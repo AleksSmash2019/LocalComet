@@ -312,6 +312,8 @@ def build_installer(root: Path, workspace: Path) -> tuple[Path, ...]:
     cargo_target.mkdir(parents=True, exist_ok=True)
     env["CARGO_TARGET_DIR"] = str(cargo_target)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["LOCALCOMET_TEST_PROJECT_ROOT"] = str(workspace)
+    env["LOCALCOMET_TEST_PYTHON"] = sys.executable
     env.pop("LOCALCOMET_KNOWLEDGE_VAULT", None)
     env.pop("LOCALCOMET_KNOWLEDGE_PROJECT_ROOT", None)
 

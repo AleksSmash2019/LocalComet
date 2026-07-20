@@ -51,10 +51,13 @@ mod platform {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 
         #[test]
         fn named_mutex_rejects_a_second_instance() {
-            let name = format!(r"Local\com.localcomet.desktop.test.{}", std::process::id());
+            let name = format!(r"Local\com.localcomet.desktop.test.{}", unsafe {
+                GetCurrentProcessId()
+            });
             let first = acquire_named(&name).unwrap();
             assert!(first.is_some());
             let second = acquire_named(&name).unwrap();
