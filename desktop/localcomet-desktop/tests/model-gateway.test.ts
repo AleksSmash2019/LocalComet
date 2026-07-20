@@ -13,10 +13,12 @@ import {
 } from '../src/lib/bridge/modelGateway';
 import {
   applyModelGatewayEvent,
+  inferenceRequestStore,
   modelGatewayStore,
   resetModelGatewayStore,
   setGatewayPortText
 } from '../src/lib/stores/modelGateway';
+import { appendAcceptedChatTurn, resetShellStores } from '../src/lib/stores/shellStore';
 import type { ModelGatewayEvent } from '../src/lib/types/modelGateway';
 
 const TURN_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
@@ -34,7 +36,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
     invokeCalls.push({ command, args });
     if (command === 'model_gateway_catalog') return catalogFixture();
-    if (command === 'managed_runtime_status') return { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, last_error: null };
+    if (command === 'managed_runtime_status') return { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, model_state: 'Unavailable', inference_ready: false, last_error: null };
     if (command === 'managed_runtime_catalog') return { ...TRUST_CATALOG, runtimes: [] };
     if (command === 'managed_model_catalog') return { ...TRUST_CATALOG, engine: 'llama.cpp', model_root: '<MANAGED_MODEL_ROOT>', models: [], maximum_models: 32 };
     if (command === 'managed_installed_artifacts') return { ...TRUST_CATALOG, artifacts: [] };
@@ -42,7 +44,7 @@ vi.mock('@tauri-apps/api/core', () => ({
     if (command === 'model_gateway_probe') return { status: 'Ready', provider_id: 'openai-compatible-local', host: '127.0.0.1', port: args?.port, base_path: '/v1', model_count: 1 };
     if (command === 'model_gateway_list_models') return { provider_id: 'openai-compatible-local', host: '127.0.0.1', port: args?.port, models: [{ model_id: 'local-model' }], discovered_fingerprint: FINGERPRINT };
     if (command === 'model_binding_set') return { provider_id: 'openai-compatible-local', harness_id: args?.harnessId, host: '127.0.0.1', port: args?.port, base_path: '/v1', model_id: args?.modelId, binding_fingerprint: FINGERPRINT, discovered_fingerprint: FINGERPRINT, persistence: false };
-    if (command === 'model_turn_start') return { turn_id: TURN_ID, state: 'GENERATING', provider_id: 'openai-compatible-local', harness_id: 'minimal', model_id: 'local-model', binding_fingerprint: FINGERPRINT, model_called: false, tools_executed: 0, persistence: false };
+    if (command === 'model_turn_start') return { request_id: args?.requestId, chat_session_id: args?.chatSessionId, turn_id: args?.requestId, state: 'Accepted', model_id: args?.modelId, submitted_at_unix_ms: args?.submittedAtUnixMs, max_tokens: args?.maxTokens, binding_fingerprint: args?.bindingFingerprint };
     return {};
   })
 }));
@@ -73,12 +75,22 @@ function catalogFixture() {
 }
 
 function modelEvent(method: ModelGatewayEvent['method'], sequence: number, patch: Partial<ModelGatewayEvent> = {}): ModelGatewayEvent {
+  const stateByMethod = {
+    'model.turn.started': 'Streaming',
+    'model.output.delta': 'Streaming',
+    'model.turn.completed': 'Completed',
+    'model.turn.cancelled': 'Cancelled',
+    'model.turn.timed_out': 'TimedOut',
+    'model.turn.failed': 'Failed'
+  } as const;
   return {
     method,
     sequence,
     reply_to: TURN_ID,
+    request_id: TURN_ID,
+    chat_session_id: 'local-chat',
     turn_id: TURN_ID,
-    state: patch.state ?? 'Generating',
+    state: patch.state ?? stateByMethod[method],
     text: patch.text ?? null,
     model_called: patch.model_called ?? true,
     tools_executed: 0,
@@ -94,6 +106,7 @@ function modelEvent(method: ModelGatewayEvent['method'], sequence: number, patch
 describe('Local Model Gateway frontend', () => {
   beforeEach(() => {
     resetModelGatewayStore();
+    resetShellStores();
     installTauriMock();
   });
 
@@ -102,7 +115,7 @@ describe('Local Model Gateway frontend', () => {
     await probeModelGateway(1234);
     await listModelGatewayModels(1234);
     await setModelBinding({ providerId: 'openai-compatible-local', harnessId: 'minimal', port: 1234, modelId: 'local-model' });
-    await startModelTurn('hello', FINGERPRINT);
+    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', bindingFingerprint: FINGERPRINT });
     expect(invokeCalls.map((call) => call.command)).toEqual([
       'model_gateway_catalog',
       'model_gateway_probe',
@@ -124,8 +137,24 @@ describe('Local Model Gateway frontend', () => {
   it('subscribes to model events and updates truthful telemetry', async () => {
     const seen: string[] = [];
     await subscribeModelGatewayEvents((event) => seen.push(event.method));
-    listener?.({ payload: { method: 'model.output.delta', sequence: 1, reply_to: TURN_ID, turn_id: TURN_ID, state: 'Generating', text: 'hi', metadata: { model_called: true, tools_executed: 0, persistence: false, provider_id: 'openai-compatible-local', harness_id: 'minimal', model_id: 'local-model', binding_fingerprint: FINGERPRINT } } });
+    listener?.({ payload: { method: 'model.output.delta', sequence: 1, reply_to: TURN_ID, request_id: TURN_ID, chat_session_id: 'local-chat', turn_id: TURN_ID, model_id: 'local-model', state: 'Streaming', text: 'hi', metadata: { model_called: true, tools_executed: 0, persistence: false, generated_bytes: 2, provider_id: 'openai-compatible-local', harness_id: 'minimal', model_id: 'local-model', binding_fingerprint: FINGERPRINT } } });
     expect(seen).toEqual(['model.output.delta']);
+    modelGatewayStore.update((state) => ({
+      ...state,
+      binding: {
+        provider_id: 'openai-compatible-local',
+        harness_id: 'minimal',
+        host: '127.0.0.1',
+        port: 1234,
+        base_path: '/v1',
+        model_id: 'local-model',
+        binding_fingerprint: FINGERPRINT,
+        discovered_fingerprint: FINGERPRINT,
+        persistence: false
+      }
+    }));
+    inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
+    appendAcceptedChatTurn(TURN_ID, 'hello');
     applyModelGatewayEvent(modelEvent('model.turn.started', 0));
     applyModelGatewayEvent(modelEvent('model.output.delta', 1, { text: 'hello' }));
     applyModelGatewayEvent(modelEvent('model.turn.completed', 2, { state: 'Completed' }));

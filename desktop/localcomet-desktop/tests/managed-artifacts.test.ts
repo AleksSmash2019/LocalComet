@@ -12,6 +12,7 @@ import {
 } from '../src/lib/bridge/modelGateway';
 import {
   managedRuntimeStore,
+  modelGatewayStore,
   refreshManagedRuntimeStatus,
   resetModelGatewayStore,
   setManagedSelectedModel,
@@ -166,6 +167,8 @@ function runtimeStatusFixture() {
     model_id: null,
     model_display_name: null,
     binding_fingerprint: null,
+    model_state: 'Unavailable',
+    inference_ready: false,
     last_error: null
   };
 }
@@ -182,6 +185,8 @@ function installResponses(): void {
     managed_runtime_logs: { stdout_tail: [], stderr_tail: [] },
     managed_runtime_start: {
       state: 'Ready',
+      model_state: 'Ready',
+      inference_ready: true,
       provider_id: 'managed-llama-cpp',
       model_id: MODEL_ID,
       model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
@@ -228,6 +233,45 @@ describe('managed artifact trust frontend contract', () => {
       'managed_runtime_catalog',
       'managed_model_catalog'
     ]);
+  });
+
+  it('preserves a confirmed harness binding when the runtime attach fingerprint is distinct', async () => {
+    const runtimeInstanceId = 'd'.repeat(32);
+    const attachFingerprint = 'e'.repeat(64);
+    const boundFingerprint = 'f'.repeat(64);
+    const binding = {
+      provider_id: 'managed-llama-cpp' as const,
+      harness_id: 'minimal' as const,
+      model_id: MODEL_ID,
+      binding_fingerprint: boundFingerprint,
+      discovered_fingerprint: '9'.repeat(64),
+      persistence: false as const,
+      runtime_instance_id: runtimeInstanceId
+    };
+    managedRuntimeStore.update((state) => ({
+      ...state,
+      selectedModelId: MODEL_ID,
+      harnessId: 'minimal',
+      binding
+    }));
+    modelGatewayStore.update((state) => ({ ...state, binding, status: 'Bound' }));
+    responses.managed_runtime_status = {
+      ...runtimeStatusFixture(),
+      state: 'Ready',
+      model_state: 'Ready',
+      inference_ready: true,
+      runtime_instance_id: runtimeInstanceId,
+      runtime_instance_fingerprint: '8'.repeat(64),
+      model_id: MODEL_ID,
+      model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+      binding_fingerprint: attachFingerprint
+    };
+
+    await refreshManagedRuntimeStatus();
+
+    expect(get(managedRuntimeStore).binding?.binding_fingerprint).toBe(boundFingerprint);
+    expect(get(managedRuntimeStore).status?.binding_fingerprint).toBe(attachFingerprint);
+    expect(get(modelGatewayStore).binding?.binding_fingerprint).toBe(boundFingerprint);
   });
 
   it('rejects path-like or non-canonical artifact IDs before invoking Tauri', async () => {

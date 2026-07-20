@@ -152,9 +152,17 @@ describe('control-plane bridge and store', () => {
     const seen: string[] = [];
     const cleanup = await subscribeControlPlaneEvents((payload) => seen.push(payload.method));
     listener?.({ payload: event('session.created', 0) });
+    listener?.({ payload: event('model.turn.timed_out', 0, { reply_to: 'model-timeout', state: 'TimedOut' }) });
     cleanup();
     expect(cleanupCalled).toBe(true);
-    expect(seen).toEqual(['session.created']);
+    expect(seen).toEqual(['session.created', 'model.turn.timed_out']);
+  });
+
+  it('accepts model timeout events in the shared Control Plane stream', () => {
+    applyControlPlaneEvent(event('model.turn.timed_out', 0, { reply_to: 'model-timeout', state: 'TimedOut' }));
+    const state = get(controlPlaneStore);
+    expect(state.lastError).toBeNull();
+    expect(state.recentEvents.at(-1)?.method).toBe('model.turn.timed_out');
   });
 
   it('updates session, thread, turn and items from ordered events', () => {

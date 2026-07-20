@@ -30,6 +30,7 @@ from modules.local_model_gateway_ru import (  # noqa: E402
     MANAGED_PROVIDER_ID,
     ModelBinding,
     ProviderAdapter,
+    TurnRequest,
     _turn_payload,
 )
 
@@ -86,7 +87,11 @@ class FakeProvider(BaseHTTPRequestHandler):
         type(self).seen_posts += 1
         length = int(self.headers.get("Content-Length", "0"))
         body = json.loads(self.rfile.read(length).decode("utf-8"))
-        if set(body) != {"messages", "model", "stream"} or body["stream"] is not True:
+        if (
+            set(body) != {"max_tokens", "messages", "model", "stream"}
+            or body["stream"] is not True
+            or not 1 <= body["max_tokens"] <= 512
+        ):
             self.send_response(400)
             self.end_headers()
             return
@@ -165,8 +170,18 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         fingerprint="a" * 64,
         discovered_fingerprint="b" * 64,
     )
+    request = TurnRequest(
+        request_id="c" * 24,
+        turn_id="c" * 24,
+        chat_session_id="chat-test",
+        model_id="local-model",
+        submitted_at_unix_ms=1,
+        max_tokens=64,
+        prompt="hello",
+        binding_fingerprint="a" * 64,
+    )
     payload = _turn_payload(
-        "c" * 24,
+        request,
         "Generating",
         binding,
         model_called=True,
@@ -178,7 +193,9 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         == {
             "control_plane_version",
             "model_gateway_version",
+            "request_id",
             "turn_id",
+            "chat_session_id",
             "session_id",
             "thread_id",
             "item_id",
@@ -187,6 +204,8 @@ def test_version_alignment_and_turn_payload_shape() -> None:
             "provider_id",
             "harness_id",
             "model_id",
+            "submitted_at_unix_ms",
+            "max_tokens",
             "binding_fingerprint",
             "text",
             "model_called",
@@ -202,7 +221,12 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         == {
             "provider_id",
             "harness_id",
+            "request_id",
+            "turn_id",
+            "chat_session_id",
             "model_id",
+            "submitted_at_unix_ms",
+            "max_tokens",
             "binding_fingerprint",
             "model_called",
             "tools_executed",
@@ -237,32 +261,34 @@ def test_probe_list_and_binding() -> None:
 
 
 def test_managed_attach_binding_and_detach() -> None:
-    gateway = LocalModelGateway()
-    attach = gateway.managed_attach(
-        {
-            "runtime_instance_id": "a" * 32,
-            "port": 12345,
-            "credential": "b" * 64,
-            "expected_model_alias": "localcomet-managed-model",
-            "model_id": "managed-model",
-            "binding_fingerprint": "c" * 64,
-        }
-    )
-    _assert(attach["provider_id"] == MANAGED_PROVIDER_ID, "managed provider attach failed")
-    binding = gateway.set_binding(
-        {
-            "provider_id": MANAGED_PROVIDER_ID,
-            "harness_id": "minimal",
-            "port": None,
-            "model_id": "managed-model",
-            "confirmed": True,
-            "runtime_instance_id": "a" * 32,
-        }
-    )
-    _assert(binding["provider_id"] == MANAGED_PROVIDER_ID, "managed binding provider wrong")
-    _assert("port" not in binding and "runtime_instance_id" in binding, "managed binding exposed port")
-    detached = gateway.managed_detach()
-    _assert(detached["detached"] is True, "managed detach failed")
+    with FakeServer() as server:
+        gateway = LocalModelGateway()
+        attach = gateway.managed_attach(
+            {
+                "runtime_instance_id": "a" * 32,
+                "port": server.port,
+                "credential": "b" * 64,
+                "expected_model_alias": "local-model",
+                "model_id": "managed-model",
+                "binding_fingerprint": "c" * 64,
+            }
+        )
+        _assert(attach["provider_id"] == MANAGED_PROVIDER_ID, "managed provider attach failed")
+        _assert(attach["model_state"] == "Ready" and attach["inference_ready"] is True, "managed readiness missing")
+        binding = gateway.set_binding(
+            {
+                "provider_id": MANAGED_PROVIDER_ID,
+                "harness_id": "minimal",
+                "port": None,
+                "model_id": "managed-model",
+                "confirmed": True,
+                "runtime_instance_id": "a" * 32,
+            }
+        )
+        _assert(binding["provider_id"] == MANAGED_PROVIDER_ID, "managed binding provider wrong")
+        _assert("port" not in binding and "runtime_instance_id" in binding, "managed binding exposed port")
+        detached = gateway.managed_detach()
+        _assert(detached["detached"] is True, "managed detach failed")
 
 
 def test_provider_rejects_malformed_responses() -> None:
@@ -288,7 +314,7 @@ def test_sse_streaming_and_fail_closed() -> None:
     for mode in ("tool_calls", "function_call", "multi_choice"):
         with FakeServer(mode) as server:
             adapter = ProviderAdapter(server.port, GatewayLimits())
-            _raises(lambda: list(adapter.stream_chat("local-model", ({"role": "user", "content": "hi"},), threading.Event(), lambda: None)), "invalid_payload")
+            _raises(lambda: list(adapter.stream_chat("local-model", ({"role": "user", "content": "hi"},), threading.Event(), lambda: None)), "stream_protocol_error")
 
 
 def test_single_active_and_cancellation_cleanup() -> None:
@@ -297,9 +323,21 @@ def test_single_active_and_cancellation_cleanup() -> None:
         gateway.list_models({"port": server.port})
         binding = gateway.set_binding({"provider_id": "openai-compatible-local", "harness_id": "minimal", "port": server.port, "model_id": "local-model", "confirmed": True})
         events: list[tuple[str, str]] = []
-        started = gateway.start_turn({"prompt": "hello", "binding_fingerprint": binding["binding_fingerprint"]}, lambda m, t, s, p: events.append((m, str(p.get("state")))))
-        _raises(lambda: gateway.start_turn({"prompt": "again", "binding_fingerprint": binding["binding_fingerprint"]}, lambda *_: None), "busy")
-        result = gateway.cancel_turn({"turn_id": started["turn_id"]})
+        request_id = "d" * 24
+        request = {
+            "request_id": request_id,
+            "chat_session_id": "chat-test",
+            "model_id": "local-model",
+            "submitted_at_unix_ms": 1,
+            "max_tokens": 32,
+            "prompt": "hello",
+            "binding_fingerprint": binding["binding_fingerprint"],
+        }
+        started = gateway.start_turn(request, lambda m, t, s, p: events.append((m, str(p.get("state")))))
+        second = {**request, "request_id": "e" * 24, "prompt": "again"}
+        _raises(lambda: gateway.start_turn(second, lambda *_: None), "busy")
+        result = gateway.cancel_turn({"request_id": started["request_id"]})
+        _assert(result["accepted"] is True and result["already_terminal"] is False, "cancel ack wrong")
         _assert(result["worker_alive"] is False, "worker remained alive after cancellation")
         gateway.shutdown()
         _assert(any(method == "model.turn.cancelled" for method, _ in events), "cancel event missing")

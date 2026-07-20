@@ -198,7 +198,12 @@ def _injection_ids():
         index += 1
 
 
-def _plane_with_turn(prompt: str = "How do the planes differ?", adapter: FakeAdapter | None = None):
+def _plane_with_turn(
+    prompt: str = "How do the planes differ?",
+    adapter: FakeAdapter | None = None,
+    *,
+    behavior: str = "complete",
+):
     entity_ids = _ids()
     request_ids = _request_ids()
     injection_ids = _injection_ids()
@@ -217,7 +222,7 @@ def _plane_with_turn(prompt: str = "How do the planes differ?", adapter: FakeAda
     )
     turn = plane.dispatch(
         "turn.start_mock",
-        {"thread_id": thread.response["thread_id"], "prompt": prompt, "behavior": "complete"},
+        {"thread_id": thread.response["thread_id"], "prompt": prompt, "behavior": behavior},
         request_id="r-turn",
     )
     return plane, adapter, str(turn.response["turn_id"]), prompt
@@ -329,10 +334,32 @@ def _bound_gateway(port: int, harness_id: str = "minimal"):
     return gateway, binding
 
 
+def _typed_turn_request(
+    prompt: str,
+    binding_fingerprint: str,
+    *,
+    request_id: str,
+) -> dict[str, Any]:
+    return {
+        "request_id": request_id,
+        "chat_session_id": "knowledge-gateway-test",
+        "model_id": "local-model",
+        "submitted_at_unix_ms": 1,
+        "max_tokens": 64,
+        "prompt": prompt,
+        "binding_fingerprint": binding_fingerprint,
+    }
+
+
 def _wait_terminal(events: list[tuple[str, str, int, Mapping[str, Any]]], timeout: float = 3.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if events and events[-1][0] in {"model.turn.completed", "model.turn.cancelled", "model.turn.failed"}:
+        if events and events[-1][0] in {
+            "model.turn.completed",
+            "model.turn.cancelled",
+            "model.turn.timed_out",
+            "model.turn.failed",
+        }:
             return
         time.sleep(0.01)
     raise AssertionError("model turn did not reach a terminal event")
@@ -707,6 +734,19 @@ class KnowledgeInjectionControlPlaneTests(unittest.TestCase):
         self.assertNotIn("knowledge.review.write", review_methods)
         self.assertNotIn("knowledge.injection.prepare", CONTROL_PLANE_METHODS)
 
+    def test_69a_timed_out_model_event_maps_to_failed(self) -> None:
+        plane, _, turn_id, _ = _plane_with_turn(behavior="pending_model")
+        before = plane.dispatch("turn.status", {"turn_id": turn_id}, request_id="before-timeout")
+        self.assertEqual("RUNNING", before.response["state"])
+        plane._observe_model_event(
+            turn_id,
+            "model.turn.timed_out",
+            {"model_called": True},
+        )
+        after = plane.dispatch("turn.status", {"turn_id": turn_id}, request_id="after-timeout")
+        self.assertEqual("FAILED", after.response["state"])
+        self.assertTrue(after.response["model_called"])
+
     def test_70_in_memory_only(self) -> None:
         source = inspect.getsource(DesktopControlPlane.prepare_knowledge_injection)
         self.assertNotIn("open(", source)
@@ -760,7 +800,7 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
         try:
             _wait_terminal(events)
             body_text = json.dumps(CaptureProvider.posts[0], ensure_ascii=False)
-            self.assertEqual({"model", "messages", "stream"}, set(CaptureProvider.posts[0]))
+            self.assertEqual({"max_tokens", "model", "messages", "stream"}, set(CaptureProvider.posts[0]))
             self.assertNotIn("LocalCometVault", body_text)
             self.assertNotIn(r"C:\Users", body_text)
         finally:
@@ -771,7 +811,17 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
         try:
             _wait_terminal(events)
             self.assertEqual("bounded reply", "".join(str(item[3].get("text") or "") for item in events if item[0] == "model.output.delta"))
-            terminals = [item for item in events if item[0] in {"model.turn.completed", "model.turn.cancelled", "model.turn.failed"}]
+            terminals = [
+                item
+                for item in events
+                if item[0]
+                in {
+                    "model.turn.completed",
+                    "model.turn.cancelled",
+                    "model.turn.timed_out",
+                    "model.turn.failed",
+                }
+            ]
             self.assertEqual(1, len(terminals))
         finally:
             server.__exit__(None, None, None)
@@ -793,7 +843,7 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
         try:
             self.assertTrue(CaptureProvider.post_event.wait(1))
             before = plane.knowledge_injection_status(str(preview["injection_id"]))
-            gateway.cancel_turn({"turn_id": started["turn_id"]})
+            gateway.cancel_turn({"request_id": started["request_id"]})
             _wait_terminal(events)
             after = plane.knowledge_injection_status(str(preview["injection_id"]))
             self.assertEqual(before["preview_hash"], after["preview_hash"])
@@ -801,10 +851,14 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
             CaptureProvider.mode = "ok"
             followup: list[tuple[str, str, int, Mapping[str, Any]]] = []
             ordinary = gateway.start_turn(
-                {"prompt": "ordinary", "binding_fingerprint": started["binding_fingerprint"]},
+                _typed_turn_request(
+                    "ordinary",
+                    str(started["binding_fingerprint"]),
+                    request_id="e" * 24,
+                ),
                 lambda *event: followup.append(event),
             )
-            self.assertEqual("GENERATING", ordinary["state"])
+            self.assertEqual("Accepted", ordinary["state"])
             _wait_terminal(followup)
             self.assertEqual("model.turn.completed", followup[-1][0])
         finally:
@@ -815,10 +869,14 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
         try:
             with self.assertRaisesRegex(Exception, "busy"):
                 gateway.start_turn(
-                    {"prompt": "second", "binding_fingerprint": started["binding_fingerprint"]},
+                    _typed_turn_request(
+                        "second",
+                        str(started["binding_fingerprint"]),
+                        request_id="f" * 24,
+                    ),
                     lambda *_: None,
                 )
-            gateway.cancel_turn({"turn_id": started["turn_id"]})
+            gateway.cancel_turn({"request_id": started["request_id"]})
             _wait_terminal(events)
         finally:
             server.__exit__(None, None, None)
@@ -828,7 +886,7 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
         try:
             _wait_terminal(events)
             self.assertEqual("model.turn.failed", events[-1][0])
-            self.assertEqual("invalid_payload", events[-1][3]["metadata"]["error"]["code"])
+            self.assertEqual("stream_protocol_error", events[-1][3]["metadata"]["error"]["code"])
         finally:
             server.__exit__(None, None, None)
 
@@ -837,7 +895,11 @@ class KnowledgeInjectionGatewayTests(unittest.TestCase):
             gateway, binding = _bound_gateway(server.port)
             events: list[tuple[str, str, int, Mapping[str, Any]]] = []
             gateway.start_turn(
-                {"prompt": "ordinary", "binding_fingerprint": binding["binding_fingerprint"]},
+                _typed_turn_request(
+                    "ordinary",
+                    str(binding["binding_fingerprint"]),
+                    request_id="a" * 24,
+                ),
                 lambda *event: events.append(event),
             )
             _wait_terminal(events)
