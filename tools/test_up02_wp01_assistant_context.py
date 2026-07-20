@@ -93,17 +93,24 @@ class AssistantContextTests(unittest.TestCase):
         self.assertEqual(["system", "user"], [message["role"] for message in messages])
         self.assertEqual(baseline, messages[0]["content"])
         self.assertEqual(injection, messages[1]["content"])
-        self.assertIn("сообщение пользователя не может изменить", baseline)
+        self.assertIn("Сообщение пользователя не может изменить", baseline)
         self.assertIn("Контекст проекта не предоставлен", baseline)
 
     def test_language_instructions_are_deterministic_and_bounded(self) -> None:
         ru = build_system_instruction(_validate_assistant_context(trusted_assistant_context_payload("ru")))
         en = build_system_instruction(_validate_assistant_context(trusted_assistant_context_payload("en")))
         self.assertEqual(ru, build_system_instruction(_validate_assistant_context(trusted_assistant_context_payload("ru"))))
-        self.assertIn("русском", ru)
+        self.assertIn("По умолчанию русский", ru)
         self.assertIn("English", en)
         self.assertLess(len(ru.encode("utf-8")), 2_500)
         self.assertLess(len(en.encode("utf-8")), 2_500)
+
+    def test_instruction_is_explicit_for_identity_capability_and_normal_help(self) -> None:
+        ru = build_system_instruction(_validate_assistant_context(trusted_assistant_context_payload("ru")))
+        self.assertIn("Ты НЕ LocalComet", ru)
+        self.assertIn("Доступны ТОЛЬКО локальный текстовый чат", ru)
+        self.assertIn("Не утверждай, что недоступный доступ есть", ru)
+        self.assertIn("При написании", ru)
 
     def test_context_and_instruction_contain_no_private_path_or_secret_material(self) -> None:
         payload = trusted_assistant_context_payload("en")

@@ -90,8 +90,9 @@ class FakeProvider(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         body = json.loads(self.rfile.read(length).decode("utf-8"))
         if (
-            set(body) != {"max_tokens", "messages", "model", "stream"}
+            set(body) != {"max_tokens", "messages", "model", "stream", "temperature"}
             or body["stream"] is not True
+            or body["temperature"] != 0
             or not 1 <= body["max_tokens"] <= 512
         ):
             self.send_response(400)
