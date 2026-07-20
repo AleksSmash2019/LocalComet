@@ -24,6 +24,7 @@ AUTHORIZED_FEATURE_BRANCHES = frozenset(
     (
         "feat/up00-wp01-windows-one-click-launch",
         "feat/up02-wp01-truthful-assistant-usability",
+        "feat/up02-wp01-hf2-ui-hygiene-knowledge",
     )
 )
 
