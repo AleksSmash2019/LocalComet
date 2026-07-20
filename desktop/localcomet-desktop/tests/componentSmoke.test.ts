@@ -32,6 +32,7 @@ describe('component smoke tests', () => {
     expect(html).toContain('LocalComet');
     expect(html).not.toContain('Зарезервировано');
     expect(html).not.toContain('Документы');
+    expect(html).not.toContain('Новый тред');
     expect(html).not.toContain('Использовать системную тему');
     expect(html).toContain('aria-expanded="true"');
   });

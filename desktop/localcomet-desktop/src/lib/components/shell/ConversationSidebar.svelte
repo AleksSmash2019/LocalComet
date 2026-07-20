@@ -13,29 +13,27 @@
     (group) => !hiddenConversationGroupLabels.has(group.label)
   );
 
-  function tGroup(label: string): string {
-    const v = $t('group.' + label);
+  type Translate = (key: string) => string;
+
+  function tGroup(label: string, translate: Translate): string {
+    const v = translate('group.' + label);
     return v.startsWith('group.') ? label : v;
   }
 
-  function tItem(value: string): string {
-    const v = $t('item.' + value);
+  function tItem(value: string, translate: Translate): string {
+    const v = translate('item.' + value);
     return v.startsWith('item.') ? value : v;
   }
 
-  function tProjectLabel(label: string): string {
+  function tProjectLabel(label: string, translate: Translate): string {
     const key = label === 'Frontend' ? 'project.label_frontend' : label === 'Русский UX' ? 'project.label_russian_ux' : label;
-    const v = $t(key);
+    const v = translate(key);
     return v.startsWith('project.') ? label : v;
   }
 </script>
 
 <aside class="sidebar" class:sidebar-open={$sidebarExpanded} aria-label={$t('sidebar.label')}>
   <div class="sidebar-top">
-    <button type="button" class="new-thread" disabled title={$t('sidebar.new_thread_title')}>
-      <Icon name="add" size={18} />
-      <span>{$t('sidebar.new_thread')}</span>
-    </button>
     <button
       type="button"
       class="plain-button collapse-button"
@@ -53,15 +51,15 @@
     <span>{$t('project.detail')}</span>
     <div class="labels" aria-label={$t('sidebar.project_labels')}>
       {#each projectLabels as label}
-        <span>{tProjectLabel(label)}</span>
+        <span>{tProjectLabel(label, $t)}</span>
       {/each}
     </div>
   </section>
 
   <div class="conversation-groups">
     {#each visibleConversationGroups as group}
-      <section aria-label={tGroup(group.label)}>
-        <h2>{tGroup(group.label)}</h2>
+      <section aria-label={tGroup(group.label, $t)}>
+        <h2>{tGroup(group.label, $t)}</h2>
         {#each group.items as item}
           <button
             type="button"
@@ -70,8 +68,8 @@
             aria-current={$selectedConversationId === item.id ? 'page' : undefined}
             onclick={() => setSelectedConversation(item.id)}
           >
-            <span>{tItem(item.title)}</span>
-            <small>{tItem(item.meta)}</small>
+            <span>{tItem(item.title, $t)}</span>
+            <small>{tItem(item.meta, $t)}</small>
           </button>
         {/each}
       </section>
@@ -93,23 +91,8 @@
   .sidebar-top {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--lc-space-2);
-  }
-
-  .new-thread {
-    flex: 1;
-    min-width: 0;
-    min-height: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--lc-space-2);
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-panel-solid);
-    color: var(--lc-muted);
-    padding: 0 var(--lc-space-3);
-    font-weight: 780;
   }
 
   .collapse-button {

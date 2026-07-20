@@ -14,6 +14,12 @@
     closeSettings();
     setActiveWorkspace('chat');
   }
+
+  function activateWithKeyboard(event: KeyboardEvent, action: () => void): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    action();
+  }
 </script>
 
 <nav class="rail" aria-label={$t('nav.main')}>
@@ -28,6 +34,7 @@
       aria-current={$activeWorkspace === 'chat' && !$settingsPanelOpen ? 'page' : undefined}
       title={$t('nav.chat')}
       onclick={openChat}
+      onkeydown={(event) => activateWithKeyboard(event, openChat)}
     >
       <Icon name="chat" />
     </button>
@@ -41,6 +48,7 @@
       title={$t('nav.settings')}
       data-settings-trigger="true"
       onclick={openSettings}
+      onkeydown={(event) => activateWithKeyboard(event, openSettings)}
     >
       <Icon name="settings" />
     </button>
