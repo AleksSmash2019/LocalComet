@@ -225,7 +225,8 @@
           "cdn-lfs-us-1.hf.co",
           "cdn-lfs.hf.co",
           "huggingface.co",
-          "transfer.xethub.hf.co"
+          "transfer.xethub.hf.co",
+          "us.aws.cdn.hf.co"
         ],
         "expected_filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
         "expected_bytes": 1117320736,

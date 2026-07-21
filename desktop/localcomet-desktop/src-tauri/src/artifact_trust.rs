@@ -2028,7 +2028,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     const EMBEDDED_CATALOG_SHA256: &str =
-        "470bd873ba343ac35e24171e70128c0a6d18e1211ee0fa1293f0e57b773ddb3d";
+        "f063f43fe2faea5ebd5584a4d531e37bef681a0fba854393e77bbfeacdb519d1";
     const TEST_RUNTIME_BYTES: &[u8] = b"test-runtime";
     const TEST_MODEL_BYTES: &[u8] = b"GGUFtest-model";
 
@@ -2329,11 +2329,47 @@ mod tests {
             model.upstream_revision,
             "91cad51170dc346986eccefdc2dd33a9da36ead9"
         );
+        assert_eq!(model.asset_filename, "qwen2.5-1.5b-instruct-q4_k_m.gguf");
         assert_eq!(model.asset_bytes, 1_117_320_736);
         assert_eq!(
             model.asset_sha256,
             "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
         );
+        assert_eq!(
+            model.acquisition.primary_url,
+            "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+        );
+        assert_eq!(
+            model.acquisition.expected_filename,
+            "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+        );
+        assert_eq!(model.acquisition.expected_bytes, 1_117_320_736);
+        assert_eq!(
+            model.acquisition.expected_sha256,
+            "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
+        );
+        let model_hosts: Vec<&str> = model
+            .acquisition
+            .allowed_redirect_hosts
+            .iter()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            model_hosts,
+            vec![
+                "cas-bridge.xethub.hf.co",
+                "cdn-lfs-us-1.hf.co",
+                "cdn-lfs.hf.co",
+                "huggingface.co",
+                "transfer.xethub.hf.co",
+                "us.aws.cdn.hf.co",
+            ]
+        );
+        assert!(!runtime
+            .acquisition
+            .allowed_redirect_hosts
+            .iter()
+            .any(|host| host == "us.aws.cdn.hf.co"));
     }
 
     #[test]

@@ -1229,18 +1229,41 @@ mod tests {
     }
 
     #[test]
-    fn redirect_authority_requires_exact_https_host() {
-        let allowed = vec!["assets.example.test".to_string()];
+    fn model_redirect_authority_requires_exact_https_host() {
+        let allowed = vec![
+            "cas-bridge.xethub.hf.co".to_string(),
+            "cdn-lfs-us-1.hf.co".to_string(),
+            "cdn-lfs.hf.co".to_string(),
+            "huggingface.co".to_string(),
+            "transfer.xethub.hf.co".to_string(),
+            "us.aws.cdn.hf.co".to_string(),
+        ];
         assert!(validate_redirect_url(
-            &Url::parse("https://assets.example.test/download").expect("valid URL"),
+            &Url::parse(
+                "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            )
+            .expect("valid primary URL"),
             &allowed,
         )
         .is_ok());
+        for host in &allowed {
+            assert!(validate_redirect_url(
+                &Url::parse(&format!("https://{host}/download")).expect("valid approved URL"),
+                &allowed,
+            )
+            .is_ok());
+        }
         for value in [
-            "http://assets.example.test/download",
-            "https://other.example.test/download",
-            "https://assets.example.test:8443/download",
-            "https://user@assets.example.test/download",
+            "http://us.aws.cdn.hf.co/download",
+            "https://us.aws.cdn.hf.co.attacker.example/download",
+            "https://attacker-us.aws.cdn.hf.co/download",
+            "https://aws.cdn.hf.co/download",
+            "https://cdn.hf.co/download",
+            "https://us.aws.cdn.hf.co./download",
+            "https://us.aws.cdn.hf.co:8443/download",
+            "https://user@us.aws.cdn.hf.co/download",
+            "https://user:password@us.aws.cdn.hf.co/download",
+            "https://127.0.0.1/download",
         ] {
             assert!(
                 validate_redirect_url(&Url::parse(value).expect("valid URL"), &allowed).is_err()
