@@ -38,6 +38,212 @@
       "archive_format": "zip",
       "managed_relative_path": "llama-cpp-windows-x86-64-cpu-bootstrap",
       "executable_relative_path": "llama-server.exe",
+      "archive_members": [
+        {
+          "relative_path": "ggml-base.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-alderlake.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-cannonlake.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-cascadelake.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-cooperlake.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-haswell.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-icelake.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-ivybridge.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-piledriver.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-sandybridge.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-sapphirerapids.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-skylakex.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-sse42.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-x64.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-cpu-zen4.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml-rpc-server.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "ggml-rpc.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "ggml.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "libomp140.x86_64.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-batched-bench-impl.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-batched-bench.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-bench-impl.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-bench.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-cli-impl.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-cli.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-common.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-completion-impl.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-completion.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-fit-params-impl.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-fit-params.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-gemma3-cli.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-gguf-split.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-imatrix.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-llava-cli.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-minicpmv-cli.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-mtmd-cli.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-mtmd-debug.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-perplexity-impl.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-perplexity.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-quantize-impl.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-quantize.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-qwen2vl-cli.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-results.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-server-impl.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-server.exe",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama-template-analysis.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-tokenize.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama-tts.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "llama.dll",
+          "disposition": "install"
+        },
+        {
+          "relative_path": "llama.exe",
+          "disposition": "recognized_not_installed"
+        },
+        {
+          "relative_path": "mtmd.dll",
+          "disposition": "install"
+        }
+      ],
       "required_files": [
         {
           "relative_path": "ggml-base.dll",
@@ -130,11 +336,6 @@
           "sha256": "4a20c1e5c115c29771a12324513eb109badac72180f79481527ad79d996ffb33"
         },
         {
-          "relative_path": "LICENSE-MIT.txt",
-          "bytes": 1078,
-          "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
-        },
-        {
           "relative_path": "llama-batched-bench-impl.dll",
           "bytes": 60928,
           "sha256": "9a41ddde60aadc61f2ca0d3bb6c6853ba6b5312c68694b9030cddb6db1c17fc3"
@@ -195,6 +396,12 @@
           "sha256": "d912fdd1d0bf17c6ff78214e159604a4b34f000ae240bcfe86bcaab780093ae4"
         }
       ],
+      "license_asset": {
+        "source_relative_path": "third_party/llama.cpp/LICENSE-MIT.txt",
+        "destination_relative_path": "LICENSE-MIT.txt",
+        "bytes": 1078,
+        "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+      },
       "permitted_bind_scope": "loopback-only",
       "supported_api_protocol": "openai-compatible-v1",
       "license_id": "MIT",

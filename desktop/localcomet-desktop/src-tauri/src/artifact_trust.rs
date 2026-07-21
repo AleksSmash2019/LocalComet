@@ -33,10 +33,14 @@ const CATALOG_ID: &str = "localcomet-approved-artifacts";
 const SCHEMA_VERSION: u32 = 1;
 const MAX_ARTIFACTS: usize = 32;
 const MAX_REQUIRED_FILES: usize = 128;
+const MAX_RUNTIME_ARCHIVE_MEMBERS: usize = 128;
 const MAX_RUNTIME_ARCHIVE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_MODEL_BYTES: u64 = 128 * 1024 * 1024 * 1024;
 const MODEL_ROOT_SENTINEL: &str = "<MANAGED_MODEL_ROOT>";
 const INTERNAL_BOOTSTRAP_PURPOSE: &str = "INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION";
+const LLAMA_CPP_LICENSE_SOURCE_PATH: &str = "third_party/llama.cpp/LICENSE-MIT.txt";
+const LLAMA_CPP_LICENSE_BYTES: &[u8] =
+    include_bytes!("../../../../third_party/llama.cpp/LICENSE-MIT.txt");
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -84,6 +88,29 @@ pub struct ApprovedRuntimeFile {
     pub sha256: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeArchiveMemberDisposition {
+    Install,
+    RecognizedNotInstalled,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovedRuntimeArchiveMember {
+    pub relative_path: String,
+    pub disposition: RuntimeArchiveMemberDisposition,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovedRuntimeLicenseAsset {
+    pub source_relative_path: String,
+    pub destination_relative_path: String,
+    pub bytes: u64,
+    pub sha256: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApprovedRuntimeArtifact {
@@ -102,7 +129,9 @@ pub struct ApprovedRuntimeArtifact {
     pub archive_format: String,
     pub managed_relative_path: String,
     pub executable_relative_path: String,
+    pub archive_members: Vec<ApprovedRuntimeArchiveMember>,
     pub required_files: Vec<ApprovedRuntimeFile>,
+    pub license_asset: ApprovedRuntimeLicenseAsset,
     pub permitted_bind_scope: String,
     pub supported_api_protocol: String,
     pub license_id: String,
@@ -182,6 +211,21 @@ impl ArtifactTrustError {
             message: safe,
         }
     }
+}
+
+pub(crate) fn source_controlled_runtime_license_bytes(
+    asset: &ApprovedRuntimeLicenseAsset,
+) -> Result<&'static [u8], ArtifactTrustError> {
+    if asset.source_relative_path != LLAMA_CPP_LICENSE_SOURCE_PATH
+        || asset.bytes != LLAMA_CPP_LICENSE_BYTES.len() as u64
+        || sha256_bytes(LLAMA_CPP_LICENSE_BYTES) != asset.sha256
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_license_asset",
+            "runtime license asset identity rejected",
+        ));
+    }
+    Ok(LLAMA_CPP_LICENSE_BYTES)
 }
 
 impl From<ArtifactTrustError> for BridgeError {
@@ -912,6 +956,85 @@ impl ArtifactTrustService {
                 }
             }
         }
+        let license_bytes = match source_controlled_runtime_license_bytes(&runtime.license_asset) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return ValidationOutcome {
+                    status: InstallationStatus::InvalidPath,
+                    observed_bytes: None,
+                    observed_sha256: None,
+                    code: "invalid_license_asset",
+                }
+            }
+        };
+        let license_path = match resolve_contained(
+            &package_dir,
+            &runtime.license_asset.destination_relative_path,
+        ) {
+            Ok(path) => path,
+            Err(_) => {
+                return ValidationOutcome {
+                    status: InstallationStatus::InvalidPath,
+                    observed_bytes: None,
+                    observed_sha256: None,
+                    code: "invalid_path",
+                }
+            }
+        };
+        listed.insert(
+            runtime
+                .license_asset
+                .destination_relative_path
+                .to_ascii_lowercase(),
+        );
+        let license_metadata = match license_path.metadata() {
+            Ok(metadata) if metadata.is_file() => metadata,
+            _ => {
+                return ValidationOutcome {
+                    status: InstallationStatus::MissingRequiredFile,
+                    observed_bytes: None,
+                    observed_sha256: None,
+                    code: "missing_required_file",
+                }
+            }
+        };
+        if reject_reparse_point(&license_path).is_err() {
+            return ValidationOutcome {
+                status: InstallationStatus::InvalidPath,
+                observed_bytes: None,
+                observed_sha256: None,
+                code: "invalid_path",
+            };
+        }
+        if license_metadata.len() != runtime.license_asset.bytes
+            || license_bytes.len() as u64 != runtime.license_asset.bytes
+        {
+            return ValidationOutcome {
+                status: InstallationStatus::BytesMismatch,
+                observed_bytes: Some(license_metadata.len()),
+                observed_sha256: None,
+                code: "bytes_mismatch",
+            };
+        }
+        match sha256_file(&license_path) {
+            Ok(hash) if hash == runtime.license_asset.sha256 => {}
+            Ok(_) => {
+                return ValidationOutcome {
+                    status: InstallationStatus::HashMismatch,
+                    observed_bytes: Some(license_metadata.len()),
+                    observed_sha256: None,
+                    code: "hash_mismatch",
+                }
+            }
+            Err(_) => {
+                return ValidationOutcome {
+                    status: InstallationStatus::IoError,
+                    observed_bytes: Some(license_metadata.len()),
+                    observed_sha256: None,
+                    code: "io_error",
+                }
+            }
+        }
         if reject_unlisted_runtime_files(&package_dir, &listed).is_err() {
             return ValidationOutcome {
                 status: InstallationStatus::UnexpectedFile,
@@ -1219,12 +1342,97 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
                 .eq_ignore_ascii_case(&runtime.executable_relative_path)
             {
                 executable_found = true;
+            } else if !required
+                .relative_path
+                .to_ascii_lowercase()
+                .ends_with(".dll")
+            {
+                return Err(ArtifactTrustError::new(
+                    "invalid_catalog",
+                    "runtime installable file type rejected",
+                ));
             }
         }
         if !executable_found {
             return Err(ArtifactTrustError::new(
                 "invalid_catalog",
                 "runtime executable identity missing",
+            ));
+        }
+        if runtime.license_asset.source_relative_path != LLAMA_CPP_LICENSE_SOURCE_PATH
+            || runtime.license_asset.destination_relative_path != "LICENSE-MIT.txt"
+            || runtime.license_asset.bytes == 0
+            || validate_relative_windows_path(&runtime.license_asset.destination_relative_path)
+                .is_err()
+            || validate_sha256(&runtime.license_asset.sha256).is_err()
+            || source_controlled_runtime_license_bytes(&runtime.license_asset).is_err()
+        {
+            return Err(ArtifactTrustError::new(
+                "invalid_catalog",
+                "runtime license asset rejected",
+            ));
+        }
+        let license_destination = runtime
+            .license_asset
+            .destination_relative_path
+            .to_ascii_lowercase();
+        if file_paths.contains(&license_destination) {
+            return Err(ArtifactTrustError::new(
+                "invalid_catalog",
+                "runtime license destination overlaps installable file",
+            ));
+        }
+        if runtime.archive_members.is_empty()
+            || runtime.archive_members.len() > MAX_RUNTIME_ARCHIVE_MEMBERS
+        {
+            return Err(ArtifactTrustError::new(
+                "invalid_catalog",
+                "runtime archive member list rejected",
+            ));
+        }
+        let mut archive_paths = BTreeSet::new();
+        let mut archive_install_paths = BTreeSet::new();
+        let mut archive_previous = None::<String>;
+        for member in &runtime.archive_members {
+            validate_relative_windows_path(&member.relative_path)?;
+            let folded = member.relative_path.to_ascii_lowercase();
+            if archive_previous
+                .as_ref()
+                .is_some_and(|value| value >= &folded || folded.starts_with(&format!("{value}/")))
+                || !archive_paths.insert(folded.clone())
+            {
+                return Err(ArtifactTrustError::new(
+                    "invalid_catalog",
+                    "runtime archive members not sorted or unique",
+                ));
+            }
+            archive_previous = Some(folded.clone());
+            match member.disposition {
+                RuntimeArchiveMemberDisposition::Install => {
+                    if !file_paths.contains(&folded) || !archive_install_paths.insert(folded) {
+                        return Err(ArtifactTrustError::new(
+                            "invalid_catalog",
+                            "runtime install disposition rejected",
+                        ));
+                    }
+                }
+                RuntimeArchiveMemberDisposition::RecognizedNotInstalled => {
+                    if file_paths.contains(&folded)
+                        || folded == runtime.executable_relative_path.to_ascii_lowercase()
+                        || !folded.ends_with(".exe")
+                    {
+                        return Err(ArtifactTrustError::new(
+                            "invalid_catalog",
+                            "runtime recognized member disposition rejected",
+                        ));
+                    }
+                }
+            }
+        }
+        if archive_install_paths != file_paths {
+            return Err(ArtifactTrustError::new(
+                "invalid_catalog",
+                "runtime archive install set mismatch",
             ));
         }
         insert_filename(
@@ -2037,7 +2245,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     const EMBEDDED_CATALOG_SHA256: &str =
-        "f063f43fe2faea5ebd5584a4d531e37bef681a0fba854393e77bbfeacdb519d1";
+        "29bbbe33c207417415f637bafc4dc3853c04cf68db05d9be2a6e661c5f93c605";
     const TEST_RUNTIME_BYTES: &[u8] = b"test-runtime";
     const TEST_MODEL_BYTES: &[u8] = b"GGUFtest-model";
 
@@ -2107,11 +2315,21 @@ mod tests {
             archive_format: "zip".into(),
             managed_relative_path: managed_path.into(),
             executable_relative_path: "llama-server.exe".into(),
+            archive_members: vec![ApprovedRuntimeArchiveMember {
+                relative_path: "llama-server.exe".into(),
+                disposition: RuntimeArchiveMemberDisposition::Install,
+            }],
             required_files: vec![ApprovedRuntimeFile {
                 relative_path: "llama-server.exe".into(),
                 bytes: TEST_RUNTIME_BYTES.len() as u64,
                 sha256: sha256_bytes(TEST_RUNTIME_BYTES),
             }],
+            license_asset: ApprovedRuntimeLicenseAsset {
+                source_relative_path: LLAMA_CPP_LICENSE_SOURCE_PATH.into(),
+                destination_relative_path: "LICENSE-MIT.txt".into(),
+                bytes: LLAMA_CPP_LICENSE_BYTES.len() as u64,
+                sha256: sha256_bytes(LLAMA_CPP_LICENSE_BYTES),
+            },
             permitted_bind_scope: "loopback-only".into(),
             supported_api_protocol: "openai-compatible-v1".into(),
             license_id: "MIT".into(),
@@ -2195,6 +2413,13 @@ mod tests {
         fs::create_dir_all(&package).expect("create runtime package");
         let executable = package.join(&runtime.executable_relative_path);
         fs::write(&executable, bytes).expect("write runtime fixture");
+        let license_bytes = source_controlled_runtime_license_bytes(&runtime.license_asset)
+            .expect("test runtime license asset");
+        fs::write(
+            package.join(&runtime.license_asset.destination_relative_path),
+            license_bytes,
+        )
+        .expect("write runtime license fixture");
         executable
     }
 
@@ -2340,7 +2565,29 @@ mod tests {
             runtime.asset_sha256,
             "01d5f30876acfb4a0be59396710f450213495c7181d8fbcce2fad045835ceb89"
         );
-        assert_eq!(runtime.required_files.len(), 31);
+        assert_eq!(runtime.archive_members.len(), 51);
+        assert_eq!(
+            runtime
+                .archive_members
+                .iter()
+                .filter(|member| member.disposition == RuntimeArchiveMemberDisposition::Install)
+                .count(),
+            30
+        );
+        assert_eq!(runtime.required_files.len(), 30);
+        assert_eq!(
+            runtime.license_asset.source_relative_path,
+            "third_party/llama.cpp/LICENSE-MIT.txt"
+        );
+        assert_eq!(
+            runtime.license_asset.destination_relative_path,
+            "LICENSE-MIT.txt"
+        );
+        assert_eq!(runtime.license_asset.bytes, 1_078);
+        assert_eq!(
+            runtime.license_asset.sha256,
+            "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+        );
 
         let model = &service.catalog.models[0];
         assert_eq!(model.model_id, "qwen2.5-1.5b-instruct-q4-k-m");
@@ -2484,6 +2731,23 @@ mod tests {
 
         let mut catalog = baseline.clone();
         catalog.runtimes[0].architecture = "arm64".into();
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.runtimes[0].archive_members.pop();
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.runtimes[0]
+            .archive_members
+            .iter_mut()
+            .find(|member| member.relative_path == "llama-server.exe")
+            .expect("test launcher envelope member")
+            .disposition = RuntimeArchiveMemberDisposition::RecognizedNotInstalled;
+        assert_catalog_invalid(&catalog);
+
+        let mut catalog = baseline.clone();
+        catalog.runtimes[0].license_asset.sha256 = "0".repeat(64);
         assert_catalog_invalid(&catalog);
 
         let mut catalog = baseline.clone();

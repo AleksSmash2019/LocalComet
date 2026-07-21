@@ -1,6 +1,7 @@
 use crate::artifact_trust::{
-    ApprovedDownloadArtifact, ApprovedModelArtifact, ApprovedRuntimeArtifact, ArtifactKind,
-    ArtifactTrustService, InstallationStatus,
+    source_controlled_runtime_license_bytes, ApprovedDownloadArtifact, ApprovedModelArtifact,
+    ApprovedRuntimeArtifact, ArtifactKind, ArtifactTrustService, InstallationStatus,
+    RuntimeArchiveMemberDisposition,
 };
 use crate::control_plane::{BridgeError, ControlPlaneBridge};
 use crate::managed_runtime::{ManagedRuntimeState, ManagedRuntimeSupervisor};
@@ -81,6 +82,10 @@ struct AcquisitionFailureEvent<'a> {
     error_code: &'a str,
     downloaded_bytes: u64,
     expected_bytes: u64,
+    archive_member: Option<&'a str>,
+    archive_disposition: Option<RuntimeArchiveMemberDisposition>,
+    expected_member_count: Option<u64>,
+    observed_member_count: Option<u64>,
     cleanup_complete: bool,
     final_artifact_exists: bool,
 }
@@ -140,11 +145,37 @@ struct DownloadJob {
 #[derive(Debug)]
 struct AcquisitionError {
     code: &'static str,
+    archive_member: Option<String>,
+    archive_disposition: Option<RuntimeArchiveMemberDisposition>,
+    expected_member_count: Option<u64>,
+    observed_member_count: Option<u64>,
 }
 
 impl AcquisitionError {
     fn new(code: &'static str) -> Self {
-        Self { code }
+        Self {
+            code,
+            archive_member: None,
+            archive_disposition: None,
+            expected_member_count: None,
+            observed_member_count: None,
+        }
+    }
+
+    fn archive_member(
+        mut self,
+        member: String,
+        disposition: Option<RuntimeArchiveMemberDisposition>,
+    ) -> Self {
+        self.archive_member = Some(member);
+        self.archive_disposition = disposition;
+        self
+    }
+
+    fn archive_member_counts(mut self, expected: usize, observed: usize) -> Self {
+        self.expected_member_count = Some(expected as u64);
+        self.observed_member_count = Some(observed as u64);
+        self
     }
 }
 
@@ -672,6 +703,10 @@ impl ArtifactAcquisitionManager {
             error_code: error.code,
             downloaded_bytes,
             expected_bytes,
+            archive_member: error.archive_member.as_deref(),
+            archive_disposition: error.archive_disposition,
+            expected_member_count: error.expected_member_count,
+            observed_member_count: error.observed_member_count,
             cleanup_complete: false,
             final_artifact_exists,
         };
@@ -750,8 +785,9 @@ fn acquisition_failure_stage(error_code: &str) -> AcquisitionFailureStage {
         "invalid_runtime_archive"
         | "unexpected_runtime_member"
         | "runtime_member_hash_mismatch"
-        | "missing_runtime_member" => AcquisitionFailureStage::ArchiveValidation,
-        "staging_create_failed" | "staging_write_failed" => {
+        | "missing_runtime_member"
+        | "archive_member_count_mismatch" => AcquisitionFailureStage::ArchiveValidation,
+        "staging_create_failed" | "staging_write_failed" | "license_asset_invalid" => {
             AcquisitionFailureStage::StagingExtraction
         }
         "atomic_install_failed" => AcquisitionFailureStage::AtomicPromotion,
@@ -831,6 +867,7 @@ fn required_disk_space(artifact: &ApprovedDownloadArtifact) -> Result<u64, Acqui
             .required_files
             .iter()
             .try_fold(0_u64, |total, file| total.checked_add(file.bytes))
+            .and_then(|total| total.checked_add(runtime.license_asset.bytes))
             .ok_or_else(|| AcquisitionError::new("disk_requirement_overflow"))?,
         ApprovedDownloadArtifact::Model(_) => DISK_RESERVE_BYTES,
     };
@@ -965,8 +1002,20 @@ fn extract_and_install_runtime(
             File::open(partial).map_err(|_| AcquisitionError::new("invalid_runtime_archive"))?;
         let mut archive =
             ZipArchive::new(file).map_err(|_| AcquisitionError::new("invalid_runtime_archive"))?;
-        if archive.is_empty() || archive.len() > MAX_RUNTIME_ARCHIVE_MEMBERS {
-            return Err(AcquisitionError::new("invalid_runtime_archive"));
+        let envelope = runtime
+            .archive_members
+            .iter()
+            .map(|member| {
+                (
+                    member.relative_path.to_ascii_lowercase(),
+                    member.disposition,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let archive_member_count = archive.len();
+        if archive_member_count == 0 || archive_member_count > MAX_RUNTIME_ARCHIVE_MEMBERS {
+            return Err(AcquisitionError::new("archive_member_count_mismatch")
+                .archive_member_counts(envelope.len(), archive_member_count));
         }
         let required = runtime
             .required_files
@@ -974,27 +1023,63 @@ fn extract_and_install_runtime(
             .map(|file| (file.relative_path.to_ascii_lowercase(), file))
             .collect::<BTreeMap<_, _>>();
         let mut seen = BTreeSet::new();
-        for index in 0..archive.len() {
-            if cancel_requested.load(Ordering::Acquire) {
-                return Err(AcquisitionError::new("cancelled"));
-            }
-            let mut member = archive
+        let mut archive_indexes = BTreeMap::new();
+        for index in 0..archive_member_count {
+            let member = archive
                 .by_index(index)
                 .map_err(|_| AcquisitionError::new("invalid_runtime_archive"))?;
             let name = member.name().to_string();
             let folded = safe_zip_member_name(&name)?;
-            if member.is_dir()
-                || member
+            let disposition = envelope.get(&folded).copied();
+            let regular_file = !member.is_dir()
+                && member
                     .unix_mode()
-                    .is_some_and(|mode| (mode & 0o170000) == 0o120000)
-                || !seen.insert(folded.clone())
-            {
-                return Err(AcquisitionError::new("invalid_runtime_archive"));
+                    .is_none_or(|mode| matches!(mode & 0o170000, 0 | 0o100000));
+            if !regular_file {
+                return Err(AcquisitionError::new("invalid_runtime_archive")
+                    .archive_member(folded, disposition)
+                    .archive_member_counts(envelope.len(), archive_member_count));
             }
-            let Some(expected) = required.get(&folded) else {
-                return Err(AcquisitionError::new("unexpected_runtime_member"));
+            let Some(disposition) = disposition else {
+                return Err(AcquisitionError::new("unexpected_runtime_member")
+                    .archive_member(folded, None)
+                    .archive_member_counts(envelope.len(), archive_member_count));
             };
-            let output = contained_staging_path(staging, &name)?;
+            if !seen.insert(folded.clone()) {
+                return Err(AcquisitionError::new("invalid_runtime_archive")
+                    .archive_member(folded, Some(disposition))
+                    .archive_member_counts(envelope.len(), archive_member_count));
+            }
+            archive_indexes.insert(folded, index);
+        }
+        if seen.len() != envelope.len() {
+            let missing = envelope
+                .iter()
+                .find(|(name, _)| !seen.contains(*name))
+                .map(|(name, disposition)| (name.clone(), *disposition))
+                .expect("envelope count mismatch has a missing member");
+            return Err(AcquisitionError::new("missing_runtime_member")
+                .archive_member(missing.0, Some(missing.1))
+                .archive_member_counts(envelope.len(), seen.len()));
+        }
+        for (folded, expected) in &required {
+            if cancel_requested.load(Ordering::Acquire) {
+                return Err(AcquisitionError::new("cancelled"));
+            }
+            if envelope.get(folded) != Some(&RuntimeArchiveMemberDisposition::Install) {
+                return Err(AcquisitionError::new("invalid_runtime_archive")
+                    .archive_member(folded.clone(), envelope.get(folded).copied()));
+            }
+            let index = archive_indexes.get(folded).copied().ok_or_else(|| {
+                AcquisitionError::new("missing_runtime_member").archive_member(
+                    folded.clone(),
+                    Some(RuntimeArchiveMemberDisposition::Install),
+                )
+            })?;
+            let mut member = archive
+                .by_index(index)
+                .map_err(|_| AcquisitionError::new("invalid_runtime_archive"))?;
+            let output = contained_staging_path(staging, &expected.relative_path)?;
             let mut output_file = OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -1012,8 +1097,26 @@ fn extract_and_install_runtime(
                 return Err(AcquisitionError::new("runtime_member_hash_mismatch"));
             }
         }
-        if seen.len() != required.len() {
-            return Err(AcquisitionError::new("missing_runtime_member"));
+        let license_bytes = source_controlled_runtime_license_bytes(&runtime.license_asset)
+            .map_err(|_| AcquisitionError::new("license_asset_invalid"))?;
+        let license_path =
+            contained_staging_path(staging, &runtime.license_asset.destination_relative_path)?;
+        let mut license_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&license_path)
+            .map_err(|_| AcquisitionError::new("staging_write_failed"))?;
+        license_file
+            .write_all(license_bytes)
+            .and_then(|_| license_file.sync_all())
+            .map_err(|_| AcquisitionError::new("staging_write_failed"))?;
+        drop(license_file);
+        let license_metadata = fs::metadata(&license_path)
+            .map_err(|_| AcquisitionError::new("staging_write_failed"))?;
+        if license_metadata.len() != runtime.license_asset.bytes
+            || sha256_file(&license_path, Some(cancel_requested))? != runtime.license_asset.sha256
+        {
+            return Err(AcquisitionError::new("license_asset_invalid"));
         }
         fs::rename(staging, destination)
             .map_err(|_| AcquisitionError::new("atomic_install_failed"))?;
@@ -1170,7 +1273,8 @@ mod tests {
     use super::*;
     use crate::artifact_trust::{
         AcquisitionArtifactKind, AcquisitionSourceType, ApprovedArtifactAcquisition,
-        ApprovedArtifactCatalog, ApprovedRuntimeFile, CatalogStatus, ManagedArtifactRoots,
+        ApprovedArtifactCatalog, ApprovedRuntimeArchiveMember, ApprovedRuntimeFile,
+        ApprovedRuntimeLicenseAsset, CatalogStatus, ManagedArtifactRoots,
     };
     use std::sync::atomic::AtomicU64;
     use zip::write::SimpleFileOptions;
@@ -1252,11 +1356,21 @@ mod tests {
             archive_format: "zip".into(),
             managed_relative_path: TEST_RUNTIME_ID.into(),
             executable_relative_path: "llama-server.exe".into(),
+            archive_members: vec![ApprovedRuntimeArchiveMember {
+                relative_path: "llama-server.exe".into(),
+                disposition: RuntimeArchiveMemberDisposition::Install,
+            }],
             required_files: vec![ApprovedRuntimeFile {
                 relative_path: "llama-server.exe".into(),
                 bytes: TEST_RUNTIME_BYTES.len() as u64,
                 sha256: sha256_bytes(TEST_RUNTIME_BYTES),
             }],
+            license_asset: ApprovedRuntimeLicenseAsset {
+                source_relative_path: "third_party/llama.cpp/LICENSE-MIT.txt".into(),
+                destination_relative_path: "LICENSE-MIT.txt".into(),
+                bytes: 1_078,
+                sha256: "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d".into(),
+            },
             permitted_bind_scope: "loopback-only".into(),
             supported_api_protocol: "openai-compatible-v1".into(),
             license_id: "MIT".into(),
@@ -1339,6 +1453,77 @@ mod tests {
             writer.write_all(bytes).expect("write archive entry");
         }
         writer.finish().expect("finish archive");
+    }
+
+    fn write_owned_zip(path: &Path, entries: &[(String, Vec<u8>)]) {
+        let file = File::create(path).expect("create archive");
+        let mut writer = zip::ZipWriter::new(file);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for (name, bytes) in entries {
+            writer
+                .start_file(name, options)
+                .expect("start archive entry");
+            writer.write_all(bytes).expect("write archive entry");
+        }
+        writer.finish().expect("finish archive");
+    }
+
+    fn embedded_runtime() -> ApprovedRuntimeArtifact {
+        let catalog: ApprovedArtifactCatalog = serde_json::from_slice(include_bytes!(
+            "../resources/localcomet/approved-artifacts.v1.json"
+        ))
+        .expect("parse embedded approved catalog");
+        catalog
+            .runtimes
+            .into_iter()
+            .next()
+            .expect("approved runtime fixture")
+    }
+
+    fn approved_runtime_envelope_fixture() -> (ApprovedRuntimeArtifact, Vec<(String, Vec<u8>)>) {
+        let mut runtime = embedded_runtime();
+        let entries = runtime
+            .archive_members
+            .iter()
+            .map(|member| {
+                let prefix = match member.disposition {
+                    RuntimeArchiveMemberDisposition::Install => "install",
+                    RuntimeArchiveMemberDisposition::RecognizedNotInstalled => "recognized",
+                };
+                (
+                    member.relative_path.clone(),
+                    format!("{prefix}:{}", member.relative_path).into_bytes(),
+                )
+            })
+            .collect::<Vec<_>>();
+        runtime.required_files = runtime
+            .archive_members
+            .iter()
+            .filter(|member| member.disposition == RuntimeArchiveMemberDisposition::Install)
+            .map(|member| {
+                let bytes = format!("install:{}", member.relative_path).into_bytes();
+                ApprovedRuntimeFile {
+                    relative_path: member.relative_path.clone(),
+                    bytes: bytes.len() as u64,
+                    sha256: sha256_bytes(&bytes),
+                }
+            })
+            .collect();
+        (runtime, entries)
+    }
+
+    fn top_level_names(path: &Path) -> BTreeSet<String> {
+        fs::read_dir(path)
+            .expect("read final runtime directory")
+            .map(|entry| {
+                entry
+                    .expect("runtime directory entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+            })
+            .collect()
     }
 
     fn register_job(
@@ -1506,6 +1691,253 @@ mod tests {
     }
 
     #[test]
+    fn runtime_archive_rejects_directory_members_before_staging_them() {
+        let workspace = TestWorkspace::new();
+        let cancel = AtomicBool::new(false);
+        let archive = workspace.root.join("directory-member.zip");
+        let staging = workspace.root.join("directory-member.staging");
+        let destination = workspace.root.join("directory-member.destination");
+        let file = File::create(&archive).expect("create archive");
+        let mut writer = zip::ZipWriter::new(file);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer
+            .add_directory("llama-server.exe/", options)
+            .expect("add directory entry");
+        writer.finish().expect("finish archive");
+
+        let error =
+            extract_and_install_runtime(&archive, &staging, &destination, &test_runtime(), &cancel)
+                .expect_err("directory archive member must be rejected");
+
+        assert_eq!(error.code, "invalid_runtime_archive");
+        assert!(!destination.exists());
+        assert!(top_level_names(&staging).is_empty());
+    }
+
+    #[test]
+    fn approved_runtime_envelope_installs_only_the_pinned_subset_and_license() {
+        let workspace = TestWorkspace::new();
+        let cancel = AtomicBool::new(false);
+        let (runtime, entries) = approved_runtime_envelope_fixture();
+        assert_eq!(runtime.archive_members.len(), 51);
+        assert_eq!(runtime.required_files.len(), 30);
+        assert_eq!(
+            runtime
+                .archive_members
+                .iter()
+                .filter(|member| {
+                    member.disposition == RuntimeArchiveMemberDisposition::RecognizedNotInstalled
+                })
+                .count(),
+            21
+        );
+
+        let archive = workspace.root.join("approved-runtime.zip");
+        let staging = workspace.root.join("approved-runtime.staging");
+        let destination = workspace.root.join("approved-runtime.destination");
+        write_owned_zip(&archive, &entries);
+        extract_and_install_runtime(&archive, &staging, &destination, &runtime, &cancel)
+            .expect("approved envelope installs");
+
+        assert!(!staging.exists());
+        let mut expected = runtime
+            .required_files
+            .iter()
+            .map(|file| file.relative_path.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+        expected.insert(
+            runtime
+                .license_asset
+                .destination_relative_path
+                .to_ascii_lowercase(),
+        );
+        assert_eq!(top_level_names(&destination), expected);
+        for skipped in runtime.archive_members.iter().filter(|member| {
+            member.disposition == RuntimeArchiveMemberDisposition::RecognizedNotInstalled
+        }) {
+            assert!(
+                !destination.join(&skipped.relative_path).exists(),
+                "recognized but uninstalled member escaped extraction: {}",
+                skipped.relative_path
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_envelope_rejects_unknown_executable_library_and_text_members() {
+        let workspace = TestWorkspace::new();
+        let cancel = AtomicBool::new(false);
+        for unknown in ["unknown.exe", "unknown.dll", "manifest.txt"] {
+            let (runtime, mut entries) = approved_runtime_envelope_fixture();
+            entries.push((unknown.into(), b"unexpected".to_vec()));
+            let archive = workspace.root.join(format!("{unknown}.zip"));
+            let staging = workspace.root.join(format!("{unknown}.staging"));
+            let destination = workspace.root.join(format!("{unknown}.destination"));
+            write_owned_zip(&archive, &entries);
+
+            let error =
+                extract_and_install_runtime(&archive, &staging, &destination, &runtime, &cancel)
+                    .expect_err("unknown envelope member must be rejected");
+
+            assert_eq!(error.code, "unexpected_runtime_member");
+            assert_eq!(error.archive_member.as_deref(), Some(unknown));
+            assert_eq!(error.expected_member_count, Some(51));
+            assert_eq!(error.observed_member_count, Some(52));
+            assert!(!destination.exists());
+            fs::remove_dir_all(&staging).expect("remove failed staging fixture");
+        }
+    }
+
+    #[test]
+    fn runtime_envelope_rejects_missing_members_and_disposition_drift_before_promotion() {
+        let workspace = TestWorkspace::new();
+        let cancel = AtomicBool::new(false);
+        for (missing_name, expected_disposition) in [
+            ("llama-server.exe", RuntimeArchiveMemberDisposition::Install),
+            (
+                "llama-bench.exe",
+                RuntimeArchiveMemberDisposition::RecognizedNotInstalled,
+            ),
+        ] {
+            let (runtime, mut entries) = approved_runtime_envelope_fixture();
+            entries.retain(|(name, _)| name != missing_name);
+            let archive = workspace.root.join(format!("missing-{missing_name}.zip"));
+            let staging = workspace
+                .root
+                .join(format!("missing-{missing_name}.staging"));
+            let destination = workspace
+                .root
+                .join(format!("missing-{missing_name}.destination"));
+            write_owned_zip(&archive, &entries);
+
+            let error =
+                extract_and_install_runtime(&archive, &staging, &destination, &runtime, &cancel)
+                    .expect_err("missing envelope member must be rejected");
+
+            assert_eq!(error.code, "missing_runtime_member");
+            assert_eq!(error.archive_member.as_deref(), Some(missing_name));
+            assert_eq!(error.archive_disposition, Some(expected_disposition));
+            assert_eq!(error.expected_member_count, Some(51));
+            assert_eq!(error.observed_member_count, Some(50));
+            assert!(!destination.exists());
+            fs::remove_dir_all(&staging).expect("remove failed staging fixture");
+        }
+
+        let (mut runtime, entries) = approved_runtime_envelope_fixture();
+        runtime
+            .archive_members
+            .iter_mut()
+            .find(|member| member.relative_path == "llama-server.exe")
+            .expect("launcher envelope member")
+            .disposition = RuntimeArchiveMemberDisposition::RecognizedNotInstalled;
+        let archive = workspace.root.join("disposition-drift.zip");
+        let staging = workspace.root.join("disposition-drift.staging");
+        let destination = workspace.root.join("disposition-drift.destination");
+        write_owned_zip(&archive, &entries);
+
+        let error =
+            extract_and_install_runtime(&archive, &staging, &destination, &runtime, &cancel)
+                .expect_err("installable launcher cannot become recognized-only");
+
+        assert_eq!(error.code, "invalid_runtime_archive");
+        assert_eq!(error.archive_member.as_deref(), Some("llama-server.exe"));
+        assert_eq!(
+            error.archive_disposition,
+            Some(RuntimeArchiveMemberDisposition::RecognizedNotInstalled)
+        );
+        assert!(!destination.exists());
+        fs::remove_dir_all(&staging).expect("remove failed staging fixture");
+    }
+
+    #[test]
+    fn runtime_license_asset_identity_is_checked_before_atomic_promotion() {
+        let workspace = TestWorkspace::new();
+        let cancel = AtomicBool::new(false);
+        for field in ["source_relative_path", "sha256"] {
+            let (mut runtime, entries) = approved_runtime_envelope_fixture();
+            match field {
+                "source_relative_path" => {
+                    runtime.license_asset.source_relative_path = "missing.txt".into()
+                }
+                "sha256" => runtime.license_asset.sha256 = "0".repeat(64),
+                _ => unreachable!("fixed test field"),
+            }
+            let archive = workspace.root.join(format!("license-{field}.zip"));
+            let staging = workspace.root.join(format!("license-{field}.staging"));
+            let destination = workspace.root.join(format!("license-{field}.destination"));
+            write_owned_zip(&archive, &entries);
+
+            let error =
+                extract_and_install_runtime(&archive, &staging, &destination, &runtime, &cancel)
+                    .expect_err("invalid source-controlled license asset must fail");
+
+            assert_eq!(error.code, "license_asset_invalid");
+            assert!(!destination.exists());
+            assert!(!staging.join("LICENSE-MIT.txt").exists());
+            fs::remove_dir_all(&staging).expect("remove failed staging fixture");
+        }
+    }
+
+    #[test]
+    #[ignore = "requires an explicit operator-provided approved runtime archive path"]
+    fn offline_approved_runtime_archive_validates_exact_envelope_and_extraction_plan() {
+        let archive = PathBuf::from(
+            std::env::var("LOCALCOMET_RUNTIME_ARCHIVE_VALIDATION_PATH")
+                .expect("explicit archive validation path"),
+        );
+        let runtime = embedded_runtime();
+        assert_eq!(
+            fs::metadata(&archive)
+                .expect("runtime archive metadata")
+                .len(),
+            18_007_324
+        );
+        assert_eq!(
+            sha256_file(&archive, None).expect("hash approved runtime archive"),
+            "01d5f30876acfb4a0be59396710f450213495c7181d8fbcce2fad045835ceb89"
+        );
+        assert_eq!(runtime.archive_members.len(), 51);
+        assert_eq!(runtime.required_files.len(), 30);
+
+        let workspace = TestWorkspace::new();
+        let staging = workspace.root.join("approved-runtime.staging");
+        let destination = workspace
+            .roots()
+            .runtime_root
+            .join(&runtime.managed_relative_path);
+        fs::create_dir_all(destination.parent().expect("runtime destination parent"))
+            .expect("create temporary runtime root");
+        extract_and_install_runtime(
+            &archive,
+            &staging,
+            &destination,
+            &runtime,
+            &AtomicBool::new(false),
+        )
+        .expect("approved runtime archive envelope and extraction plan");
+
+        let mut expected = runtime
+            .required_files
+            .iter()
+            .map(|file| file.relative_path.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+        expected.insert(
+            runtime
+                .license_asset
+                .destination_relative_path
+                .to_ascii_lowercase(),
+        );
+        assert_eq!(top_level_names(&destination), expected);
+        assert!(!staging.exists());
+        for skipped in runtime.archive_members.iter().filter(|member| {
+            member.disposition == RuntimeArchiveMemberDisposition::RecognizedNotInstalled
+        }) {
+            assert!(!destination.join(&skipped.relative_path).exists());
+        }
+    }
+
+    #[test]
     fn runtime_failure_codes_map_to_distinct_bounded_stages() {
         for (code, expected) in [
             ("download_failed", AcquisitionFailureStage::Transfer),
@@ -1589,6 +2021,31 @@ mod tests {
                 .expect("read diagnostic event text");
         assert!(!event_text.contains("signed-token"));
         assert!(!event_text.contains("assets.example.test"));
+    }
+
+    #[test]
+    fn runtime_envelope_failure_diagnostic_records_only_bounded_member_context() {
+        let (_workspace, manager, trust) = test_manager();
+        let artifact = trust
+            .approved_download_artifact(TEST_RUNTIME_ID)
+            .expect("approved runtime");
+        let job_id = register_job(&manager, TEST_RUNTIME_ID, 7, 7);
+        manager.persist_terminal_failure_before_cleanup(
+            &job_id,
+            &artifact,
+            &AcquisitionError::new("unexpected_runtime_member")
+                .archive_member("unknown.exe".into(), None)
+                .archive_member_counts(51, 52),
+        );
+
+        let events = read_failure_events(&trust);
+        assert_eq!(events[0]["stage"], "archive_validation");
+        assert_eq!(events[0]["error_code"], "unexpected_runtime_member");
+        assert_eq!(events[0]["archive_member"], "unknown.exe");
+        assert!(events[0]["archive_disposition"].is_null());
+        assert_eq!(events[0]["expected_member_count"], 51);
+        assert_eq!(events[0]["observed_member_count"], 52);
+        assert_eq!(events[1]["cleanup_complete"], true);
     }
 
     #[test]
@@ -1711,6 +2168,22 @@ mod tests {
         fs::create_dir_all(&package).expect("create runtime package");
         fs::write(package.join("llama-server.exe"), TEST_RUNTIME_BYTES)
             .expect("write validated runtime");
+        let runtime = match trust
+            .approved_download_artifact(TEST_RUNTIME_ID)
+            .expect("approved test runtime")
+        {
+            ApprovedDownloadArtifact::Runtime(runtime) => runtime,
+            ApprovedDownloadArtifact::Model(_) => {
+                unreachable!("test runtime must remain a runtime")
+            }
+        };
+        let license_bytes = source_controlled_runtime_license_bytes(&runtime.license_asset)
+            .expect("test runtime license asset");
+        fs::write(
+            package.join(runtime.license_asset.destination_relative_path),
+            license_bytes,
+        )
+        .expect("write validated runtime license");
 
         let reused = manager
             .start(TEST_RUNTIME_ID, true)
