@@ -13,7 +13,12 @@ confirmation and do not grant the model, chat, or frontend internet authority.
 
 ## Validation
 
-Run the focused Rust acquisition tests, frontend bridge/UI tests, full frontend
-test/check/build, locked offline Rust checks, Clippy, release build, bundle, and
-isolated acquisition acceptance. This branch is the dependency base for Phase B;
-it is not based on `main` and is not pushed.
+The source checkpoint passes focused Rust acquisition tests, frontend
+bridge/UI tests, the full frontend test/check/build sequence, isolated locked
+offline Rust checks, and warnings-denied Clippy. Normal Rust packaging checks,
+release build, bundle, and isolated acquisition acceptance remain blocked by
+the missing baseline sidecar resource
+`binaries/localcomet-core-x86_64-pc-windows-msvc.exe`.
+
+This branch is the dependency base for Phase B only after the Phase A gate is
+unblocked and passes; it is not based on `main` and is not pushed.

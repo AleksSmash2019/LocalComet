@@ -4,6 +4,8 @@
 /memory/
 /Projects/
 /target/
+/desktop/localcomet-desktop/src-tauri/gen/
+/desktop/localcomet-desktop/src-tauri/target/
 /node_modules/
 /.svelte-kit/
 /build/
