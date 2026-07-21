@@ -66,11 +66,11 @@ beforeEach(() => {
 });
 
 describe('truthful assistant usability states', () => {
-  it('shows bounded unavailable guidance and the existing connect action', () => {
+  it('shows bounded unavailable guidance and the approved local setup action', () => {
     const html = render(MessageList).body;
     expect(html).toContain('Локальная модель недоступна');
     expect(html).toContain('нет доступа к интернету');
-    expect(html).toContain('Подключить модель');
+    expect(html).toContain('Настроить локальный AI');
   });
 
   it('shows loading without a false ready claim or send guidance', () => {

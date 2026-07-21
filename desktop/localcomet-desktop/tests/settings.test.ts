@@ -21,12 +21,14 @@ beforeEach(() => {
 });
 
 describe('minimal Settings surface', () => {
-  it('renders only the authorized Settings sections', () => {
+  it('renders the authorized Settings sections including the bounded Models manager', () => {
     const html = settingsHtml('en');
-    for (const section of ['Appearance', 'Language', 'Diagnostics', 'About']) {
+    for (const section of ['Appearance', 'Language', 'Diagnostics', 'Models', 'About']) {
       expect(html).toContain(section);
     }
-    for (const excluded of ['API key', 'Account', 'Cloud', 'Telemetry', 'Model download']) {
+    expect(html).toContain('Only the approved bootstrap engine and model can be installed here');
+    expect(html).toContain('assistant itself does not gain internet access');
+    for (const excluded of ['API key', 'Account', 'Cloud', 'Telemetry']) {
       expect(html).not.toContain(excluded);
     }
   });

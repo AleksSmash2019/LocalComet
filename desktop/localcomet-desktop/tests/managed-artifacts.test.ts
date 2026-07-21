@@ -4,11 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ManagedRuntimePanel from '../src/lib/components/model/ManagedRuntimePanel.svelte';
 import * as modelGatewayBridge from '../src/lib/bridge/modelGateway';
 import {
+  cancelArtifactDownload,
   getManagedArtifactValidationStatus,
+  getArtifactDownloadState,
   getManagedInstalledArtifacts,
   getManagedModelCatalog,
   getManagedModelReadiness,
-  getManagedRuntimeCatalog
+  getManagedRuntimeCatalog,
+  listApprovedDownloadableArtifacts,
+  removeManagedModel,
+  startApprovedArtifactDownload
 } from '../src/lib/bridge/modelGateway';
 import {
   managedRuntimeStore,
@@ -27,6 +32,7 @@ const RUNTIME_SHA256 = 'b'.repeat(64);
 const MODEL_SHA256 = 'c'.repeat(64);
 const RUNTIME_BYTES = 1_000_000;
 const MODEL_BYTES = 2_000_000;
+const DOWNLOAD_JOB_ID = 'd'.repeat(64);
 
 let invokeCalls: { command: string; args?: Record<string, unknown> }[] = [];
 let responses: Record<string, unknown> = {};
@@ -156,6 +162,36 @@ function readinessFixture(patch: Record<string, unknown> = {}) {
   };
 }
 
+function downloadableArtifactFixture(kind: 'runtime' | 'model') {
+  const artifactId = kind === 'runtime' ? RUNTIME_ID : MODEL_ID;
+  return {
+    artifact_id: artifactId,
+    kind,
+    display_name: kind === 'runtime' ? 'llama.cpp b6000' : 'Qwen2.5 1.5B Instruct Q4_K_M',
+    source_identity: kind === 'runtime' ? 'ggml-org/llama.cpp' : 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
+    expected_bytes: kind === 'runtime' ? RUNTIME_BYTES : MODEL_BYTES,
+    license_id: kind === 'runtime' ? 'MIT' : 'Apache-2.0',
+    format: kind === 'runtime' ? 'zip' : 'GGUF',
+    quantization: kind === 'runtime' ? null : 'Q4_K_M',
+    user_confirmation_required: true,
+    automatic_download: false
+  };
+}
+
+function downloadStateFixture(lifecycle = 'awaiting_confirmation') {
+  return {
+    job_id: DOWNLOAD_JOB_ID,
+    artifact_id: RUNTIME_ID,
+    lifecycle,
+    expected_bytes: RUNTIME_BYTES,
+    received_bytes: 0,
+    percent: 0,
+    started_utc_ms: 1_750_000_000_000,
+    updated_utc_ms: 1_750_000_000_000,
+    error_code: null
+  };
+}
+
 function runtimeStatusFixture() {
   return {
     engine: 'llama.cpp',
@@ -192,7 +228,12 @@ function installResponses(): void {
       model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
       runtime_instance_id: 'd'.repeat(32),
       runtime_instance_fingerprint: 'e'.repeat(64)
-    }
+    },
+    list_approved_downloadable_artifacts: [downloadableArtifactFixture('runtime'), downloadableArtifactFixture('model')],
+    start_approved_artifact_download: downloadStateFixture(),
+    get_artifact_download_state: downloadStateFixture(),
+    cancel_artifact_download: downloadStateFixture('cancelling'),
+    remove_managed_model: { model_id: MODEL_ID, removed: true }
   };
 }
 
@@ -223,6 +264,49 @@ describe('managed artifact trust frontend contract', () => {
       'writeManagedCatalog',
       'loadManagedCatalog'
     ]));
+  });
+
+  it('uses only narrow approved-acquisition commands and never accepts a URL or destination', async () => {
+    const artifacts = await listApprovedDownloadableArtifacts();
+    await startApprovedArtifactDownload(RUNTIME_ID);
+    await getArtifactDownloadState(DOWNLOAD_JOB_ID);
+    await cancelArtifactDownload(DOWNLOAD_JOB_ID);
+    await removeManagedModel(MODEL_ID);
+
+    expect(artifacts.map((artifact) => artifact.artifact_id)).toEqual([RUNTIME_ID, MODEL_ID]);
+    expect(invokeCalls).toEqual([
+      { command: 'list_approved_downloadable_artifacts', args: undefined },
+      { command: 'start_approved_artifact_download', args: { artifactId: RUNTIME_ID, confirmed: true } },
+      { command: 'get_artifact_download_state', args: { jobId: DOWNLOAD_JOB_ID } },
+      { command: 'cancel_artifact_download', args: { jobId: DOWNLOAD_JOB_ID } },
+      { command: 'remove_managed_model', args: { modelId: MODEL_ID, confirmed: true } }
+    ]);
+    expect(JSON.stringify(invokeCalls)).not.toMatch(/url|destination|header|sha256/i);
+  });
+
+  it('rejects path-like artifact IDs and malformed acquisition projections before use', async () => {
+    await expect(startApprovedArtifactDownload('../model')).rejects.toMatchObject({ code: 'invalid_payload' });
+    await expect(getArtifactDownloadState('not-a-job')).rejects.toMatchObject({ code: 'invalid_payload' });
+    expect(invokeCalls).toHaveLength(0);
+
+    responses.list_approved_downloadable_artifacts = [{ ...downloadableArtifactFixture('runtime'), format: 'GGUF' }];
+    await expect(listApprovedDownloadableArtifacts()).rejects.toMatchObject({ code: 'invalid_payload' });
+  });
+
+  it('accepts only internally consistent terminal download states', async () => {
+    responses.start_approved_artifact_download = {
+      ...downloadStateFixture('completed'),
+      received_bytes: RUNTIME_BYTES,
+      percent: 100
+    };
+    await expect(startApprovedArtifactDownload(RUNTIME_ID)).resolves.toMatchObject({
+      lifecycle: 'completed',
+      received_bytes: RUNTIME_BYTES,
+      percent: 100
+    });
+
+    responses.start_approved_artifact_download = downloadStateFixture('completed');
+    await expect(startApprovedArtifactDownload(RUNTIME_ID)).rejects.toMatchObject({ code: 'invalid_payload' });
   });
 
   it('keeps pure approval-list calls separate from live installed validation', async () => {

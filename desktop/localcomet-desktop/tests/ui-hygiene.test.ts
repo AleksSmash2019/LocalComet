@@ -117,7 +117,8 @@ describe('UP02-WP01-HF2 visible production controls', () => {
       '../src/lib/components/chat/MessageList.svelte',
       '../src/lib/components/shell/SettingsPanel.svelte',
       '../src/lib/components/agent/Diagnostics.svelte',
-      '../src/lib/components/model/ModelSetupDrawer.svelte'
+      '../src/lib/components/model/ModelSetupDrawer.svelte',
+      '../src/lib/components/model/ModelManagerSection.svelte'
     ];
     const buttons = files.flatMap(visibleButtonBlocks);
     expect(buttons.length).toBeGreaterThan(0);

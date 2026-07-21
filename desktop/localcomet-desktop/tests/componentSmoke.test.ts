@@ -43,7 +43,7 @@ describe('component smoke tests', () => {
   it('renders the chat header with truthful runtime labels', () => {
     const html = render(ChatHeader).body;
     expect(html).toContain('Модель: недоступна');
-    expect(html).toContain('Подключить модель');
+    expect(html).toContain('Настроить локальный AI');
   });
 
   it('renders the tool card with sanitized target', () => {
