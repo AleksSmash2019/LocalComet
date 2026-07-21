@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
+  import ModelManagerSection from '$lib/components/model/ModelManagerSection.svelte';
   import { controlPlaneStore } from '$lib/stores/controlPlane';
   import {
     inspectorDrawerOpen,
@@ -132,6 +133,8 @@
       </div>
     </section>
 
+    <ModelManagerSection />
+
     <section aria-labelledby="settings-about">
       <h3 id="settings-about">{$t('settings.about')}</h3>
       <dl class="about-list">
@@ -158,6 +161,7 @@
           <ul>
             <li>{$t('capability.local_chat')}</li>
             <li>{$t('capability.local_model_inference')}</li>
+            <li>{$t('capability.approved_model_setup')}</li>
           </ul>
         </div>
         <div>

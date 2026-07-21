@@ -3,7 +3,7 @@
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import { conversationTitleById } from '$lib/data/mockData';
   import { approvedManagedModelInstalled, inferenceRequestStore, managedModelReady, managedRuntimeStore, modelGatewayStore } from '$lib/stores/modelGateway';
-  import { selectedConversationId, sidebarExpanded, openModelSetup, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
+  import { selectedConversationId, sidebarExpanded, openModelSetup, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, openSettings, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
   $: title = (() => {
@@ -49,12 +49,12 @@
       <button
         type="button"
         class="primary-button"
-        onclick={() => openModelSetup($approvedManagedModelInstalled ? 'managed' : 'external')}
+        onclick={() => $approvedManagedModelInstalled ? openModelSetup('managed') : openSettings()}
         aria-expanded={$modelSetupDrawerOpen}
         aria-controls="model-setup-drawer"
       >
         <Icon name="link" size={16} />
-        <span>{$t('chat.connect_model')}</span>
+        <span>{$t($approvedManagedModelInstalled ? 'chat.connect_model' : 'chat.setup_local_ai')}</span>
       </button>
     {:else}
       <div class="ready-details" title={safeModelIdentity}>

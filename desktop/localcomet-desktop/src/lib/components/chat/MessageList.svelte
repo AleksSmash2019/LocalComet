@@ -1,17 +1,17 @@
 <script lang="ts">
   import EmptyState from '$lib/components/common/EmptyState.svelte';
-  import { chatMessages, openModelSetup, selectedConversationId } from '$lib/stores/shellStore';
+  import { chatMessages, openSettings, selectedConversationId } from '$lib/stores/shellStore';
   import {
-    approvedManagedModelInstalled,
     inferenceBusy,
     managedModelReady,
     managedRuntimeStore,
     retryLocalModelTurn
   } from '$lib/stores/modelGateway';
+  import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
   import { t } from '$lib/i18n';
 
   $: showEmptyState = $chatMessages.length === 0;
-  $: modelLoading = ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') ||
+  $: modelLoading = $acquisitionBusy || ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') ||
     ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '');
   $: emptyTitleKey = $managedModelReady
     ? 'chat.first_use_ready'
@@ -36,8 +36,8 @@
       detail={$t(emptyDetailKey)}
       busy={modelLoading}
       statusLabel={modelLoading ? $t('chat.model_loading_status') : $managedModelReady ? $t('chat.local_only_status') : undefined}
-      actionLabel={!$managedModelReady && !modelLoading ? $t('chat.connect_model') : undefined}
-      onAction={!$managedModelReady && !modelLoading ? () => openModelSetup($approvedManagedModelInstalled ? 'managed' : 'external') : undefined}
+      actionLabel={!$managedModelReady && !modelLoading ? $t('chat.setup_local_ai') : undefined}
+      onAction={!$managedModelReady && !modelLoading ? openSettings : undefined}
     />
   {:else}
     {#each $chatMessages as message}

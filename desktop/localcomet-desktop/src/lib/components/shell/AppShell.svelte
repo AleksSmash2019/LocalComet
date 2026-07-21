@@ -29,6 +29,7 @@
   } from '$lib/stores/shellStore';
   import { controlPlaneStore, initializeControlPlaneBridge, shutdownControlPlaneBridge } from '$lib/stores/controlPlane';
   import { initializeModelGateway, shutdownModelGateway } from '$lib/stores/modelGateway';
+  import { initializeArtifactAcquisition, resetArtifactAcquisitionStore } from '$lib/stores/artifactAcquisition';
   import { initializeKnowledgePreviewEvents, shutdownKnowledgePreviewEvents } from '$lib/stores/knowledgePreview';
   import { locale, t } from '$lib/i18n';
   import type { ResolvedTheme } from '$lib/data/mockData';
@@ -140,10 +141,12 @@
   onMount(() => {
     void initializeControlPlaneBridge();
     void initializeModelGateway();
+    void initializeArtifactAcquisition();
     void initializeKnowledgePreviewEvents();
     document.documentElement.lang = $locale;
     return () => {
       shutdownModelGateway();
+      resetArtifactAcquisitionStore();
       shutdownKnowledgePreviewEvents();
       shutdownControlPlaneBridge();
     };

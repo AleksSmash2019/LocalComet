@@ -2,9 +2,10 @@
   import { tick } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
   import KnowledgeToggle from '$lib/components/knowledge/KnowledgeToggle.svelte';
-  import { composerDraft, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
+  import { composerDraft, openSettings, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
   import { cancelLocalModelTurn, inferenceRequestStore, managedModelReady, startLocalModelTurn } from '$lib/stores/modelGateway';
+  import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
 
   let textarea: HTMLTextAreaElement;
   let restoreComposerFocus = false;
@@ -82,7 +83,7 @@
         value={$composerDraft}
         maxlength="12000"
         rows="1"
-        placeholder={$managedModelReady ? (isGenerating ? $t('chat.model_responding') : $t('chat.type_message')) : $t('chat.connect_model_first')}
+        placeholder={$managedModelReady ? (isGenerating ? $t('chat.model_responding') : $t('chat.type_message')) : $acquisitionBusy ? $t('chat.model_installing') : $t('chat.connect_model_first')}
         disabled={!$managedModelReady || isGenerating}
         oninput={(event) => {
           setComposerDraft(event.currentTarget.value);
@@ -98,6 +99,16 @@
     </div>
     {#if $inferenceRequestStore.lastError}
       <p class="request-error" role="status">{$t(requestErrorKey)}</p>
+    {/if}
+    {#if !$managedModelReady && !isGenerating}
+      <div class="first-use" role="status">
+        <strong>{$t('chat.model_not_connected')}</strong>
+        <p>{$acquisitionBusy ? $t('chat.model_loading_detail') : $t('chat.model_not_connected_detail')}</p>
+        <div>
+          <button type="button" class="setup-button" onclick={openSettings}>{$t('chat.setup_local_ai')}</button>
+          <button type="button" class="models-button" onclick={openSettings}>{$t('chat.open_models')}</button>
+        </div>
+      </div>
     {/if}
   </form>
 </div>
@@ -168,6 +179,51 @@
     color: var(--lc-danger);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .first-use {
+    display: grid;
+    gap: var(--lc-space-2);
+    margin-top: var(--lc-space-2);
+    border: var(--border-thin);
+    border-radius: var(--lc-radius-sm);
+    padding: var(--lc-space-3);
+    background: var(--lc-panel-soft);
+    font-size: 12px;
+  }
+
+  .first-use p {
+    margin: 0;
+    color: var(--lc-muted);
+    line-height: 1.45;
+  }
+
+  .first-use > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--lc-space-2);
+  }
+
+  .setup-button,
+  .models-button {
+    min-height: 34px;
+    border: var(--border-thin);
+    border-radius: var(--lc-radius-sm);
+    padding: 0 var(--lc-space-3);
+    font-size: 12px;
+    font-weight: 760;
+    cursor: pointer;
+  }
+
+  .setup-button {
+    border-color: var(--lc-accent);
+    background: var(--lc-accent);
+    color: #071009;
+  }
+
+  .models-button {
+    background: var(--lc-panel-solid);
+    color: var(--lc-text);
   }
 
   @media (max-width: 760px) {

@@ -159,6 +159,19 @@ export interface InferenceRequestState {
 
 export type CatalogStatus = 'approved_internal_bootstrap';
 export type ArtifactKind = 'runtime' | 'model';
+export type ArtifactDownloadLifecycle =
+  | 'idle'
+  | 'awaiting_confirmation'
+  | 'checking_disk'
+  | 'downloading'
+  | 'cancelling'
+  | 'cancelled'
+  | 'verifying_size'
+  | 'verifying_hash'
+  | 'validating_artifact'
+  | 'installing'
+  | 'completed'
+  | 'failed';
 export type ArtifactInstallationStatus =
   | 'not_installed'
   | 'valid'
@@ -254,6 +267,36 @@ export interface ArtifactValidationSummary extends ManagedCatalogIdentity {
 
 export interface ManagedInstalledArtifacts extends ManagedCatalogIdentity {
   readonly artifacts: readonly ArtifactValidationSummary[];
+}
+
+export interface ApprovedDownloadableArtifact {
+  readonly artifact_id: string;
+  readonly kind: ArtifactKind;
+  readonly display_name: string;
+  readonly source_identity: string;
+  readonly expected_bytes: number;
+  readonly license_id: string;
+  readonly format: string | null;
+  readonly quantization: string | null;
+  readonly user_confirmation_required: true;
+  readonly automatic_download: false;
+}
+
+export interface ArtifactDownloadState {
+  readonly job_id: string;
+  readonly artifact_id: string;
+  readonly lifecycle: ArtifactDownloadLifecycle;
+  readonly expected_bytes: number;
+  readonly received_bytes: number;
+  readonly percent: number | null;
+  readonly started_utc_ms: number;
+  readonly updated_utc_ms: number;
+  readonly error_code: string | null;
+}
+
+export interface ManagedModelRemovalResult {
+  readonly model_id: string;
+  readonly removed: true;
 }
 
 export interface ModelReadinessSummary extends ManagedCatalogIdentity {

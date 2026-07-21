@@ -4,6 +4,8 @@ import type {
   ApprovedModelSummary,
   ApprovedRuntimeSummary,
   AssistantLocale,
+  ApprovedDownloadableArtifact,
+  ArtifactDownloadState,
   ArtifactInstallationStatus,
   ArtifactValidationSummary,
   GatewayCatalog,
@@ -11,6 +13,7 @@ import type {
   ManagedCatalogIdentity,
   ManagedInstalledArtifacts,
   ManagedModelCatalog,
+  ManagedModelRemovalResult,
   ManagedRuntimeCatalog,
   ManagedRuntimeLogs,
   ManagedRuntimeStartResponse,
@@ -79,6 +82,42 @@ export async function getManagedModelCatalog(): Promise<ManagedModelCatalog> {
 
 export async function getManagedInstalledArtifacts(): Promise<ManagedInstalledArtifacts> {
   return validateManagedInstalledArtifacts(await invokeExact('managed_installed_artifacts'));
+}
+
+export async function listApprovedDownloadableArtifacts(): Promise<readonly ApprovedDownloadableArtifact[]> {
+  const result = await invokeExact<unknown>('list_approved_downloadable_artifacts');
+  return boundedArray(result, 32).map(validateApprovedDownloadableArtifact);
+}
+
+export async function startApprovedArtifactDownload(artifactId: string): Promise<ArtifactDownloadState> {
+  const requestedId = validateArtifactId(artifactId);
+  const result = validateArtifactDownloadState(
+    await invokeExact('start_approved_artifact_download', { artifactId: requestedId, confirmed: true })
+  );
+  if (result.artifact_id !== requestedId) throw invalid();
+  return result;
+}
+
+export async function getArtifactDownloadState(jobId: string): Promise<ArtifactDownloadState> {
+  return validateArtifactDownloadState(
+    await invokeExact('get_artifact_download_state', { jobId: validateDownloadJobId(jobId) })
+  );
+}
+
+export async function cancelArtifactDownload(jobId: string): Promise<ArtifactDownloadState> {
+  return validateArtifactDownloadState(
+    await invokeExact('cancel_artifact_download', { jobId: validateDownloadJobId(jobId) })
+  );
+}
+
+export async function removeManagedModel(modelId: string): Promise<ManagedModelRemovalResult> {
+  const requestedId = validateArtifactId(modelId);
+  const object = expectExactRecord(
+    await invokeExact('remove_managed_model', { modelId: requestedId, confirmed: true }),
+    ['model_id', 'removed']
+  );
+  if (object.model_id !== requestedId || object.removed !== true) throw invalid();
+  return { model_id: requestedId, removed: true };
 }
 
 export async function getManagedArtifactValidationStatus(artifactId: string): Promise<ArtifactValidationSummary> {
@@ -294,6 +333,95 @@ function validateManagedInstalledArtifacts(value: unknown): ManagedInstalledArti
   const artifacts = boundedArray(object.artifacts, 64).map(validateArtifactValidationSummary);
   validateUnique(artifacts.map((artifact) => artifact.artifact_id));
   return { ...identity, artifacts };
+}
+
+function validateApprovedDownloadableArtifact(value: unknown): ApprovedDownloadableArtifact {
+  const object = expectExactRecord(value, [
+    'artifact_id',
+    'kind',
+    'display_name',
+    'source_identity',
+    'expected_bytes',
+    'license_id',
+    'format',
+    'quantization',
+    'user_confirmation_required',
+    'automatic_download'
+  ]);
+  const kind = exactString(object.kind, ['runtime', 'model']);
+  const format = object.format === null ? null : safeText(object.format, 64);
+  const quantization = object.quantization === null ? null : safeText(object.quantization, 64);
+  if (
+    object.user_confirmation_required !== true ||
+    object.automatic_download !== false ||
+    (kind === 'runtime' && (format !== 'zip' || quantization !== null)) ||
+    (kind === 'model' && (format !== 'GGUF' || quantization !== 'Q4_K_M'))
+  ) throw invalid();
+  return {
+    artifact_id: validateArtifactId(String(object.artifact_id)),
+    kind,
+    display_name: safeText(object.display_name, 192),
+    source_identity: safeText(object.source_identity, 256),
+    expected_bytes: positiveSafeInteger(object.expected_bytes),
+    license_id: safeText(object.license_id, 128),
+    format,
+    quantization,
+    user_confirmation_required: true,
+    automatic_download: false
+  };
+}
+
+function validateArtifactDownloadState(value: unknown): ArtifactDownloadState {
+  const object = expectExactRecord(value, [
+    'job_id',
+    'artifact_id',
+    'lifecycle',
+    'expected_bytes',
+    'received_bytes',
+    'percent',
+    'started_utc_ms',
+    'updated_utc_ms',
+    'error_code'
+  ]);
+  const expectedBytes = positiveSafeInteger(object.expected_bytes);
+  const receivedBytes = nonNegativeSafeInteger(object.received_bytes);
+  const lifecycle = exactString(object.lifecycle, [
+    'idle',
+    'awaiting_confirmation',
+    'checking_disk',
+    'downloading',
+    'cancelling',
+    'cancelled',
+    'verifying_size',
+    'verifying_hash',
+    'validating_artifact',
+    'installing',
+    'completed',
+    'failed'
+  ]);
+  const percent = object.percent === null ? null : nonNegativeSafeInteger(object.percent);
+  const errorCode = object.error_code === null ? null : safeText(object.error_code, 64);
+  const startedUtcMs = nonNegativeSafeInteger(object.started_utc_ms);
+  const updatedUtcMs = nonNegativeSafeInteger(object.updated_utc_ms);
+  if (
+    receivedBytes > expectedBytes ||
+    updatedUtcMs < startedUtcMs ||
+    (percent !== null && (percent > 100 || percent !== Math.floor((receivedBytes * 100) / expectedBytes))) ||
+    (lifecycle === 'completed' && (receivedBytes !== expectedBytes || percent !== 100 || errorCode !== null)) ||
+    (lifecycle === 'failed' && errorCode === null) ||
+    (lifecycle !== 'failed' && errorCode !== null)
+  ) throw invalid();
+  return {
+    job_id: validateDownloadJobId(String(object.job_id)),
+    artifact_id: validateArtifactId(String(object.artifact_id)),
+    lifecycle,
+    expected_bytes: expectedBytes,
+    received_bytes: receivedBytes,
+    percent,
+    started_utc_ms: startedUtcMs,
+    updated_utc_ms: updatedUtcMs,
+    error_code: errorCode
+  };
 }
 
 function validateArtifactValidationSummary(value: unknown): ArtifactValidationSummary {
@@ -669,6 +797,11 @@ function validateInstallationStatus(value: unknown): ArtifactInstallationStatus 
 
 function validateArtifactId(value: string): string {
   if (!/^[a-z0-9][a-z0-9._-]{2,95}$/.test(value)) throw invalid();
+  return value;
+}
+
+function validateDownloadJobId(value: string): string {
+  if (!/^[0-9a-f]{64}$/.test(value)) throw invalid();
   return value;
 }
 
