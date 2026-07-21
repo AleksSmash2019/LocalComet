@@ -447,6 +447,15 @@ impl ArtifactTrustService {
         Ok(root)
     }
 
+    pub(crate) fn acquisition_event_log_path(&self) -> Result<PathBuf, ArtifactTrustError> {
+        let path = resolve_contained(&self.roots.app_data_root, "logs/acquisition-events.jsonl")?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| ArtifactTrustError::new("invalid_path", "log parent unavailable"))?;
+        let _guards = open_directory_guard_chain(&self.roots.app_data_root, parent, true)?;
+        Ok(path)
+    }
+
     pub(crate) fn download_destination(
         &self,
         artifact: &ApprovedDownloadArtifact,
@@ -2241,6 +2250,16 @@ mod tests {
         assert_eq!(
             service.acquisition_root().expect("acquisition root"),
             service.roots().app_data_root.join("acquisition")
+        );
+        assert_eq!(
+            service
+                .acquisition_event_log_path()
+                .expect("acquisition diagnostic log path"),
+            service
+                .roots()
+                .app_data_root
+                .join("logs")
+                .join("acquisition-events.jsonl")
         );
         assert!(service
             .download_destination(&runtime)

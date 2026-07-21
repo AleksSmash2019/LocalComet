@@ -33,6 +33,7 @@ const PROGRESS_UPDATE_BYTES: u64 = 512 * 1024;
 const DISK_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_STALE_PARTIALS: usize = 64;
 const MAX_RUNTIME_ARCHIVE_MEMBERS: usize = 128;
+const ACQUISITION_EVENT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,6 +56,33 @@ impl ArtifactDownloadLifecycle {
     fn terminal(&self) -> bool {
         matches!(self, Self::Cancelled | Self::Completed | Self::Failed)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum AcquisitionFailureStage {
+    Transfer,
+    SizeVerification,
+    HashVerification,
+    ArchiveValidation,
+    StagingExtraction,
+    AtomicPromotion,
+    PostInstallValidation,
+}
+
+#[derive(Serialize)]
+struct AcquisitionFailureEvent<'a> {
+    schema_version: u32,
+    timestamp_utc_ms: u64,
+    artifact_kind: &'static str,
+    artifact_id: &'a str,
+    terminal_status: &'static str,
+    stage: AcquisitionFailureStage,
+    error_code: &'a str,
+    downloaded_bytes: u64,
+    expected_bytes: u64,
+    cleanup_complete: bool,
+    final_artifact_exists: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -95,6 +123,7 @@ pub struct ArtifactAcquisitionManager {
     artifacts: Arc<ArtifactTrustService>,
     jobs: Arc<Mutex<DownloadRegistry>>,
     job_sequence: Arc<AtomicU64>,
+    diagnostic_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Default)]
@@ -125,6 +154,7 @@ impl ArtifactAcquisitionManager {
             artifacts,
             jobs: Arc::new(Mutex::new(DownloadRegistry::default())),
             job_sequence: Arc::new(AtomicU64::new(0)),
+            diagnostic_lock: Arc::new(Mutex::new(())),
         };
         manager.cleanup_stale_partials();
         manager
@@ -344,14 +374,18 @@ impl ArtifactAcquisitionManager {
         cancel_requested: Arc<AtomicBool>,
     ) {
         let result = self.download_and_install(&job_id, &artifact, &cancel_requested);
-        self.remove_job_partial(&job_id);
         match result {
-            Ok(()) => self.complete(&job_id, ArtifactDownloadLifecycle::Completed, None),
+            Ok(()) => {
+                self.cleanup_job_temporary_resources(&job_id);
+                self.complete(&job_id, ArtifactDownloadLifecycle::Completed, None);
+            }
             Err(error) if error.code == "cancelled" => {
-                self.complete(&job_id, ArtifactDownloadLifecycle::Cancelled, None)
+                self.cleanup_job_temporary_resources(&job_id);
+                self.complete(&job_id, ArtifactDownloadLifecycle::Cancelled, None);
             }
             Err(error) => {
-                self.complete(&job_id, ArtifactDownloadLifecycle::Failed, Some(error.code))
+                self.persist_terminal_failure_before_cleanup(&job_id, &artifact, &error);
+                self.complete(&job_id, ArtifactDownloadLifecycle::Failed, Some(error.code));
             }
         }
     }
@@ -384,62 +418,39 @@ impl ArtifactAcquisitionManager {
             return Err(AcquisitionError::new("insufficient_disk_space"));
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Downloading, None);
-        let download = self.download_to_partial(job_id, artifact, &partial, cancel_requested);
-        if download.is_err() {
-            remove_owned_file(&partial);
-            return download;
-        }
-        self.require_not_cancelled(cancel_requested)
-            .inspect_err(|_| {
-                remove_owned_file(&partial);
-            })?;
+        self.download_to_partial(job_id, artifact, &partial, cancel_requested)?;
+        self.require_not_cancelled(cancel_requested)?;
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingSize, None);
         let expected = expected_bytes(artifact);
         let actual = fs::metadata(&partial)
             .map_err(|_| AcquisitionError::new("partial_unavailable"))?
             .len();
         if actual != expected {
-            remove_owned_file(&partial);
             return Err(AcquisitionError::new("size_mismatch"));
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingHash, None);
         if sha256_file(&partial, Some(cancel_requested))? != expected_sha256(artifact) {
-            remove_owned_file(&partial);
             return Err(AcquisitionError::new("hash_mismatch"));
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::ValidatingArtifact, None);
-        if let Err(error) = self.require_not_cancelled(cancel_requested) {
-            remove_owned_file(&partial);
-            return Err(error);
-        }
+        self.require_not_cancelled(cancel_requested)?;
         match artifact {
             ApprovedDownloadArtifact::Model(model) => {
-                if let Err(error) = validate_model_partial(&partial, model) {
-                    remove_owned_file(&partial);
-                    return Err(error);
-                }
+                validate_model_partial(&partial, model)?;
                 self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Installing, None);
-                if let Err(error) = self.require_not_cancelled(cancel_requested) {
-                    remove_owned_file(&partial);
-                    return Err(error);
-                }
-                if let Err(error) = install_model(&partial, &destination) {
-                    remove_owned_file(&partial);
-                    return Err(error);
-                }
+                self.require_not_cancelled(cancel_requested)?;
+                install_model(&partial, &destination)?;
             }
             ApprovedDownloadArtifact::Runtime(runtime) => {
                 self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Installing, None);
                 let staging = acquisition_root.join(format!("{job_id}.runtime-staging"));
-                let installation = extract_and_install_runtime(
+                extract_and_install_runtime(
                     &partial,
                     &staging,
                     &destination,
                     runtime,
                     cancel_requested,
-                );
-                remove_owned_file(&partial);
-                installation?;
+                )?;
             }
         }
         if let Err(error) = self.require_not_cancelled(cancel_requested) {
@@ -628,6 +639,88 @@ impl ArtifactAcquisitionManager {
         remove_owned_file(&root.join(format!("{job_id}.partial")));
     }
 
+    fn cleanup_job_temporary_resources(&self, job_id: &str) -> bool {
+        let Ok(root) = self.artifacts.acquisition_root() else {
+            return false;
+        };
+        let partial = root.join(format!("{job_id}.partial"));
+        let staging = root.join(format!("{job_id}.runtime-staging"));
+        self.remove_job_partial(job_id);
+        if staging.exists() {
+            let _ = fs::remove_dir_all(&staging);
+        }
+        !partial.exists() && !staging.exists()
+    }
+
+    fn persist_terminal_failure_before_cleanup(
+        &self,
+        job_id: &str,
+        artifact: &ApprovedDownloadArtifact,
+        error: &AcquisitionError,
+    ) {
+        let downloaded_bytes = self.current_received_bytes(job_id);
+        let expected_bytes = expected_bytes(artifact);
+        let stage = acquisition_failure_stage(error.code);
+        let final_artifact_exists = self.final_artifact_exists(artifact);
+        let before_cleanup = AcquisitionFailureEvent {
+            schema_version: ACQUISITION_EVENT_SCHEMA_VERSION,
+            timestamp_utc_ms: now_utc_ms(),
+            artifact_kind: acquisition_artifact_kind(artifact),
+            artifact_id: artifact_id(artifact),
+            terminal_status: "failed",
+            stage,
+            error_code: error.code,
+            downloaded_bytes,
+            expected_bytes,
+            cleanup_complete: false,
+            final_artifact_exists,
+        };
+        let _ = self.append_failure_event(&before_cleanup);
+        let cleanup_complete = self.cleanup_job_temporary_resources(job_id);
+        let after_cleanup = AcquisitionFailureEvent {
+            timestamp_utc_ms: now_utc_ms(),
+            cleanup_complete,
+            final_artifact_exists: self.final_artifact_exists(artifact),
+            ..before_cleanup
+        };
+        let _ = self.append_failure_event(&after_cleanup);
+    }
+
+    fn current_received_bytes(&self, job_id: &str) -> u64 {
+        self.jobs
+            .lock()
+            .expect("download registry poisoned")
+            .jobs
+            .get(job_id)
+            .map(|job| job.state.received_bytes)
+            .unwrap_or(0)
+    }
+
+    fn final_artifact_exists(&self, artifact: &ApprovedDownloadArtifact) -> bool {
+        self.artifacts
+            .download_destination(artifact)
+            .map(|path| path.exists())
+            .unwrap_or(false)
+    }
+
+    fn append_failure_event(&self, event: &AcquisitionFailureEvent<'_>) -> Result<(), ()> {
+        let path = self
+            .artifacts
+            .acquisition_event_log_path()
+            .map_err(|_| ())?;
+        let mut bytes = serde_json::to_vec(event).map_err(|_| ())?;
+        bytes.push(b'\n');
+        let _guard = self.diagnostic_lock.lock().map_err(|_| ())?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .map_err(|_| ())?;
+        file.write_all(&bytes)
+            .and_then(|_| file.sync_data())
+            .map_err(|_| ())
+    }
+
     fn prune_empty_model_parents(&self, destination: &Path) {
         let root = &self.artifacts.roots().model_root;
         let mut current = destination.parent();
@@ -640,6 +733,30 @@ impl ArtifactAcquisitionManager {
             }
             current = directory.parent();
         }
+    }
+}
+
+fn acquisition_artifact_kind(artifact: &ApprovedDownloadArtifact) -> &'static str {
+    match artifact {
+        ApprovedDownloadArtifact::Runtime(_) => "runtime",
+        ApprovedDownloadArtifact::Model(_) => "model",
+    }
+}
+
+fn acquisition_failure_stage(error_code: &str) -> AcquisitionFailureStage {
+    match error_code {
+        "size_mismatch" => AcquisitionFailureStage::SizeVerification,
+        "hash_mismatch" | "hash_read_failed" => AcquisitionFailureStage::HashVerification,
+        "invalid_runtime_archive"
+        | "unexpected_runtime_member"
+        | "runtime_member_hash_mismatch"
+        | "missing_runtime_member" => AcquisitionFailureStage::ArchiveValidation,
+        "staging_create_failed" | "staging_write_failed" => {
+            AcquisitionFailureStage::StagingExtraction
+        }
+        "atomic_install_failed" => AcquisitionFailureStage::AtomicPromotion,
+        "post_install_validation_failed" => AcquisitionFailureStage::PostInstallValidation,
+        _ => AcquisitionFailureStage::Transfer,
     }
 }
 
@@ -843,7 +960,7 @@ fn extract_and_install_runtime(
         return Err(AcquisitionError::new("conflicting_installed_artifact"));
     }
     fs::create_dir(staging).map_err(|_| AcquisitionError::new("staging_create_failed"))?;
-    let result = (|| {
+    (|| {
         let file =
             File::open(partial).map_err(|_| AcquisitionError::new("invalid_runtime_archive"))?;
         let mut archive =
@@ -901,11 +1018,7 @@ fn extract_and_install_runtime(
         fs::rename(staging, destination)
             .map_err(|_| AcquisitionError::new("atomic_install_failed"))?;
         Ok(())
-    })();
-    if result.is_err() && staging.exists() {
-        let _ = fs::remove_dir_all(staging);
-    }
-    result
+    })()
 }
 
 fn safe_zip_member_name(value: &str) -> Result<String, AcquisitionError> {
@@ -1228,6 +1341,43 @@ mod tests {
         writer.finish().expect("finish archive");
     }
 
+    fn register_job(
+        manager: &ArtifactAcquisitionManager,
+        artifact_id: &str,
+        expected_bytes: u64,
+        received_bytes: u64,
+    ) -> String {
+        let mut state = manager.new_state(
+            artifact_id,
+            expected_bytes,
+            ArtifactDownloadLifecycle::Installing,
+        );
+        state.received_bytes = received_bytes;
+        state.percent = percent(received_bytes, expected_bytes);
+        let job_id = state.job_id.clone();
+        let mut registry = manager.jobs.lock().expect("download registry");
+        registry
+            .active_by_artifact
+            .insert(artifact_id.into(), job_id.clone());
+        registry.jobs.insert(
+            job_id.clone(),
+            DownloadJob {
+                state,
+                cancel_requested: Arc::new(AtomicBool::new(false)),
+            },
+        );
+        job_id
+    }
+
+    fn read_failure_events(trust: &ArtifactTrustService) -> Vec<serde_json::Value> {
+        let path = trust.acquisition_event_log_path().expect("diagnostic path");
+        let contents = fs::read_to_string(path).expect("read diagnostic events");
+        contents
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("diagnostic event JSON"))
+            .collect()
+    }
+
     #[test]
     fn model_redirect_authority_requires_exact_https_host() {
         let allowed = vec![
@@ -1348,9 +1498,155 @@ mod tests {
             .expect_err("reject unsafe archive");
 
             assert_eq!(error.code, expected_code);
+            assert!(staging.exists());
+            fs::remove_dir_all(&staging).expect("remove failed staging fixture");
             assert!(!staging.exists());
             assert!(!destination.exists());
         }
+    }
+
+    #[test]
+    fn runtime_failure_codes_map_to_distinct_bounded_stages() {
+        for (code, expected) in [
+            ("download_failed", AcquisitionFailureStage::Transfer),
+            ("size_mismatch", AcquisitionFailureStage::SizeVerification),
+            ("hash_mismatch", AcquisitionFailureStage::HashVerification),
+            (
+                "invalid_runtime_archive",
+                AcquisitionFailureStage::ArchiveValidation,
+            ),
+            (
+                "staging_write_failed",
+                AcquisitionFailureStage::StagingExtraction,
+            ),
+            (
+                "atomic_install_failed",
+                AcquisitionFailureStage::AtomicPromotion,
+            ),
+            (
+                "post_install_validation_failed",
+                AcquisitionFailureStage::PostInstallValidation,
+            ),
+        ] {
+            assert_eq!(
+                acquisition_failure_stage(code),
+                expected,
+                "stage for {code}"
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_runtime_failure_is_persisted_before_owned_cleanup() {
+        let (_workspace, manager, trust) = test_manager();
+        let mut artifact = trust
+            .approved_download_artifact(TEST_RUNTIME_ID)
+            .expect("approved runtime");
+        let expected_bytes = {
+            let ApprovedDownloadArtifact::Runtime(runtime) = &mut artifact else {
+                panic!("test runtime must be a runtime artifact");
+            };
+            runtime.acquisition.primary_url =
+                "https://assets.example.test/runtime.zip?signed-token=must-not-persist".into();
+            runtime.acquisition.expected_bytes
+        };
+
+        let job_id = register_job(&manager, TEST_RUNTIME_ID, expected_bytes, expected_bytes);
+        let acquisition_root = trust.acquisition_root().expect("acquisition root");
+        let partial = acquisition_root.join(format!("{job_id}.partial"));
+        let staging = acquisition_root.join(format!("{job_id}.runtime-staging"));
+        fs::write(&partial, b"runtime archive").expect("write owned partial");
+        fs::create_dir(&staging).expect("create owned staging");
+        fs::write(staging.join("member"), b"staging data").expect("write staging data");
+
+        manager.persist_terminal_failure_before_cleanup(
+            &job_id,
+            &artifact,
+            &AcquisitionError::new("staging_write_failed"),
+        );
+
+        let events = read_failure_events(&trust);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["schema_version"], 1);
+        assert_eq!(events[0]["artifact_kind"], "runtime");
+        assert_eq!(events[0]["artifact_id"], TEST_RUNTIME_ID);
+        assert_eq!(events[0]["terminal_status"], "failed");
+        assert_eq!(events[0]["stage"], "staging_extraction");
+        assert_eq!(events[0]["error_code"], "staging_write_failed");
+        assert_eq!(events[0]["downloaded_bytes"], expected_bytes);
+        assert_eq!(events[0]["cleanup_complete"], false);
+        assert_eq!(events[0]["final_artifact_exists"], false);
+        assert_eq!(events[1]["cleanup_complete"], true);
+        assert!(!partial.exists());
+        assert!(!staging.exists());
+        assert!(!trust
+            .download_destination(&artifact)
+            .expect("runtime destination")
+            .exists());
+
+        let event_text =
+            fs::read_to_string(trust.acquisition_event_log_path().expect("diagnostic path"))
+                .expect("read diagnostic event text");
+        assert!(!event_text.contains("signed-token"));
+        assert!(!event_text.contains("assets.example.test"));
+    }
+
+    #[test]
+    fn completed_job_does_not_emit_a_terminal_failure_event() {
+        let (_workspace, manager, trust) = test_manager();
+        let job_id = register_job(&manager, TEST_RUNTIME_ID, 7, 7);
+
+        manager.complete(&job_id, ArtifactDownloadLifecycle::Completed, None);
+
+        assert!(!trust
+            .acquisition_event_log_path()
+            .expect("diagnostic path")
+            .exists());
+    }
+
+    #[test]
+    fn terminal_event_uses_catalog_identity_and_backend_failure_values() {
+        let (workspace, manager, trust) = test_manager();
+        let artifact = trust
+            .approved_download_artifact(TEST_RUNTIME_ID)
+            .expect("approved runtime");
+        let job_id = register_job(&manager, TEST_RUNTIME_ID, 7, 3);
+        let normal_profile_event = workspace
+            .root
+            .join("normal-profile")
+            .join("LocalComet")
+            .join("logs")
+            .join("acquisition-events.jsonl");
+        fs::create_dir_all(normal_profile_event.parent().expect("normal log parent"))
+            .expect("create normal log parent");
+        fs::write(&normal_profile_event, b"normal-profile-sentinel\n")
+            .expect("write normal profile sentinel");
+        {
+            let mut registry = manager.jobs.lock().expect("download registry");
+            registry
+                .jobs
+                .get_mut(&job_id)
+                .expect("registered job")
+                .state
+                .artifact_id = "frontend-forged-artifact".into();
+        }
+
+        manager.persist_terminal_failure_before_cleanup(
+            &job_id,
+            &artifact,
+            &AcquisitionError::new("atomic_install_failed"),
+        );
+
+        let events = read_failure_events(&trust);
+        assert_eq!(events[0]["artifact_id"], TEST_RUNTIME_ID);
+        assert_eq!(events[0]["stage"], "atomic_promotion");
+        assert_eq!(events[0]["error_code"], "atomic_install_failed");
+        assert_eq!(events[0]["downloaded_bytes"], 3);
+        assert!(!events[0].to_string().contains("frontend-forged-artifact"));
+        assert_eq!(
+            fs::read_to_string(normal_profile_event).expect("read normal profile sentinel"),
+            "normal-profile-sentinel\n"
+        );
     }
 
     #[test]
