@@ -30,6 +30,8 @@
         "expected_sha256": "01d5f30876acfb4a0be59396710f450213495c7181d8fbcce2fad045835ceb89",
         "content_type": "application/octet-stream",
         "managed_relative_destination": "llama-cpp-windows-x86-64-cpu-bootstrap",
+        "public_distribution": false,
+        "installer_bundled": false,
         "automatic_download": false,
         "user_confirmation_required": true
       },
@@ -230,6 +232,8 @@
         "expected_sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
         "content_type": "application/octet-stream",
         "managed_relative_destination": "qwen2.5-1.5b-instruct-q4-k-m/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "public_distribution": false,
+        "installer_bundled": false,
         "automatic_download": false,
         "user_confirmation_required": true
       },

@@ -179,3 +179,38 @@ description = "Allow reading bounded sanitized managed runtime log tails."
 commands.allow = [
   "managed_runtime_logs",
 ]
+
+[[permission]]
+identifier = "allow-list-approved-downloadable-artifacts"
+description = "Allow reading the fixed approved LocalComet acquisition catalog projection."
+commands.allow = [
+  "list_approved_downloadable_artifacts",
+]
+
+[[permission]]
+identifier = "allow-start-approved-artifact-download"
+description = "Allow an explicitly confirmed download of one catalog-approved LocalComet artifact."
+commands.allow = [
+  "start_approved_artifact_download",
+]
+
+[[permission]]
+identifier = "allow-get-artifact-download-state"
+description = "Allow reading one bounded LocalComet artifact download state."
+commands.allow = [
+  "get_artifact_download_state",
+]
+
+[[permission]]
+identifier = "allow-cancel-artifact-download"
+description = "Allow cancelling one bounded LocalComet artifact download."
+commands.allow = [
+  "cancel_artifact_download",
+]
+
+[[permission]]
+identifier = "allow-remove-managed-model"
+description = "Allow explicitly confirmed removal of one inactive approved managed model."
+commands.allow = [
+  "remove_managed_model",
+]

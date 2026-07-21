@@ -1,0 +1,1464 @@
+use crate::artifact_trust::{
+    ApprovedDownloadArtifact, ApprovedModelArtifact, ApprovedRuntimeArtifact, ArtifactKind,
+    ArtifactTrustService, InstallationStatus,
+};
+use crate::control_plane::{BridgeError, ControlPlaneBridge};
+use crate::managed_runtime::{ManagedRuntimeState, ManagedRuntimeSupervisor};
+use reqwest::blocking::{Client, Response};
+use reqwest::redirect::Policy;
+use reqwest::Url;
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::State;
+use zip::ZipArchive;
+
+#[cfg(windows)]
+use std::ffi::OsStr;
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(windows)]
+use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+const MAX_REDIRECTS: usize = 5;
+const DOWNLOAD_BUFFER_BYTES: usize = 64 * 1024;
+const PROGRESS_UPDATE_BYTES: u64 = 512 * 1024;
+const DISK_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_STALE_PARTIALS: usize = 64;
+const MAX_RUNTIME_ARCHIVE_MEMBERS: usize = 128;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactDownloadLifecycle {
+    Idle,
+    AwaitingConfirmation,
+    CheckingDisk,
+    Downloading,
+    Cancelling,
+    Cancelled,
+    VerifyingSize,
+    VerifyingHash,
+    ValidatingArtifact,
+    Installing,
+    Completed,
+    Failed,
+}
+
+impl ArtifactDownloadLifecycle {
+    fn terminal(&self) -> bool {
+        matches!(self, Self::Cancelled | Self::Completed | Self::Failed)
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ArtifactDownloadState {
+    pub job_id: String,
+    pub artifact_id: String,
+    pub lifecycle: ArtifactDownloadLifecycle,
+    pub expected_bytes: u64,
+    pub received_bytes: u64,
+    pub percent: Option<u8>,
+    pub started_utc_ms: u64,
+    pub updated_utc_ms: u64,
+    pub error_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ApprovedDownloadableArtifact {
+    pub artifact_id: String,
+    pub kind: ArtifactKind,
+    pub display_name: String,
+    pub source_identity: String,
+    pub expected_bytes: u64,
+    pub license_id: String,
+    pub format: Option<String>,
+    pub quantization: Option<String>,
+    pub user_confirmation_required: bool,
+    pub automatic_download: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ManagedModelRemovalResult {
+    pub model_id: String,
+    pub removed: bool,
+}
+
+#[derive(Clone)]
+pub struct ArtifactAcquisitionManager {
+    artifacts: Arc<ArtifactTrustService>,
+    jobs: Arc<Mutex<DownloadRegistry>>,
+    job_sequence: Arc<AtomicU64>,
+}
+
+#[derive(Default)]
+struct DownloadRegistry {
+    jobs: HashMap<String, DownloadJob>,
+    active_by_artifact: HashMap<String, String>,
+}
+
+struct DownloadJob {
+    state: ArtifactDownloadState,
+    cancel_requested: Arc<AtomicBool>,
+}
+
+#[derive(Debug)]
+struct AcquisitionError {
+    code: &'static str,
+}
+
+impl AcquisitionError {
+    fn new(code: &'static str) -> Self {
+        Self { code }
+    }
+}
+
+impl ArtifactAcquisitionManager {
+    pub fn new(artifacts: Arc<ArtifactTrustService>) -> Self {
+        let manager = Self {
+            artifacts,
+            jobs: Arc::new(Mutex::new(DownloadRegistry::default())),
+            job_sequence: Arc::new(AtomicU64::new(0)),
+        };
+        manager.cleanup_stale_partials();
+        manager
+    }
+
+    pub fn approved_artifacts(&self) -> Vec<ApprovedDownloadableArtifact> {
+        let mut approved = Vec::new();
+        for runtime in self.artifacts.runtime_catalog().runtimes {
+            approved.push(ApprovedDownloadableArtifact {
+                artifact_id: runtime.runtime_id,
+                kind: ArtifactKind::Runtime,
+                display_name: format!("llama.cpp {}", runtime.release_tag),
+                source_identity: runtime.upstream_repository,
+                expected_bytes: runtime.asset_bytes,
+                license_id: runtime.license_id,
+                format: Some(runtime.archive_format),
+                quantization: None,
+                user_confirmation_required: true,
+                automatic_download: false,
+            });
+        }
+        for model in self.artifacts.model_catalog().models {
+            approved.push(ApprovedDownloadableArtifact {
+                artifact_id: model.model_id,
+                kind: ArtifactKind::Model,
+                display_name: model.display_name,
+                source_identity: model.upstream_repository,
+                expected_bytes: model.asset_bytes,
+                license_id: model.license_id,
+                format: Some(model.format),
+                quantization: Some(model.quantization),
+                user_confirmation_required: true,
+                automatic_download: false,
+            });
+        }
+        approved
+    }
+
+    pub fn start(
+        &self,
+        artifact_id: &str,
+        confirmed: bool,
+    ) -> Result<ArtifactDownloadState, BridgeError> {
+        if !confirmed {
+            return Err(BridgeError::new(
+                "confirmation_required",
+                "approved artifact download requires confirmation",
+            ));
+        }
+        let artifact = self
+            .artifacts
+            .approved_download_artifact(artifact_id)
+            .map_err(BridgeError::from)?;
+        let current = self
+            .artifacts
+            .artifact_validation_status(artifact_id)
+            .map_err(BridgeError::from)?;
+        if current.installation_status == InstallationStatus::Valid {
+            let mut completed = self.new_state(
+                artifact_id,
+                current.expected_bytes,
+                ArtifactDownloadLifecycle::Completed,
+            );
+            completed.received_bytes = current.expected_bytes;
+            completed.percent = percent(current.expected_bytes, current.expected_bytes);
+            let mut registry = self.jobs.lock().expect("download registry poisoned");
+            registry.jobs.insert(
+                completed.job_id.clone(),
+                DownloadJob {
+                    state: completed.clone(),
+                    cancel_requested: Arc::new(AtomicBool::new(false)),
+                },
+            );
+            return Ok(completed);
+        }
+        if current.installation_status != InstallationStatus::NotInstalled {
+            return Err(BridgeError::new(
+                "conflicting_installed_artifact",
+                "approved artifact is present but not valid",
+            ));
+        }
+        let destination = self
+            .artifacts
+            .download_destination(&artifact)
+            .map_err(BridgeError::from)?;
+        if destination.exists() {
+            return Err(BridgeError::new(
+                "conflicting_installed_artifact",
+                "approved artifact destination already exists",
+            ));
+        }
+        let expected_bytes = expected_bytes(&artifact);
+        let mut state =
+            self.new_state(artifact_id, expected_bytes, ArtifactDownloadLifecycle::Idle);
+        state.lifecycle = ArtifactDownloadLifecycle::AwaitingConfirmation;
+        state.updated_utc_ms = now_utc_ms();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        {
+            let mut registry = self.jobs.lock().expect("download registry poisoned");
+            if let Some(existing_id) = registry.active_by_artifact.get(artifact_id) {
+                return registry
+                    .jobs
+                    .get(existing_id)
+                    .map(|job| job.state.clone())
+                    .ok_or_else(|| {
+                        BridgeError::new("download_conflict", "active download unavailable")
+                    });
+            }
+            registry
+                .active_by_artifact
+                .insert(artifact_id.to_string(), state.job_id.clone());
+            registry.jobs.insert(
+                state.job_id.clone(),
+                DownloadJob {
+                    state: state.clone(),
+                    cancel_requested: Arc::clone(&cancel_requested),
+                },
+            );
+        }
+        let manager = self.clone();
+        let job_id = state.job_id.clone();
+        thread::spawn(move || manager.run_job(job_id, artifact, cancel_requested));
+        Ok(state)
+    }
+
+    pub fn get(&self, job_id: &str) -> Result<ArtifactDownloadState, BridgeError> {
+        validate_job_id(job_id)?;
+        self.jobs
+            .lock()
+            .expect("download registry poisoned")
+            .jobs
+            .get(job_id)
+            .map(|job| job.state.clone())
+            .ok_or_else(|| BridgeError::new("unknown_download_job", "download job is unavailable"))
+    }
+
+    pub fn cancel(&self, job_id: &str) -> Result<ArtifactDownloadState, BridgeError> {
+        validate_job_id(job_id)?;
+        let mut registry = self.jobs.lock().expect("download registry poisoned");
+        let job = registry.jobs.get_mut(job_id).ok_or_else(|| {
+            BridgeError::new("unknown_download_job", "download job is unavailable")
+        })?;
+        if !job.state.lifecycle.terminal() {
+            job.cancel_requested.store(true, Ordering::Release);
+            job.state.lifecycle = ArtifactDownloadLifecycle::Cancelling;
+            job.state.updated_utc_ms = now_utc_ms();
+        }
+        Ok(job.state.clone())
+    }
+
+    pub fn remove_model(
+        &self,
+        model_id: &str,
+        confirmed: bool,
+        runtime: &ManagedRuntimeSupervisor,
+        bridge: &ControlPlaneBridge,
+    ) -> Result<ManagedModelRemovalResult, BridgeError> {
+        if !confirmed {
+            return Err(BridgeError::new(
+                "confirmation_required",
+                "managed model removal requires confirmation",
+            ));
+        }
+        let artifact = self
+            .artifacts
+            .approved_download_artifact(model_id)
+            .map_err(BridgeError::from)?;
+        let ApprovedDownloadArtifact::Model(_) = artifact else {
+            return Err(BridgeError::new(
+                "invalid_artifact_kind",
+                "managed artifact is not a model",
+            ));
+        };
+        let status = runtime.status(bridge);
+        if status.model_id.as_deref() == Some(model_id)
+            || matches!(
+                status.state,
+                ManagedRuntimeState::Validating
+                    | ManagedRuntimeState::Starting
+                    | ManagedRuntimeState::Ready
+                    | ManagedRuntimeState::Stopping
+            )
+        {
+            return Err(BridgeError::new(
+                "model_active",
+                "disconnect the managed model before removal",
+            ));
+        }
+        let validation = self
+            .artifacts
+            .artifact_validation_status(model_id)
+            .map_err(BridgeError::from)?;
+        if validation.installation_status != InstallationStatus::Valid {
+            return Err(BridgeError::new(
+                "model_not_installed",
+                "managed model is not valid",
+            ));
+        }
+        let destination = self
+            .artifacts
+            .download_destination(&artifact)
+            .map_err(BridgeError::from)?;
+        fs::remove_file(&destination).map_err(|_| {
+            BridgeError::new("model_removal_failed", "managed model removal failed")
+        })?;
+        self.prune_empty_model_parents(&destination);
+        Ok(ManagedModelRemovalResult {
+            model_id: model_id.to_string(),
+            removed: true,
+        })
+    }
+
+    fn run_job(
+        &self,
+        job_id: String,
+        artifact: ApprovedDownloadArtifact,
+        cancel_requested: Arc<AtomicBool>,
+    ) {
+        let result = self.download_and_install(&job_id, &artifact, &cancel_requested);
+        self.remove_job_partial(&job_id);
+        match result {
+            Ok(()) => self.complete(&job_id, ArtifactDownloadLifecycle::Completed, None),
+            Err(error) if error.code == "cancelled" => {
+                self.complete(&job_id, ArtifactDownloadLifecycle::Cancelled, None)
+            }
+            Err(error) => {
+                self.complete(&job_id, ArtifactDownloadLifecycle::Failed, Some(error.code))
+            }
+        }
+    }
+
+    fn download_and_install(
+        &self,
+        job_id: &str,
+        artifact: &ApprovedDownloadArtifact,
+        cancel_requested: &AtomicBool,
+    ) -> Result<(), AcquisitionError> {
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::CheckingDisk, None);
+        self.require_not_cancelled(cancel_requested)?;
+        let destination = self
+            .artifacts
+            .download_destination(artifact)
+            .map_err(|_| AcquisitionError::new("invalid_destination"))?;
+        if destination.exists() {
+            return Err(AcquisitionError::new("conflicting_installed_artifact"));
+        }
+        let acquisition_root = self
+            .artifacts
+            .acquisition_root()
+            .map_err(|_| AcquisitionError::new("acquisition_storage_unavailable"))?;
+        let partial = acquisition_root.join(format!("{job_id}.partial"));
+        if partial.exists() {
+            return Err(AcquisitionError::new("partial_name_conflict"));
+        }
+        let required_space = required_disk_space(artifact)?;
+        if available_space(&acquisition_root)? < required_space {
+            return Err(AcquisitionError::new("insufficient_disk_space"));
+        }
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Downloading, None);
+        let download = self.download_to_partial(job_id, artifact, &partial, cancel_requested);
+        if download.is_err() {
+            remove_owned_file(&partial);
+            return download;
+        }
+        self.require_not_cancelled(cancel_requested)
+            .inspect_err(|_| {
+                remove_owned_file(&partial);
+            })?;
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingSize, None);
+        let expected = expected_bytes(artifact);
+        let actual = fs::metadata(&partial)
+            .map_err(|_| AcquisitionError::new("partial_unavailable"))?
+            .len();
+        if actual != expected {
+            remove_owned_file(&partial);
+            return Err(AcquisitionError::new("size_mismatch"));
+        }
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingHash, None);
+        if sha256_file(&partial, Some(cancel_requested))? != expected_sha256(artifact) {
+            remove_owned_file(&partial);
+            return Err(AcquisitionError::new("hash_mismatch"));
+        }
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::ValidatingArtifact, None);
+        if let Err(error) = self.require_not_cancelled(cancel_requested) {
+            remove_owned_file(&partial);
+            return Err(error);
+        }
+        match artifact {
+            ApprovedDownloadArtifact::Model(model) => {
+                if let Err(error) = validate_model_partial(&partial, model) {
+                    remove_owned_file(&partial);
+                    return Err(error);
+                }
+                self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Installing, None);
+                if let Err(error) = self.require_not_cancelled(cancel_requested) {
+                    remove_owned_file(&partial);
+                    return Err(error);
+                }
+                if let Err(error) = install_model(&partial, &destination) {
+                    remove_owned_file(&partial);
+                    return Err(error);
+                }
+            }
+            ApprovedDownloadArtifact::Runtime(runtime) => {
+                self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Installing, None);
+                let staging = acquisition_root.join(format!("{job_id}.runtime-staging"));
+                let installation = extract_and_install_runtime(
+                    &partial,
+                    &staging,
+                    &destination,
+                    runtime,
+                    cancel_requested,
+                );
+                remove_owned_file(&partial);
+                installation?;
+            }
+        }
+        if let Err(error) = self.require_not_cancelled(cancel_requested) {
+            remove_installed_artifact(artifact, &destination);
+            return Err(error);
+        }
+        let validation = self
+            .artifacts
+            .artifact_validation_status(artifact_id(artifact))
+            .map_err(|_| AcquisitionError::new("post_install_validation_failed"))?;
+        if validation.installation_status != InstallationStatus::Valid {
+            remove_installed_artifact(artifact, &destination);
+            return Err(AcquisitionError::new("post_install_validation_failed"));
+        }
+        remove_owned_file(&partial);
+        Ok(())
+    }
+
+    fn download_to_partial(
+        &self,
+        job_id: &str,
+        artifact: &ApprovedDownloadArtifact,
+        partial: &Path,
+        cancel_requested: &AtomicBool,
+    ) -> Result<(), AcquisitionError> {
+        let mut response = open_approved_response(artifact)?;
+        validate_content_type(&response, artifact)?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(partial)
+            .map_err(|_| AcquisitionError::new("partial_create_failed"))?;
+        let expected = expected_bytes(artifact);
+        let mut received = 0_u64;
+        let mut last_reported = 0_u64;
+        let mut buffer = [0_u8; DOWNLOAD_BUFFER_BYTES];
+        loop {
+            self.require_not_cancelled(cancel_requested)?;
+            let read = response
+                .read(&mut buffer)
+                .map_err(|_| AcquisitionError::new("download_failed"))?;
+            if read == 0 {
+                break;
+            }
+            received = received
+                .checked_add(read as u64)
+                .ok_or_else(|| AcquisitionError::new("size_mismatch"))?;
+            if received > expected {
+                return Err(AcquisitionError::new("size_mismatch"));
+            }
+            file.write_all(&buffer[..read])
+                .map_err(|_| AcquisitionError::new("partial_write_failed"))?;
+            if received.saturating_sub(last_reported) >= PROGRESS_UPDATE_BYTES
+                || received == expected
+            {
+                self.set_progress(job_id, received);
+                last_reported = received;
+            }
+        }
+        file.flush()
+            .and_then(|_| file.sync_all())
+            .map_err(|_| AcquisitionError::new("partial_write_failed"))?;
+        self.set_progress(job_id, received);
+        Ok(())
+    }
+
+    fn set_lifecycle(
+        &self,
+        job_id: &str,
+        lifecycle: ArtifactDownloadLifecycle,
+        error_code: Option<&'static str>,
+    ) {
+        let mut registry = self.jobs.lock().expect("download registry poisoned");
+        let Some(job) = registry.jobs.get_mut(job_id) else {
+            return;
+        };
+        if job.state.lifecycle.terminal() {
+            return;
+        }
+        job.state.lifecycle = lifecycle;
+        job.state.error_code = error_code.map(str::to_owned);
+        job.state.updated_utc_ms = now_utc_ms();
+    }
+
+    fn set_progress(&self, job_id: &str, received_bytes: u64) {
+        let mut registry = self.jobs.lock().expect("download registry poisoned");
+        let Some(job) = registry.jobs.get_mut(job_id) else {
+            return;
+        };
+        if job.state.lifecycle.terminal() {
+            return;
+        }
+        job.state.received_bytes = received_bytes.min(job.state.expected_bytes);
+        job.state.percent = percent(job.state.received_bytes, job.state.expected_bytes);
+        job.state.updated_utc_ms = now_utc_ms();
+    }
+
+    fn complete(
+        &self,
+        job_id: &str,
+        lifecycle: ArtifactDownloadLifecycle,
+        error_code: Option<&'static str>,
+    ) {
+        let mut registry = self.jobs.lock().expect("download registry poisoned");
+        let artifact_id = {
+            let Some(job) = registry.jobs.get_mut(job_id) else {
+                return;
+            };
+            if job.state.lifecycle.terminal() {
+                return;
+            }
+            job.state.lifecycle = lifecycle;
+            job.state.error_code = error_code.map(str::to_owned);
+            job.state.updated_utc_ms = now_utc_ms();
+            job.state.artifact_id.clone()
+        };
+        registry.active_by_artifact.remove(&artifact_id);
+    }
+
+    fn new_state(
+        &self,
+        artifact_id: &str,
+        expected_bytes: u64,
+        lifecycle: ArtifactDownloadLifecycle,
+    ) -> ArtifactDownloadState {
+        let timestamp = now_utc_ms();
+        ArtifactDownloadState {
+            job_id: self.next_job_id(),
+            artifact_id: artifact_id.to_string(),
+            lifecycle,
+            expected_bytes,
+            received_bytes: 0,
+            percent: percent(0, expected_bytes),
+            started_utc_ms: timestamp,
+            updated_utc_ms: timestamp,
+            error_code: None,
+        }
+    }
+
+    fn next_job_id(&self) -> String {
+        let counter = self.job_sequence.fetch_add(1, Ordering::Relaxed);
+        let mut hasher = Sha256::new();
+        hasher.update(now_utc_ms().to_le_bytes());
+        hasher.update(counter.to_le_bytes());
+        hasher.update(std::process::id().to_le_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn require_not_cancelled(&self, cancel_requested: &AtomicBool) -> Result<(), AcquisitionError> {
+        if cancel_requested.load(Ordering::Acquire) {
+            return Err(AcquisitionError::new("cancelled"));
+        }
+        Ok(())
+    }
+
+    fn cleanup_stale_partials(&self) {
+        let Ok(root) = self.artifacts.acquisition_root() else {
+            return;
+        };
+        let Ok(entries) = fs::read_dir(root) else {
+            return;
+        };
+        for entry in entries.flatten().take(MAX_STALE_PARTIALS) {
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if is_owned_partial_name(&name)
+                && entry
+                    .file_type()
+                    .map(|kind| kind.is_file())
+                    .unwrap_or(false)
+            {
+                let _ = fs::remove_file(path);
+            } else if is_owned_runtime_staging_name(&name)
+                && entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false)
+            {
+                let _ = fs::remove_dir_all(path);
+            }
+        }
+    }
+
+    fn remove_job_partial(&self, job_id: &str) {
+        let Ok(root) = self.artifacts.acquisition_root() else {
+            return;
+        };
+        remove_owned_file(&root.join(format!("{job_id}.partial")));
+    }
+
+    fn prune_empty_model_parents(&self, destination: &Path) {
+        let root = &self.artifacts.roots().model_root;
+        let mut current = destination.parent();
+        while let Some(directory) = current {
+            if directory == root || !directory.starts_with(root) {
+                break;
+            }
+            if fs::remove_dir(directory).is_err() {
+                break;
+            }
+            current = directory.parent();
+        }
+    }
+}
+
+#[tauri::command]
+pub fn list_approved_downloadable_artifacts(
+    state: State<'_, Arc<ArtifactAcquisitionManager>>,
+) -> Vec<ApprovedDownloadableArtifact> {
+    state.approved_artifacts()
+}
+
+#[tauri::command]
+pub fn start_approved_artifact_download(
+    state: State<'_, Arc<ArtifactAcquisitionManager>>,
+    artifact_id: String,
+    confirmed: bool,
+) -> Result<ArtifactDownloadState, BridgeError> {
+    state.start(&artifact_id, confirmed)
+}
+
+#[tauri::command]
+pub fn get_artifact_download_state(
+    state: State<'_, Arc<ArtifactAcquisitionManager>>,
+    job_id: String,
+) -> Result<ArtifactDownloadState, BridgeError> {
+    state.get(&job_id)
+}
+
+#[tauri::command]
+pub fn cancel_artifact_download(
+    state: State<'_, Arc<ArtifactAcquisitionManager>>,
+    job_id: String,
+) -> Result<ArtifactDownloadState, BridgeError> {
+    state.cancel(&job_id)
+}
+
+#[tauri::command]
+pub fn remove_managed_model(
+    acquisition: State<'_, Arc<ArtifactAcquisitionManager>>,
+    runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    bridge: State<'_, Arc<ControlPlaneBridge>>,
+    model_id: String,
+    confirmed: bool,
+) -> Result<ManagedModelRemovalResult, BridgeError> {
+    acquisition.remove_model(&model_id, confirmed, &runtime, &bridge)
+}
+
+fn artifact_id(artifact: &ApprovedDownloadArtifact) -> &str {
+    match artifact {
+        ApprovedDownloadArtifact::Runtime(runtime) => &runtime.runtime_id,
+        ApprovedDownloadArtifact::Model(model) => &model.model_id,
+    }
+}
+
+fn expected_bytes(artifact: &ApprovedDownloadArtifact) -> u64 {
+    match artifact {
+        ApprovedDownloadArtifact::Runtime(runtime) => runtime.acquisition.expected_bytes,
+        ApprovedDownloadArtifact::Model(model) => model.acquisition.expected_bytes,
+    }
+}
+
+fn expected_sha256(artifact: &ApprovedDownloadArtifact) -> &str {
+    match artifact {
+        ApprovedDownloadArtifact::Runtime(runtime) => &runtime.acquisition.expected_sha256,
+        ApprovedDownloadArtifact::Model(model) => &model.acquisition.expected_sha256,
+    }
+}
+
+fn required_disk_space(artifact: &ApprovedDownloadArtifact) -> Result<u64, AcquisitionError> {
+    let downloaded = expected_bytes(artifact);
+    let install_reserve = match artifact {
+        ApprovedDownloadArtifact::Runtime(runtime) => runtime
+            .required_files
+            .iter()
+            .try_fold(0_u64, |total, file| total.checked_add(file.bytes))
+            .ok_or_else(|| AcquisitionError::new("disk_requirement_overflow"))?,
+        ApprovedDownloadArtifact::Model(_) => DISK_RESERVE_BYTES,
+    };
+    downloaded
+        .checked_add(install_reserve)
+        .and_then(|value| value.checked_add(DISK_RESERVE_BYTES))
+        .ok_or_else(|| AcquisitionError::new("disk_requirement_overflow"))
+}
+
+fn open_approved_response(
+    artifact: &ApprovedDownloadArtifact,
+) -> Result<Response, AcquisitionError> {
+    let acquisition = match artifact {
+        ApprovedDownloadArtifact::Runtime(runtime) => &runtime.acquisition,
+        ApprovedDownloadArtifact::Model(model) => &model.acquisition,
+    };
+    let client = Client::builder()
+        .redirect(Policy::none())
+        .no_proxy()
+        .connect_timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|_| AcquisitionError::new("download_client_unavailable"))?;
+    let mut current = Url::parse(&acquisition.primary_url)
+        .map_err(|_| AcquisitionError::new("invalid_catalog_url"))?;
+    for _ in 0..=MAX_REDIRECTS {
+        validate_redirect_url(&current, &acquisition.allowed_redirect_hosts)?;
+        let response = client
+            .get(current.clone())
+            .send()
+            .map_err(|_| AcquisitionError::new("download_failed"))?;
+        if response.status().is_redirection() {
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|header| header.to_str().ok())
+                .ok_or_else(|| AcquisitionError::new("redirect_rejected"))?;
+            let next = current
+                .join(location)
+                .map_err(|_| AcquisitionError::new("redirect_rejected"))?;
+            validate_redirect_url(&next, &acquisition.allowed_redirect_hosts)?;
+            current = next;
+            continue;
+        }
+        if !response.status().is_success() {
+            return Err(AcquisitionError::new("download_failed"));
+        }
+        return Ok(response);
+    }
+    Err(AcquisitionError::new("redirect_limit_exceeded"))
+}
+
+fn validate_redirect_url(url: &Url, allowed_hosts: &[String]) -> Result<(), AcquisitionError> {
+    let Some(host) = url.host_str() else {
+        return Err(AcquisitionError::new("redirect_rejected"));
+    };
+    if url.scheme() != "https"
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !allowed_hosts.iter().any(|allowed| allowed == host)
+    {
+        return Err(AcquisitionError::new("redirect_rejected"));
+    }
+    Ok(())
+}
+
+fn validate_content_type(
+    response: &Response,
+    artifact: &ApprovedDownloadArtifact,
+) -> Result<(), AcquisitionError> {
+    let expected = match artifact {
+        ApprovedDownloadArtifact::Runtime(runtime) => runtime.acquisition.content_type.as_deref(),
+        ApprovedDownloadArtifact::Model(model) => model.acquisition.content_type.as_deref(),
+    };
+    let Some(expected) = expected else {
+        return Ok(());
+    };
+    let Some(actual) = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|header| header.to_str().ok())
+    else {
+        return Ok(());
+    };
+    let actual = actual.split(';').next().unwrap_or_default().trim();
+    if actual.eq_ignore_ascii_case(expected) {
+        Ok(())
+    } else {
+        Err(AcquisitionError::new("content_type_mismatch"))
+    }
+}
+
+fn validate_model_partial(
+    path: &Path,
+    model: &ApprovedModelArtifact,
+) -> Result<(), AcquisitionError> {
+    if !model
+        .acquisition
+        .expected_filename
+        .to_ascii_lowercase()
+        .ends_with(".gguf")
+    {
+        return Err(AcquisitionError::new("invalid_model_format"));
+    }
+    let mut magic = [0_u8; 4];
+    File::open(path)
+        .and_then(|mut file| file.read_exact(&mut magic))
+        .map_err(|_| AcquisitionError::new("invalid_model_format"))?;
+    if &magic != b"GGUF" {
+        return Err(AcquisitionError::new("invalid_model_format"));
+    }
+    Ok(())
+}
+
+fn install_model(partial: &Path, destination: &Path) -> Result<(), AcquisitionError> {
+    fs::rename(partial, destination).map_err(|_| AcquisitionError::new("atomic_install_failed"))
+}
+
+fn extract_and_install_runtime(
+    partial: &Path,
+    staging: &Path,
+    destination: &Path,
+    runtime: &ApprovedRuntimeArtifact,
+    cancel_requested: &AtomicBool,
+) -> Result<(), AcquisitionError> {
+    if staging.exists() || destination.exists() {
+        return Err(AcquisitionError::new("conflicting_installed_artifact"));
+    }
+    fs::create_dir(staging).map_err(|_| AcquisitionError::new("staging_create_failed"))?;
+    let result = (|| {
+        let file =
+            File::open(partial).map_err(|_| AcquisitionError::new("invalid_runtime_archive"))?;
+        let mut archive =
+            ZipArchive::new(file).map_err(|_| AcquisitionError::new("invalid_runtime_archive"))?;
+        if archive.is_empty() || archive.len() > MAX_RUNTIME_ARCHIVE_MEMBERS {
+            return Err(AcquisitionError::new("invalid_runtime_archive"));
+        }
+        let required = runtime
+            .required_files
+            .iter()
+            .map(|file| (file.relative_path.to_ascii_lowercase(), file))
+            .collect::<BTreeMap<_, _>>();
+        let mut seen = BTreeSet::new();
+        for index in 0..archive.len() {
+            if cancel_requested.load(Ordering::Acquire) {
+                return Err(AcquisitionError::new("cancelled"));
+            }
+            let mut member = archive
+                .by_index(index)
+                .map_err(|_| AcquisitionError::new("invalid_runtime_archive"))?;
+            let name = member.name().to_string();
+            let folded = safe_zip_member_name(&name)?;
+            if member.is_dir()
+                || member
+                    .unix_mode()
+                    .is_some_and(|mode| (mode & 0o170000) == 0o120000)
+                || !seen.insert(folded.clone())
+            {
+                return Err(AcquisitionError::new("invalid_runtime_archive"));
+            }
+            let Some(expected) = required.get(&folded) else {
+                return Err(AcquisitionError::new("unexpected_runtime_member"));
+            };
+            let output = contained_staging_path(staging, &name)?;
+            let mut output_file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(output)
+                .map_err(|_| AcquisitionError::new("staging_write_failed"))?;
+            std::io::copy(&mut member, &mut output_file)
+                .and_then(|_| output_file.sync_all())
+                .map_err(|_| AcquisitionError::new("staging_write_failed"))?;
+            let path = contained_staging_path(staging, &expected.relative_path)?;
+            let metadata =
+                fs::metadata(&path).map_err(|_| AcquisitionError::new("staging_write_failed"))?;
+            if metadata.len() != expected.bytes
+                || sha256_file(&path, Some(cancel_requested))? != expected.sha256
+            {
+                return Err(AcquisitionError::new("runtime_member_hash_mismatch"));
+            }
+        }
+        if seen.len() != required.len() {
+            return Err(AcquisitionError::new("missing_runtime_member"));
+        }
+        fs::rename(staging, destination)
+            .map_err(|_| AcquisitionError::new("atomic_install_failed"))?;
+        Ok(())
+    })();
+    if result.is_err() && staging.exists() {
+        let _ = fs::remove_dir_all(staging);
+    }
+    result
+}
+
+fn safe_zip_member_name(value: &str) -> Result<String, AcquisitionError> {
+    if value.is_empty()
+        || value.len() > 240
+        || value.starts_with('/')
+        || value.starts_with('\\')
+        || value.contains('\\')
+        || value.contains(':')
+        || value.contains('\0')
+        || value.ends_with('/')
+    {
+        return Err(AcquisitionError::new("invalid_runtime_archive"));
+    }
+    for segment in value.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." || segment.ends_with([' ', '.'])
+        {
+            return Err(AcquisitionError::new("invalid_runtime_archive"));
+        }
+    }
+    Ok(value.to_ascii_lowercase())
+}
+
+fn contained_staging_path(root: &Path, member: &str) -> Result<PathBuf, AcquisitionError> {
+    safe_zip_member_name(member)?;
+    let mut path = root.to_path_buf();
+    for segment in member.split('/') {
+        path.push(segment);
+    }
+    if !path.starts_with(root) {
+        return Err(AcquisitionError::new("invalid_runtime_archive"));
+    }
+    Ok(path)
+}
+
+fn sha256_file(
+    path: &Path,
+    cancel_requested: Option<&AtomicBool>,
+) -> Result<String, AcquisitionError> {
+    let mut file = File::open(path).map_err(|_| AcquisitionError::new("hash_read_failed"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; DOWNLOAD_BUFFER_BYTES];
+    loop {
+        if cancel_requested.is_some_and(|cancel| cancel.load(Ordering::Acquire)) {
+            return Err(AcquisitionError::new("cancelled"));
+        }
+        let read = file
+            .read(&mut buffer)
+            .map_err(|_| AcquisitionError::new("hash_read_failed"))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn remove_installed_artifact(artifact: &ApprovedDownloadArtifact, destination: &Path) {
+    match artifact {
+        ApprovedDownloadArtifact::Runtime(_) if destination.exists() => {
+            let _ = fs::remove_dir_all(destination);
+        }
+        ApprovedDownloadArtifact::Model(_) if destination.exists() => {
+            let _ = fs::remove_file(destination);
+        }
+        _ => {}
+    }
+}
+
+fn remove_owned_file(path: &Path) {
+    if path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(is_owned_partial_name)
+    {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn is_owned_partial_name(value: &str) -> bool {
+    value.strip_suffix(".partial").is_some_and(is_opaque_job_id)
+}
+
+fn is_owned_runtime_staging_name(value: &str) -> bool {
+    value
+        .strip_suffix(".runtime-staging")
+        .is_some_and(is_opaque_job_id)
+}
+
+fn is_opaque_job_id(job_id: &str) -> bool {
+    job_id.len() == 64
+        && job_id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn validate_job_id(value: &str) -> Result<(), BridgeError> {
+    if value.len() != 64
+        || value
+            .bytes()
+            .any(|byte| !(byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+    {
+        return Err(BridgeError::new(
+            "invalid_download_job",
+            "download job id rejected",
+        ));
+    }
+    Ok(())
+}
+
+fn percent(received: u64, expected: u64) -> Option<u8> {
+    if expected == 0 {
+        return None;
+    }
+    Some(((received.saturating_mul(100) / expected).min(100)) as u8)
+}
+
+fn now_utc_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u64::MAX as u128) as u64)
+        .unwrap_or(0)
+}
+
+#[cfg(windows)]
+fn available_space(path: &Path) -> Result<u64, AcquisitionError> {
+    let mut available = 0_u64;
+    let mut total = 0_u64;
+    let mut free = 0_u64;
+    let mut wide: Vec<u16> = OsStr::new(path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let result =
+        unsafe { GetDiskFreeSpaceExW(wide.as_mut_ptr(), &mut available, &mut total, &mut free) };
+    if result == 0 {
+        return Err(AcquisitionError::new("disk_space_unavailable"));
+    }
+    Ok(available)
+}
+
+#[cfg(not(windows))]
+fn available_space(_path: &Path) -> Result<u64, AcquisitionError> {
+    Ok(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::artifact_trust::{
+        AcquisitionArtifactKind, AcquisitionSourceType, ApprovedArtifactAcquisition,
+        ApprovedArtifactCatalog, ApprovedRuntimeFile, CatalogStatus, ManagedArtifactRoots,
+    };
+    use std::sync::atomic::AtomicU64;
+    use zip::write::SimpleFileOptions;
+
+    const TEST_RUNTIME_ID: &str = "test-runtime";
+    const TEST_MODEL_ID: &str = "test-model";
+    const TEST_RUNTIME_BYTES: &[u8] = b"test-runtime";
+    const TEST_MODEL_BYTES: &[u8] = b"GGUFtest-model";
+
+    static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    struct TestWorkspace {
+        root: PathBuf,
+    }
+
+    impl TestWorkspace {
+        fn new() -> Self {
+            let sequence = TEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "localcomet-artifact-acquisition-{}-{}-{sequence}",
+                std::process::id(),
+                now_utc_ms()
+            ));
+            fs::create_dir_all(&root).expect("create test workspace");
+            Self { root }
+        }
+
+        fn roots(&self) -> ManagedArtifactRoots {
+            ManagedArtifactRoots {
+                app_data_root: self.root.clone(),
+                runtime_root: self.root.join("runtimes"),
+                model_root: self.root.join("models"),
+                state_root: self.root.join("state"),
+            }
+        }
+    }
+
+    impl Drop for TestWorkspace {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn sha256_bytes(bytes: &[u8]) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn test_runtime() -> ApprovedRuntimeArtifact {
+        ApprovedRuntimeArtifact {
+            runtime_id: TEST_RUNTIME_ID.into(),
+            provider: "test-provider".into(),
+            release_tag: "b1".into(),
+            platform: "windows".into(),
+            architecture: "x86-64".into(),
+            variant: "cpu".into(),
+            upstream_repository: "test/runtime".into(),
+            upstream_revision: "1111111111111111111111111111111111111111".into(),
+            asset_filename: "test-runtime.zip".into(),
+            asset_bytes: 7,
+            asset_sha256: sha256_bytes(b"archive"),
+            acquisition: ApprovedArtifactAcquisition {
+                artifact_id: TEST_RUNTIME_ID.into(),
+                artifact_kind: AcquisitionArtifactKind::Runtime,
+                source_type: AcquisitionSourceType::ApprovedHttps,
+                primary_url: "https://assets.example.test/test-runtime.zip".into(),
+                allowed_redirect_hosts: vec!["assets.example.test".into()],
+                expected_filename: "test-runtime.zip".into(),
+                expected_bytes: 7,
+                expected_sha256: sha256_bytes(b"archive"),
+                content_type: Some("application/octet-stream".into()),
+                managed_relative_destination: TEST_RUNTIME_ID.into(),
+                public_distribution: false,
+                installer_bundled: false,
+                automatic_download: false,
+                user_confirmation_required: true,
+            },
+            archive_format: "zip".into(),
+            managed_relative_path: TEST_RUNTIME_ID.into(),
+            executable_relative_path: "llama-server.exe".into(),
+            required_files: vec![ApprovedRuntimeFile {
+                relative_path: "llama-server.exe".into(),
+                bytes: TEST_RUNTIME_BYTES.len() as u64,
+                sha256: sha256_bytes(TEST_RUNTIME_BYTES),
+            }],
+            permitted_bind_scope: "loopback-only".into(),
+            supported_api_protocol: "openai-compatible-v1".into(),
+            license_id: "MIT".into(),
+            public_distribution: false,
+            status: CatalogStatus::ApprovedInternalBootstrap,
+        }
+    }
+
+    fn test_model() -> ApprovedModelArtifact {
+        ApprovedModelArtifact {
+            model_id: TEST_MODEL_ID.into(),
+            provider: "test-provider".into(),
+            family: "test-family".into(),
+            display_name: "Test model".into(),
+            format: "GGUF".into(),
+            quantization: "Q4_K_M".into(),
+            upstream_repository: "test/model".into(),
+            upstream_revision: "2222222222222222222222222222222222222222".into(),
+            asset_filename: "test-model.gguf".into(),
+            asset_bytes: TEST_MODEL_BYTES.len() as u64,
+            asset_sha256: sha256_bytes(TEST_MODEL_BYTES),
+            acquisition: ApprovedArtifactAcquisition {
+                artifact_id: TEST_MODEL_ID.into(),
+                artifact_kind: AcquisitionArtifactKind::Model,
+                source_type: AcquisitionSourceType::ApprovedHttps,
+                primary_url: "https://assets.example.test/test-model.gguf".into(),
+                allowed_redirect_hosts: vec!["assets.example.test".into()],
+                expected_filename: "test-model.gguf".into(),
+                expected_bytes: TEST_MODEL_BYTES.len() as u64,
+                expected_sha256: sha256_bytes(TEST_MODEL_BYTES),
+                content_type: Some("application/octet-stream".into()),
+                managed_relative_destination: "test-model/test-model.gguf".into(),
+                public_distribution: false,
+                installer_bundled: false,
+                automatic_download: false,
+                user_confirmation_required: true,
+            },
+            license_id: "Apache-2.0".into(),
+            compatible_runtime_ids: vec![TEST_RUNTIME_ID.into()],
+            managed_relative_path: "test-model/test-model.gguf".into(),
+            public_distribution: false,
+            installer_bundled: false,
+            bootstrap_purpose: "INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION".into(),
+            status: CatalogStatus::ApprovedInternalBootstrap,
+        }
+    }
+
+    fn test_manager() -> (
+        TestWorkspace,
+        ArtifactAcquisitionManager,
+        Arc<ArtifactTrustService>,
+    ) {
+        let workspace = TestWorkspace::new();
+        let catalog = ApprovedArtifactCatalog {
+            schema_version: 1,
+            catalog_id: "localcomet-approved-artifacts".into(),
+            catalog_version: "1.0.0-test".into(),
+            runtimes: vec![test_runtime()],
+            models: vec![test_model()],
+        };
+        let mut bytes = serde_json::to_vec_pretty(&catalog).expect("serialize test catalog");
+        bytes.push(b'\n');
+        let trust = Arc::new(
+            ArtifactTrustService::from_catalog_bytes(&bytes, workspace.roots())
+                .expect("create test trust service"),
+        );
+        let manager = ArtifactAcquisitionManager::new(Arc::clone(&trust));
+        (workspace, manager, trust)
+    }
+
+    fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = File::create(path).expect("create archive");
+        let mut writer = zip::ZipWriter::new(file);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for (name, bytes) in entries {
+            writer
+                .start_file(*name, options)
+                .expect("start archive entry");
+            writer.write_all(bytes).expect("write archive entry");
+        }
+        writer.finish().expect("finish archive");
+    }
+
+    #[test]
+    fn redirect_authority_requires_exact_https_host() {
+        let allowed = vec!["assets.example.test".to_string()];
+        assert!(validate_redirect_url(
+            &Url::parse("https://assets.example.test/download").expect("valid URL"),
+            &allowed,
+        )
+        .is_ok());
+        for value in [
+            "http://assets.example.test/download",
+            "https://other.example.test/download",
+            "https://assets.example.test:8443/download",
+            "https://user@assets.example.test/download",
+        ] {
+            assert!(
+                validate_redirect_url(&Url::parse(value).expect("valid URL"), &allowed).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_archive_members_reject_windows_and_traversal_forms() {
+        assert_eq!(
+            safe_zip_member_name("llama-server.exe").expect("safe member"),
+            "llama-server.exe"
+        );
+        for member in [
+            "../llama-server.exe",
+            "C:/llama-server.exe",
+            "a\\b.dll",
+            "/root.dll",
+        ] {
+            assert!(safe_zip_member_name(member).is_err());
+        }
+    }
+
+    #[test]
+    fn stale_cleanup_names_are_limited_to_opaque_job_resources() {
+        let job_id = "a".repeat(64);
+        assert!(is_owned_partial_name(&format!("{job_id}.partial")));
+        assert!(is_owned_runtime_staging_name(&format!(
+            "{job_id}.runtime-staging"
+        )));
+        assert!(!is_owned_partial_name("model.gguf.partial"));
+        assert!(!is_owned_runtime_staging_name("runtime-staging"));
+    }
+
+    #[test]
+    fn model_validation_rejects_bad_gguf_magic_before_installation() {
+        let workspace = TestWorkspace::new();
+        let partial = workspace.root.join("invalid.partial");
+        fs::write(&partial, b"not-a-gguf").expect("write invalid model");
+
+        let error = validate_model_partial(&partial, &test_model()).expect_err("reject bad magic");
+
+        assert_eq!(error.code, "invalid_model_format");
+    }
+
+    #[test]
+    fn runtime_archive_rejects_traversal_duplicate_and_bad_member_hash() {
+        let workspace = TestWorkspace::new();
+        let cancel = AtomicBool::new(false);
+        for (name, entries, expected_code) in [
+            (
+                "traversal.zip",
+                vec![("../llama-server.exe", TEST_RUNTIME_BYTES)],
+                "invalid_runtime_archive",
+            ),
+            (
+                "duplicate.zip",
+                vec![
+                    ("llama-server.exe", TEST_RUNTIME_BYTES),
+                    ("LLAMA-SERVER.EXE", TEST_RUNTIME_BYTES),
+                ],
+                "invalid_runtime_archive",
+            ),
+            (
+                "bad-hash.zip",
+                vec![("llama-server.exe", b"wrong".as_slice())],
+                "runtime_member_hash_mismatch",
+            ),
+        ] {
+            let archive = workspace.root.join(name);
+            let staging = workspace.root.join(format!("{name}.staging"));
+            let destination = workspace.root.join(format!("{name}.destination"));
+            write_zip(&archive, &entries);
+
+            let error = extract_and_install_runtime(
+                &archive,
+                &staging,
+                &destination,
+                &test_runtime(),
+                &cancel,
+            )
+            .expect_err("reject unsafe archive");
+
+            assert_eq!(error.code, expected_code);
+            assert!(!staging.exists());
+            assert!(!destination.exists());
+        }
+    }
+
+    #[test]
+    fn owned_partial_cleanup_never_targets_an_unrelated_file() {
+        let (workspace, manager, trust) = test_manager();
+        let root = trust.acquisition_root().expect("acquisition root");
+        let job_id = "a".repeat(64);
+        let owned = root.join(format!("{job_id}.partial"));
+        let unrelated = root.join("notes.partial");
+        fs::write(&owned, b"partial").expect("write owned partial");
+        fs::write(&unrelated, b"keep").expect("write unrelated file");
+
+        manager.remove_job_partial(&job_id);
+
+        assert!(!owned.exists());
+        assert!(unrelated.exists());
+        drop(workspace);
+    }
+
+    #[test]
+    fn cancellation_removes_only_the_active_job_partial() {
+        let (_workspace, manager, trust) = test_manager();
+        let root = trust.acquisition_root().expect("acquisition root");
+        let job_id = "c".repeat(64);
+        let partial = root.join(format!("{job_id}.partial"));
+        let unrelated = root.join("user-model.gguf.partial");
+        fs::write(&partial, b"partial").expect("write owned partial");
+        fs::write(&unrelated, b"keep").expect("write unrelated partial");
+
+        let artifact = trust
+            .approved_download_artifact(TEST_MODEL_ID)
+            .expect("approved model");
+        manager.run_job(job_id, artifact, Arc::new(AtomicBool::new(true)));
+
+        assert!(!partial.exists());
+        assert!(unrelated.exists());
+    }
+
+    #[test]
+    fn stale_cleanup_only_removes_owned_job_partials() {
+        let (_workspace, manager, trust) = test_manager();
+        let root = trust.acquisition_root().expect("acquisition root");
+        let owned = root.join(format!("{}.partial", "b".repeat(64)));
+        let unrelated = root.join("user-model.gguf.partial");
+        fs::write(&owned, b"stale").expect("write stale partial");
+        fs::write(&unrelated, b"keep").expect("write unrelated partial");
+
+        manager.cleanup_stale_partials();
+
+        assert!(!owned.exists());
+        assert!(unrelated.exists());
+    }
+
+    #[test]
+    fn start_reuses_valid_artifact_and_rejects_conflicting_or_unknown_artifacts() {
+        let (_workspace, manager, trust) = test_manager();
+        let confirmation = manager
+            .start(TEST_RUNTIME_ID, false)
+            .expect_err("require download confirmation");
+        assert_eq!(confirmation.code, "confirmation_required");
+        let package = trust.roots().runtime_root.join(TEST_RUNTIME_ID);
+        fs::create_dir_all(&package).expect("create runtime package");
+        fs::write(package.join("llama-server.exe"), TEST_RUNTIME_BYTES)
+            .expect("write validated runtime");
+
+        let reused = manager
+            .start(TEST_RUNTIME_ID, true)
+            .expect("reuse valid runtime");
+        assert_eq!(reused.lifecycle, ArtifactDownloadLifecycle::Completed);
+        assert_eq!(reused.received_bytes, reused.expected_bytes);
+        assert_eq!(reused.percent, Some(100));
+
+        let model = trust
+            .approved_download_artifact(TEST_MODEL_ID)
+            .expect("approved model");
+        let model_destination = trust
+            .download_destination(&model)
+            .expect("model destination");
+        fs::create_dir_all(model_destination.parent().expect("model parent"))
+            .expect("create model parent");
+        fs::write(&model_destination, b"conflicting").expect("write conflicting model");
+
+        let conflict = manager
+            .start(TEST_MODEL_ID, true)
+            .expect_err("reject conflicting model");
+        assert_eq!(conflict.code, "conflicting_installed_artifact");
+        let unknown = manager
+            .start("unknown-artifact", true)
+            .expect_err("reject unknown artifact");
+        assert_eq!(unknown.code, "unknown_artifact");
+    }
+
+    #[test]
+    fn duplicate_job_is_returned_and_terminal_state_is_written_once() {
+        let (_workspace, manager, _trust) = test_manager();
+        let state = manager.new_state(
+            TEST_RUNTIME_ID,
+            7,
+            ArtifactDownloadLifecycle::AwaitingConfirmation,
+        );
+        let job_id = state.job_id.clone();
+        {
+            let mut registry = manager.jobs.lock().expect("download registry");
+            registry
+                .active_by_artifact
+                .insert(TEST_RUNTIME_ID.into(), job_id.clone());
+            registry.jobs.insert(
+                job_id.clone(),
+                DownloadJob {
+                    state: state.clone(),
+                    cancel_requested: Arc::new(AtomicBool::new(false)),
+                },
+            );
+        }
+
+        let duplicate = manager
+            .start(TEST_RUNTIME_ID, true)
+            .expect("return existing download job");
+        assert_eq!(duplicate.job_id, job_id);
+        manager.complete(&job_id, ArtifactDownloadLifecycle::Cancelled, None);
+        manager.complete(&job_id, ArtifactDownloadLifecycle::Completed, None);
+
+        assert_eq!(
+            manager.get(&job_id).expect("completed job").lifecycle,
+            ArtifactDownloadLifecycle::Cancelled
+        );
+        assert!(!manager
+            .jobs
+            .lock()
+            .expect("download registry")
+            .active_by_artifact
+            .contains_key(TEST_RUNTIME_ID));
+    }
+}

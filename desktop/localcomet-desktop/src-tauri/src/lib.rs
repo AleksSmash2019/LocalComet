@@ -1,3 +1,4 @@
+mod artifact_acquisition;
 mod artifact_trust;
 mod control_plane;
 mod ipc;
@@ -8,6 +9,10 @@ mod startup;
 mod supervisor;
 mod windows_job;
 
+use artifact_acquisition::{
+    cancel_artifact_download, get_artifact_download_state, list_approved_downloadable_artifacts,
+    remove_managed_model, start_approved_artifact_download, ArtifactAcquisitionManager,
+};
 use artifact_trust::{
     managed_artifact_validation_status, managed_installed_artifacts, managed_model_catalog,
     managed_model_readiness, managed_runtime_catalog, ArtifactTrustService,
@@ -127,6 +132,9 @@ pub fn run() {
             app.manage(Arc::clone(&supervisor));
             app.manage(bridge);
             app.manage(Arc::clone(&artifact_trust));
+            app.manage(Arc::new(ArtifactAcquisitionManager::new(Arc::clone(
+                &artifact_trust,
+            ))));
             app.manage(Arc::new(ManagedRuntimeSupervisor::new(artifact_trust)));
             let Some(window) = app.get_webview_window("main") else {
                 let _ = supervisor.shutdown();
@@ -187,6 +195,11 @@ pub fn run() {
             managed_installed_artifacts,
             managed_artifact_validation_status,
             managed_model_readiness,
+            list_approved_downloadable_artifacts,
+            start_approved_artifact_download,
+            get_artifact_download_state,
+            cancel_artifact_download,
+            remove_managed_model,
             managed_runtime_start,
             managed_runtime_stop,
             managed_runtime_logs

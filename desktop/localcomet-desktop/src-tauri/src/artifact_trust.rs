@@ -70,6 +70,8 @@ pub struct ApprovedArtifactAcquisition {
     pub expected_sha256: String,
     pub content_type: Option<String>,
     pub managed_relative_destination: String,
+    pub public_distribution: bool,
+    pub installer_bundled: bool,
     pub automatic_download: bool,
     pub user_confirmation_required: bool,
 }
@@ -371,6 +373,12 @@ pub(crate) struct ValidatedRuntimeModel {
     pub directory_handles: Vec<File>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) enum ApprovedDownloadArtifact {
+    Runtime(ApprovedRuntimeArtifact),
+    Model(ApprovedModelArtifact),
+}
+
 pub struct ArtifactTrustService {
     catalog: ApprovedArtifactCatalog,
     catalog_digest: String,
@@ -385,7 +393,7 @@ impl ArtifactTrustService {
         )
     }
 
-    fn from_catalog_bytes(
+    pub(crate) fn from_catalog_bytes(
         bytes: &[u8],
         roots: ManagedArtifactRoots,
     ) -> Result<Self, ArtifactTrustError> {
@@ -405,6 +413,59 @@ impl ArtifactTrustService {
 
     pub(crate) fn guard_runtime_state_root(&self) -> Result<Vec<File>, ArtifactTrustError> {
         open_directory_guard_chain(&self.roots.app_data_root, &self.roots.state_root, true)
+    }
+
+    pub(crate) fn approved_download_artifact(
+        &self,
+        artifact_id: &str,
+    ) -> Result<ApprovedDownloadArtifact, ArtifactTrustError> {
+        validate_artifact_id(artifact_id)?;
+        if let Some(runtime) = self
+            .catalog
+            .runtimes
+            .iter()
+            .find(|runtime| runtime.runtime_id == artifact_id)
+        {
+            return Ok(ApprovedDownloadArtifact::Runtime(runtime.clone()));
+        }
+        if let Some(model) = self
+            .catalog
+            .models
+            .iter()
+            .find(|model| model.model_id == artifact_id)
+        {
+            return Ok(ApprovedDownloadArtifact::Model(model.clone()));
+        }
+        Err(ArtifactTrustError::new(
+            "unknown_artifact",
+            "unknown approved artifact id",
+        ))
+    }
+
+    pub(crate) fn acquisition_root(&self) -> Result<PathBuf, ArtifactTrustError> {
+        let root = resolve_contained(&self.roots.app_data_root, "LocalComet/acquisition")?;
+        let _guards = open_directory_guard_chain(&self.roots.app_data_root, &root, true)?;
+        Ok(root)
+    }
+
+    pub(crate) fn download_destination(
+        &self,
+        artifact: &ApprovedDownloadArtifact,
+    ) -> Result<PathBuf, ArtifactTrustError> {
+        let (root, relative) = match artifact {
+            ApprovedDownloadArtifact::Runtime(runtime) => {
+                (&self.roots.runtime_root, &runtime.managed_relative_path)
+            }
+            ApprovedDownloadArtifact::Model(model) => {
+                (&self.roots.model_root, &model.managed_relative_path)
+            }
+        };
+        let destination = resolve_contained(root, relative)?;
+        let parent = destination
+            .parent()
+            .ok_or_else(|| ArtifactTrustError::new("invalid_path", "managed parent unavailable"))?;
+        let _guards = open_directory_guard_chain(&self.roots.app_data_root, parent, true)?;
+        Ok(destination)
     }
 
     pub fn runtime_catalog(&self) -> ManagedRuntimeCatalog {
@@ -1093,12 +1154,14 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
         validate_relative_windows_path(&runtime.managed_relative_path)?;
         validate_acquisition(
             &runtime.acquisition,
-            &runtime.runtime_id,
-            AcquisitionArtifactKind::Runtime,
-            &runtime.asset_filename,
-            runtime.asset_bytes,
-            &runtime.asset_sha256,
-            &runtime.managed_relative_path,
+            ExpectedAcquisition {
+                artifact_id: &runtime.runtime_id,
+                artifact_kind: AcquisitionArtifactKind::Runtime,
+                filename: &runtime.asset_filename,
+                bytes: runtime.asset_bytes,
+                sha256: &runtime.asset_sha256,
+                destination: &runtime.managed_relative_path,
+            },
             &mut acquisition_sources,
         )?;
         insert_disjoint_managed_path(&mut runtime_locations, &runtime.managed_relative_path)?;
@@ -1197,12 +1260,14 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
         validate_relative_windows_path(&model.managed_relative_path)?;
         validate_acquisition(
             &model.acquisition,
-            &model.model_id,
-            AcquisitionArtifactKind::Model,
-            &model.asset_filename,
-            model.asset_bytes,
-            &model.asset_sha256,
-            &model.managed_relative_path,
+            ExpectedAcquisition {
+                artifact_id: &model.model_id,
+                artifact_kind: AcquisitionArtifactKind::Model,
+                filename: &model.asset_filename,
+                bytes: model.asset_bytes,
+                sha256: &model.asset_sha256,
+                destination: &model.managed_relative_path,
+            },
             &mut acquisition_sources,
         )?;
         insert_disjoint_managed_path(&mut model_locations, &model.managed_relative_path)?;
@@ -1244,24 +1309,30 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
     Ok(())
 }
 
+struct ExpectedAcquisition<'a> {
+    artifact_id: &'a str,
+    artifact_kind: AcquisitionArtifactKind,
+    filename: &'a str,
+    bytes: u64,
+    sha256: &'a str,
+    destination: &'a str,
+}
+
 fn validate_acquisition(
     acquisition: &ApprovedArtifactAcquisition,
-    artifact_id: &str,
-    expected_kind: AcquisitionArtifactKind,
-    expected_filename: &str,
-    expected_bytes: u64,
-    expected_sha256: &str,
-    expected_destination: &str,
+    expected: ExpectedAcquisition<'_>,
     identities: &mut BTreeSet<String>,
 ) -> Result<(), ArtifactTrustError> {
     validate_artifact_id(&acquisition.artifact_id)?;
-    if acquisition.artifact_id != artifact_id
-        || acquisition.artifact_kind != expected_kind
+    if acquisition.artifact_id != expected.artifact_id
+        || acquisition.artifact_kind != expected.artifact_kind
         || acquisition.source_type != AcquisitionSourceType::ApprovedHttps
-        || acquisition.expected_filename != expected_filename
-        || acquisition.expected_bytes != expected_bytes
-        || acquisition.expected_sha256 != expected_sha256
-        || acquisition.managed_relative_destination != expected_destination
+        || acquisition.expected_filename != expected.filename
+        || acquisition.expected_bytes != expected.bytes
+        || acquisition.expected_sha256 != expected.sha256
+        || acquisition.managed_relative_destination != expected.destination
+        || acquisition.public_distribution
+        || acquisition.installer_bundled
         || acquisition.automatic_download
         || !acquisition.user_confirmation_required
     {
@@ -1285,7 +1356,7 @@ fn validate_acquisition(
     let mut prior_host = None::<&str>;
     for host in &acquisition.allowed_redirect_hosts {
         validate_allowed_redirect_host(host)?;
-        if prior_host.is_some_and(|prior| prior >= host) {
+        if prior_host.is_some_and(|prior| prior >= host.as_str()) {
             return Err(ArtifactTrustError::new(
                 "invalid_catalog",
                 "redirect hosts not sorted or unique",
@@ -1526,7 +1597,10 @@ fn insert_disjoint_managed_path(
     Ok(())
 }
 
-fn resolve_contained(root: &Path, relative: &str) -> Result<PathBuf, ArtifactTrustError> {
+pub(crate) fn resolve_contained(
+    root: &Path,
+    relative: &str,
+) -> Result<PathBuf, ArtifactTrustError> {
     validate_relative_windows_path(relative)?;
     let mut path = root.to_path_buf();
     for segment in relative.split('/') {
@@ -1955,7 +2029,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     const EMBEDDED_CATALOG_SHA256: &str =
-        "4cfe2f2c7f6d887583fa8ab65c5f872a5f04b2ea2bca9397b33500bdf22b3080";
+        "470bd873ba343ac35e24171e70128c0a6d18e1211ee0fa1293f0e57b773ddb3d";
     const TEST_RUNTIME_BYTES: &[u8] = b"test-runtime";
     const TEST_MODEL_BYTES: &[u8] = b"GGUFtest-model";
 
@@ -2017,6 +2091,8 @@ mod tests {
                 expected_sha256: sha256_bytes(b"archive"),
                 content_type: Some("application/octet-stream".into()),
                 managed_relative_destination: managed_path.into(),
+                public_distribution: false,
+                installer_bundled: false,
                 automatic_download: false,
                 user_confirmation_required: true,
             },
@@ -2060,6 +2136,8 @@ mod tests {
                 expected_sha256: sha256_bytes(TEST_MODEL_BYTES),
                 content_type: Some("application/octet-stream".into()),
                 managed_relative_destination: "test-model/test-model.gguf".into(),
+                public_distribution: false,
+                installer_bundled: false,
                 automatic_download: false,
                 user_confirmation_required: true,
             },
