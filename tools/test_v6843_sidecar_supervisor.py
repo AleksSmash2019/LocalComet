@@ -40,6 +40,241 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def rust_tokens(source: str) -> tuple[str, ...]:
+    tokens: list[str] = []
+    index = 0
+    length = len(source)
+    while index < length:
+        character = source[index]
+        if character.isspace():
+            index += 1
+            continue
+        if source.startswith("//", index):
+            newline = source.find("\n", index + 2)
+            index = length if newline < 0 else newline + 1
+            continue
+        if source.startswith("/*", index):
+            depth = 1
+            index += 2
+            while index < length and depth:
+                if source.startswith("/*", index):
+                    depth += 1
+                    index += 2
+                elif source.startswith("*/", index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            continue
+        if character == '"':
+            start = index
+            index += 1
+            while index < length:
+                if source[index] == "\\":
+                    index += 2
+                elif source[index] == '"':
+                    index += 1
+                    break
+                else:
+                    index += 1
+            tokens.append(source[start:index])
+            continue
+        if character == "r" and index + 1 < length and source[index + 1] in {'"', "#"}:
+            start = index
+            marker = index + 1
+            while marker < length and source[marker] == "#":
+                marker += 1
+            if marker < length and source[marker] == '"':
+                hashes = marker - index - 1
+                terminator = '"' + ("#" * hashes)
+                end = source.find(terminator, marker + 1)
+                index = length if end < 0 else end + len(terminator)
+                tokens.append(source[start:index])
+                continue
+        if character.isalpha() or character == "_":
+            start = index
+            index += 1
+            while index < length and (source[index].isalnum() or source[index] == "_"):
+                index += 1
+            tokens.append(source[start:index])
+            continue
+        tokens.append(character)
+        index += 1
+    return tuple(tokens)
+
+
+def contains_token_sequence(tokens: tuple[str, ...], sequence: tuple[str, ...]) -> bool:
+    width = len(sequence)
+    return width > 0 and any(tokens[index : index + width] == sequence for index in range(len(tokens) - width + 1))
+
+
+def rust_function_parts(source: str, name: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    tokens = rust_tokens(source)
+    candidates: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
+    for index in range(len(tokens) - 2):
+        if tokens[index : index + 3] != ("fn", name, "("):
+            continue
+        cursor = index + 2
+        depth = 0
+        close = None
+        while cursor < len(tokens):
+            if tokens[cursor] == "(":
+                depth += 1
+            elif tokens[cursor] == ")":
+                depth -= 1
+                if depth == 0:
+                    close = cursor
+                    break
+            cursor += 1
+        if close is None:
+            continue
+        opening = close + 1
+        while opening < len(tokens) and tokens[opening] != "{":
+            opening += 1
+        if opening == len(tokens):
+            continue
+        cursor = opening
+        depth = 0
+        closing = None
+        while cursor < len(tokens):
+            if tokens[cursor] == "{":
+                depth += 1
+            elif tokens[cursor] == "}":
+                depth -= 1
+                if depth == 0:
+                    closing = cursor
+                    break
+            cursor += 1
+        if closing is not None:
+            candidates.append((tokens[index + 3 : close], tokens[opening + 1 : closing]))
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def startup_log_contract_errors(
+    startup_source: str,
+    app_data_root_source: str,
+    lib_source: str,
+    artifact_trust_source: str,
+) -> tuple[str, ...]:
+    errors: list[str] = []
+    startup_parts = rust_function_parts(startup_source, "startup_log_path")
+    if startup_parts is None:
+        errors.append("startup_log_path must have exactly one implementation")
+    else:
+        arguments, body = startup_parts
+        if arguments:
+            errors.append("startup_log_path must accept no caller-supplied path")
+        if not contains_token_sequence(
+            body,
+            ("app_data_root", ":", ":", "resolve_startup_application_data_root", "(", ")"),
+        ):
+            errors.append("startup log must use the shared startup application-data-root resolver")
+        if not contains_token_sequence(
+            body,
+            ("root", ".", "join", "(", '"logs"', ")", ".", "join", "(", '"startup.log"', ")"),
+        ):
+            errors.append("startup log must append exactly logs/startup.log to the resolved root")
+        startup_strings = tuple(token for token in body if token.count('"') > 0)
+        if body.count("join") != 2 or startup_strings != ('"logs"', '"startup.log"'):
+            errors.append("startup log derivation must contain no additional path components")
+        if '"LOCALAPPDATA"' in body or '"LocalComet"' in body:
+            errors.append("startup log must not independently reconstruct the normal profile")
+
+    application_parts = rust_function_parts(app_data_root_source, "resolve_application_data_root")
+    startup_root_parts = rust_function_parts(app_data_root_source, "resolve_startup_application_data_root")
+    explicit_parts = rust_function_parts(app_data_root_source, "explicit_application_data_root")
+    if application_parts is None or startup_root_parts is None or explicit_parts is None:
+        errors.append("application-data-root resolver functions are incomplete or ambiguous")
+    else:
+        _, application_body = application_parts
+        _, startup_root_body = startup_root_parts
+        _, explicit_body = explicit_parts
+        shared_resolution = ("explicit_application_data_root", "(", ")", "?")
+        if not contains_token_sequence(application_body, shared_resolution) or not contains_token_sequence(
+            startup_root_body, shared_resolution
+        ):
+            errors.append("product and startup roots must share explicit override validation")
+        if not contains_token_sequence(
+            application_body,
+            ("Some", "(", "root", ")", "=", ">", "Ok", "(", "root", ")"),
+        ) or not contains_token_sequence(
+            application_body,
+            ("None", "=", ">", "Ok", "(", "default_local_data_dir", ".", "join", "(", '"LocalComet"', ")", ")"),
+        ):
+            errors.append("product root must select the override or default local data plus LocalComet")
+        if not contains_token_sequence(
+            startup_root_body,
+            ("Some", "(", "root", ")", "=", ">", "Ok", "(", "Some", "(", "root", ")", ")"),
+        ) or not contains_token_sequence(
+            startup_root_body,
+            ("None", "=", ">", "Ok", "(", "env", ":", ":", "var_os", "(", '"LOCALAPPDATA"', ")"),
+        ) or not contains_token_sequence(
+            startup_root_body,
+            ("base", ".", "join", "(", '"LocalComet"', ")"),
+        ):
+            errors.append("default startup root must remain LOCALAPPDATA plus LocalComet")
+        required_override_sequences = (
+            ("env", ":", ":", "var_os", "(", "APPLICATION_DATA_ROOT_OVERRIDE", ")"),
+            ("if", "value", ".", "is_empty", "(", ")"),
+            ("ApplicationDataRootError", ":", ":", "Empty"),
+            ("if", "!", "root", ".", "is_absolute", "(", ")"),
+            ("ApplicationDataRootError", ":", ":", "Relative"),
+            ("if", "!", "is_local_filesystem_path", "(", "&", "root", ")"),
+            ("ApplicationDataRootError", ":", ":", "NonLocal"),
+        )
+        if not all(contains_token_sequence(explicit_body, sequence) for sequence in required_override_sequences):
+            errors.append("empty, relative, and nonlocal overrides must fail without fallback")
+
+    lib_tokens = rust_tokens(lib_source)
+    artifact_tokens = rust_tokens(artifact_trust_source)
+    required_alignment = (
+        (
+            lib_tokens,
+            ("app_data_root", ":", ":", "resolve_application_data_root", "(", "&", "local_data_dir", ")"),
+        ),
+        (
+            lib_tokens,
+            (
+                "Err", "(", "error", ")", "=", ">", "{",
+                "startup", ":", ":", "report_application_data_root_failure", "(", "error", ")", ";",
+                "app", ".", "handle", "(", ")", ".", "exit", "(", "1", ")", ";",
+                "return", "Ok", "(", "(", ")", ")", ";", "}",
+            ),
+        ),
+        (
+            lib_tokens,
+            ("ArtifactTrustService", ":", ":", "production", "(", "&", "application_data_root", ")"),
+        ),
+        (
+            lib_tokens,
+            ("ArtifactAcquisitionManager", ":", ":", "new", "(", "Arc", ":", ":", "clone", "(", "&", "artifact_trust"),
+        ),
+        (
+            lib_tokens,
+            ("ManagedRuntimeSupervisor", ":", ":", "new", "(", "artifact_trust", ")"),
+        ),
+        (
+            artifact_tokens,
+            ("ManagedArtifactRoots", ":", ":", "from_application_data_root", "(", "application_data_root", ")"),
+        ),
+        (
+            artifact_tokens,
+            ("runtime_root", ":", "application_data_root", ".", "join", "(", '"runtimes"', ")"),
+        ),
+        (
+            artifact_tokens,
+            ("model_root", ":", "application_data_root", ".", "join", "(", '"models"', ")"),
+        ),
+        (
+            artifact_tokens,
+            ("resolve_contained", "(", "&", "self", ".", "roots", ".", "app_data_root", ",", '"acquisition"', ")"),
+        ),
+    )
+    if not all(contains_token_sequence(tokens, sequence) for tokens, sequence in required_alignment):
+        errors.append("model, runtime, acquisition, and startup roots must share application-data authority")
+    return tuple(errors)
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest().upper()
 
@@ -355,6 +590,8 @@ def run_runner_transcript() -> None:
 def run_source_scans() -> None:
     runtime_text = read(RUNTIME)
     runner_text = read(RUNNER)
+    app_data_root_text = read(TAURI_SRC / "app_data_root.rs")
+    artifact_trust_text = read(TAURI_SRC / "artifact_trust.rs")
     lib_text = read(TAURI_SRC / "lib.rs")
     ipc_text = read(TAURI_SRC / "ipc.rs")
     single_instance_text = read(TAURI_SRC / "single_instance.rs")
@@ -446,7 +683,13 @@ def run_source_scans() -> None:
     check("CreateMutexW" in single_instance_text, "single-instance mutex is missing")
     check("ERROR_ALREADY_EXISTS" in single_instance_text, "duplicate-instance detection is missing")
     check("MessageBoxW" in startup_text, "native startup failure dialog is missing")
-    check("%LOCALAPPDATA%\\LocalComet\\logs\\startup.log" in startup_text, "sanitized startup log path is missing")
+    startup_log_errors = startup_log_contract_errors(
+        startup_text,
+        app_data_root_text,
+        lib_text,
+        artifact_trust_text,
+    )
+    check(not startup_log_errors, "; ".join(startup_log_errors))
     check("C:\\Users\\" not in startup_text, "startup handling contains a machine-specific path")
 
     check('PYTHON_ISOLATED_ARG: &str = "-I"' in supervisor_text, "isolated Python arg not fixed")
@@ -463,6 +706,115 @@ def run_source_scans() -> None:
     check("wait_bounded" in supervisor_text and "wait_bounded" in windows_job_text, "bounded process wait missing")
     check("INFINITE" not in windows_job_text, "unbounded Windows process wait remains")
     check("snapshot" in supervisor_text, "supervisor snapshot missing")
+
+
+def run_startup_log_scan_regressions() -> None:
+    startup_text = read(TAURI_SRC / "startup.rs")
+    app_data_root_text = read(TAURI_SRC / "app_data_root.rs")
+    lib_text = read(TAURI_SRC / "lib.rs")
+    artifact_trust_text = read(TAURI_SRC / "artifact_trust.rs")
+    check(
+        not startup_log_contract_errors(startup_text, app_data_root_text, lib_text, artifact_trust_text),
+        "current shared-root startup implementation must pass",
+    )
+    startup_literals = set(rust_tokens(startup_text))
+    obsolete_literals = {
+        '"%LOCALAPPDATA%\\\\LocalComet\\\\logs\\\\startup.log"',
+        'r"%LOCALAPPDATA%\\LocalComet\\logs\\startup.log"',
+    }
+    check(
+        startup_literals.isdisjoint(obsolete_literals),
+        "obsolete hard-coded startup path must not be required as implementation text",
+    )
+
+    hard_coded_startup = r'''
+fn startup_log_path() -> Option<PathBuf> {
+    Some(PathBuf::from(r"%LOCALAPPDATA%\LocalComet\logs\startup.log"))
+}
+'''
+    check(
+        bool(startup_log_contract_errors(hard_coded_startup, app_data_root_text, lib_text, artifact_trust_text)),
+        "hard-coded normal-profile startup log must be rejected",
+    )
+    independent_localappdata = r'''
+fn startup_log_path() -> Option<PathBuf> {
+    env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .map(|root| root.join("LocalComet").join("logs").join("startup.log"))
+}
+'''
+    check(
+        bool(
+            startup_log_contract_errors(
+                independent_localappdata,
+                app_data_root_text,
+                lib_text,
+                artifact_trust_text,
+            )
+        ),
+        "independent LOCALAPPDATA startup resolver must be rejected",
+    )
+    comment_only = r'''
+fn startup_log_path() -> Option<PathBuf> {
+    // app_data_root::resolve_startup_application_data_root()
+    /* root.join("logs").join("startup.log") */
+    None
+}
+'''
+    check(
+        bool(startup_log_contract_errors(comment_only, app_data_root_text, lib_text, artifact_trust_text)),
+        "comment-only shared-root markers must be rejected",
+    )
+    check(
+        bool(startup_log_contract_errors(startup_text, app_data_root_text, "", artifact_trust_text)),
+        "root alignment evidence must remain mandatory",
+    )
+    broken_failure_path = lib_text.replace(
+        "startup::report_application_data_root_failure(error);",
+        "let _ = error;",
+        1,
+    )
+    check(
+        bool(
+            startup_log_contract_errors(
+                startup_text,
+                app_data_root_text,
+                broken_failure_path,
+                artifact_trust_text,
+            )
+        ),
+        "invalid overrides must fail explicitly without normal-profile fallback",
+    )
+
+    broken_default_root = app_data_root_text.replace(
+        'env::var_os("LOCALAPPDATA")',
+        'env::var_os("LOCALCOMET_UNRELATED_ROOT")',
+        1,
+    )
+    check(
+        bool(startup_log_contract_errors(startup_text, broken_default_root, lib_text, artifact_trust_text)),
+        "default Windows LOCALAPPDATA behavior must remain required",
+    )
+    broken_override_validation = app_data_root_text.replace(
+        "if value.is_empty() {",
+        "if false {",
+        1,
+    ).replace(
+        "if !root.is_absolute() {",
+        "if false {",
+        1,
+    )
+    check(
+        bool(
+            startup_log_contract_errors(
+                startup_text,
+                broken_override_validation,
+                lib_text,
+                artifact_trust_text,
+            )
+        ),
+        "empty and relative overrides must remain rejected",
+    )
 
 
 def run_manifest_checks() -> None:
@@ -492,9 +844,17 @@ def run_repo_guard_checks() -> None:
 
 def main() -> None:
     start = time.monotonic()
+    if sys.argv[1:]:
+        if sys.argv[1:] != ["--startup-log-scan-only"]:
+            raise SystemExit("usage: test_v6843_sidecar_supervisor.py [--startup-log-scan-only]")
+        run_startup_log_scan_regressions()
+        elapsed = time.monotonic() - start
+        print(f"ALL STARTUP LOG PACKAGING-SCAN TESTS PASSED ({CHECK_COUNT} checks, {elapsed:.2f}s)")
+        return
     run_runtime_transcript()
     run_runner_transcript()
     run_source_scans()
+    run_startup_log_scan_regressions()
     run_manifest_checks()
     run_repo_guard_checks()
     elapsed = time.monotonic() - start
