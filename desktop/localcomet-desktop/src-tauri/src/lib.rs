@@ -1,3 +1,4 @@
+mod app_data_root;
 mod artifact_acquisition;
 mod artifact_trust;
 mod control_plane;
@@ -78,7 +79,16 @@ pub fn run() {
                     return Ok(());
                 }
             };
-            let artifact_trust = match ArtifactTrustService::production(&local_data_dir) {
+            let application_data_root =
+                match app_data_root::resolve_application_data_root(&local_data_dir) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        startup::report_application_data_root_failure(error);
+                        app.handle().exit(1);
+                        return Ok(());
+                    }
+                };
+            let artifact_trust = match ArtifactTrustService::production(&application_data_root) {
                 Ok(service) => Arc::new(service),
                 Err(_) => {
                     startup::report_failure(startup::StartupPhase::BackendStart, "LC_START_101");

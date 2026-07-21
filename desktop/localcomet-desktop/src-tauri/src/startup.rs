@@ -1,9 +1,10 @@
+use crate::app_data_root::{self, ApplicationDataRootError, APPLICATION_DATA_ROOT_OVERRIDE};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const STARTUP_LOG_DISPLAY_PATH: &str = r"%LOCALAPPDATA%\LocalComet\logs\startup.log";
+pub const STARTUP_LOG_DISPLAY_PATH: &str = r"<LocalComet application-data root>\logs\startup.log";
 
 #[derive(Clone, Copy, Debug)]
 pub enum StartupPhase {
@@ -63,6 +64,18 @@ pub fn report_failure(phase: StartupPhase, code: &'static str) {
     show_native_failure(&failure_message(phase, code));
 }
 
+pub fn report_application_data_root_failure(error: ApplicationDataRootError) {
+    show_native_failure(&application_data_root_failure_message(error));
+}
+
+fn application_data_root_failure_message(error: ApplicationDataRootError) -> String {
+    format!(
+        "LocalComet could not start.\n\nPhase: packaged application-data root validation\nCode: {}\n\n{} must be a nonempty absolute local directory path. LocalComet did not fall back to the normal profile.\n\nClose safely: Select OK, correct the launch environment, and try LocalComet again.",
+        error.code(),
+        APPLICATION_DATA_ROOT_OVERRIDE,
+    )
+}
+
 fn failure_message(phase: StartupPhase, code: &str) -> String {
     format!(
         "LocalComet could not start.\n\nPhase: {}\nCode: {}\n\nRetry: It is safe to close this message and try LocalComet again. If the failure repeats, reinstall LocalComet using the approved installer.\n\nLog: {}\n\nClose safely: Select OK. Any managed child process will be stopped before the application exits.",
@@ -73,9 +86,10 @@ fn failure_message(phase: StartupPhase, code: &str) -> String {
 }
 
 fn startup_log_path() -> Option<PathBuf> {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .map(|base| base.join("LocalComet").join("logs").join("startup.log"))
+    app_data_root::resolve_startup_application_data_root()
+        .ok()
+        .flatten()
+        .map(|root| root.join("logs").join("startup.log"))
 }
 
 fn safe_token(value: &str) -> String {
@@ -132,5 +146,13 @@ mod tests {
     #[test]
     fn log_tokens_reject_path_and_control_characters() {
         assert_eq!(safe_token("code\r\nC:\\private"), "codeCprivate");
+    }
+
+    #[test]
+    fn application_data_root_failure_is_explicit_and_does_not_echo_paths() {
+        let message = application_data_root_failure_message(ApplicationDataRootError::Relative);
+        assert!(message.contains("LOCALCOMET_APP_DATA_ROOT"));
+        assert!(message.contains("relative_app_data_root_override"));
+        assert!(!message.contains("C:\\Users"));
     }
 }

@@ -1970,6 +1970,22 @@ mod tests {
     }
 
     #[test]
+    fn runtime_args_keep_model_and_state_paths_inside_the_explicit_application_root() {
+        let application_root = std::env::temp_dir()
+            .join("localcomet-managed-runtime-override")
+            .join("LocalComet");
+        let model = application_root
+            .join("models")
+            .join("approved-model")
+            .join("approved-model.gguf");
+        let key = application_root.join("runtime-state").join("key-test.txt");
+        let args = runtime_args(&model, 12345, &key, "approved-model");
+
+        assert_eq!(args[1], model.into_os_string());
+        assert_eq!(args[7], key.into_os_string());
+    }
+
+    #[test]
     fn sanitized_environment_removes_proxy_llama_and_hf_names() {
         let env = sanitized_runtime_environment();
         let keys: Vec<String> = env

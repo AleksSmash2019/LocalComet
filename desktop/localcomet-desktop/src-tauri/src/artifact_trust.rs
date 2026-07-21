@@ -153,13 +153,12 @@ pub(crate) struct ManagedArtifactRoots {
 }
 
 impl ManagedArtifactRoots {
-    pub(crate) fn from_local_data_dir(local_data_dir: &Path) -> Self {
-        let localcomet = local_data_dir.join("LocalComet");
+    pub(crate) fn from_application_data_root(application_data_root: &Path) -> Self {
         Self {
-            app_data_root: local_data_dir.to_path_buf(),
-            runtime_root: localcomet.join("runtimes").join("llama.cpp"),
-            model_root: localcomet.join("models"),
-            state_root: localcomet.join("runtime-state"),
+            app_data_root: application_data_root.to_path_buf(),
+            runtime_root: application_data_root.join("runtimes").join("llama.cpp"),
+            model_root: application_data_root.join("models"),
+            state_root: application_data_root.join("runtime-state"),
         }
     }
 }
@@ -386,10 +385,10 @@ pub struct ArtifactTrustService {
 }
 
 impl ArtifactTrustService {
-    pub fn production(local_data_dir: &Path) -> Result<Self, ArtifactTrustError> {
+    pub fn production(application_data_root: &Path) -> Result<Self, ArtifactTrustError> {
         Self::from_catalog_bytes(
             CATALOG_BYTES,
-            ManagedArtifactRoots::from_local_data_dir(local_data_dir),
+            ManagedArtifactRoots::from_application_data_root(application_data_root),
         )
     }
 
@@ -443,7 +442,7 @@ impl ArtifactTrustService {
     }
 
     pub(crate) fn acquisition_root(&self) -> Result<PathBuf, ArtifactTrustError> {
-        let root = resolve_contained(&self.roots.app_data_root, "LocalComet/acquisition")?;
+        let root = resolve_contained(&self.roots.app_data_root, "acquisition")?;
         let _guards = open_directory_guard_chain(&self.roots.app_data_root, &root, true)?;
         Ok(root)
     }
@@ -2204,6 +2203,99 @@ mod tests {
         path
     }
 
+    #[test]
+    fn application_data_root_anchors_runtime_model_state_and_acquisition_paths() {
+        let workspace = TestWorkspace::new();
+        let application_root = workspace.root.join("isolated-profile").join("LocalComet");
+        fs::create_dir_all(&application_root).expect("create isolated application root");
+        let catalog = test_catalog();
+        let service = ArtifactTrustService::from_catalog_bytes(
+            &canonical_bytes(&catalog),
+            ManagedArtifactRoots::from_application_data_root(&application_root),
+        )
+        .expect("create isolated trust service");
+        let runtime = service
+            .approved_download_artifact("test-runtime")
+            .expect("approved runtime");
+        let model = service
+            .approved_download_artifact("test-model")
+            .expect("approved model");
+
+        assert_eq!(service.roots().app_data_root, application_root);
+        assert_eq!(
+            service.roots().runtime_root,
+            service
+                .roots()
+                .app_data_root
+                .join("runtimes")
+                .join("llama.cpp")
+        );
+        assert_eq!(
+            service.roots().model_root,
+            service.roots().app_data_root.join("models")
+        );
+        assert_eq!(
+            service.roots().state_root,
+            service.roots().app_data_root.join("runtime-state")
+        );
+        assert_eq!(
+            service.acquisition_root().expect("acquisition root"),
+            service.roots().app_data_root.join("acquisition")
+        );
+        assert!(service
+            .download_destination(&runtime)
+            .expect("runtime destination")
+            .starts_with(&service.roots().app_data_root));
+        assert!(service
+            .download_destination(&model)
+            .expect("model destination")
+            .starts_with(&service.roots().app_data_root));
+    }
+
+    #[test]
+    fn isolated_model_root_neither_discovers_nor_targets_a_default_profile_model() {
+        let workspace = TestWorkspace::new();
+        let default_root = workspace.root.join("default-profile").join("LocalComet");
+        let isolated_root = workspace.root.join("isolated-profile").join("LocalComet");
+        let catalog = test_catalog();
+        let default_model = default_root
+            .join("models")
+            .join("test-model")
+            .join("test-model.gguf");
+        fs::create_dir_all(default_model.parent().expect("default model parent"))
+            .expect("create default model parent");
+        fs::write(&default_model, TEST_MODEL_BYTES).expect("write default model fixture");
+        fs::create_dir_all(&isolated_root).expect("create isolated root");
+        let service = ArtifactTrustService::from_catalog_bytes(
+            &canonical_bytes(&catalog),
+            ManagedArtifactRoots::from_application_data_root(&isolated_root),
+        )
+        .expect("create isolated trust service");
+        let model = service
+            .approved_download_artifact("test-model")
+            .expect("approved model");
+        let removal_destination = service
+            .download_destination(&model)
+            .expect("removal destination");
+
+        assert_eq!(
+            service
+                .artifact_validation_status("test-model")
+                .expect("model validation")
+                .installation_status,
+            InstallationStatus::NotInstalled
+        );
+        assert!(default_model.is_file());
+        assert_eq!(
+            removal_destination,
+            isolated_root
+                .join("models")
+                .join("test-model")
+                .join("test-model.gguf")
+        );
+        assert!(!removal_destination.starts_with(&default_root));
+    }
+
     fn assert_catalog_invalid(catalog: &ApprovedArtifactCatalog) {
         assert!(validate_catalog(catalog).is_err());
     }
@@ -2616,7 +2708,8 @@ mod tests {
     #[ignore = "requires the owner-provisioned UP05-WP00 bootstrap artifacts"]
     fn provisioned_bootstrap_is_discovered_only_through_the_catalog() {
         let local_data = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA is required");
-        let service = ArtifactTrustService::production(Path::new(&local_data))
+        let application_data_root = Path::new(&local_data).join("LocalComet");
+        let service = ArtifactTrustService::production(&application_data_root)
             .expect("embedded production catalog");
         assert_eq!(
             service.catalog.runtimes[0].runtime_id,
@@ -2654,7 +2747,8 @@ mod tests {
     #[ignore = "requires the owner-provisioned UP05-WP00 bootstrap artifacts to be temporarily moved"]
     fn production_bootstrap_absence_is_live_derived() {
         let local_data = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA is required");
-        let service = ArtifactTrustService::production(Path::new(&local_data))
+        let application_data_root = Path::new(&local_data).join("LocalComet");
+        let service = ArtifactTrustService::production(&application_data_root)
             .expect("embedded production catalog");
         let installed = service.installed_artifacts();
         assert_eq!(installed.artifacts.len(), 2);
