@@ -95,7 +95,21 @@ The UI labels fixed demo content with a `DEMO` badge and states that there is no
 
 ## Development Commands
 
-Run Node and Cargo commands from a clean-room copy when validating release containment. The source checkout should not retain `node_modules/` or `src-tauri/target/`.
+From the repository root, the supported full desktop development launch is:
+
+```powershell
+python tools\start_localcomet.py
+```
+
+The launcher validates the required Windows, Node, npm, Rust, Cargo, CPython 3.14, loopback-port, disk-space, and single-instance prerequisites before it starts Tauri. It synchronizes source into a clean-room workspace, runs `npm ci` when the lockfile changes, prepares the pinned UP00 sidecar resources from current repository source and the local CPython runtime, and then runs `npm run tauri dev` there. Before a versioned resource cache is reused, a fresh deterministic stage supplies a trusted 52-entry identity manifest; the launcher rejects any missing, extra, linked, size-mismatched, or hash-mismatched cached resource and leaves the cache unchanged for explicit removal. Close the LocalComet window or press Ctrl+C in the launcher terminal to stop the launcher-owned process tree.
+
+All generated launch state is isolated under `%LOCALAPPDATA%\LocalCometDev`: the clean-room checkout is in `workspace`, Cargo output is in `cargo-target`, and development application data and startup logs are in `app-data`. The launcher does not inherit Project Knowledge Vault or project-root authority. It neither discovers nor reads a Vault, does not use production `%LOCALAPPDATA%\LocalComet`, and does not modify the installed application.
+
+Generated `node_modules/`, `.svelte-kit/`, `build/`, `src-tauri/target/`, and `src-tauri/binaries/` directories in the source checkout are ignored by Git and excluded from clean-room synchronization, so their presence does not block the supported launch. They are not required by the launcher and are never cleaned automatically.
+
+Read-only diagnostics are available through `python tools\start_localcomet.py doctor`, `python tools\start_localcomet.py status`, and `python tools\start_localcomet.py logs`. `doctor` fails closed if an installed or development LocalComet process is already running.
+
+Run individual Node and Cargo commands from a clean-room copy when validating release containment. Point `CARGO_TARGET_DIR` outside the repository for direct Cargo validation.
 
 ## Validation Commands
 

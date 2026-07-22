@@ -74,7 +74,11 @@ pub fn run() {
             let local_data_dir = match app.path().local_data_dir() {
                 Ok(path) => path,
                 Err(_) => {
-                    startup::report_failure(startup::StartupPhase::BackendStart, "LC_START_101");
+                    startup::report_failure_with_reason(
+                        startup::StartupPhase::BackendStart,
+                        "LC_START_101",
+                        "local_data_unavailable",
+                    );
                     app.handle().exit(1);
                     return Ok(());
                 }
@@ -91,7 +95,11 @@ pub fn run() {
             let artifact_trust = match ArtifactTrustService::production(&application_data_root) {
                 Ok(service) => Arc::new(service),
                 Err(_) => {
-                    startup::report_failure(startup::StartupPhase::BackendStart, "LC_START_101");
+                    startup::report_failure_with_reason(
+                        startup::StartupPhase::BackendStart,
+                        "LC_START_101",
+                        "artifact_trust_unavailable",
+                    );
                     app.handle().exit(1);
                     return Ok(());
                 }
@@ -103,19 +111,30 @@ pub fn run() {
             ));
             supervisor.set_frame_router(bridge.clone());
             if let Err(error) = supervisor.start_and_wait_ready(BACKEND_READINESS_TIMEOUT) {
-                let (phase, code) = match error {
-                    SupervisorError::ReadinessTimeout => {
-                        (startup::StartupPhase::BackendReadiness, "LC_START_102")
-                    }
-                    SupervisorError::ExitedBeforeReady => {
-                        (startup::StartupPhase::BackendReadiness, "LC_START_103")
-                    }
-                    SupervisorError::Unavailable(_) | SupervisorError::Io(_) => {
-                        (startup::StartupPhase::BackendStart, "LC_START_101")
-                    }
+                let (phase, code, reason) = match error {
+                    SupervisorError::ReadinessTimeout => (
+                        startup::StartupPhase::BackendReadiness,
+                        "LC_START_102",
+                        "sidecar_readiness_timeout",
+                    ),
+                    SupervisorError::ExitedBeforeReady => (
+                        startup::StartupPhase::BackendReadiness,
+                        "LC_START_103",
+                        "sidecar_exited_before_ready",
+                    ),
+                    SupervisorError::Unavailable(_) => (
+                        startup::StartupPhase::BackendStart,
+                        "LC_START_101",
+                        "sidecar_unavailable",
+                    ),
+                    SupervisorError::Io(_) => (
+                        startup::StartupPhase::BackendStart,
+                        "LC_START_101",
+                        "sidecar_io",
+                    ),
                 };
                 let _ = supervisor.shutdown();
-                startup::report_failure(phase, code);
+                startup::report_failure_with_reason(phase, code, reason);
                 app.handle().exit(1);
                 return Ok(());
             }

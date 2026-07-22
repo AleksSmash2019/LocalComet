@@ -27,11 +27,13 @@ def write(path: Path, text: str) -> None:
 
 
 def runtime_paths(root: Path) -> SimpleNamespace:
-    runtime_root = root / "LocalComet" / "DevRuntime"
+    runtime_root = root / "LocalCometDev"
     return SimpleNamespace(
         root=runtime_root,
         workspace=runtime_root / "workspace",
         cargo_target=runtime_root / "cargo-target",
+        app_data=runtime_root / "app-data",
+        resource_cache=runtime_root / "runtime-cache",
         state=runtime_root / "state.json",
         logs=runtime_root / "logs",
     )
@@ -45,6 +47,7 @@ def passing_report(paths: SimpleNamespace, dependency: str = "REUSED") -> start.
         runtime_root=str(paths.root),
         workspace=str(paths.workspace),
         cargo_target=str(paths.cargo_target),
+        app_data=str(paths.app_data),
         dependency_action=dependency,
         dev_url="http://127.0.0.1:1420",
         checks=(start.Check("synthetic", "PASS", "ready"),),
@@ -53,8 +56,8 @@ def passing_report(paths: SimpleNamespace, dependency: str = "REUSED") -> start.
 
 class StartLocalCometTests(unittest.TestCase):
     def test_release_and_legacy_contract_are_explicit(self) -> None:
-        self.assertEqual(start.RELEASE, "v6.84.5.1d3")
-        self.assertEqual(start.EXPECTED_LEGACY_RELEASE, "v6.84.5.1d1")
+        self.assertEqual(start.RELEASE, "v6.84.5.1d4")
+        self.assertEqual(start.EXPECTED_LEGACY_RELEASE, "v6.84.5.1d2")
         self.assertEqual(start.legacy.RELEASE, start.EXPECTED_LEGACY_RELEASE)
 
     def test_parser_defaults_to_start(self) -> None:
@@ -131,6 +134,16 @@ class StartLocalCometTests(unittest.TestCase):
         )
         self.assertTrue(available)
         self.assertIn(str(free_port), detail)
+
+    def test_existing_installed_or_dev_process_holds_launch(self) -> None:
+        with mock.patch.object(
+            start,
+            "_running_localcomet_processes",
+            return_value=((1234, "LocalComet.exe"),),
+        ):
+            check = start._localcomet_process_check()
+        self.assertEqual(check.status, "ERROR")
+        self.assertIn("PID 1234", check.detail)
 
     def test_tail_is_line_and_byte_bounded(self) -> None:
         with tempfile.TemporaryDirectory(prefix="lc_start_tail_") as text:
@@ -268,6 +281,7 @@ class StartLocalCometTests(unittest.TestCase):
                 runtime_root=str(paths.root),
                 workspace=str(paths.workspace),
                 cargo_target=str(paths.cargo_target),
+                app_data=str(paths.app_data),
                 dependency_action="REUSED",
                 dev_url="http://127.0.0.1:1420",
                 checks=(start.Check("failure", "ERROR", "synthetic"),),
@@ -328,7 +342,7 @@ class StartLocalCometTests(unittest.TestCase):
             )
             self.assertEqual(before, after)
             self.assertEqual(status["synced_file_count"], 2)
-            self.assertTrue(status["source_generated_paths_absent"])
+            self.assertTrue(status["source_generated_paths_ignored"])
             self.assertTrue(str(status["latest_log"]).endswith("launch_1.log"))
 
     def test_cli_rejects_json_for_interactive_start(self) -> None:

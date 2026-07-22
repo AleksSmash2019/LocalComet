@@ -4,25 +4,31 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import signal
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterable
 
 
-RELEASE = "v6.84.5.1d1"
-RUNTIME_RELATIVE = Path("LocalComet") / "DevRuntime"
+RELEASE = "v6.84.5.1d2"
+RUNTIME_RELATIVE = Path("LocalCometDev")
 WORKSPACE_NAME = "workspace"
 CARGO_TARGET_NAME = "cargo-target"
+APP_DATA_NAME = "app-data"
+RESOURCE_CACHE_NAME = "runtime-cache"
 STATE_NAME = "state.json"
 LOGS_NAME = "logs"
 
 SYNC_ROOTS = ("desktop", "modules", "tools")
-SYNC_FILES = ("localcomet_runtime_manifest.json",)
+SYNC_FILES = ("third_party/llama.cpp/LICENSE-MIT.txt",)
 MANIFEST_PATH_CATEGORIES = ("entrypoints", "runtime", "lazy_runtime", "tests", "tools")
 EXCLUDED_NAMES = {
     ".coverage",
@@ -32,6 +38,7 @@ EXCLUDED_NAMES = {
     ".svelte-kit",
     "__pycache__",
     "build",
+    "binaries",
     "coverage",
     "dist",
     "node_modules",
@@ -42,10 +49,13 @@ REQUIRED_SOURCE_FILES = (
     "desktop/localcomet-desktop/package-lock.json",
     "desktop/localcomet-desktop/vite.config.ts",
     "desktop/localcomet-desktop/src-tauri/Cargo.toml",
+    "desktop/localcomet-desktop/src-tauri/tauri.conf.json",
+    "desktop/localcomet-desktop/src-tauri/up00-runtime-manifest.json",
+    "tools/build_up00_windows_installer.py",
     "tools/run_localcomet_desktop_sidecar.py",
+    "third_party/llama.cpp/LICENSE-MIT.txt",
     "modules/desktop_sidecar_runtime_ru.py",
     "modules/desktop_ipc_contract_ru.py",
-    "localcomet_runtime_manifest.json",
 )
 REQUIRED_SIDECAR_FILES = (
     "tools/run_localcomet_desktop_sidecar.py",
@@ -53,11 +63,14 @@ REQUIRED_SIDECAR_FILES = (
     "modules/desktop_ipc_contract_ru.py",
     "localcomet_runtime_manifest.json",
 )
-PROHIBITED_SOURCE_PATHS = (
-    "desktop/localcomet-desktop/node_modules",
-    "desktop/localcomet-desktop/src-tauri/target",
-)
 VITE_WATCH_IGNORE = "**/src-tauri/target/**"
+RUNTIME_IDENTITY_RELATIVE = (
+    "desktop/localcomet-desktop/src-tauri/binaries/runtime-manifest.tsv"
+)
+RUNTIME_BINARIES_PREFIX = "desktop/localcomet-desktop/src-tauri/binaries/"
+LEGACY_RUNTIME_MANIFEST_RELATIVE = "localcomet_runtime_manifest.json"
+EXPECTED_TAURI_RESOURCE_IDENTITIES = 52
+RUNTIME_IDENTITY_HEADER = "path\tbytes\tsha256\n"
 
 
 class LauncherHold(RuntimeError):
@@ -73,6 +86,8 @@ class RuntimePaths:
     root: Path
     workspace: Path
     cargo_target: Path
+    app_data: Path
+    resource_cache: Path
     state: Path
     logs: Path
 
@@ -91,6 +106,19 @@ class SyncSummary:
             "reused": self.reused,
             "removed_stale": self.removed_stale,
         }
+
+
+@dataclass(frozen=True)
+class ResourceFileIdentity:
+    relative_path: str
+    byte_count: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class ResourceStageIdentity:
+    files: tuple[ResourceFileIdentity, ...]
+    runtime_resource_count: int
 
 
 def utc_stamp() -> str:
@@ -117,6 +145,238 @@ def require_within(path: Path, root: Path, label: str) -> Path:
     return resolved_path
 
 
+def _resource_identity_error(code: str, *, cached: bool) -> LauncherHold:
+    if cached:
+        return LauncherHold(
+            "Cached Tauri runtime resources failed identity validation "
+            f"(LC_DEV_RESOURCE_CACHE_INVALID:{code}); remove only the versioned "
+            "LocalCometDev runtime-cache entry and retry"
+        )
+    return LauncherHold(
+        "Fresh Tauri runtime identity generation failed "
+        f"(LC_DEV_RESOURCE_IDENTITY_INVALID:{code})"
+    )
+
+
+def _resource_path_alias(relative: str) -> str:
+    return unicodedata.normalize("NFC", relative).casefold()
+
+
+def canonical_resource_relative(value: str, *, cached: bool = False) -> str:
+    pure = PurePosixPath(value)
+    invalid_windows_character = any(character in '<>:"|?*' for character in value)
+    if (
+        not value
+        or value != value.strip()
+        or value != unicodedata.normalize("NFC", value)
+        or "\\" in value
+        or value.startswith(("/", "\\"))
+        or PureWindowsPath(value).drive
+        or any(ord(character) < 32 for character in value)
+        or invalid_windows_character
+        or any(part in {"", ".", ".."} for part in pure.parts)
+        or pure.as_posix() != value
+    ):
+        raise _resource_identity_error("unsafe_path", cached=cached)
+    return value
+
+
+def _is_reparse_metadata(metadata: os.stat_result) -> bool:
+    return bool(getattr(metadata, "st_file_attributes", 0) & 0x400)
+
+
+def _sha256_regular_file(path: Path, expected: os.stat_result, *, cached: bool) -> str:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        observed = path.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise _resource_identity_error("unreadable_file", cached=cached) from exc
+    if (
+        expected.st_size != observed.st_size
+        or not stat.S_ISREG(observed.st_mode)
+        or _is_reparse_metadata(observed)
+    ):
+        raise _resource_identity_error("unstable_file", cached=cached)
+    return digest.hexdigest()
+
+
+def scan_resource_stage(
+    staged_workspace: Path,
+    *,
+    cached: bool,
+) -> tuple[ResourceFileIdentity, ...]:
+    try:
+        root_metadata = staged_workspace.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise _resource_identity_error("missing_stage", cached=cached) from exc
+    if (
+        not stat.S_ISDIR(root_metadata.st_mode)
+        or staged_workspace.is_symlink()
+        or _is_reparse_metadata(root_metadata)
+    ):
+        raise _resource_identity_error("non_regular_stage", cached=cached)
+
+    resolved_root = canonical(staged_workspace)
+    pending: list[tuple[Path, str]] = [(staged_workspace, "")]
+    identities: list[ResourceFileIdentity] = []
+    seen_aliases: set[str] = set()
+    while pending:
+        directory, relative_directory = pending.pop()
+        try:
+            with os.scandir(directory) as iterator:
+                entries = sorted(iterator, key=lambda item: item.name.casefold())
+        except OSError as exc:
+            raise _resource_identity_error("unreadable_directory", cached=cached) from exc
+        for entry in entries:
+            relative = (
+                f"{relative_directory}/{entry.name}" if relative_directory else entry.name
+            )
+            relative = canonical_resource_relative(relative, cached=cached)
+            alias = _resource_path_alias(relative)
+            if alias in seen_aliases:
+                raise _resource_identity_error("path_alias", cached=cached)
+            seen_aliases.add(alias)
+            path = Path(entry.path)
+            try:
+                metadata = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise _resource_identity_error("unreadable_entry", cached=cached) from exc
+            if entry.is_symlink() or _is_reparse_metadata(metadata):
+                raise _resource_identity_error("linked_entry", cached=cached)
+            resolved = canonical(path)
+            if not is_relative_to(resolved, resolved_root):
+                raise _resource_identity_error("path_escape", cached=cached)
+            if stat.S_ISDIR(metadata.st_mode):
+                pending.append((path, relative))
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                raise _resource_identity_error("non_regular_entry", cached=cached)
+            identities.append(
+                ResourceFileIdentity(
+                    relative_path=relative,
+                    byte_count=metadata.st_size,
+                    sha256=_sha256_regular_file(path, metadata, cached=cached),
+                )
+            )
+    return tuple(sorted(identities, key=lambda item: _resource_path_alias(item.relative_path)))
+
+
+def parse_runtime_identity_manifest(raw: bytes) -> tuple[ResourceFileIdentity, ...]:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _resource_identity_error("manifest_encoding", cached=False) from exc
+    if "\r" in text or not text.endswith("\n") or not text.startswith(RUNTIME_IDENTITY_HEADER):
+        raise _resource_identity_error("manifest_format", cached=False)
+
+    rows = text.splitlines()[1:]
+    identities: list[ResourceFileIdentity] = []
+    seen_aliases: set[str] = set()
+    for row in rows:
+        columns = row.split("\t")
+        if len(columns) != 3:
+            raise _resource_identity_error("manifest_row", cached=False)
+        relative, byte_text, sha256 = columns
+        relative = canonical_resource_relative(relative)
+        alias = _resource_path_alias(relative)
+        if alias in seen_aliases:
+            raise _resource_identity_error("manifest_path_alias", cached=False)
+        seen_aliases.add(alias)
+        if (
+            not byte_text
+            or not byte_text.isascii()
+            or not byte_text.isdecimal()
+            or (byte_text.startswith("0") and byte_text != "0")
+        ):
+            raise _resource_identity_error("manifest_byte_count", cached=False)
+        if len(sha256) != 64 or any(character not in "0123456789abcdef" for character in sha256):
+            raise _resource_identity_error("manifest_sha256", cached=False)
+        identities.append(
+            ResourceFileIdentity(
+                relative_path=relative,
+                byte_count=int(byte_text),
+                sha256=sha256,
+            )
+        )
+    if [item.relative_path for item in identities] != sorted(
+        (item.relative_path for item in identities),
+        key=_resource_path_alias,
+    ):
+        raise _resource_identity_error("manifest_order", cached=False)
+    if len(identities) != EXPECTED_TAURI_RESOURCE_IDENTITIES:
+        raise _resource_identity_error("manifest_resource_count", cached=False)
+    return tuple(identities)
+
+
+def trusted_resource_stage_identity(staged_workspace: Path) -> ResourceStageIdentity:
+    files = scan_resource_stage(staged_workspace, cached=False)
+    by_path = {item.relative_path: item for item in files}
+    identity_file = by_path.get(RUNTIME_IDENTITY_RELATIVE)
+    if identity_file is None or LEGACY_RUNTIME_MANIFEST_RELATIVE not in by_path:
+        raise _resource_identity_error("required_manifest_missing", cached=False)
+    identity_path = staged_workspace.joinpath(*PurePosixPath(RUNTIME_IDENTITY_RELATIVE).parts)
+    try:
+        raw_manifest = identity_path.read_bytes()
+    except OSError as exc:
+        raise _resource_identity_error("manifest_unreadable", cached=False) from exc
+    if (
+        len(raw_manifest) != identity_file.byte_count
+        or hashlib.sha256(raw_manifest).hexdigest() != identity_file.sha256
+    ):
+        raise _resource_identity_error("manifest_unstable", cached=False)
+    runtime_identities = parse_runtime_identity_manifest(raw_manifest)
+
+    actual_runtime = {
+        item.relative_path.removeprefix(RUNTIME_BINARIES_PREFIX): item
+        for item in files
+        if item.relative_path.startswith(RUNTIME_BINARIES_PREFIX)
+        and item.relative_path != RUNTIME_IDENTITY_RELATIVE
+    }
+    declared_runtime = {item.relative_path: item for item in runtime_identities}
+    if actual_runtime.keys() != declared_runtime.keys():
+        raise _resource_identity_error("manifest_file_set", cached=False)
+    for relative, declared in declared_runtime.items():
+        actual = actual_runtime[relative]
+        if actual.byte_count != declared.byte_count:
+            raise _resource_identity_error("manifest_size", cached=False)
+        if actual.sha256 != declared.sha256:
+            raise _resource_identity_error("manifest_hash", cached=False)
+
+    expected_stage_paths = {
+        LEGACY_RUNTIME_MANIFEST_RELATIVE,
+        RUNTIME_IDENTITY_RELATIVE,
+        *(f"{RUNTIME_BINARIES_PREFIX}{item.relative_path}" for item in runtime_identities),
+    }
+    if by_path.keys() != expected_stage_paths:
+        raise _resource_identity_error("unexpected_generated_file", cached=False)
+    return ResourceStageIdentity(
+        files=files,
+        runtime_resource_count=len(runtime_identities),
+    )
+
+
+def validate_cached_resource_stage(
+    staged_workspace: Path,
+    trusted_identity: ResourceStageIdentity,
+) -> None:
+    cached_files = scan_resource_stage(staged_workspace, cached=True)
+    expected = {item.relative_path: item for item in trusted_identity.files}
+    observed = {item.relative_path: item for item in cached_files}
+    if expected.keys() - observed.keys():
+        raise _resource_identity_error("missing_file", cached=True)
+    if observed.keys() - expected.keys():
+        raise _resource_identity_error("unexpected_file", cached=True)
+    for relative, expected_file in expected.items():
+        observed_file = observed[relative]
+        if observed_file.byte_count != expected_file.byte_count:
+            raise _resource_identity_error("byte_count", cached=True)
+        if observed_file.sha256 != expected_file.sha256:
+            raise _resource_identity_error("sha256", cached=True)
+
+
 def source_root_from_launcher() -> Path:
     return canonical(Path(__file__).resolve().parents[1])
 
@@ -132,20 +392,6 @@ def validate_source_layout(source_root: Path) -> None:
             missing.append(relative)
     if missing:
         raise LauncherHold("Missing required source file(s): " + ", ".join(missing))
-
-    present = []
-    for relative in PROHIBITED_SOURCE_PATHS:
-        path = canonical(source_root / relative)
-        if not is_relative_to(path, source_root):
-            raise LauncherHold(f"Generated source path escapes repository: {relative}")
-        if path.exists():
-            present.append(relative)
-    if present:
-        raise LauncherHold(
-            "Generated source path(s) are present; remove manually before launching: "
-            + ", ".join(present)
-        )
-
 
 def load_manifest_paths(manifest_path: Path) -> tuple[str, ...]:
     if not manifest_path.is_file():
@@ -208,13 +454,19 @@ def resolve_runtime_paths(env: dict[str, str] | None = None) -> RuntimePaths:
     data = os.environ if env is None else env
     local_app_data = data.get("LOCALAPPDATA")
     if not local_app_data:
-        raise LauncherHold("LOCALAPPDATA is not set; cannot resolve stable DevRuntime path")
+        raise LauncherHold("LOCALAPPDATA is not set; cannot resolve stable LocalCometDev path")
     local_root = canonical(Path(local_app_data))
     runtime_root = require_within(local_root / RUNTIME_RELATIVE, local_root, "Runtime root")
     paths = RuntimePaths(
         root=runtime_root,
         workspace=require_within(runtime_root / WORKSPACE_NAME, runtime_root, "Runtime workspace"),
         cargo_target=require_within(runtime_root / CARGO_TARGET_NAME, runtime_root, "Cargo cache"),
+        app_data=require_within(runtime_root / APP_DATA_NAME, runtime_root, "Development AppData"),
+        resource_cache=require_within(
+            runtime_root / RESOURCE_CACHE_NAME,
+            runtime_root,
+            "Runtime resource cache",
+        ),
         state=require_within(runtime_root / STATE_NAME, runtime_root, "Launcher state"),
         logs=require_within(runtime_root / LOGS_NAME, runtime_root, "Launcher logs"),
     )
@@ -239,6 +491,12 @@ def save_state(state_path: Path, state: dict[str, object]) -> None:
         "package_lock_sha256": state.get("package_lock_sha256"),
         "npm_ci_completed": bool(state.get("npm_ci_completed", False)),
         "synced_files": sorted(str(item) for item in state.get("synced_files", []) if isinstance(item, str)),
+        "runtime_resource_fingerprint": state.get("runtime_resource_fingerprint"),
+        "runtime_resource_files": sorted(
+            str(item)
+            for item in state.get("runtime_resource_files", [])
+            if isinstance(item, str)
+        ),
     }
     temporary = state_path.with_name(f"{state_path.name}.tmp")
     temporary.write_text(json.dumps(safe_state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -307,18 +565,6 @@ def iter_source_files(source_root: Path) -> Iterable[tuple[Path, str]]:
             yielded.add(relative)
             yield source_path, relative
 
-    manifest_path = canonical(source_root / "localcomet_runtime_manifest.json")
-    for relative in load_manifest_paths(manifest_path):
-        source_path = canonical(source_root / Path(relative))
-        if not is_relative_to(source_path, source_root):
-            raise LauncherHold(f"Manifest source path escapes repository: {relative}")
-        if not source_path.is_file():
-            raise LauncherHold(f"Missing manifest-declared source file: {relative}")
-        if relative not in yielded:
-            yielded.add(relative)
-            yield source_path, relative
-
-
 def synchronize_runtime(source_root: Path, paths: RuntimePaths, state: dict[str, object]) -> tuple[SyncSummary, list[str]]:
     source_root = canonical(source_root)
     workspace = require_within(paths.workspace, paths.root, "Runtime workspace")
@@ -359,6 +605,182 @@ def synchronize_runtime(source_root: Path, paths: RuntimePaths, state: dict[str,
             summary.removed_stale += 1
 
     return summary, sorted(current_files)
+
+
+def _packaging_helpers():
+    try:
+        from tools import build_up00_windows_installer as packaging
+    except ModuleNotFoundError as exc:
+        if exc.name != "tools":
+            raise
+        import build_up00_windows_installer as packaging
+    return packaging
+
+
+def runtime_resource_fingerprint(source_root: Path) -> tuple[str, object, dict[str, object]]:
+    packaging = _packaging_helpers()
+    try:
+        manifest = packaging.load_runtime_manifest(source_root)
+        python_base = packaging.validate_python_runtime(manifest)
+    except packaging.PackagingHold as exc:
+        raise LauncherHold(f"Tauri runtime resource validation failed: {exc}") from exc
+
+    inputs: list[tuple[str, Path]] = [
+        (
+            packaging.RUNTIME_MANIFEST.as_posix(),
+            canonical(source_root / packaging.RUNTIME_MANIFEST),
+        ),
+        (
+            "tools/build_up00_windows_installer.py",
+            canonical(source_root / "tools/build_up00_windows_installer.py"),
+        ),
+    ]
+    for value in manifest["sourceFiles"]:
+        relative = packaging.safe_relative(str(value), "runtime source path")
+        inputs.append((f"source/{relative.as_posix()}", canonical(source_root / relative)))
+
+    python = manifest["python"]
+    if not isinstance(python, dict):
+        raise LauncherHold("Tauri runtime Python manifest is invalid")
+    major = int(python["major"])
+    minor = int(python["minor"])
+    fixed_runtime_names = (
+        "python.exe",
+        f"python{major}{minor}.dll",
+        "python3.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        str(python["licenseFile"]),
+    )
+    for name in fixed_runtime_names:
+        path = canonical(python_base / name)
+        if path.is_file() and not path.is_symlink():
+            inputs.append((f"python/{name}", path))
+
+    dll_root = canonical(python_base / "DLLs")
+    for path in sorted(dll_root.iterdir(), key=lambda item: item.name.casefold()):
+        if path.is_file() and not path.is_symlink():
+            inputs.append((f"python/DLLs/{path.name}", path))
+
+    excluded_values = python.get("excludedTopLevel")
+    if not isinstance(excluded_values, list) or not all(
+        isinstance(value, str) for value in excluded_values
+    ):
+        raise LauncherHold("Tauri runtime excludedTopLevel manifest is invalid")
+    excluded = frozenset(excluded_values)
+    lib_root = canonical(python_base / "Lib")
+    for path in sorted(
+        lib_root.rglob("*"),
+        key=lambda item: item.relative_to(lib_root).as_posix().casefold(),
+    ):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(lib_root)
+        if packaging.excluded_stdlib_path(relative, excluded):
+            continue
+        inputs.append((f"python/Lib/{relative.as_posix()}", path))
+
+    digest = hashlib.sha256()
+    for label, path in sorted(inputs, key=lambda item: item[0].casefold()):
+        if not path.is_file() or path.is_symlink():
+            raise LauncherHold(f"Tauri runtime input is missing or linked: {label}")
+        digest.update(label.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(path.stat().st_size).encode("ascii"))
+        digest.update(b"\0")
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest(), packaging, manifest
+
+
+def synchronize_tauri_resources(
+    staged_workspace: Path,
+    paths: RuntimePaths,
+    state: dict[str, object],
+    trusted_identity: ResourceStageIdentity,
+) -> tuple[SyncSummary, list[str]]:
+    workspace = require_within(paths.workspace, paths.root, "Runtime workspace")
+    staged_workspace = require_within(
+        staged_workspace,
+        paths.resource_cache,
+        "Staged runtime resources",
+    )
+    validate_cached_resource_stage(staged_workspace, trusted_identity)
+    sources = [
+        (
+            staged_workspace.joinpath(*PurePosixPath(identity.relative_path).parts),
+            identity.relative_path,
+        )
+        for identity in trusted_identity.files
+    ]
+
+    summary = SyncSummary()
+    current_files: list[str] = []
+    for source, relative in sources:
+        target = require_within(workspace / Path(relative), workspace, "Runtime resource target")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        current_files.append(relative)
+        if not target.exists():
+            shutil.copy2(source, target)
+            summary.copied += 1
+        elif files_match(source, target):
+            summary.reused += 1
+        else:
+            shutil.copy2(source, target)
+            summary.updated += 1
+
+    previous_files = state.get("runtime_resource_files", [])
+    previous_set = {item for item in previous_files if isinstance(item, str)}
+    current_set = set(current_files)
+    for relative in sorted(previous_set - current_set):
+        target = require_within(workspace / Path(relative), workspace, "Stale runtime resource")
+        if target.is_file() or target.is_symlink():
+            target.unlink()
+            summary.removed_stale += 1
+    return summary, sorted(current_files)
+
+
+def prepare_tauri_resources(
+    source_root: Path,
+    paths: RuntimePaths,
+    state: dict[str, object],
+) -> tuple[SyncSummary, str, list[str]]:
+    fingerprint, packaging, _manifest = runtime_resource_fingerprint(source_root)
+    resource_cache = require_within(paths.resource_cache, paths.root, "Runtime resource cache")
+    resource_cache.mkdir(parents=True, exist_ok=True)
+    staged_workspace = require_within(
+        resource_cache / fingerprint,
+        resource_cache,
+        "Versioned runtime resource cache",
+    )
+    if os.path.lexists(staged_workspace):
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix=f".identity-{fingerprint[:12]}-",
+                dir=resource_cache,
+            ) as temporary:
+                trusted_workspace = Path(temporary)
+                packaging.stage_runtime(source_root, trusted_workspace)
+                trusted_identity = trusted_resource_stage_identity(trusted_workspace)
+                validate_cached_resource_stage(staged_workspace, trusted_identity)
+        except packaging.PackagingHold as exc:
+            raise LauncherHold(f"Tauri runtime resource staging failed: {exc}") from exc
+    else:
+        try:
+            packaging.stage_runtime(source_root, staged_workspace)
+        except packaging.PackagingHold as exc:
+            raise LauncherHold(f"Tauri runtime resource staging failed: {exc}") from exc
+        trusted_identity = trusted_resource_stage_identity(staged_workspace)
+
+    summary, resource_files = synchronize_tauri_resources(
+        staged_workspace,
+        paths,
+        state,
+        trusted_identity,
+    )
+    return summary, fingerprint, resource_files
 
 
 def find_property_object(text: str, property_name: str, start: int = 0, end: int | None = None) -> tuple[int, int, int]:
@@ -580,16 +1002,22 @@ def build_launch_environment(source_root: Path, paths: RuntimePaths) -> dict[str
     project_root = require_within(paths.workspace, paths.root, "Sidecar project root")
     expected_workspace = canonical(paths.root / WORKSPACE_NAME)
     if project_root != expected_workspace:
-        raise LauncherHold(f"Sidecar project root must be the DevRuntime workspace: {project_root}")
+        raise LauncherHold(f"Sidecar project root must be the LocalCometDev workspace: {project_root}")
     python_executable = canonical(Path(sys.executable))
     if not python_executable.is_file():
         raise LauncherHold(f"Sidecar Python executable is not a regular file: {python_executable}")
+    if "windowsapps" in {part.casefold() for part in python_executable.parts}:
+        raise LauncherHold("WindowsApps Python shims are not valid sidecar executables")
+    app_data = require_within(paths.app_data, paths.root, "Development AppData")
+    expected_app_data = canonical(paths.root / APP_DATA_NAME)
+    if app_data != expected_app_data:
+        raise LauncherHold(f"Development AppData must use the isolated launcher path: {app_data}")
+    app_data.mkdir(parents=True, exist_ok=True)
     env["LOCALCOMET_TEST_PROJECT_ROOT"] = str(project_root)
     env["LOCALCOMET_TEST_PYTHON"] = str(python_executable)
-    knowledge_vault = canonical(source_root.parent / "LocalCometVault")
-    if knowledge_vault.is_dir():
-        env["LOCALCOMET_KNOWLEDGE_VAULT"] = str(knowledge_vault)
-        env["LOCALCOMET_KNOWLEDGE_PROJECT_ROOT"] = str(canonical(source_root))
+    env["LOCALCOMET_APP_DATA_ROOT"] = str(app_data)
+    env.pop("LOCALCOMET_KNOWLEDGE_VAULT", None)
+    env.pop("LOCALCOMET_KNOWLEDGE_PROJECT_ROOT", None)
     return env
 
 
@@ -616,6 +1044,12 @@ def terminate_launcher_process_tree(process: subprocess.Popen[object]) -> None:
     if process.poll() is not None:
         return
     if os.name == "nt":
+        try:
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+            process.wait(timeout=10)
+            return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
         subprocess.run(
             ["taskkill", "/PID", str(process.pid), "/T", "/F"],
             shell=False,
@@ -650,6 +1084,7 @@ def print_startup_summary(
     print(f"Runtime: {paths.workspace}")
     print(f"Dependencies: {dependency}")
     print(f"Cargo cache: {paths.cargo_target}")
+    print(f"Development AppData: {paths.app_data}")
     print(f"Sidecar project root: {env['LOCALCOMET_TEST_PROJECT_ROOT']}")
     print(f"Sidecar Python: {env['LOCALCOMET_TEST_PYTHON']}")
     print("Sidecar layout: VALID")
@@ -672,6 +1107,7 @@ def main() -> int:
         write_log(log_path, f"source={source_root}")
         write_log(log_path, f"runtime_workspace={paths.workspace}")
         write_log(log_path, f"cargo_target={paths.cargo_target}")
+        write_log(log_path, f"development_app_data={paths.app_data}")
         write_log(log_path, f"package_lock_sha256={package_lock_hash}")
         if malformed_state:
             write_log(log_path, "state=malformed_reset")
@@ -680,6 +1116,25 @@ def main() -> int:
         state["synced_files"] = synced_files
         save_state(paths.state, state)
         write_log(log_path, "sync_summary=" + json.dumps(summary.as_dict(), sort_keys=True))
+
+        resource_summary, resource_fingerprint, resource_files = prepare_tauri_resources(
+            source_root,
+            paths,
+            state,
+        )
+        state["runtime_resource_fingerprint"] = resource_fingerprint
+        state["runtime_resource_files"] = resource_files
+        save_state(paths.state, state)
+        write_log(log_path, f"runtime_resource_fingerprint={resource_fingerprint}")
+        write_log(
+            log_path,
+            f"runtime_resource_identities={EXPECTED_TAURI_RESOURCE_IDENTITIES}",
+        )
+        write_log(
+            log_path,
+            "runtime_resource_summary="
+            + json.dumps(resource_summary.as_dict(), sort_keys=True),
+        )
         validate_sidecar_layout(paths.workspace)
         write_log(log_path, "sidecar_layout=VALID")
 
@@ -696,6 +1151,7 @@ def main() -> int:
         env = build_launch_environment(source_root, paths)
         write_log(log_path, f"sidecar_project_root={env['LOCALCOMET_TEST_PROJECT_ROOT']}")
         write_log(log_path, f"sidecar_python={env['LOCALCOMET_TEST_PYTHON']}")
+        write_log(log_path, f"application_data_root={env['LOCALCOMET_APP_DATA_ROOT']}")
         print_startup_summary(source_root, paths, dependency, env)
         write_log(log_path, "launch_start=npm run tauri dev")
         exit_code = launch_localcomet(runtime_app_dir, env)

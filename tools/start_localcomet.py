@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import ctypes
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
+import io
 import os
 from pathlib import Path
 import shutil
@@ -24,17 +26,21 @@ if str(ROOT) not in sys.path:
 from tools import launch_localcomet_dev as legacy
 
 
-RELEASE = "v6.84.5.1d3"
+RELEASE = "v6.84.5.1d4"
 LOCK_NAME = "start.lock"
 MAX_LOG_TAIL_BYTES = 64 * 1024
 DEFAULT_LOG_TAIL_LINES = 80
 MIN_FREE_BYTES = 512 * 1024 * 1024
 WARN_FREE_BYTES = 2 * 1024 * 1024 * 1024
-EXPECTED_LEGACY_RELEASE = "v6.84.5.1d1"
-PROHIBITED_SOURCE_PATHS = (
+EXPECTED_LEGACY_RELEASE = "v6.84.5.1d2"
+GENERATED_SOURCE_PATHS = (
+    "desktop/localcomet-desktop/.svelte-kit",
+    "desktop/localcomet-desktop/build",
     "desktop/localcomet-desktop/node_modules",
+    "desktop/localcomet-desktop/src-tauri/binaries",
     "desktop/localcomet-desktop/src-tauri/target",
 )
+LOCALCOMET_PROCESS_NAMES = frozenset(("localcomet.exe", "localcomet-desktop.exe"))
 
 
 class StartHold(RuntimeError):
@@ -60,6 +66,7 @@ class DoctorReport:
     runtime_root: str
     workspace: str
     cargo_target: str
+    app_data: str
     dependency_action: str
     dev_url: str
     checks: tuple[Check, ...]
@@ -84,6 +91,7 @@ class DoctorReport:
             "runtime_root": self.runtime_root,
             "workspace": self.workspace,
             "cargo_target": self.cargo_target,
+            "app_data": self.app_data,
             "dependency_action": self.dependency_action,
             "dev_url": self.dev_url,
             "ok": self.ok,
@@ -145,6 +153,71 @@ def _run_version(name: str, candidates: tuple[str, ...]) -> Check:
     if result.returncode != 0:
         return Check(name, "ERROR", f"{executable}: exit {result.returncode}; {version}")
     return Check(name, "PASS", f"{executable}: {version}")
+
+
+def _running_localcomet_processes() -> tuple[tuple[int, str], ...]:
+    if os.name != "nt":
+        return ()
+    tasklist = _resolve_executable(("tasklist.exe", "tasklist"))
+    if tasklist is None:
+        raise StartHold("tasklist is unavailable; existing LocalComet processes cannot be checked")
+    try:
+        result = subprocess.run(
+            [tasklist, "/FO", "CSV", "/NH"],
+            shell=False,
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise StartHold("existing LocalComet process check failed") from exc
+    if result.returncode != 0:
+        raise StartHold("existing LocalComet process check returned a failure")
+
+    found: list[tuple[int, str]] = []
+    for row in csv.reader(io.StringIO(result.stdout)):
+        if len(row) < 2 or row[0].strip().casefold() not in LOCALCOMET_PROCESS_NAMES:
+            continue
+        try:
+            pid = int(row[1].replace(",", "").strip())
+        except ValueError:
+            raise StartHold("existing LocalComet process check returned an invalid PID")
+        found.append((pid, row[0].strip()))
+    return tuple(sorted(found))
+
+
+def _localcomet_process_check() -> Check:
+    try:
+        processes = _running_localcomet_processes()
+    except StartHold as exc:
+        return Check("existing_app", "ERROR", str(exc))
+    if not processes:
+        return Check("existing_app", "PASS", "no installed or development LocalComet process")
+    detail = ", ".join(f"{name} (PID {pid})" for pid, name in processes)
+    return Check("existing_app", "ERROR", f"close the existing LocalComet process first: {detail}")
+
+
+def _generated_source_check(source_root: Path, relative: str) -> Check:
+    candidate = source_root / relative
+    name = f"source_generated:{relative}"
+    if not candidate.exists():
+        return Check(name, "PASS", "absent")
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--quiet", "--", relative],
+            cwd=source_root,
+            shell=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return Check(name, "ERROR", f"ignore verification failed: {type(exc).__name__}")
+    if result.returncode == 0:
+        return Check(name, "PASS", "present, ignored, and excluded from clean-room sync")
+    return Check(name, "ERROR", "present but not covered by repository ignore policy")
 
 
 def _load_dev_url(source_root: Path) -> str:
@@ -233,8 +306,16 @@ def _is_process_alive(pid: int) -> bool:
         )
         if not handle:
             return False
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return True
+        exit_code = ctypes.c_ulong()
+        try:
+            if not ctypes.windll.kernel32.GetExitCodeProcess(
+                handle,
+                ctypes.byref(exit_code),
+            ):
+                return False
+            return exit_code.value == 259
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -420,29 +501,14 @@ def collect_doctor_report(
             checks.append(Check("dev_port", "WARN", detail))
 
     checks.append(_disk_check(paths.root))
+    checks.append(_localcomet_process_check())
     lock_status = _lock_check(paths.root)
     if not require_free_port and lock_status.status == "ERROR":
         lock_status = Check(lock_status.name, "WARN", lock_status.detail)
     checks.append(lock_status)
 
-    for relative in PROHIBITED_SOURCE_PATHS:
-        candidate = source_root / relative
-        if candidate.exists():
-            checks.append(
-                Check(
-                    f"source_absence:{relative}",
-                    "ERROR",
-                    "generated path is present in source",
-                )
-            )
-        else:
-            checks.append(
-                Check(
-                    f"source_absence:{relative}",
-                    "PASS",
-                    "absent",
-                )
-            )
+    for relative in GENERATED_SOURCE_PATHS:
+        checks.append(_generated_source_check(source_root, relative))
 
     try:
         dependency_action, malformed_state = _dependency_state(source_root, paths)
@@ -469,6 +535,7 @@ def collect_doctor_report(
         runtime_root=_path_text(paths.root),
         workspace=_path_text(paths.workspace),
         cargo_target=_path_text(paths.cargo_target),
+        app_data=_path_text(paths.app_data),
         dependency_action=dependency_action,
         dev_url=dev_url,
         checks=tuple(checks),
@@ -512,6 +579,15 @@ def collect_status() -> dict[str, Any]:
         and _is_process_alive(int(lock_payload.get("pid", 0)))
     )
     runtime_app = paths.workspace / "desktop" / "localcomet-desktop"
+    try:
+        running_processes = [
+            {"pid": pid, "name": name}
+            for pid, name in _running_localcomet_processes()
+        ]
+        process_check_error = None
+    except StartHold as exc:
+        running_processes = []
+        process_check_error = str(exc)
     return {
         "release": RELEASE,
         "legacy_release": str(getattr(legacy, "RELEASE", "UNKNOWN")),
@@ -520,6 +596,8 @@ def collect_status() -> dict[str, Any]:
         "workspace_exists": paths.workspace.is_dir(),
         "dependencies_ready": (runtime_app / "node_modules").is_dir(),
         "cargo_target_exists": paths.cargo_target.is_dir(),
+        "app_data": _path_text(paths.app_data),
+        "app_data_exists": paths.app_data.is_dir(),
         "state_exists": paths.state.is_file(),
         "state_malformed": malformed,
         "package_lock_sha256": state.get("package_lock_sha256"),
@@ -531,10 +609,12 @@ def collect_status() -> dict[str, Any]:
         else 0,
         "launcher_lock_active": lock_active,
         "launcher_lock_error": lock_error,
+        "running_localcomet_processes": running_processes,
+        "process_check_error": process_check_error,
         "latest_log": str(latest) if latest is not None else None,
-        "source_generated_paths_absent": all(
-            not (source_root / relative).exists()
-            for relative in PROHIBITED_SOURCE_PATHS
+        "source_generated_paths_ignored": all(
+            _generated_source_check(source_root, relative).status == "PASS"
+            for relative in GENERATED_SOURCE_PATHS
         ),
     }
 
@@ -544,6 +624,7 @@ def _print_report(report: DoctorReport) -> None:
     print(f"Legacy engine: {report.legacy_release}")
     print(f"Source: {report.source_root}")
     print(f"Runtime: {report.runtime_root}")
+    print(f"Development AppData: {report.app_data}")
     print()
     for item in report.checks:
         print(f"[{item.status:5}] {item.name}: {item.detail}")
@@ -593,7 +674,7 @@ def run_start(*, offline: bool) -> int:
     try:
         with LauncherLock(paths.root):
             print()
-            print("Starting the existing audited LocalComet DevRuntime engine...")
+            print("Starting the audited external LocalComet development runtime...")
             print("Close the LocalComet window or press Ctrl+C to stop.")
             try:
                 result = legacy.main()
@@ -614,7 +695,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Safe one-command LocalComet developer launch wrapper over the "
-            "accepted external DevRuntime engine."
+            "isolated external LocalCometDev engine."
         )
     )
     parser.add_argument(

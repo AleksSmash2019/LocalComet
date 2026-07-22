@@ -6,6 +6,10 @@
 /target/
 /desktop/localcomet-desktop/src-tauri/gen/
 /desktop/localcomet-desktop/src-tauri/target/
+/desktop/localcomet-desktop/src-tauri/binaries/
+/desktop/localcomet-desktop/node_modules/
+/desktop/localcomet-desktop/.svelte-kit/
+/desktop/localcomet-desktop/build/
 /node_modules/
 /.svelte-kit/
 /build/

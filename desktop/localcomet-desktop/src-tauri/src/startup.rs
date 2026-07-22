@@ -34,7 +34,7 @@ impl StartupPhase {
     }
 }
 
-pub fn record(phase: StartupPhase, status: &'static str, code: &'static str) {
+pub fn record(phase: StartupPhase, status: &str, code: &str) {
     let Some(path) = startup_log_path() else {
         return;
     };
@@ -61,6 +61,11 @@ pub fn record(phase: StartupPhase, status: &'static str, code: &'static str) {
 
 pub fn report_failure(phase: StartupPhase, code: &'static str) {
     record(phase, "failure", code);
+    show_native_failure(&failure_message(phase, code));
+}
+
+pub fn report_failure_with_reason(phase: StartupPhase, code: &'static str, reason: &'static str) {
+    record(phase, &failure_status(reason), code);
     show_native_failure(&failure_message(phase, code));
 }
 
@@ -100,6 +105,10 @@ fn safe_token(value: &str) -> String {
         })
         .take(64)
         .collect()
+}
+
+fn failure_status(reason: &str) -> String {
+    format!("failure.{}", safe_token(reason))
 }
 
 #[cfg(windows)]
@@ -146,6 +155,18 @@ mod tests {
     #[test]
     fn log_tokens_reject_path_and_control_characters() {
         assert_eq!(safe_token("code\r\nC:\\private"), "codeCprivate");
+    }
+
+    #[test]
+    fn diagnostic_failure_reason_is_stable_and_sanitized() {
+        assert_eq!(
+            failure_status("sidecar_unavailable"),
+            "failure.sidecar_unavailable"
+        );
+        assert_eq!(
+            failure_status("sidecar\r\nC:\\private"),
+            "failure.sidecarCprivate"
+        );
     }
 
     #[test]

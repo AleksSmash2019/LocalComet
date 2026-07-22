@@ -3,6 +3,7 @@ use serde::de::{MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -29,6 +30,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 
 const CATALOG_BYTES: &[u8] = include_bytes!("../resources/localcomet/approved-artifacts.v1.json");
+const EMBEDDED_CATALOG_SHA256: &str =
+    "29bbbe33c207417415f637bafc4dc3853c04cf68db05d9be2a6e661c5f93c605";
 const CATALOG_ID: &str = "localcomet-approved-artifacts";
 const SCHEMA_VERSION: u32 = 1;
 const MAX_ARTIFACTS: usize = 32;
@@ -430,8 +433,9 @@ pub struct ArtifactTrustService {
 
 impl ArtifactTrustService {
     pub fn production(application_data_root: &Path) -> Result<Self, ArtifactTrustError> {
+        let catalog_bytes = canonical_embedded_catalog_bytes()?;
         Self::from_catalog_bytes(
-            CATALOG_BYTES,
+            catalog_bytes.as_ref(),
             ManagedArtifactRoots::from_application_data_root(application_data_root),
         )
     }
@@ -1133,6 +1137,46 @@ impl ArtifactTrustService {
             },
         }
     }
+}
+
+fn normalize_catalog_line_endings(bytes: &[u8]) -> Result<Cow<'_, [u8]>, ArtifactTrustError> {
+    if !bytes.contains(&b'\r') {
+        return Ok(Cow::Borrowed(bytes));
+    }
+
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'\r' {
+            if bytes.get(index + 1) != Some(&b'\n') {
+                return Err(ArtifactTrustError::new(
+                    "invalid_catalog",
+                    "catalog line endings rejected",
+                ));
+            }
+            normalized.push(b'\n');
+            index += 2;
+        } else {
+            normalized.push(bytes[index]);
+            index += 1;
+        }
+    }
+    Ok(Cow::Owned(normalized))
+}
+
+fn canonical_catalog_bytes(bytes: &[u8]) -> Result<Cow<'_, [u8]>, ArtifactTrustError> {
+    let normalized = normalize_catalog_line_endings(bytes)?;
+    if sha256_bytes(normalized.as_ref()) != EMBEDDED_CATALOG_SHA256 {
+        return Err(ArtifactTrustError::new(
+            "invalid_catalog",
+            "embedded catalog identity rejected",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn canonical_embedded_catalog_bytes() -> Result<Cow<'static, [u8]>, ArtifactTrustError> {
+    canonical_catalog_bytes(CATALOG_BYTES)
 }
 
 #[tauri::command]
@@ -2244,8 +2288,6 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    const EMBEDDED_CATALOG_SHA256: &str =
-        "29bbbe33c207417415f637bafc4dc3853c04cf68db05d9be2a6e661c5f93c605";
     const TEST_RUNTIME_BYTES: &[u8] = b"test-runtime";
     const TEST_MODEL_BYTES: &[u8] = b"GGUFtest-model";
 
@@ -2391,6 +2433,23 @@ mod tests {
         let mut text = serde_json::to_string_pretty(catalog).expect("serialize test catalog");
         text.push('\n');
         text.into_bytes()
+    }
+
+    fn embedded_catalog_lf_bytes() -> Vec<u8> {
+        let catalog = parse_catalog(CATALOG_BYTES).expect("parse embedded catalog fixture");
+        canonical_bytes(&catalog)
+    }
+
+    fn with_crlf_line_endings(lf: &[u8]) -> Vec<u8> {
+        let mut crlf =
+            Vec::with_capacity(lf.len() + lf.iter().filter(|byte| **byte == b'\n').count());
+        for byte in lf {
+            if *byte == b'\n' {
+                crlf.push(b'\r');
+            }
+            crlf.push(*byte);
+        }
+        crlf
     }
 
     fn service_for(
@@ -2547,9 +2606,15 @@ mod tests {
     #[test]
     fn embedded_catalog_is_canonical_and_exactly_pinned() {
         let workspace = TestWorkspace::new();
-        let service = ArtifactTrustService::from_catalog_bytes(CATALOG_BYTES, workspace.roots())
-            .expect("embedded catalog must be valid");
-        assert_eq!(sha256_bytes(CATALOG_BYTES), EMBEDDED_CATALOG_SHA256);
+        let catalog_bytes =
+            canonical_embedded_catalog_bytes().expect("embedded catalog identity must be valid");
+        let service =
+            ArtifactTrustService::from_catalog_bytes(catalog_bytes.as_ref(), workspace.roots())
+                .expect("embedded catalog must be valid");
+        assert_eq!(
+            sha256_bytes(catalog_bytes.as_ref()),
+            EMBEDDED_CATALOG_SHA256
+        );
         assert_eq!(service.catalog.runtimes.len(), 1);
         assert_eq!(service.catalog.models.len(), 1);
 
@@ -2636,6 +2701,86 @@ mod tests {
             .allowed_redirect_hosts
             .iter()
             .any(|host| host == "us.aws.cdn.hf.co"));
+    }
+
+    #[test]
+    fn synthetic_lf_and_crlf_catalogs_normalize_to_the_same_pinned_bytes() {
+        let workspace = TestWorkspace::new();
+        let lf = embedded_catalog_lf_bytes();
+        let normalized_lf =
+            normalize_catalog_line_endings(&lf).expect("canonical LF must be accepted unchanged");
+        assert!(matches!(normalized_lf, Cow::Borrowed(_)));
+        assert_eq!(normalized_lf.as_ref(), lf.as_slice());
+        let pinned_lf = canonical_catalog_bytes(&lf).expect("canonical LF must match the pin");
+        ArtifactTrustService::from_catalog_bytes(pinned_lf.as_ref(), workspace.roots())
+            .expect("LF catalog must retain schema and canonical validation");
+
+        let crlf = with_crlf_line_endings(&lf);
+        assert!(crlf.windows(2).any(|pair| pair == b"\r\n"));
+        let normalized_crlf = normalize_catalog_line_endings(&crlf)
+            .expect("synthetic CRLF must execute the normalization branch");
+        assert!(matches!(normalized_crlf, Cow::Owned(_)));
+        assert_eq!(normalized_crlf.as_ref(), lf.as_slice());
+        let pinned_crlf =
+            canonical_catalog_bytes(&crlf).expect("equivalent CRLF must match the LF pin");
+        assert_eq!(sha256_bytes(pinned_crlf.as_ref()), EMBEDDED_CATALOG_SHA256);
+        ArtifactTrustService::from_catalog_bytes(pinned_crlf.as_ref(), workspace.roots())
+            .expect("normalized CRLF catalog must retain schema and canonical validation");
+    }
+
+    #[test]
+    fn catalog_line_endings_reject_bare_cr_and_mixed_invalid_input() {
+        let lf = embedded_catalog_lf_bytes();
+        let first_lf = lf
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .expect("catalog contains line endings");
+        let mut bare_cr = lf.clone();
+        bare_cr[first_lf] = b'\r';
+        assert!(normalize_catalog_line_endings(&bare_cr).is_err());
+        assert!(canonical_catalog_bytes(&bare_cr).is_err());
+
+        let mut mixed = with_crlf_line_endings(&lf);
+        let last_cr = mixed
+            .iter()
+            .rposition(|byte| *byte == b'\r')
+            .expect("CRLF fixture contains CR");
+        mixed.remove(last_cr + 1);
+        assert!(mixed.windows(2).any(|pair| pair == b"\r\n"));
+        assert!(mixed.contains(&b'\r'));
+        assert!(normalize_catalog_line_endings(&mixed).is_err());
+        assert!(canonical_catalog_bytes(&mixed).is_err());
+    }
+
+    #[test]
+    fn catalog_normalization_cannot_bypass_the_pinned_sha256() {
+        let lf = embedded_catalog_lf_bytes();
+
+        let mut one_byte_mutation = lf.clone();
+        one_byte_mutation[0] ^= 1;
+        assert!(canonical_catalog_bytes(&one_byte_mutation).is_err());
+
+        let mut appended = lf.clone();
+        appended.push(b' ');
+        assert!(canonical_catalog_bytes(&appended).is_err());
+
+        let mut removed = lf.clone();
+        removed.pop();
+        assert!(canonical_catalog_bytes(&removed).is_err());
+
+        let mut whitespace_mutation = lf.clone();
+        let first_lf = whitespace_mutation
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .expect("catalog contains line endings");
+        whitespace_mutation.insert(first_lf, b' ');
+        assert!(canonical_catalog_bytes(&whitespace_mutation).is_err());
+
+        let unrelated_crlf = b"{\r\n  \"unrelated\": true\r\n}\r\n";
+        let normalized = normalize_catalog_line_endings(unrelated_crlf)
+            .expect("well-formed CRLF separators may be normalized");
+        assert_eq!(normalized.as_ref(), b"{\n  \"unrelated\": true\n}\n");
+        assert!(canonical_catalog_bytes(unrelated_crlf).is_err());
     }
 
     #[test]
