@@ -1,3 +1,4 @@
+use crate::files::SelectedFilesManager;
 use crate::ipc;
 use crate::managed_runtime::ManagedRuntimeSupervisor;
 use crate::supervisor::{DesktopSidecarSupervisor, SidecarFrameRouter};
@@ -230,6 +231,7 @@ struct AssistantApplicationContext {
 struct AssistantConversationContext {
     locale: String,
     project_context_available: bool,
+    selected_files_context_available: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -254,7 +256,7 @@ struct AssistantContext {
 }
 
 impl AssistantContext {
-    fn trusted(locale: &str) -> Result<Self, BridgeError> {
+    fn trusted(locale: &str, selected_files_context_available: bool) -> Result<Self, BridgeError> {
         if !matches!(locale, "ru" | "en") {
             return Err(BridgeError::new(
                 "invalid_payload",
@@ -270,6 +272,7 @@ impl AssistantContext {
             conversation: AssistantConversationContext {
                 locale: locale.to_owned(),
                 project_context_available: false,
+                selected_files_context_available,
             },
             capabilities: AssistantCapabilities {
                 local_chat: true,
@@ -2028,12 +2031,14 @@ pub async fn model_binding_set(
 pub async fn model_turn_start(
     state: State<'_, Arc<ControlPlaneBridge>>,
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    files: State<'_, SelectedFilesManager>,
     request_id: String,
     chat_session_id: String,
     model_id: String,
     submitted_at_unix_ms: u64,
     max_tokens: u16,
     prompt: String,
+    file_ids: Vec<String>,
     locale: String,
     binding_fingerprint: String,
 ) -> Result<Value, BridgeError> {
@@ -2053,7 +2058,43 @@ pub async fn model_turn_start(
         ));
     }
     ensure_model_prompt(&prompt)?;
-    let assistant_context = AssistantContext::trusted(&locale)?;
+    let (prompt, file_context_report) = if file_ids.is_empty() {
+        (prompt, None)
+    } else {
+        let separator = "\n\n";
+        let context_budget = MAX_MODEL_PROMPT_CHARS
+            .checked_sub(prompt.len())
+            .and_then(|remaining| remaining.checked_sub(separator.len()))
+            .ok_or_else(|| {
+                BridgeError::new(
+                    crate::files::LC_FILE_CONTEXT_LIMIT,
+                    "Selected file context does not fit in this request",
+                )
+            })?;
+        let bundle = files
+            .build_context(&file_ids, context_budget)
+            .map_err(|error| BridgeError::new(error.code(), error.message()))?;
+        debug_assert!(bundle.included_bytes as u64 <= bundle.source_bytes);
+        debug_assert!(bundle.included_characters <= bundle.source_characters);
+        debug_assert_eq!(
+            bundle.truncated,
+            bundle.included_bytes as u64 != bundle.source_bytes
+        );
+        let report = json!({
+            "source_bytes": bundle.source_bytes,
+            "source_characters": bundle.source_characters,
+            "included_bytes": bundle.included_bytes,
+            "included_characters": bundle.included_characters,
+            "truncated": bundle.truncated,
+            "files": bundle.inclusions,
+        });
+        (
+            format!("{prompt}{separator}{}", bundle.context),
+            Some(report),
+        )
+    };
+    ensure_model_prompt(&prompt)?;
+    let assistant_context = AssistantContext::trusted(&locale, file_context_report.is_some())?;
     ensure_fingerprint(&binding_fingerprint)?;
     let identity = ModelRequestIdentity {
         request_id,
@@ -2068,7 +2109,7 @@ pub async fn model_turn_start(
     let cleanup_request_id = identity.request_id.clone();
     let worker_state = Arc::clone(&state);
     let worker_runtime = Arc::clone(&runtime);
-    match tauri::async_runtime::spawn_blocking(move || {
+    let mut response = match tauri::async_runtime::spawn_blocking(move || {
         if let Err(error) = worker_runtime.ensure_model_ready(&identity.model_id) {
             worker_state
                 .model_requests
@@ -2081,7 +2122,7 @@ pub async fn model_turn_start(
     })
     .await
     {
-        Ok(result) => result,
+        Ok(result) => result?,
         Err(_) => {
             cleanup_state
                 .model_requests
@@ -2089,12 +2130,16 @@ pub async fn model_turn_start(
                 .expect("model request registry poisoned")
                 .remove(&cleanup_request_id);
             cleanup_state.send_model_cancel_best_effort(&cleanup_request_id);
-            Err(BridgeError::new(
+            return Err(BridgeError::new(
                 "runtime_unavailable",
                 "model start worker failed",
-            ))
+            ));
         }
+    };
+    if let (Some(report), Value::Object(response)) = (file_context_report, &mut response) {
+        response.insert("file_context".to_owned(), report);
     }
+    Ok(response)
 }
 
 #[tauri::command]
@@ -4192,7 +4237,7 @@ mod tests {
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
             "prompt": "hello",
-            "assistant_context": AssistantContext::trusted("ru").unwrap(),
+            "assistant_context": AssistantContext::trusted("ru", false).unwrap(),
             "binding_fingerprint": identity.binding_fingerprint,
         });
         assert!(validate_payload_for_method(ControlPlaneMethod::ModelTurnStart, &payload).is_ok());
@@ -4313,14 +4358,18 @@ mod tests {
 
     #[test]
     fn assistant_context_is_trusted_typed_and_fail_closed() {
-        let russian = AssistantContext::trusted("ru").unwrap();
-        let english = AssistantContext::trusted("en").unwrap();
+        let russian = AssistantContext::trusted("ru", false).unwrap();
+        let english = AssistantContext::trusted("en", false).unwrap();
+        let with_files = AssistantContext::trusted("ru", true).unwrap();
         assert_eq!(russian.application.name, "LocalComet");
         assert_eq!(russian.application.mode, "local_offline_desktop_assistant");
         assert_eq!(russian.application.version, DESKTOP_STATUS_BRIDGE_VERSION);
         assert_eq!(russian.conversation.locale, "ru");
         assert_eq!(english.conversation.locale, "en");
         assert!(!russian.conversation.project_context_available);
+        assert!(!russian.conversation.selected_files_context_available);
+        assert!(with_files.conversation.selected_files_context_available);
+        assert!(!with_files.capabilities.filesystem);
         assert!(russian.capabilities.local_chat);
         assert!(russian.capabilities.local_model_inference);
         assert!(!russian.capabilities.internet);
@@ -4331,7 +4380,7 @@ mod tests {
         assert!(!russian.capabilities.computer_use);
         assert!(!russian.capabilities.shell);
         assert!(russian.capabilities.tools.is_empty());
-        assert!(AssistantContext::trusted("fr").is_err());
+        assert!(AssistantContext::trusted("fr", false).is_err());
 
         let serialized = serde_json::to_string(&russian).unwrap();
         assert!(!serialized.contains("C:\\"));

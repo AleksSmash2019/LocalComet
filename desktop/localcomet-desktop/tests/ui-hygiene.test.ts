@@ -78,7 +78,7 @@ describe('UP02-WP01-HF2 visible production controls', () => {
     expect(composer).not.toContain('prepareProjectKnowledge');
     expect(composer).not.toContain('createPendingKnowledgeTurn');
     expect(composer).not.toContain('KnowledgePreviewPanel');
-    expect(composer).toContain('startLocalModelTurn(draft, $selectedConversationId)');
+    expect(composer).toContain('startLocalModelTurn(draft, $selectedConversationId, $includedFileIds)');
   });
 
   it('renders the exact English unavailable knowledge state', () => {

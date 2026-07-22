@@ -1,0 +1,34 @@
+[[permission]]
+identifier = "allow-files-capability-status"
+description = "Allow reading the fixed read-only Files capability contract."
+commands.allow = [
+  "files_capability_status",
+]
+
+[[permission]]
+identifier = "allow-select-files"
+description = "Allow opening the native picker and registering explicitly selected read-only text files."
+commands.allow = [
+  "select_files",
+]
+
+[[permission]]
+identifier = "allow-list-selected-files"
+description = "Allow listing sanitized metadata for the current in-memory selected-file registry."
+commands.allow = [
+  "list_selected_files",
+]
+
+[[permission]]
+identifier = "allow-preview-selected-file"
+description = "Allow a bounded preview reread through one backend-issued opaque file identity."
+commands.allow = [
+  "preview_selected_file",
+]
+
+[[permission]]
+identifier = "allow-forget-selected-file"
+description = "Allow revoking one backend-issued opaque file identity from the current process."
+commands.allow = [
+  "forget_selected_file",
+]

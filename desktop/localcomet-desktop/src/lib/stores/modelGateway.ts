@@ -46,6 +46,7 @@ import {
   setModelConnected
 } from '$lib/stores/shellStore';
 import { locale } from '$lib/i18n';
+import { reportFilesContextInclusion, reportFilesRequestError } from '$lib/stores/files';
 
 export const MAX_GENERATED_TEXT = 262_144;
 export const MODEL_REQUEST_MAX_TOKENS = 256;
@@ -626,19 +627,27 @@ export async function connectSelectedManagedModel(): Promise<boolean> {
   }
 }
 
-export async function startLocalModelTurn(prompt: string, chatSessionId = 'local-chat'): Promise<boolean> {
+export async function startLocalModelTurn(
+  prompt: string,
+  chatSessionId = 'local-chat',
+  fileIds: readonly string[] = []
+): Promise<boolean> {
   const cleanPrompt = prompt.slice(0, 12_000).trim();
   if (!cleanPrompt || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(chatSessionId)) return false;
   if (submissionInProgress || get(inferenceBusy)) return false;
   submissionInProgress = true;
   try {
-    return await startClaimedLocalModelTurn(cleanPrompt, chatSessionId);
+    return await startClaimedLocalModelTurn(cleanPrompt, chatSessionId, fileIds);
   } finally {
     submissionInProgress = false;
   }
 }
 
-async function startClaimedLocalModelTurn(cleanPrompt: string, chatSessionId: string): Promise<boolean> {
+async function startClaimedLocalModelTurn(
+  cleanPrompt: string,
+  chatSessionId: string,
+  fileIds: readonly string[]
+): Promise<boolean> {
   if (!get(managedModelReady)) {
     const error = { code: 'model_not_ready', message: 'Approved managed model is not ready' };
     modelGatewayStore.update((state) => ({ ...state, status: 'Binding required', lastError: error }));
@@ -699,16 +708,18 @@ async function startClaimedLocalModelTurn(cleanPrompt: string, chatSessionId: st
   scheduleInferenceTimeout('acceptance', INFERENCE_TIMEOUTS_MS.acceptance, requestId);
 
   try {
-    await startModelTurn({
+    const acceptance = await startModelTurn({
       requestId,
       chatSessionId,
       modelId: binding.model_id,
       submittedAtUnixMs,
       maxTokens: MODEL_REQUEST_MAX_TOKENS,
       prompt: cleanPrompt,
+      fileIds,
       locale: get(locale),
       bindingFingerprint: binding.binding_fingerprint
     });
+    reportFilesContextInclusion(acceptance.file_context);
     const current = get(inferenceRequestStore);
     if (
       current.requestId !== requestId ||
@@ -757,6 +768,7 @@ async function startClaimedLocalModelTurn(cleanPrompt: string, chatSessionId: st
     clearInferenceTimers();
     bufferedEarlyEvents = [];
     const normalized = normalizeGatewayError(error);
+    reportFilesRequestError(normalized);
     inferenceRequestStore.update((state) => ({
       ...state,
       lifecycle: 'failed',

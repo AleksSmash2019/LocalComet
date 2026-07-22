@@ -2,10 +2,12 @@
   import { tick } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
   import KnowledgeToggle from '$lib/components/knowledge/KnowledgeToggle.svelte';
+  import FilesPanel from '$lib/components/files/FilesPanel.svelte';
   import { composerDraft, openSettings, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
   import { cancelLocalModelTurn, inferenceRequestStore, managedModelReady, startLocalModelTurn } from '$lib/stores/modelGateway';
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
+  import { includedFileIds } from '$lib/stores/files';
 
   let textarea: HTMLTextAreaElement;
   let restoreComposerFocus = false;
@@ -59,7 +61,7 @@
     if (!canSend) return;
     restoreComposerFocus = true;
     const draft = $composerDraft;
-    await startLocalModelTurn(draft, $selectedConversationId);
+    await startLocalModelTurn(draft, $selectedConversationId, $includedFileIds);
     await restoreFocusAfterRequest();
     resizeDraftBox();
   }
@@ -74,6 +76,7 @@
 
 <div class="composer-region">
   <form class="composer-wrap" aria-label={$t('chat.type_message')} onsubmit={(event) => event.preventDefault()}>
+    <FilesPanel />
     <KnowledgeToggle />
     <div class="composer card-surface">
       <label class="sr-only" for="composer-draft">{$t('chat.type_message')}</label>

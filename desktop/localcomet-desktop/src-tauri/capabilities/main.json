@@ -13,6 +13,8 @@
     "allow-control-plane-create-thread",
     "allow-control-plane-get-turn-status",
     "allow-control-plane-start-mock-turn",
+    "allow-files-capability-status",
+    "allow-forget-selected-file",
     "allow-knowledge-review-decision-create",
     "allow-knowledge-review-get",
     "allow-knowledge-review-list",
@@ -20,6 +22,7 @@
     "allow-knowledge-review-snapshot",
     "allow-knowledge-turn-decide",
     "allow-knowledge-turn-preview",
+    "allow-list-selected-files",
     "allow-managed-artifact-validation-status",
     "allow-managed-installed-artifacts",
     "allow-managed-model-catalog",
@@ -40,6 +43,8 @@
     "allow-model-gateway-probe",
     "allow-model-turn-cancel",
     "allow-model-turn-start",
+    "allow-preview-selected-file",
+    "allow-select-files",
     "core:event:allow-listen",
     "core:event:allow-unlisten"
   ]

@@ -2,6 +2,7 @@ mod app_data_root;
 mod artifact_acquisition;
 mod artifact_trust;
 mod control_plane;
+mod files;
 mod ipc;
 mod knowledge;
 mod managed_runtime;
@@ -25,6 +26,10 @@ use control_plane::{
     knowledge_review_list, knowledge_review_refresh, knowledge_review_snapshot, model_binding_set,
     model_gateway_catalog, model_gateway_list_models, model_gateway_probe, model_turn_cancel,
     model_turn_start, ControlPlaneBridge,
+};
+use files::{
+    files_capability_status, forget_selected_file, list_selected_files, preview_selected_file,
+    select_files, SelectedFilesManager,
 };
 use knowledge::{knowledge_turn_decide, knowledge_turn_preview};
 use managed_runtime::{
@@ -165,6 +170,7 @@ pub fn run() {
                 &artifact_trust,
             ))));
             app.manage(Arc::new(ManagedRuntimeSupervisor::new(artifact_trust)));
+            app.manage(SelectedFilesManager::default());
             let Some(window) = app.get_webview_window("main") else {
                 let _ = supervisor.shutdown();
                 startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_201");
@@ -231,7 +237,12 @@ pub fn run() {
             remove_managed_model,
             managed_runtime_start,
             managed_runtime_stop,
-            managed_runtime_logs
+            managed_runtime_logs,
+            files_capability_status,
+            select_files,
+            list_selected_files,
+            preview_selected_file,
+            forget_selected_file
         ])
         .run(tauri::generate_context!());
 

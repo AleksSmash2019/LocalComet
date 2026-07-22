@@ -29,8 +29,9 @@ import type {
   SanitizedGatewayError
 } from '$lib/types/modelGateway';
 import { CONTROL_PLANE_EVENT_CHANNEL } from './controlPlane';
+import type { FileContextInclusion, FilesContextReport } from '$lib/types/files';
 
-type InvokeArgs = Readonly<Record<string, string | number | boolean>>;
+type InvokeArgs = Readonly<Record<string, string | number | boolean | readonly string[]>>;
 
 export async function getModelGatewayCatalog(): Promise<GatewayCatalog> {
   return validateCatalog(await invokeExact('model_gateway_catalog'));
@@ -157,6 +158,7 @@ export async function startModelTurn(args: {
   submittedAtUnixMs: number;
   maxTokens: number;
   prompt: string;
+  fileIds?: readonly string[];
   locale: AssistantLocale;
   bindingFingerprint: string;
 }): Promise<ModelTurnStartResponse> {
@@ -165,6 +167,7 @@ export async function startModelTurn(args: {
   const modelId = validateArtifactId(args.modelId);
   const submittedAtUnixMs = positiveSafeInteger(args.submittedAtUnixMs);
   const maxTokens = validateMaxTokens(args.maxTokens);
+  const fileIds = validateFileIds(args.fileIds ?? []);
   const result = validateTurnStart(
     await invokeExact('model_turn_start', {
       requestId,
@@ -173,6 +176,7 @@ export async function startModelTurn(args: {
       submittedAtUnixMs,
       maxTokens,
       prompt: bounded(args.prompt, 16_384),
+      fileIds,
       locale: validateLocale(args.locale),
       bindingFingerprint: validateFingerprint(args.bindingFingerprint)
     })
@@ -187,6 +191,18 @@ export async function startModelTurn(args: {
     result.binding_fingerprint !== args.bindingFingerprint
   ) throw invalid();
   return result;
+}
+
+function validateFileIds(value: readonly string[]): readonly string[] {
+  if (!Array.isArray(value) || value.length > 32) throw invalid();
+  const unique = new Set<string>();
+  for (const fileId of value) {
+    if (typeof fileId !== 'string' || !/^[0-9a-f]{64}$/.test(fileId) || unique.has(fileId)) {
+      throw invalid();
+    }
+    unique.add(fileId);
+  }
+  return [...unique];
 }
 
 function validateLocale(value: unknown): AssistantLocale {
@@ -572,7 +588,7 @@ function validateTurnStart(value: unknown): ModelTurnStartResponse {
   const requestId = validateTurnId(String(object.request_id));
   const turnId = validateTurnId(String(object.turn_id));
   if (turnId !== requestId || object.state !== 'Accepted') throw invalid();
-  return {
+  const response: ModelTurnStartResponse = {
     request_id: requestId,
     chat_session_id: validateChatSessionId(object.chat_session_id),
     turn_id: turnId,
@@ -582,6 +598,79 @@ function validateTurnStart(value: unknown): ModelTurnStartResponse {
     max_tokens: validateMaxTokens(object.max_tokens),
     binding_fingerprint: validateFingerprint(String(object.binding_fingerprint))
   };
+  return object.file_context === undefined
+    ? response
+    : { ...response, file_context: validateFilesContextReport(object.file_context) };
+}
+
+function validateFilesContextReport(value: unknown): FilesContextReport {
+  const object = expectExactRecord(value, [
+    'source_bytes',
+    'source_characters',
+    'included_bytes',
+    'included_characters',
+    'truncated',
+    'files'
+  ]);
+  const sourceBytes = boundedNonNegativeInteger(object.source_bytes, 5 * 1024 * 1024);
+  const sourceCharacters = boundedNonNegativeInteger(object.source_characters, 5 * 1024 * 1024);
+  const includedBytes = boundedNonNegativeInteger(object.included_bytes, sourceBytes);
+  const includedCharacters = boundedNonNegativeInteger(object.included_characters, sourceCharacters);
+  const files = boundedArray(object.files, 32).map(validateFileContextInclusion);
+  const ids = files.map((file) => file.file_id);
+  validateUnique(ids);
+  if (
+    files.length === 0 ||
+    object.truncated !== (includedBytes !== sourceBytes) ||
+    files.reduce((total, file) => total + file.original_bytes, 0) !== sourceBytes ||
+    files.reduce((total, file) => total + file.original_characters, 0) !== sourceCharacters ||
+    files.reduce((total, file) => total + file.included_bytes, 0) !== includedBytes ||
+    files.reduce((total, file) => total + file.included_characters, 0) !== includedCharacters
+  ) throw invalid();
+  return {
+    source_bytes: sourceBytes,
+    source_characters: sourceCharacters,
+    included_bytes: includedBytes,
+    included_characters: includedCharacters,
+    truncated: object.truncated as boolean,
+    files
+  };
+}
+
+function validateFileContextInclusion(value: unknown): FileContextInclusion {
+  const object = expectExactRecord(value, [
+    'file_id',
+    'filename',
+    'original_bytes',
+    'original_characters',
+    'included_bytes',
+    'included_characters',
+    'inclusion'
+  ]);
+  const originalBytes = boundedNonNegativeInteger(object.original_bytes, 2 * 1024 * 1024);
+  const originalCharacters = boundedNonNegativeInteger(object.original_characters, 2 * 1024 * 1024);
+  const includedBytes = boundedNonNegativeInteger(object.included_bytes, originalBytes);
+  const includedCharacters = boundedNonNegativeInteger(object.included_characters, originalCharacters);
+  const inclusion = exactString(object.inclusion, ['full', 'bounded_excerpt']);
+  if (
+    (inclusion === 'full' && (includedBytes !== originalBytes || includedCharacters !== originalCharacters)) ||
+    (inclusion === 'bounded_excerpt' && (includedBytes >= originalBytes || includedCharacters >= originalCharacters))
+  ) throw invalid();
+  return {
+    file_id: patternString(object.file_id, /^[0-9a-f]{64}$/),
+    filename: validateContextFilename(object.filename),
+    original_bytes: originalBytes,
+    original_characters: originalCharacters,
+    included_bytes: includedBytes,
+    included_characters: includedCharacters,
+    inclusion
+  };
+}
+
+function validateContextFilename(value: unknown): string {
+  const filename = safeText(value, 255);
+  if (/[\\/:]/.test(filename) || filename === '.' || filename === '..') throw invalid();
+  return filename;
 }
 
 function validateTurnCancel(value: unknown): ModelTurnCancelResponse {
@@ -848,6 +937,12 @@ function positiveSafeInteger(value: unknown): number {
 function nonNegativeSafeInteger(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw invalid();
   return value;
+}
+
+function boundedNonNegativeInteger(value: unknown, maximum: number): number {
+  const integer = nonNegativeSafeInteger(value);
+  if (integer > maximum) throw invalid();
+  return integer;
 }
 
 function boundedArray(value: unknown, limit: number): readonly unknown[] {

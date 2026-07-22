@@ -17,6 +17,7 @@
     DESKTOP_BUILD_STATUS,
     DESKTOP_SHELL_VERSION
   } from '$lib/version';
+  import { filesCapabilityAvailable, initializeFilesCapability } from '$lib/stores/files';
 
   export let onClose: () => void = () => undefined;
 
@@ -47,6 +48,7 @@
 
   onMount(() => {
     closeButton?.focus();
+    void initializeFilesCapability();
   });
 </script>
 
@@ -162,6 +164,7 @@
             <li>{$t('capability.local_chat')}</li>
             <li>{$t('capability.local_model_inference')}</li>
             <li>{$t('capability.approved_model_setup')}</li>
+            {#if $filesCapabilityAvailable}<li>{$t('capability.files')}</li>{/if}
           </ul>
         </div>
         <div>
@@ -170,7 +173,7 @@
             <li>{$t('capability.internet')}</li>
             <li>{$t('capability.email')}</li>
             <li>{$t('capability.browser')}</li>
-            <li>{$t('capability.files')}</li>
+            {#if !$filesCapabilityAvailable}<li>{$t('capability.files')}</li>{/if}
             <li>{$t('capability.vault')}</li>
             <li>{$t('capability.computer_use')}</li>
             <li>{$t('capability.shell')}</li>

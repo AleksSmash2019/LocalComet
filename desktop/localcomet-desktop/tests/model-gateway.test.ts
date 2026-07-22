@@ -44,7 +44,26 @@ vi.mock('@tauri-apps/api/core', () => ({
     if (command === 'model_gateway_probe') return { status: 'Ready', provider_id: 'openai-compatible-local', host: '127.0.0.1', port: args?.port, base_path: '/v1', model_count: 1 };
     if (command === 'model_gateway_list_models') return { provider_id: 'openai-compatible-local', host: '127.0.0.1', port: args?.port, models: [{ model_id: 'local-model' }], discovered_fingerprint: FINGERPRINT };
     if (command === 'model_binding_set') return { provider_id: 'openai-compatible-local', harness_id: args?.harnessId, host: '127.0.0.1', port: args?.port, base_path: '/v1', model_id: args?.modelId, binding_fingerprint: FINGERPRINT, discovered_fingerprint: FINGERPRINT, persistence: false };
-    if (command === 'model_turn_start') return { request_id: args?.requestId, chat_session_id: args?.chatSessionId, turn_id: args?.requestId, state: 'Accepted', model_id: args?.modelId, submitted_at_unix_ms: args?.submittedAtUnixMs, max_tokens: args?.maxTokens, binding_fingerprint: args?.bindingFingerprint };
+    if (command === 'model_turn_start') return {
+      request_id: args?.requestId,
+      chat_session_id: args?.chatSessionId,
+      turn_id: args?.requestId,
+      state: 'Accepted',
+      model_id: args?.modelId,
+      submitted_at_unix_ms: args?.submittedAtUnixMs,
+      max_tokens: args?.maxTokens,
+      binding_fingerprint: args?.bindingFingerprint,
+      ...(Array.isArray(args?.fileIds) && args.fileIds.length > 0 ? {
+        file_context: {
+          source_bytes: 10,
+          source_characters: 10,
+          included_bytes: 5,
+          included_characters: 5,
+          truncated: true,
+          files: [{ file_id: args.fileIds[0], filename: 'notes.md', original_bytes: 10, original_characters: 10, included_bytes: 5, included_characters: 5, inclusion: 'bounded_excerpt' }]
+        }
+      } : {})
+    };
     return {};
   })
 }));
@@ -125,7 +144,16 @@ describe('Local Model Gateway frontend', () => {
     ]);
     expect(JSON.stringify(invokeCalls)).not.toContain('http://');
     expect(JSON.stringify(invokeCalls)).not.toContain('api');
-    expect(invokeCalls.at(-1)?.args).toMatchObject({ prompt: 'hello', locale: 'ru' });
+    expect(invokeCalls.at(-1)?.args).toMatchObject({ prompt: 'hello', fileIds: [], locale: 'ru' });
+  });
+
+  it('passes only validated opaque file identities to the model command', async () => {
+    const fileId = 'd'.repeat(64);
+    const response = await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: [fileId], locale: 'ru', bindingFingerprint: FINGERPRINT });
+    expect(invokeCalls.at(-1)?.args?.fileIds).toEqual([fileId]);
+    expect(response.file_context).toMatchObject({ included_bytes: 5, truncated: true });
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: ['C:\\temp\\notes.md'], locale: 'ru', bindingFingerprint: FINGERPRINT })).rejects.toMatchObject({ code: 'invalid_payload' });
+    expect(invokeCalls).toHaveLength(1);
   });
 
   it('rejects invalid ports before invoking Tauri', async () => {

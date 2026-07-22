@@ -76,6 +76,7 @@ export interface ModelTurnStartResponse {
   readonly submitted_at_unix_ms: number;
   readonly max_tokens: number;
   readonly binding_fingerprint: string;
+  readonly file_context?: import('./files').FilesContextReport;
 }
 
 export interface ModelTurnCancelResponse {
