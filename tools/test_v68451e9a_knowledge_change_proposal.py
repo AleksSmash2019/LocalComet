@@ -486,13 +486,64 @@ class KnowledgeChangeProposalContractTests(unittest.TestCase):
         self.assertTrue(any(f.code == ProposalValidationCode.PROPOSER_LIFECYCLE_SPOOFING.value for f in result.findings))
 
 
+def _create_fixture_vault(root: Path) -> None:
+    scopes = (
+        "current-state", "evidence", "incidents", "knowledge-schema",
+        "product-vision", "roadmap", "security", "source-map",
+        "system-architecture", "version-matrix",
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    for scope in scopes:
+        note = (
+            "---\n"
+            f"id: canonical.{scope}\n"
+            "type: canonical\n"
+            "status: current\n"
+            "knowledge_layer: current_source_truth\n"
+            "evidence_class: A\n"
+            "authority: source\n"
+            "updated: 2026-07-15\n"
+            "last_reviewed: 2026-07-15\n"
+            "canonical: true\n"
+            f"canonical_scope: {scope}\n"
+            "---\n"
+            f"# {scope.replace('-', ' ').title()}\n"
+            "Fixture vault note.\n"
+        )
+        (root / f"canonical.{scope}.md").write_text(note, encoding="utf-8")
+
+
+def _resolve_vault() -> tuple[Path, Path]:
+    if REAL_VAULT.is_dir():
+        try:
+            result = vault_validator.validate_vault(REAL_VAULT, REAL_PROJECT)
+            if result.status != "FAIL" and not result.error_count:
+                return REAL_VAULT, REAL_PROJECT
+        except Exception:
+            pass
+    fixture_root = Path(tempfile.mkdtemp(prefix="localcomet_vault_fixture_"))
+    _create_fixture_vault(fixture_root)
+    return fixture_root, REAL_PROJECT
+
+
 class KnowledgeChangeProposalRealVaultTests(unittest.TestCase):
+    _fixture_vault: Path | None = None
+
     @classmethod
     def setUpClass(cls):
-        cls.adapter = KnowledgeAdapter(KnowledgeConfig(vault_root=REAL_VAULT, project_root=REAL_PROJECT))
+        vault_root, project_root = _resolve_vault()
+        if vault_root != REAL_VAULT:
+            cls._fixture_vault = vault_root
+        cls.adapter = KnowledgeAdapter(KnowledgeConfig(vault_root=vault_root, project_root=project_root))
         cls.adapter.initialize()
-        cls.validation = vault_validator.validate_vault(REAL_VAULT, REAL_PROJECT)
+        cls.validation = vault_validator.validate_vault(vault_root, project_root)
         cls.existing_ids = {note.note_id for note in cls.adapter._index.notes}
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._fixture_vault is not None:
+            import shutil
+            shutil.rmtree(cls._fixture_vault, ignore_errors=True)
 
     def test_47_real_vault_update_existing_proposal_validates(self):
         target_id = "canonical.current-state"
