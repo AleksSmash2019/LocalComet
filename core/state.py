@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from modules.project_paths import get_project_root
 
@@ -11,16 +12,24 @@ def load_state():
         return {}
 
     try:
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    except:
+        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
         return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    return data
 
 
 def save_state(data: dict):
-    STATE_FILE.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
+    try:
+        STATE_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+    except OSError as e:
+        print(f"[state] Не удалось сохранить state.json: {e}", file=sys.stderr)
 
 
 def set_value(key: str, value):

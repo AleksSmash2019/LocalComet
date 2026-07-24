@@ -1,4 +1,5 @@
 import json
+import sys
 from json_repair import repair_json
 from core.llm import ask_llm
 
@@ -32,7 +33,14 @@ def observe_page(page_text: str):
     answer = ask_llm(SYSTEM, page_text, max_tokens=800)
     answer = answer.replace("```json", "").replace("```", "").strip()
 
-    data = json.loads(repair_json(answer))
+    try:
+        data = json.loads(repair_json(answer))
+    except (ValueError, json.JSONDecodeError) as e:
+        print(f"[observer] JSON parse error: {str(e)[:200]}", file=sys.stderr)
+        return {"summary": "", "good": [], "problems": [], "score": 0}
+
+    if not isinstance(data, dict):
+        return {"summary": "", "good": [], "problems": [], "score": 0}
 
     return {
         "summary": data.get("summary", ""),

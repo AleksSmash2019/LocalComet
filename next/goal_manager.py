@@ -1,6 +1,7 @@
 from core.llm import ask_llm, is_llm_offline_error, format_llm_offline_message
 from json_repair import repair_json
 import json
+import sys
 
 
 SYSTEM = """
@@ -42,7 +43,14 @@ def analyze_goal(user_goal: str):
 
     answer = answer.replace("```json", "").replace("```", "").strip()
 
-    data = json.loads(repair_json(answer))
+    try:
+        data = json.loads(repair_json(answer))
+    except (ValueError, json.JSONDecodeError) as e:
+        print(f"[goal_manager] JSON parse error: {str(e)[:200]}", file=sys.stderr)
+        return {"goal": user_goal, "type": "unknown", "success_criteria": []}
+
+    if not isinstance(data, dict):
+        return {"goal": user_goal, "type": "unknown", "success_criteria": []}
 
     return {
         "goal": data.get("goal", user_goal),
