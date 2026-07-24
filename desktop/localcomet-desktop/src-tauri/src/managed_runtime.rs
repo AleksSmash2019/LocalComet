@@ -1931,7 +1931,11 @@ pub async fn managed_runtime_stop(
 
 #[tauri::command]
 pub fn managed_runtime_logs(state: State<'_, Arc<ManagedRuntimeSupervisor>>) -> ManagedRuntimeLogs {
-    state.logs()
+    let start = std::time::Instant::now();
+    let result = state.logs();
+    let dur_ms = start.elapsed().as_millis();
+    eprintln!("[PERF] cmd=managed_runtime_logs dur_ms={dur_ms}");
+    result
 }
 
 #[cfg(test)]

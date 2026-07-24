@@ -1192,10 +1192,19 @@ pub fn managed_model_catalog(state: State<'_, Arc<ArtifactTrustService>>) -> Man
 }
 
 #[tauri::command]
-pub fn managed_installed_artifacts(
+pub async fn managed_installed_artifacts(
     state: State<'_, Arc<ArtifactTrustService>>,
-) -> ManagedInstalledArtifacts {
-    state.installed_artifacts()
+) -> Result<ManagedInstalledArtifacts, BridgeError> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || {
+        let start = std::time::Instant::now();
+        let result = state.installed_artifacts();
+        let dur_ms = start.elapsed().as_millis();
+        eprintln!("[PERF] cmd=managed_installed_artifacts dur_ms={dur_ms}");
+        result
+    })
+    .await
+    .map_err(|_| BridgeError::new("runtime_unavailable", "installed artifacts worker failed"))
 }
 
 #[tauri::command]
@@ -1209,11 +1218,20 @@ pub fn managed_artifact_validation_status(
 }
 
 #[tauri::command]
-pub fn managed_model_readiness(
+pub async fn managed_model_readiness(
     state: State<'_, Arc<ArtifactTrustService>>,
     model_id: String,
 ) -> Result<ModelReadinessSummary, BridgeError> {
-    state.model_readiness(&model_id).map_err(BridgeError::from)
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || {
+        let start = std::time::Instant::now();
+        let result = state.model_readiness(&model_id).map_err(BridgeError::from);
+        let dur_ms = start.elapsed().as_millis();
+        eprintln!("[PERF] cmd=managed_model_readiness model={model_id} dur_ms={dur_ms}");
+        result
+    })
+    .await
+    .map_err(|_| BridgeError::new("runtime_unavailable", "model readiness worker failed"))?
 }
 
 fn parse_catalog(bytes: &[u8]) -> Result<ApprovedArtifactCatalog, ArtifactTrustError> {
@@ -2165,6 +2183,7 @@ fn open_directory_guard(path: &Path) -> Result<File, ArtifactTrustError> {
 }
 
 fn sha256_file(path: &Path) -> Result<String, ArtifactTrustError> {
+    let start = std::time::Instant::now();
     let file = File::open(path)
         .map_err(|_| ArtifactTrustError::new("io_error", "hash input unavailable"))?;
     let mut reader = BufReader::with_capacity(1024 * 1024, file);
@@ -2179,7 +2198,10 @@ fn sha256_file(path: &Path) -> Result<String, ArtifactTrustError> {
         }
         hasher.update(&buffer[..count]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    let result = format!("{:x}", hasher.finalize());
+    let dur_ms = start.elapsed().as_millis();
+    eprintln!("[PERF] sha256_file path={} dur_ms={dur_ms}", path.display());
+    Ok(result)
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
