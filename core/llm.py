@@ -4,7 +4,7 @@ from config import LMSTUDIO_API, MODEL
 
 try:
     from core.project_context import build_system_prompt
-except Exception:
+except (ImportError, AttributeError):
     build_system_prompt = None
 
 
@@ -94,9 +94,5 @@ def ask_llm(
         data = response.json()
 
         return data["choices"][0]["message"]["content"]
-    except (
-        requests.exceptions.ConnectionError,
-        requests.exceptions.Timeout,
-        requests.exceptions.RequestException,
-    ) as e:
+    except requests.exceptions.RequestException as e:
         return format_llm_offline_message(e)

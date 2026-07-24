@@ -280,9 +280,6 @@ def route(user_text: str) -> str:
         "браузер autopilot",
         "браузер план",
         "браузер наблюдай",
-    ]
-
-    browser_super_words = [
         "browser research",
         "browser deep research",
         "browser compare",
@@ -306,9 +303,6 @@ def route(user_text: str) -> str:
         return "gpt_browser"
 
     if any(word in text for word in browser_autopilot_words):
-        return "browser"
-
-    if any(word in text for word in browser_super_words):
         return "browser"
 
     if any(word in text for word in automation_words):
