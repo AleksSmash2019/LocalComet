@@ -220,6 +220,7 @@
     "tools/test_v684_action_executor.py"
   ],
   "tools": [
+    "scripts/generate_runtime_manifest.py",
     "scripts/manual_model_gateway.py",
     "tools/build_up00_windows_installer.py",
     "tools/create_project_audit_bundle.py",
