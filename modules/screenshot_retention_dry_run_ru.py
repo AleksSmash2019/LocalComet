@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from modules.project_paths import build_retention_plan, get_project_root, localcomet_reports_dir, retention_runtime_roots
 

@@ -1,7 +1,6 @@
 from pathlib import Path
 from modules.project_paths import get_project_root
 from typing import Dict, Any
-import sys
 
 ROOT_DIR = get_project_root()
 

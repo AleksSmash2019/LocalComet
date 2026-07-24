@@ -781,5 +781,3 @@ __all__ = [
     "compute_proposal_instance_id",
     "create_proposal_from_untrusted",
 ]
-
-import sys

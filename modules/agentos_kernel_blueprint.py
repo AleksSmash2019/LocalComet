@@ -3,7 +3,6 @@ from pathlib import Path
 from modules.project_paths import get_project_root
 import json
 import re
-import uuid
 
 from core.state import get_value, set_value
 

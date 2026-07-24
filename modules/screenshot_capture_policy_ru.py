@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Dict, Any
 import time
-import sys
 
 # Configuration
 SCREENSHOT_DIR = Path("Projects/Reports/desktop_observer/screenshots")

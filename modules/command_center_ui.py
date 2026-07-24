@@ -1,5 +1,4 @@
 import tkinter as tk
-from tkinter import ttk
 
 
 def build_command_center(panel, parent, style_text, button_grid, colors):

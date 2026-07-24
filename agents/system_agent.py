@@ -1,4 +1,3 @@
-from pathlib import Path
 from modules.project_paths import get_project_root, projects_dir
 
 from config import MODEL, LMSTUDIO_API
