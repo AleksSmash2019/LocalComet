@@ -63,7 +63,7 @@ TURN_START_PAYLOAD_KEYS = frozenset(
     )
 )
 
-LOCALCOMET_APPLICATION_VERSION = "v6.84.5.1"
+LOCALCOMET_APPLICATION_VERSION = "v6.84.6"
 ASSISTANT_CONTEXT_APPLICATION_KEYS = frozenset(("name", "mode", "version"))
 ASSISTANT_CONTEXT_CONVERSATION_KEYS = frozenset(
     ("locale", "project_context_available", "selected_files_context_available")
@@ -1516,7 +1516,7 @@ def _turn_payload(
     audit_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = {
-        "control_plane_version": "v6.84.5.1",
+        "control_plane_version": "v6.84.6",
         "model_gateway_version": LOCAL_MODEL_GATEWAY_VERSION,
         "request_id": request.request_id,
         "turn_id": request.turn_id,

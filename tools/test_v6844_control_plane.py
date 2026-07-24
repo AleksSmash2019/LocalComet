@@ -84,7 +84,7 @@ def run_control_plane_unit_checks() -> None:
     plane = module.DesktopControlPlane(id_factory=lambda: next(ids))
     boot = plane.dispatch("app.bootstrap", {}, request_id="req-bootstrap")
     payload = boot.response
-    check(payload["control_plane_version"] == "v6.84.5.1", "bootstrap version wrong")
+    check(payload["control_plane_version"] == "v6.84.6", "bootstrap version wrong")
     check(
         set(payload)
         == {
@@ -521,7 +521,7 @@ def run_sidecar_transcripts() -> None:
         process.stdin.flush()
         bootstrap = decode_from_stream(process.stdout)
         check(bootstrap["type"] == "response", "bootstrap did not respond")
-        check(bootstrap["payload"]["control_plane_version"] == "v6.84.5.1", "bootstrap response version wrong")
+        check(bootstrap["payload"]["control_plane_version"] == "v6.84.6", "bootstrap response version wrong")
         process.stdin.write(request("review-empty", "knowledge.review.list", {"offset": 0, "limit": 50}))
         process.stdin.flush()
         review_empty = decode_from_stream(process.stdout)

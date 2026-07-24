@@ -49,7 +49,7 @@ export interface ControlPlaneLimits {
 }
 
 export interface BootstrapResponse {
-  readonly control_plane_version: 'v6.84.5.1';
+  readonly control_plane_version: 'v6.84.6';
   readonly protocol: 'localcomet.ipc';
   readonly protocol_version: '1.0';
   readonly sidecar_runtime_version: 'v6.84.3';
@@ -101,7 +101,7 @@ export interface ControlPlaneEvent {
   readonly method: ControlPlaneEventMethod;
   readonly sequence: number;
   readonly reply_to: string;
-  readonly control_plane_version: 'v6.84.5.1';
+  readonly control_plane_version: 'v6.84.6';
   readonly session_id: string | null;
   readonly thread_id: string | null;
   readonly turn_id: string | null;

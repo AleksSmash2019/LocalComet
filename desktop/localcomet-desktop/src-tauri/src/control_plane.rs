@@ -11,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-pub const DESKTOP_STATUS_BRIDGE_VERSION: &str = "v6.84.5.1";
+pub const DESKTOP_STATUS_BRIDGE_VERSION: &str = "v6.84.6";
 const LOCALCOMET_PACKAGE_METADATA: &str = include_str!("../../package.json");
 pub const CONTROL_PLANE_EVENT_CHANNEL: &str = "localcomet://control-plane-event";
 pub const MAX_IN_FLIGHT_REQUESTS: usize = 32;

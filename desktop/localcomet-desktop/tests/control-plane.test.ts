@@ -70,7 +70,7 @@ function installTauriMock(
 
 function bootstrapFixture() {
   return {
-    control_plane_version: 'v6.84.5.1',
+    control_plane_version: 'v6.84.6',
     protocol: 'localcomet.ipc',
     protocol_version: '1.0',
     sidecar_runtime_version: 'v6.84.3',
@@ -95,7 +95,7 @@ function event(method: ControlPlaneEvent['method'], sequence: number, patch: Par
     method,
     sequence,
     reply_to: patch.reply_to ?? 'deskcp-0000000001',
-    control_plane_version: 'v6.84.5.1',
+    control_plane_version: 'v6.84.6',
     session_id: patch.session_id ?? SESSION_ID,
     thread_id: patch.thread_id ?? THREAD_ID,
     turn_id: patch.turn_id ?? TURN_ID,
@@ -131,7 +131,7 @@ describe('control-plane bridge and store', () => {
 
   it('accepts the authoritative Python Control Plane bootstrap version', async () => {
     const bootstrap = await bootstrapControlPlane();
-    expect(bootstrap.control_plane_version).toBe('v6.84.5.1');
+    expect(bootstrap.control_plane_version).toBe('v6.84.6');
     expect(bootstrap.protocol_version).toBe('1.0');
     expect(bootstrap.sidecar_runtime_version).toBe('v6.84.3');
   });

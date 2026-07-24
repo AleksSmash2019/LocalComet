@@ -68,7 +68,7 @@ from modules.knowledge_review_ui_projection_ru import (
 )
 
 
-DESKTOP_CONTROL_PLANE_VERSION = "v6.84.5.1"
+DESKTOP_CONTROL_PLANE_VERSION = "v6.84.6"
 IPC_PROTOCOL = "localcomet.ipc"
 IPC_PROTOCOL_VERSION = "1.0"
 SIDECAR_RUNTIME_VERSION = "v6.84.3"

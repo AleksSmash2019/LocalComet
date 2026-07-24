@@ -118,7 +118,7 @@ function snapshotEnvelope(
       ? 'localcomet.knowledge-review-refresh/1.0'
       : 'localcomet.knowledge-review-snapshot/1.0',
     command_center_version: 'v6.84.6',
-    control_plane_version: 'v6.84.5.1',
+    control_plane_version: 'v6.84.6',
     sidecar_runtime_version: 'v6.84.3',
     source: 'LOCAL_CONTROL_PLANE',
     fixture: false,
@@ -146,7 +146,7 @@ function decisionEnvelope(
   return {
     contract: 'localcomet.knowledge-review-decision-create/1.0',
     command_center_version: 'v6.84.6',
-    control_plane_version: 'v6.84.5.1',
+    control_plane_version: 'v6.84.6',
     sidecar_runtime_version: 'v6.84.3',
     source: 'LOCAL_CONTROL_PLANE',
     fixture: false,

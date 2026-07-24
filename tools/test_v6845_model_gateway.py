@@ -239,7 +239,7 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         },
         "turn payload metadata shape changed",
     )
-    _assert(payload["control_plane_version"] == DESKTOP_CONTROL_PLANE_VERSION == "v6.84.5.1", "Control Plane version not aligned")
+    _assert(payload["control_plane_version"] == DESKTOP_CONTROL_PLANE_VERSION == "v6.84.6", "Control Plane version not aligned")
     _assert(payload["control_plane_version"] != "v6.84.4", "stale Control Plane version still emitted")
     _assert(payload["model_gateway_version"] == LOCAL_MODEL_GATEWAY_VERSION == "v6.84.5", "Model Gateway release changed")
     _assert(IPC_PROTOCOL == "localcomet.ipc" and IPC_PROTOCOL_VERSION == "1.0", "IPC protocol changed")
@@ -247,7 +247,7 @@ def test_version_alignment_and_turn_payload_shape() -> None:
 
     bridge_text = (ROOT / "desktop" / "localcomet-desktop" / "src" / "lib" / "bridge" / "controlPlane.ts").read_text(encoding="utf-8")
     bridge_test_text = (ROOT / "desktop" / "localcomet-desktop" / "tests" / "control-plane.test.ts").read_text(encoding="utf-8")
-    _assert("object.control_plane_version !== 'v6.84.5.1'" in bridge_text, "exact Control Plane validation changed")
+    _assert("object.control_plane_version !== 'v6.84.6'" in bridge_text, "exact Control Plane validation changed")
     _assert("rejects the stale v6.84.4 bootstrap version" in bridge_test_text, "stale-version rejection test missing")
 
 

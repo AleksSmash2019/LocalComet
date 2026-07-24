@@ -68,7 +68,7 @@ async function invokeExact<T>(command: string, args?: Readonly<Record<string, st
 
 function validateBootstrap(value: unknown): BootstrapResponse {
   const object = expectRecord(value);
-  if (object.control_plane_version !== 'v6.84.5.1' || object.protocol !== 'localcomet.ipc') {
+  if (object.control_plane_version !== 'v6.84.6' || object.protocol !== 'localcomet.ipc') {
     throw { code: 'invalid_payload', message: 'Invalid bootstrap payload' };
   }
   return object as unknown as BootstrapResponse;

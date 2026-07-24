@@ -1,6 +1,6 @@
 [package]
 name = "localcomet-desktop"
-version = "0.0.0"
+version = "6.84.6"
 description = "LocalComet desktop visual shell"
 edition = "2021"
 
