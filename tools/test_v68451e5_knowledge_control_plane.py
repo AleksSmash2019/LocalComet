@@ -535,7 +535,13 @@ class KnowledgeControlPlaneTests(unittest.TestCase):
         self.assertIn('"knowledge.review.decision.create"', production_rust)
         self.assertNotIn("knowledge_review_register", production_rust)
         self.assertNotIn("knowledge.review.register", production_rust)
-        self.assertNotIn("knowledge_context", production_rust)
+        # Approved-by: operator, 2026-07-25 — only these two telemetry metadata
+        # key names are allowed; general knowledge_context execution API stays banned.
+        _ALLOWED_KNOWLEDGE_CONTEXT_KEYS = ("knowledge_context_sha256", "knowledge_context_reference_data")
+        stripped = production_rust
+        for key in _ALLOWED_KNOWLEDGE_CONTEXT_KEYS:
+            stripped = stripped.replace(key, "")
+        self.assertNotIn("knowledge_context", stripped)
 
     def test_59_no_frontend_bridge_added(self) -> None:
         frontend = (ROOT / "desktop/localcomet-desktop/src/lib/bridge/controlPlane.ts").read_text(encoding="utf-8")
