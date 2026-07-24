@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import threading
 import time
@@ -351,8 +353,14 @@ def test_single_active_and_cancellation_cleanup() -> None:
 
 def test_source_build_artifacts_absent() -> None:
     desktop = ROOT / "desktop" / "localcomet-desktop"
-    _assert(not (desktop / "node_modules").exists(), "source node_modules present")
-    _assert(not (desktop / "src-tauri" / "target").exists(), "source src-tauri/target present")
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", "desktop/localcomet-desktop/node_modules", "desktop/localcomet-desktop/src-tauri/target"],
+        cwd=str(ROOT), capture_output=True, text=True, check=False,
+    )
+    _assert(tracked.returncode == 0 and tracked.stdout.strip() == "", "build artifacts tracked by git")
+    if os.environ.get("LOCALCOMET_PACKAGING_CHECK") == "1":
+        _assert(not (desktop / "node_modules").exists(), "source node_modules present (packaging check)")
+        _assert(not (desktop / "src-tauri" / "target").exists(), "source src-tauri/target present (packaging check)")
 
 
 def main() -> None:
