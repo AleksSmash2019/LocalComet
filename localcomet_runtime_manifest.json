@@ -183,7 +183,6 @@
     "test_full_flow.py",
     "test_full_flow2.py",
     "test_full_flow3.py",
-    "test_model.py",
     "test_working_directory_guard.py",
     "tools/test_gpt_bridge.py",
     "tools/test_up00_unready_sidecar.py",
@@ -221,6 +220,7 @@
     "tools/test_v684_action_executor.py"
   ],
   "tools": [
+    "scripts/manual_model_gateway.py",
     "tools/build_up00_windows_installer.py",
     "tools/create_project_audit_bundle.py",
     "tools/hard_model_tester.py",
