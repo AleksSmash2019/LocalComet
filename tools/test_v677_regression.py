@@ -226,6 +226,8 @@ def test_nonexistent_root_dispatches_do_not_escape_override() -> None:
 
 
 def test_generate_capability_map_import_is_read_only() -> None:
+    # NOTE: GenerateCapabilityMap.py is a minimal placeholder (see M-04 incident).
+    # This test verifies only the import contract, not real map generation.
     with tempfile.TemporaryDirectory(prefix="localcomet_v677_report_") as temp_text:
         temp_root = Path(temp_text) / "root"
         report_dir = Path(temp_text) / "reports"
