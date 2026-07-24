@@ -2,6 +2,7 @@
   "entrypoints": [
     "app.py",
     "config.py",
+    "GenerateCapabilityMap.py",
     "LocalComet_Control_Panel.py",
     "next/app_v5.py"
   ],
@@ -192,6 +193,7 @@
     "tools/test_v677_regression.py",
     "tools/test_v678_router_registry.py",
     "tools/test_v679_retention.py",
+    "tools/test_v6801_audit_bundle.py",
     "tools/test_v6802_bundle_security.py",
     "tools/test_v680_reproducibility.py",
     "tools/test_v681_diagnostics.py",
