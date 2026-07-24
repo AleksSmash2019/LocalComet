@@ -1,4 +1,4 @@
-use crate::artifact_trust::{ArtifactTrustService, ValidatedRuntimeModel};
+use crate::artifact_trust::{perf_logging_enabled, ArtifactTrustService, ValidatedRuntimeModel};
 use crate::control_plane::{BridgeError, ControlPlaneBridge, ControlPlaneMethod};
 use crate::windows_job::{ContainedManagedRuntimeProcess, ManagedRuntimeLaunchSpec};
 use serde::Serialize;
@@ -1934,7 +1934,9 @@ pub fn managed_runtime_logs(state: State<'_, Arc<ManagedRuntimeSupervisor>>) -> 
     let start = std::time::Instant::now();
     let result = state.logs();
     let dur_ms = start.elapsed().as_millis();
-    eprintln!("[PERF] cmd=managed_runtime_logs dur_ms={dur_ms}");
+    if perf_logging_enabled() {
+        eprintln!("[PERF] cmd=managed_runtime_logs dur_ms={dur_ms}");
+    }
     result
 }
 

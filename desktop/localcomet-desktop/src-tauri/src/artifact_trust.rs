@@ -1200,7 +1200,9 @@ pub async fn managed_installed_artifacts(
         let start = std::time::Instant::now();
         let result = state.installed_artifacts();
         let dur_ms = start.elapsed().as_millis();
-        eprintln!("[PERF] cmd=managed_installed_artifacts dur_ms={dur_ms}");
+        if perf_logging_enabled() {
+            eprintln!("[PERF] cmd=managed_installed_artifacts dur_ms={dur_ms}");
+        }
         result
     })
     .await
@@ -1219,9 +1221,11 @@ pub async fn managed_artifact_validation_status(
             .artifact_validation_status(&artifact_id)
             .map_err(BridgeError::from);
         let dur_ms = start.elapsed().as_millis();
-        eprintln!(
-            "[PERF] cmd=managed_artifact_validation_status artifact={artifact_id} dur_ms={dur_ms}"
-        );
+        if perf_logging_enabled() {
+            eprintln!(
+                "[PERF] cmd=managed_artifact_validation_status artifact={artifact_id} dur_ms={dur_ms}"
+            );
+        }
         result
     })
     .await
@@ -1238,7 +1242,9 @@ pub async fn managed_model_readiness(
         let start = std::time::Instant::now();
         let result = state.model_readiness(&model_id).map_err(BridgeError::from);
         let dur_ms = start.elapsed().as_millis();
-        eprintln!("[PERF] cmd=managed_model_readiness model={model_id} dur_ms={dur_ms}");
+        if perf_logging_enabled() {
+            eprintln!("[PERF] cmd=managed_model_readiness model={model_id} dur_ms={dur_ms}");
+        }
         result
     })
     .await
@@ -2211,12 +2217,22 @@ fn sha256_file(path: &Path) -> Result<String, ArtifactTrustError> {
     }
     let result = format!("{:x}", hasher.finalize());
     let dur_ms = start.elapsed().as_millis();
-    eprintln!("[PERF] sha256_file path={} dur_ms={dur_ms}", path.display());
+    if perf_logging_enabled() {
+        eprintln!("[PERF] sha256_file path={} dur_ms={dur_ms}", path.display());
+    }
     Ok(result)
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+pub(crate) fn perf_logging_enabled() -> bool {
+    perf_logging_enabled_from(std::env::var("LOCALCOMET_PERF").ok().as_deref())
+}
+
+fn perf_logging_enabled_from(value: Option<&str>) -> bool {
+    value == Some("1")
 }
 
 fn now_unix_ms() -> u64 {
@@ -2325,6 +2341,16 @@ mod tests {
     const TEST_MODEL_BYTES: &[u8] = b"GGUFtest-model";
 
     static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn perf_logging_gates_on_localcomet_perf_flag() {
+        assert!(perf_logging_enabled_from(Some("1")));
+        assert!(!perf_logging_enabled_from(Some("0")));
+        assert!(!perf_logging_enabled_from(None));
+        assert!(!perf_logging_enabled_from(Some("true")));
+        assert!(!perf_logging_enabled_from(Some("")));
+        assert!(!perf_logging_enabled_from(Some("11")));
+    }
 
     struct TestWorkspace {
         root: PathBuf,
