@@ -1208,13 +1208,24 @@ pub async fn managed_installed_artifacts(
 }
 
 #[tauri::command]
-pub fn managed_artifact_validation_status(
+pub async fn managed_artifact_validation_status(
     state: State<'_, Arc<ArtifactTrustService>>,
     artifact_id: String,
 ) -> Result<ArtifactValidationSummary, BridgeError> {
-    state
-        .artifact_validation_status(&artifact_id)
-        .map_err(BridgeError::from)
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || {
+        let start = std::time::Instant::now();
+        let result = state
+            .artifact_validation_status(&artifact_id)
+            .map_err(BridgeError::from);
+        let dur_ms = start.elapsed().as_millis();
+        eprintln!(
+            "[PERF] cmd=managed_artifact_validation_status artifact={artifact_id} dur_ms={dur_ms}"
+        );
+        result
+    })
+    .await
+    .map_err(|_| BridgeError::new("runtime_unavailable", "artifact validation worker failed"))?
 }
 
 #[tauri::command]
