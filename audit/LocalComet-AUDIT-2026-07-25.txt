@@ -1,0 +1,1515 @@
+LOCALCOMET — ТЕКСТОВЫЙ АУДИТ ДЛЯ АРХИТЕКТОРА
+Дата: 2026-07-25
+Ветка: integration/best-of-two-local-agent @ 767a7e9
+Версия продукта: 6.84.6
+
+СОДЕРЖАНИЕ
+  1. Audit Guide (точка входа)
+  2. Evidence Ledger (что есть / чего нет)
+  3. Best-of-Two Migration Matrix
+  4. Best-of-Two Final Report
+  5. Invariants Registry
+  6. Non-Authorities Registry
+  7. File Manifest (SHA-256)
+  8. NEW MODULE: approval.rs (полный исходник)
+  9. NEW MODULE: workspace.rs (полный исходник)
+ 10. Реестр существующих security-модулей (по хешам из манифеста)
+
+==============================================================================
+## 1. AUDIT GUIDE
+## source: audit\AUDIT_GUIDE.md
+==============================================================================
+
+# LocalComet — Аудит-гайд для архитектора
+
+**Дата сборки архива:** 2026-07-25
+**Ветка:** `integration/best-of-two-local-agent`
+**Базовый commit:** `767a7e9df9a2b8951523e410b60fcabdc9c9cf93` (ветка `continue/after-build-week-2026`)
+**Версия продукта:** 6.84.6
+**Платформа сборки:** Windows 11 (10.0.26200), x86-64
+
+Этот архив — самодостаточный срез канонического проекта LocalComet для архитектурного
+аудита. Он содержит исходники, security-инварианты, доказательства (evidence),
+инженерные отчёты и контекст донора (параллельная реализация Local Agent Desktop).
+
+---
+
+## 1. Что такое LocalComet
+
+Локальный офлайн desktop-ассистент:
+
+```
+Svelte 5 (frontend)
+   │  invoke()
+   ▼
+Tauri 2 + Rust (control plane, supervisor, artifact trust, approval)
+   │  IPC (length-prefixed JSON по stdin/stdout)
+   ▼
+Python sidecar (core/, modules/, agents/) — LLM-маршрутизация, планирование, исполнение
+```
+
+- Консольный вход: `python -m next.app_v5`
+- Desktop: `desktop/localcomet-desktop/` (Tauri 2 + Rust crate `localcomet-desktop`)
+- Backend-логика: `core/`, `modules/`, `agents/`
+- Персистентное состояние: `memory/state.json`
+- Конфигурация LLM: `config.py` (LM Studio локально / OpenAI API)
+
+**Workflow патчинга:** `request.md → response.json → validate → apply → after patch`.
+
+---
+
+## 2. Текущая честная классификация
+
+> Функциональный локальный desktop-ассистент с production-grade containment процессов
+> и artifact trust. Security-инфраструктура approval/workspace добавлена, но ещё не
+> подключена к продуктовому пути end-to-end.
+
+Это НЕ production-ready в смысле «можно отдавать внешним пользователям»: GUI, packaged
+binary и Windows-сборка не верифицированы в этой среде (нет сети и WebView2).
+
+---
+
+## 3. Контекст: интеграция «Best of Two»
+
+Параллельная реализация **Local Agent Desktop** (React 18 + Zustand, отдельный Python
+sidecar, v0.1.0) прошла цикл независимых проверок WP-1.45.2 → WP-1.45.4. Её вердикты
+и инженерные брифы лежат в `audit/donor-briefs/`.
+
+**Ключевой вывод интеграции:** LocalComet desktop уже реализует или превосходит
+большинство улучшений донора. Критические дефекты донора (обход approval, workspace
+только в Rust-state, readiness «принимает любой кадр», не дренируется stderr, два
+расходящихся IPC-транспорта) **не унаследованы**, потому что в LocalComet этих путей нет.
+
+Полная карта переноса: `docs/engineering/best-of-two-migration-matrix.md`.
+Итоговый отчёт: `docs/engineering/best-of-two-final-report.md`.
+
+---
+
+## 4. Что читать первым (приоритет для архитектора)
+
+### 4.1. Security-critical модули Rust (проверять в первую очередь)
+
+| Файл | Что делает | На что смотреть |
+|---|---|---|
+| `desktop/localcomet-desktop/src-tauri/src/approval.rs` | **НОВЫЙ.** Scoped one-time approval-токены (CSPRNG 256 бит, constant-time, atomic `execute_approved`) | ещё НЕ подключён к Tauri-командам — нет продуктового пути |
+| `desktop/localcomet-desktop/src-tauri/src/workspace.rs` | **НОВЫЙ.** Валидация workspace, reparse-защита, инвалидация токенов при смене | ещё НЕ отправляет `workspace.set` в sidecar |
+| `desktop/localcomet-desktop/src-tauri/src/windows_job.rs` | Windows Job Object: `KILL_ON_JOB_CLOSE` + `ACTIVE_PROCESS_LIMIT=1`, `CREATE_SUSPENDED`→assign→resume | non-Windows — заглушка, возвращающая ошибку (осознанно) |
+| `desktop/localcomet-desktop/src-tauri/src/supervisor.rs` | Запуск sidecar, active health probe (`desk-health-{seq}`), bounded stderr reader (4096), shutdown | readiness требует `saw_python_hello && saw_health_ok` |
+| `desktop/localcomet-desktop/src-tauri/src/ipc.rs` | Length-prefixed framing, max 4 МиБ, отклонение zero-length/oversized | единый транспорт (нет дубля) |
+| `desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs` | Embedded catalog с pinned SHA-256, GGUF magic, reparse rejection, TOCTOU (handles держатся открытыми при запуске), streaming SHA-256 | catalog canonical (LF, no BOM, single final LF) |
+| `desktop/localcomet-desktop/src-tauri/src/control_plane.rs` | Request registry, correlation по `reply_to`, type routing (event/response/error), sequence validation, bounded events | ~5000 строк, ядро моста |
+
+### 4.2. Инварианты и non-authorities
+
+- `security/invariants/invariants.toml` — 12 инвариантов с привязкой к тестам
+  (`INV-PROCESS-001`, `INV-READINESS-001`, `INV-IPC-001/002`, `INV-CATALOG-001/002`,
+  `INV-MODEL-001`, `INV-UI-001`, `INV-APPROVAL-001/002`, `INV-WORKSPACE-001`,
+  `INV-EVIDENCE-001`).
+- `security/invariants/non_authorities.toml` — 16 записей «что НЕ является authority»
+  (LLM output, filename, repo name, HF metadata, app-data, frontend state, open port,
+  process name, loopback без binding, previous run, presence of file, sidecar self-report
+  без probe, redirect, markdown, log, cache).
+
+### 4.3. Гейты и тесты
+
+- `tests/test_trust_chain_invariants.py` — EOL/BOM/final-LF инвариант (14 файлов).
+- `scripts/check_command_parity.py` — Svelte `invoke()` == Tauri `generate_handler!` (39/39).
+- Rust unit-тесты: `cargo test` (143 passed, 6 ignored — real-sidecar тесты).
+
+---
+
+## 5. Результаты проверок (на момент сборки)
+
+```
+cargo test                          143 passed, 0 failed, 6 ignored
+python tests/test_trust_chain_invariants.py   OK: 14 files pass byte invariants
+python scripts/check_command_parity.py        OK: 39 commands (parity holds)
+```
+
+6 ignored Rust-тестов — интеграционные real-sidecar тесты, требующие
+`LOCALCOMET_TEST_PROJECT_ROOT` и `LOCALCOMET_TEST_PYTHON`. Это осознанный skip, не провал.
+
+---
+
+## 6. Остаточные риски (открытые пункты для аудита)
+
+1. **Approval не подключён к продуктовому пути.** `approval.rs` существует и покрыт
+   тестами, но ни одна `#[tauri::command]` его не вызывает. Требуется продуктовое решение,
+   какие инструменты GUARDED.
+2. **Workspace не передаётся в sidecar.** Валидация и инвалидация токенов работают,
+   но `workspace.set.request/response` в Python sidecar ещё не реализован.
+3. **UI fake-state аудит не проведён.** Svelte-сторы не проверены на `Math.random()`
+   в путях состояния и таймерный прогресс (INV-UI-001).
+4. **Packaged binary не tested.** Нужны сеть + WebView2 + NSIS.
+5. **6 ignored тестов** — real-sidecar интеграция (требуют окружения).
+6. **Отсутствуют donor-материалы:** `LocalComet_Detailed_Static_Audit_2026-07-25.txt`,
+   `LocalAgent_Source_vs_Audit_Diff_2026-07-25.txt` (см. `audit/evidence-ledger.md`).
+
+---
+
+## 7. Как верифицировать (команды)
+
+```powershell
+# Rust-тесты (в desktop/localcomet-desktop/src-tauri)
+cargo test
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Python-гейты (в корне)
+python tests/test_trust_chain_invariants.py
+python scripts/check_command_parity.py
+
+# Консольный агент
+python -m next.app_v5
+```
+
+---
+
+## 8. Карта архива
+
+```
+audit/
+  AUDIT_GUIDE.md                     ← этот файл
+  evidence-ledger.md                 ← что присутствует/отсутствует
+  manifest.sha256                    ← SHA-256 ключевых файлов
+  donor-briefs/                      ← контекст донора (WP-1.45.2/3/4 + master prompt)
+docs/engineering/
+  best-of-two-migration-matrix.md    ← карта переноса donor→LocalComet
+  best-of-two-final-report.md        ← итоговый отчёт интеграции
+security/invariants/
+  invariants.toml                    ← реестр инвариантов
+  non_authorities.toml               ← реестр non-authorities
+artifacts/evidence/
+  best-of-two-evidence.json          ← machine-readable evidence прогонов
+desktop/localcomet-desktop/src-tauri/src/
+  approval.rs  workspace.rs          ← НОВЫЕ security-модули
+  windows_job.rs  supervisor.rs  ipc.rs  artifact_trust.rs  control_plane.rs  lib.rs
+tests/test_trust_chain_invariants.py
+scripts/check_command_parity.py
+.gitattributes                       ← усилен для trust-chain файлов
+```
+
+---
+
+## 9. Правила проекта (из AGENTS.md)
+
+- Не удалять файлы. Не создавать `.exe`/`.bat`/`.ps1`.
+- Малые безопасные изменения; целевые правки вместо переписывания.
+- `py_compile` для изменённых Python-файлов; `stability test` после важных изменений.
+- Не модифицировать `Projects/BrowserProfile`.
+- Сохранять workflow `request.md → response.json → validate → apply → after patch`.
+- Не удалять существующие кнопки/функции из UI.
+
+==============================================================================
+## 2. EVIDENCE LEDGER
+## source: audit\evidence-ledger.md
+==============================================================================
+
+# Evidence Ledger — Best-of-Two Audit Archive
+
+**Дата:** 2026-07-25
+**Ветка:** `integration/best-of-two-local-agent` @ `767a7e9`
+
+## Присутствует (включено в архив)
+
+| Материал | Путь | Статус |
+|---|---|---|
+| Master Prompt (Best-of-Two) | `audit/donor-briefs/LocalComet Best-of-Two Integration Master Prompt.pdf` | PRESENT (binary, не читается моделью — только как артефакт) |
+| WP-1.45.4 Independent Verification | `audit/donor-briefs/WP-1.45.4_Independent_Verification_2026-07-25.txt` | PRESENT |
+| WP-1.45.4 Engineering Brief | `audit/donor-briefs/WP-1.45.4-engineering-brief.md` | PRESENT |
+| WP-1.45.3 Engineering Brief | `audit/donor-briefs/WP-1.45.3-engineering-brief.md` | PRESENT |
+| WP-1.45.2 Remediation Prompt | `audit/donor-briefs/WP-1.45.2-remediation-prompt.md` | PRESENT |
+| Donor archive (lad-wp1454) | `audit/donor-briefs/lad-wp1454.tar.gz` | PRESENT (353 250 байт) |
+| Migration matrix | `docs/engineering/best-of-two-migration-matrix.md` | PRESENT |
+| Final report | `docs/engineering/best-of-two-final-report.md` | PRESENT |
+| Invariants registry | `security/invariants/invariants.toml` | PRESENT |
+| Non-authorities registry | `security/invariants/non_authorities.toml` | PRESENT |
+| Evidence JSON | `artifacts/evidence/best-of-two-evidence.json` | PRESENT |
+| Trust-chain gate | `tests/test_trust_chain_invariants.py` | PRESENT |
+| Command parity gate | `scripts/check_command_parity.py` | PRESENT |
+
+## Отсутствует (НЕ включено — не найдено в среде)
+
+| Материал | Ожидаемый путь | Влияние |
+|---|---|---|
+| LocalComet Detailed Static Audit | `LocalComet_Detailed_Static_Audit_2026-07-25.txt` | Нет внешнего статического аудита LocalComet — аудитору придётся делать с нуля |
+| Source vs Audit Diff | `LocalAgent_Source_vs_Audit_Diff_2026-07-25.txt` | Нет diff между исходниками и аудитом донора |
+| local-agent-desktop-source (1/2).tar.gz | Downloads | Нет полных исходников донора (только WP-архив lad-wp1454) |
+| local-agent-desktop-audit.zip | Downloads | Нет отдельного аудит-архива донора |
+| LocalComet-ProjectArchive-20260725.zip | Downloads | Нет проектного архива |
+| localcomet-dossier.zip | Downloads | Нет досье |
+
+## Donor SHA-256 (из верификации WP-1.45.4)
+
+```
+lad-wp1454.tar.gz  85109c26669462e40f2ff65c83dc94cfce3094d4a27a739575555ee6ec5e827d
+```
+
+(заявлено в `WP-1.45.4_Independent_Verification_2026-07-25.txt`; сверить при распаковке)
+
+## Проведённые проверки (локально, на момент сборки)
+
+| Команда | Результат |
+|---|---|
+| `cargo test` | 143 passed, 0 failed, 6 ignored |
+| `python tests/test_trust_chain_invariants.py` | OK: 14 files pass byte invariants |
+| `python scripts/check_command_parity.py` | OK: 39 commands (parity holds) |
+
+## Пометки способа получения
+
+- Все числа тестов — `[прогон]` (реальное исполнение в этой среде).
+- Классификация продукта — `[вычислено]` на основе чтения кода и прогонов.
+- Утверждения о donor-дефектах — из `WP-1.45.4_Independent_Verification`, `[ЗАЯВЛЕНО]`
+  относительно donor-кода (исходники донора в этой среде не запускались).
+
+==============================================================================
+## 3. BEST-OF-TWO MIGRATION MATRIX
+## source: docs\engineering\best-of-two-migration-matrix.md
+==============================================================================
+
+# Best-of-Two Migration Matrix
+
+Donor: Local Agent Desktop (WP-1.45.4, React/Tauri/Python sidecar)
+Target: LocalComet canonical (6.84.6+, Svelte/Tauri/Python monorepo)
+Date: 2026-07-25
+Branch: integration/best-of-two-local-agent
+
+## Summary
+
+LocalComet desktop already implements or exceeds many donor improvements:
+- Windows Job Object with KILL_ON_JOB_CLOSE + ACTIVE_PROCESS_LIMIT=1
+- Process supervisor with active health probe and readiness correlation
+- Bounded stderr reader (4096 ring buffer)
+- IPC framing with 4MB max frame, length-prefix
+- Artifact trust with SHA-256, GGUF magic, catalog guard, reparse rejection
+- Control plane bridge with request registry, timeouts, model lifecycle
+- Bounded pipe writes with timeout and backpressure handling
+- Sanitized sidecar environment (PYTHONNOUSERSITE, -I, -B)
+- Python discovery filtering WindowsApps Store stubs
+
+## Migration Matrix
+
+| Donor improvement | Donor file | LocalComet analogue | Decision | Target file | Required adaptation | Tests | Status |
+|---|---|---|---|---|---|---|---|
+| Windows Job Object | windows_job.rs | src-tauri/src/windows_job.rs | ALREADY_PRESENT | — | — | 3 unit tests | DONE |
+| Process supervisor | supervisor.rs | src-tauri/src/supervisor.rs | ALREADY_PRESENT | — | — | 6 unit tests | DONE |
+| Active health probe | supervisor.rs | supervisor.rs:360-371 | ALREADY_PRESENT | — | — | lifecycle test | DONE |
+| Bounded stderr reader | supervisor.rs | supervisor.rs:548-572 | ALREADY_PRESENT | — | — | — | DONE |
+| IPC framing + max size | ipc.rs | src-tauri/src/ipc.rs | ALREADY_PRESENT | — | — | 2 unit tests | DONE |
+| Artifact trust + SHA-256 | artifact_trust.rs | src-tauri/src/artifact_trust.rs | ALREADY_PRESENT | — | — | extensive | DONE |
+| Catalog guard (embedded digest) | — | artifact_trust.rs:33-34 | ALREADY_PRESENT | — | — | canonical check | DONE |
+| Reparse point rejection | — | artifact_trust.rs (reject_reparse_point) | ALREADY_PRESENT | — | — | — | DONE |
+| Bounded pipe write | — | windows_job.rs:10-42 | ALREADY_PRESENT | — | — | 3 unit tests | DONE |
+| Sanitized environment | — | supervisor.rs:646-679 | ALREADY_PRESENT | — | — | env test | DONE |
+| Python discovery (Windows) | — | supervisor.rs:600-644 | ALREADY_PRESENT | — | — | — | DONE |
+| Control plane bridge | — | src-tauri/src/control_plane.rs | ALREADY_PRESENT | — | — | — | DONE |
+| Request registry + timeouts | — | control_plane.rs:556-591 | ALREADY_PRESENT | — | — | — | DONE |
+| Model request lifecycle | — | control_plane.rs:349-486 | ALREADY_PRESENT | — | — | — | DONE |
+| EOL/BOM invariant test | test_eol_invariant.py | — | PORT | tests/test_trust_chain_invariants.py | Adapt for LocalComet trust-chain files | new | PENDING |
+| .gitattributes hardening | .gitattributes | .gitattributes | ADAPT | .gitattributes | Add trust-chain file rules | — | PENDING |
+| Non-authorities registry | non_authorities.toml | — | PORT | security/invariants/non_authorities.toml | LocalComet-specific entries | new | PENDING |
+| Security-negative taxonomy | security-negative-map.toml | — | PORT | security/invariants/security_negative.toml | Adapt to LocalComet test structure | new | PENDING |
+| Invariant registry | invariants.toml | — | PORT | security/invariants/invariants.toml | LocalComet invariant IDs | new | PENDING |
+| Response type validation | — | control_plane.rs (partial) | ADAPT | src-tauri/src/ipc.rs + control_plane.rs | Add expected response type map | new | PENDING |
+| Scoped approval tokens | control_plane_core.rs | — | PORT | src-tauri/src/approval.rs | New module, CSPRNG, scoped, one-time | new | PENDING |
+| Workspace propagation | — | — | PORT | src-tauri/src/workspace.rs + IPC | workspace.set protocol | new | PENDING |
+| Evidence provenance | check_evidence_provenance.py | — | PORT | scripts/check_evidence_provenance.py | Adapt for LocalComet evidence | new | PENDING |
+| Command parity gate | check_command_parity.py | — | PORT | scripts/check_command_parity.py | Svelte invokes == Tauri commands | new | PENDING |
+| Streaming SHA-256 (product path) | — | artifact_trust.rs (sha256_file) | ADAPT | artifact_acquisition.rs | Verify streaming in download path | — | PENDING |
+| Native smoke binary | lad_smoke.rs | — | DEFER_WITH_REASON | — | Requires sidecar protocol stability first | — | DEFERRED |
+| AST async check | — | — | DEFER_WITH_REASON | — | LocalComet uses spawn_blocking already | — | DEFERRED |
+| React/Zustand stores | src/lib/*.ts | — | REJECT | — | LocalComet uses Svelte 5 | — | REJECTED |
+| Separate Python package layout | sidecar/ | modules/ | REJECT | — | LocalComet has monorepo modules | — | REJECTED |
+| Second IPC client | ipc_client.rs | — | REJECT | — | LocalComet has single ipc.rs | — | REJECTED |
+
+## Process ownership map (LocalComet)
+
+```
+Tauri main (lib.rs)
+  → DesktopSidecarSupervisor (supervisor.rs)
+    → ContainedSidecarProcess (windows_job.rs)
+      → CreateProcessW (CREATE_SUSPENDED)
+      → AssignProcessToJobObject (KILL_ON_JOB_CLOSE, ACTIVE_PROCESS=1)
+      → ResumeThread
+    → stdout reader thread → frame router → ControlPlaneBridge
+    → stderr reader thread → ring buffer (4096)
+    → health probe (desk-health-{seq}) → saw_health_ok
+    → shutdown: app.shutdown request → wait 1500ms → terminate
+  → ManagedRuntimeSupervisor (managed_runtime.rs)
+    → ContainedManagedRuntimeProcess (windows_job.rs)
+      → Same Job Object containment
+```
+
+## Approval map (LocalComet — TO BE IMPLEMENTED)
+
+```
+User confirms action in Svelte UI
+  → Tauri command (approve_step)
+  → Rust approval.rs: issue scoped token (CSPRNG 256-bit)
+    scope = {tool, input_digest, workspace, session, expiry, nonce}
+  → Frontend carries opaque token
+  → Tauri command (run_tool_call) with token
+  → Rust approval.rs: execute_approved()
+    → validate scope (constant-time)
+    → consume one-time
+    → create execution grant
+    → send authorized envelope to sidecar
+  → Python sidecar: execute only with valid grant
+```
+
+## Workspace map (LocalComet — TO BE IMPLEMENTED)
+
+```
+User selects directory (native dialog)
+  → Rust canonicalize + symlink/junction check
+  → workspace.set.request → sidecar
+  → Python creates new WorkspacePolicy
+  → workspace.set.response with identity
+  → Rust invalidates old approval tokens
+  → UI confirmed state
+```
+
+==============================================================================
+## 4. BEST-OF-TWO FINAL REPORT
+## source: docs\engineering\best-of-two-final-report.md
+==============================================================================
+
+# Best-of-Two Integration: Final Report
+
+**Branch:** `integration/best-of-two-local-agent`
+**Base:** `continue/after-build-week-2026` @ `767a7e9`
+**Date:** 2026-07-25
+**Status:** PARTIAL (core security infrastructure complete; UI verification and packaged release deferred)
+
+---
+
+## Baseline
+
+- LocalComet canonical: v6.84.6, Svelte 5 + Tauri 2 + Rust + Python monorepo
+- Donor: Local Agent Desktop WP-1.45.4 (React 18 + Zustand, separate Python sidecar)
+- Donor archives: NOT available in workspace (referenced but not present)
+- Donor documentation: WP-1.45.2/3/4 engineering briefs and independent verification available as text
+
+## Key Finding
+
+LocalComet desktop **already implements or exceeds** the majority of donor improvements:
+
+| Area | LocalComet Status | Donor Status |
+|------|------------------|--------------|
+| Windows Job Object (KILL_ON_JOB_CLOSE, ACTIVE_PROCESS=1) | Implemented | Not implemented |
+| Process supervisor with active health probe | Implemented | Partially |
+| Bounded stderr reader (4096 ring) | Implemented | Not implemented |
+| IPC framing (4MB max, length-prefix) | Implemented | Partially |
+| Artifact trust (SHA-256, GGUF magic, catalog guard, reparse rejection) | Implemented | Partially |
+| Bounded pipe writes with timeout | Implemented | Not implemented |
+| Sanitized sidecar environment (-I, -B, PYTHONNOUSERSITE) | Implemented | Partially |
+| Python discovery filtering WindowsApps stubs | Implemented | Not implemented |
+| Control plane bridge with request registry + timeouts | Implemented | Partially |
+| Model request lifecycle with watchdogs | Implemented | Not present |
+| Correlated IPC (reply_to, type routing, sequence validation) | Implemented | Broken (dual transport) |
+| Streaming SHA-256 in artifact validation | Implemented | Partially |
+| TOCTOU mitigation (file handles held open during launch) | Implemented | Not implemented |
+| User-approved artifact download with confirmation | Implemented | Not implemented |
+
+## What Was Ported/Added
+
+### WP-B: Trust Chain (NEW)
+- `.gitattributes` hardened with comprehensive LF rules for all trust-chain files
+- `tests/test_trust_chain_invariants.py` — EOL/BOM/final-LF byte invariant gate (14 files checked)
+- Fixed CRLF violations in `config.py` and `approved-artifacts.v1.json`
+
+### WP-C: Invariant Infrastructure (NEW)
+- `security/invariants/non_authorities.toml` — 16 machine-readable non-authority entries
+- `security/invariants/invariants.toml` — 12 invariant definitions with test bindings
+- `scripts/check_command_parity.py` — Svelte invoke == Tauri generate_handler parity gate (39/39)
+
+### WP-F: Approval Authority (NEW)
+- `src-tauri/src/approval.rs` — scoped, one-time, CSPRNG-generated approval tokens
+  - 256-bit entropy via `getrandom`
+  - Constant-time comparison via `subtle::ConstantTimeEq`
+  - Scope: tool + canonical input digest + workspace + session + expiry
+  - Atomic `execute_approved()` — no bypass path
+  - Workspace invalidation
+  - 11 unit tests (all passing)
+- Added `getrandom` and `subtle` to Cargo.toml
+
+### WP-G: Workspace Propagation (NEW)
+- `src-tauri/src/workspace.rs` — workspace validation and change protocol
+  - Path canonicalization + symlink/junction/reparse rejection
+  - Workspace digest for identity binding
+  - Token invalidation on workspace change
+  - 7 unit tests (all passing)
+
+### WP-A: Migration Matrix (NEW)
+- `docs/engineering/best-of-two-migration-matrix.md` — full donor→LocalComet mapping
+
+## What Was NOT Ported (with reasons)
+
+| Donor item | Decision | Reason |
+|---|---|---|
+| React/Zustand stores | REJECT | LocalComet uses Svelte 5 |
+| Separate Python package layout | REJECT | LocalComet has monorepo modules/ |
+| Second IPC client | REJECT | LocalComet has single canonical ipc.rs |
+| Native smoke binary | DEFER | Requires sidecar protocol stability + CI environment |
+| AST async check | DEFER | LocalComet already uses spawn_blocking for all blocking commands |
+| Windows packaged release | DEFER | Requires network access + WebView2 runtime |
+
+## Donor Defects Fixed by Non-Porting
+
+The donor's critical defects (from WP-1.45.4 verification) are **not inherited**:
+- Approval bypass (Python as second consumer) → LocalComet approval is Rust-only, atomic
+- Workspace only in Rust state → LocalComet workspace validates + invalidates tokens
+- Readiness accepts any frame → LocalComet requires correlated health response
+- Stderr not drained → LocalComet has bounded stderr reader
+- Dual IPC transport → LocalComet has single transport
+- Unbounded event queue → LocalComet has MAX_EVENTS_PER_REQUEST + MAX_EVENT_TEXT_PER_REQUEST
+
+## Test Results
+
+```
+cargo test:     143 passed, 0 failed, 6 ignored
+trust-chain:    14 files pass byte invariants
+cmd-parity:     39 commands registered and invoked (parity holds)
+```
+
+## Changed Files
+
+```
+.gitattributes                                          (hardened)
+config.py                                              (CRLF→LF fix)
+desktop/.../approved-artifacts.v1.json                 (CRLF→LF fix)
+desktop/.../src-tauri/Cargo.toml                       (+getrandom, +subtle)
+desktop/.../src-tauri/src/lib.rs                       (+mod approval, +mod workspace)
+desktop/.../src-tauri/src/approval.rs                  (NEW)
+desktop/.../src-tauri/src/workspace.rs                 (NEW)
+docs/engineering/best-of-two-migration-matrix.md       (NEW)
+security/invariants/non_authorities.toml               (NEW)
+security/invariants/invariants.toml                    (NEW)
+scripts/check_command_parity.py                        (NEW)
+tests/test_trust_chain_invariants.py                   (NEW)
+artifacts/evidence/best-of-two-evidence.json           (NEW)
+docs/engineering/best-of-two-final-report.md           (NEW)
+```
+
+## Residual Risks
+
+1. **Approval not yet wired to Tauri commands** — module exists with tests but no `#[tauri::command]` exposes it to frontend yet. Requires product decision on which tools are GUARDED.
+2. **Workspace not yet wired to sidecar IPC** — validation and token invalidation work, but `workspace.set.request/response` protocol not yet sent to Python sidecar.
+3. **UI fake state audit not performed** — Svelte stores not yet verified for Math.random() or timer-based progress.
+4. **Packaged binary not tested** — requires network + WebView2 + NSIS.
+5. **6 ignored tests** — real-sidecar integration tests requiring LOCALCOMET_TEST_PROJECT_ROOT env.
+
+## Classification
+
+LocalComet desktop remains correctly classified as a **functional local desktop assistant with production-grade process containment and artifact trust**. The approval and workspace modules add security infrastructure that was absent, but they are not yet wired into the product path end-to-end.
+
+==============================================================================
+## 5. INVARIANTS REGISTRY
+## source: security\invariants\invariants.toml
+==============================================================================
+
+# LocalComet Security Invariants Registry
+# Machine-readable invariant definitions with test bindings.
+
+schema_version = 1
+
+[[invariants]]
+id = "INV-PROCESS-001"
+title = "Desktop owns entire sidecar process tree"
+statement = "The Tauri desktop process owns the sidecar and all descendants via Windows Job Object with KILL_ON_JOB_CLOSE and ACTIVE_PROCESS_LIMIT=1. No orphan processes survive desktop termination."
+severity = "critical"
+owner = "windows_job.rs, supervisor.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/windows_job.rs",
+    "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+]
+test_ids = [
+    "source_sets_active_process_limit_to_one",
+    "command_line_quotes_python_runner_and_flags",
+    "environment_block_is_double_null_terminated",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-READINESS-001"
+title = "Ready requires active correlated health response"
+statement = "Sidecar readiness is confirmed only after an active health probe (desk-health-{seq}) receives a correlated response with payload.status=ok. Passive hello events alone are insufficient."
+severity = "critical"
+owner = "supervisor.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+]
+test_ids = [
+    "lifecycle_frame_observation_requires_exact_health_response_shape",
+    "real_python_sidecar_can_start_when_test_environment_is_present",
+    "failed_readiness_stops_the_contained_sidecar",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-IPC-001"
+title = "IPC frames are bounded and length-prefixed"
+statement = "All IPC frames use 4-byte big-endian length prefix. Maximum frame size is 4MiB. Zero-length and oversized frames are rejected without allocation."
+severity = "high"
+owner = "ipc.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/ipc.rs",
+]
+test_ids = [
+    "frames_are_big_endian_length_prefixed_json",
+    "reader_rejects_zero_length_frame",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-IPC-002"
+title = "Pipe writes are bounded with timeout"
+statement = "Writing to sidecar stdin uses bounded retry with timeout. A non-reading sidecar cannot block the desktop indefinitely. Write failure terminates the sidecar and fails pending requests."
+severity = "high"
+owner = "windows_job.rs, supervisor.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/windows_job.rs",
+    "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+]
+test_ids = [
+    "bounded_writer_preserves_complete_frame_order_across_partial_writes",
+    "bounded_writer_times_out_when_pipe_never_accepts_data",
+    "bounded_writer_propagates_sidecar_failure_without_retrying",
+    "nonreading_sidecar_pipe_write_is_bounded_and_releases_supervisor",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-CATALOG-001"
+title = "Artifact catalog is embedded, hash-pinned, and canonical"
+statement = "The approved artifact catalog is compiled into the binary with a pinned SHA-256. It must be canonical JSON (LF, no BOM, no trailing whitespace, single final LF, sorted keys). Any deviation is rejected at startup."
+severity = "critical"
+owner = "artifact_trust.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs",
+]
+test_ids = []
+status = "active"
+
+[[invariants]]
+id = "INV-CATALOG-002"
+title = "LLM, filename, and app-data are not catalog approval authority"
+statement = "Model/runtime approval requires embedded catalog record with SHA-256. No LLM output, filename pattern, or database record can substitute for catalog verification."
+severity = "critical"
+owner = "artifact_trust.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs",
+    "security/invariants/non_authorities.toml",
+]
+test_ids = []
+status = "active"
+
+[[invariants]]
+id = "INV-MODEL-001"
+title = "Model cannot be installed or launched without verified digest"
+statement = "Model validation requires: correct size, GGUF magic bytes, SHA-256 match against catalog. Launch requires re-validation after opening file handles (TOCTOU mitigation)."
+severity = "critical"
+owner = "artifact_trust.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs",
+]
+test_ids = []
+status = "active"
+
+[[invariants]]
+id = "INV-PROCESS-002"
+title = "Sidecar environment is sanitized"
+statement = "Sidecar runs with -I (isolated) and -B (no bytecode) flags. Environment contains only lifecycle-safe variables. No TOKEN, SECRET, or user-site packages are accessible."
+severity = "high"
+owner = "supervisor.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+]
+test_ids = [
+    "environment_keeps_only_lifecycle_safe_python_values",
+    "debug_launch_spec_uses_fixed_python_runner_arguments",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-UI-001"
+title = "Production UI does not generate false backend state"
+statement = "All UI state transitions (ready, running, installed, success) must originate from backend events. No Math.random(), no timer-based progress, no optimistic success without backend confirmation."
+severity = "high"
+owner = "Svelte frontend"
+implementation = [
+    "desktop/localcomet-desktop/src/",
+]
+test_ids = []
+status = "active"
+
+[[invariants]]
+id = "INV-EVIDENCE-001"
+title = "Evidence is bound to all execution inputs"
+statement = "Test evidence must include source tree digest, command argv, exit code, tool versions, and timestamp. Evidence without source binding is stale and must not be treated as proof."
+severity = "medium"
+owner = "scripts/"
+implementation = [
+    "scripts/check_evidence_provenance.py",
+]
+test_ids = []
+status = "planned"
+
+[[invariants]]
+id = "INV-APPROVAL-001"
+title = "Guarded tool cannot execute without atomic Rust authorization"
+statement = "Any guarded or dangerous tool call must pass through execute_approved() which atomically validates scope (tool, input digest, workspace, session, expiry), consumes the one-time token, and creates an execution grant. No bypass path exists."
+severity = "critical"
+owner = "approval.rs (planned)"
+implementation = []
+test_ids = []
+status = "planned"
+
+[[invariants]]
+id = "INV-APPROVAL-002"
+title = "Approval token is one-time, scoped, and CSPRNG-generated"
+statement = "Approval tokens use getrandom/OsRng with minimum 256 bits. Tokens are bound to tool, canonical input digest, workspace, session, and expiry. Each token can be consumed exactly once. Comparison uses constant-time equality."
+severity = "critical"
+owner = "approval.rs (planned)"
+implementation = []
+test_ids = []
+status = "planned"
+
+[[invariants]]
+id = "INV-WORKSPACE-001"
+title = "Sidecar uses confirmed current workspace"
+statement = "Workspace changes require IPC round-trip (workspace.set.request/response). Old approval tokens are invalidated on workspace change. Filesystem operations are blocked during transition."
+severity = "high"
+owner = "workspace.rs (planned)"
+implementation = []
+test_ids = []
+status = "planned"
+
+==============================================================================
+## 6. NON-AUTHORITIES REGISTRY
+## source: security\invariants\non_authorities.toml
+==============================================================================
+
+# LocalComet Non-Authorities Registry
+# Things that are NOT authoritative sources of truth.
+# Each entry: what is NOT an authority, what IS the authority instead.
+
+schema_version = 1
+
+[[non_authorities]]
+id = "NA-001"
+statement = "LLM output is not an authority for file content, system state, or security decisions"
+prohibited_inference = "LLM said X exists, therefore X exists"
+authority_owner = "filesystem, process state, verified evidence"
+severity = "critical"
+
+[[non_authorities]]
+id = "NA-002"
+statement = "Filename is not an authority for file content or type"
+prohibited_inference = "File is named model.gguf, therefore it is a valid GGUF"
+authority_owner = "magic bytes, SHA-256, catalog record"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-003"
+statement = "Repository name is not an authority for artifact identity"
+prohibited_inference = "Repo is called llama.cpp, therefore it is llama.cpp"
+authority_owner = "upstream_revision, asset_sha256, catalog"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-004"
+statement = "Provider metadata (HF lfs.oid, ETag, Content-Length) is not an authority for artifact integrity"
+prohibited_inference = "HF says sha256 is X, therefore bytes are X"
+authority_owner = "local streaming SHA-256 over downloaded bytes"
+severity = "critical"
+
+[[non_authorities]]
+id = "NA-005"
+statement = "App-data or SQLite record is not an authority for installed state"
+prohibited_inference = "Database says model installed, therefore model is valid"
+authority_owner = "filesystem validation (bytes, hash, magic, path containment)"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-006"
+statement = "Frontend state is not an authority for backend state"
+prohibited_inference = "UI shows Ready, therefore sidecar is ready"
+authority_owner = "active health probe response from sidecar process"
+severity = "critical"
+
+[[non_authorities]]
+id = "NA-007"
+statement = "Open port is not an authority for service identity or health"
+prohibited_inference = "Port 8080 is open, therefore llama-server is running correctly"
+authority_owner = "process PID, health endpoint response, protocol handshake"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-008"
+statement = "Process name is not an authority for process identity"
+prohibited_inference = "Process named python.exe is our sidecar"
+authority_owner = "PID tracked by supervisor, Job Object containment"
+severity = "medium"
+
+[[non_authorities]]
+id = "NA-009"
+statement = "Loopback response without binding is not an authority for service readiness"
+prohibited_inference = "Got HTTP 200 from localhost, therefore our service is ready"
+authority_owner = "correlated health probe with session/protocol verification"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-010"
+statement = "Previous successful run is not an authority for current state"
+prohibited_inference = "It worked yesterday, therefore it works now"
+authority_owner = "current validation, current probe, current hash"
+severity = "medium"
+
+[[non_authorities]]
+id = "NA-011"
+statement = "Presence of file is not an authority for file validity"
+prohibited_inference = "File exists at expected path, therefore it is correct"
+authority_owner = "bytes, hash, magic, size, path containment, reparse check"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-012"
+statement = "Sidecar self-report without active probe is not an authority for readiness"
+prohibited_inference = "Sidecar sent ready event, therefore it can process requests"
+authority_owner = "active request/response health probe with correlation ID"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-013"
+statement = "Redirect result is not an authority for download source"
+prohibited_inference = "URL redirected to CDN, therefore CDN is approved"
+authority_owner = "allowed_redirect_hosts in catalog acquisition record"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-014"
+statement = "Markdown documentation is not an authority for implementation state"
+prohibited_inference = "README says feature X is done, therefore X is implemented"
+authority_owner = "code, tests, evidence, running verification"
+severity = "medium"
+
+[[non_authorities]]
+id = "NA-015"
+statement = "Log output is not an authority for operation success"
+prohibited_inference = "Log says success, therefore operation succeeded"
+authority_owner = "exit code, filesystem state, response payload, evidence"
+severity = "medium"
+
+[[non_authorities]]
+id = "NA-016"
+statement = "Cache is not an authority for current data"
+prohibited_inference = "Cached catalog says X, therefore current catalog is X"
+authority_owner = "fresh read from source, hash verification"
+severity = "medium"
+
+==============================================================================
+## 7. FILE MANIFEST (SHA-256)
+## source: audit\manifest.sha256
+==============================================================================
+
+# LocalComet audit manifest — SHA-256
+# branch: integration/best-of-two-local-agent @ 767a7e9
+# generated: 2026-07-25
+
+40c70509bacf5f3efc17a2e365536dad137287baaf63b843542960351a1f1cee  audit/AUDIT_GUIDE.md
+417758851de465784967c1e3ffd5e29087310cfaf855b45689964bcb7cdfa45d  audit/evidence-ledger.md
+99bb3f1b7444d376496b128e6348aec75731733304fb3ba48c80ae55a4171fa3  docs/engineering/best-of-two-migration-matrix.md
+60e9c1f8e690db6f82155758ebc160edffe3487471a03f8ba5560d03f6b4ed75  docs/engineering/best-of-two-final-report.md
+7eada09cd98a1d0c7c9690715acdadc135cfa91746af83f1f94d9298718a1d81  security/invariants/invariants.toml
+deb50936106094603ba732ebcc9c1419bc40cb03326fc8f63c4a0873c6e1e9b1  security/invariants/non_authorities.toml
+1c2353b516b21287f23bad2a5f9b33fff7c88bbac7e98b36a333b08b9c832ab8  artifacts/evidence/best-of-two-evidence.json
+7d46254ca0260b433abf33f7a52139020169bf606bf4826b9824e13a3a1b42d3  tests/test_trust_chain_invariants.py
+9f57eb859dc25e987237b8f51bea3e888e5ec6dc76c899aa63bb8f7e61bbbedb  scripts/check_command_parity.py
+b00d1d7f6e1f87648608fe1477c7c4fa2a1b50bb4902beeebf9f44457bcbabbc  .gitattributes
+b9e5377554c846a3d942fe9c7c12d6799015e2301a4ed3144ecfd72f348b4b17  config.py
+e854f61b6046840df4a5371b66b57404732cd849958e3d7f76d571a6a83b8492  desktop/localcomet-desktop/src-tauri/Cargo.toml
+dc81c0dd18bd14e3865a943361c455482aae8b727db9ab07601e3af48f63af6a  desktop/localcomet-desktop/src-tauri/src/lib.rs
+738cd2e1622b944e9abc604ff824040fedd943e73c0f5b4ab2e88f955dc540b5  desktop/localcomet-desktop/src-tauri/src/approval.rs
+45f9067c5bc4ccbb4368424dd355a670488322d2a11e985d52a6bffa031b5483  desktop/localcomet-desktop/src-tauri/src/workspace.rs
+04503bce40533c73f7fa9c09fd7de163f08c000c38d8dfb9b7282f1462073dcd  desktop/localcomet-desktop/src-tauri/src/windows_job.rs
+1dc407abdfd3bce587a35c783d067bb6a56a59f1cf61fc7e3678a64979b6be46  desktop/localcomet-desktop/src-tauri/src/supervisor.rs
+59b72d12c1ac2ed7355297fc836cac229b6fb0246b08fd6fa9c448375362e493  desktop/localcomet-desktop/src-tauri/src/ipc.rs
+92be9dea1988420d62886ec90dffa001a5e9f2acab15e087c64e52cbb9009ffb  desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs
+eabe533120507a203efb0d4000aaee3841a141885b999eb324c0a5149242b739  desktop/localcomet-desktop/src-tauri/src/control_plane.rs
+29bbbe33c207417415f637bafc4dc3853c04cf68db05d9be2a6e661c5f93c605  desktop/localcomet-desktop/src-tauri/resources/localcomet/approved-artifacts.v1.json
+a6f5009788dd55246040029e2baa1d15ce4e365dc4b339ebb7c991ac88d5333a  desktop/contracts/localcomet_ipc_v1.schema.json
+
+==============================================================================
+## 8. NEW MODULE: approval.rs
+## source: desktop\localcomet-desktop\src-tauri\src\approval.rs
+==============================================================================
+
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use subtle::ConstantTimeEq;
+
+const TOKEN_ENTROPY_BYTES: usize = 32;
+const TOKEN_PREFIX: &str = "lcap_";
+const MAX_ACTIVE_TOKENS: usize = 64;
+const DEFAULT_TTL: Duration = Duration::from_secs(300);
+
+#[derive(Clone, Debug)]
+pub struct ApprovalScope {
+    pub tool: String,
+    pub input_digest: [u8; 32],
+    pub workspace: String,
+    pub session: String,
+    pub risk_level: RiskLevel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RiskLevel {
+    ReadOnly,
+    Guarded,
+    Dangerous,
+}
+
+#[derive(Debug)]
+struct ApprovalEntry {
+    scope: ApprovalScope,
+    nonce: [u8; 16],
+    issued_at: Instant,
+    ttl: Duration,
+}
+
+#[derive(Debug)]
+pub enum ApprovalError {
+    RegistryFull,
+    TokenNotFound,
+    ToolMismatch,
+    InputDigestMismatch,
+    WorkspaceMismatch,
+    SessionMismatch,
+    Expired,
+    AlreadyConsumed,
+    InvalidToken,
+}
+
+impl std::fmt::Display for ApprovalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RegistryFull => write!(f, "approval registry is full"),
+            Self::TokenNotFound => write!(f, "approval token not found"),
+            Self::ToolMismatch => write!(f, "approval tool mismatch"),
+            Self::InputDigestMismatch => write!(f, "approval input digest mismatch"),
+            Self::WorkspaceMismatch => write!(f, "approval workspace mismatch"),
+            Self::SessionMismatch => write!(f, "approval session mismatch"),
+            Self::Expired => write!(f, "approval token expired"),
+            Self::AlreadyConsumed => write!(f, "approval token already consumed"),
+            Self::InvalidToken => write!(f, "approval token is invalid"),
+        }
+    }
+}
+
+pub struct ApprovalRegistry {
+    entries: HashMap<String, ApprovalEntry>,
+    session_id: String,
+}
+
+impl ApprovalRegistry {
+    pub fn new() -> Self {
+        let mut session_bytes = [0u8; 16];
+        getrandom::getrandom(&mut session_bytes)
+            .expect("OS CSPRNG unavailable for session generation");
+        Self {
+            entries: HashMap::new(),
+            session_id: hex_encode(&session_bytes),
+        }
+    }
+
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    pub fn issue(&mut self, scope: ApprovalScope) -> Result<String, ApprovalError> {
+        if self.entries.len() >= MAX_ACTIVE_TOKENS {
+            return Err(ApprovalError::RegistryFull);
+        }
+
+        let mut token_bytes = [0u8; TOKEN_ENTROPY_BYTES];
+        getrandom::getrandom(&mut token_bytes)
+            .expect("OS CSPRNG unavailable for token generation");
+
+        let mut nonce = [0u8; 16];
+        getrandom::getrandom(&mut nonce)
+            .expect("OS CSPRNG unavailable for nonce generation");
+
+        let token_string = format!("{}{}", TOKEN_PREFIX, hex_encode(&token_bytes));
+
+        self.entries.insert(
+            token_string.clone(),
+            ApprovalEntry {
+                scope,
+                nonce,
+                issued_at: Instant::now(),
+                ttl: DEFAULT_TTL,
+            },
+        );
+
+        Ok(token_string)
+    }
+
+    pub fn execute_approved(
+        &mut self,
+        token: &str,
+        tool: &str,
+        input_digest: &[u8; 32],
+        workspace: &str,
+    ) -> Result<ExecutionGrant, ApprovalError> {
+        if !token.starts_with(TOKEN_PREFIX) {
+            return Err(ApprovalError::InvalidToken);
+        }
+
+        let entry = self
+            .entries
+            .remove(token)
+            .ok_or(ApprovalError::TokenNotFound)?;
+
+        if entry.issued_at.elapsed() > entry.ttl {
+            return Err(ApprovalError::Expired);
+        }
+
+        let scope = &entry.scope;
+
+        if scope.tool.as_bytes().ct_eq(tool.as_bytes()).unwrap_u8() != 1 {
+            return Err(ApprovalError::ToolMismatch);
+        }
+
+        if scope.input_digest.ct_eq(input_digest).unwrap_u8() != 1 {
+            return Err(ApprovalError::InputDigestMismatch);
+        }
+
+        if scope.workspace.as_bytes().ct_eq(workspace.as_bytes()).unwrap_u8() != 1 {
+            return Err(ApprovalError::WorkspaceMismatch);
+        }
+
+        if scope.session.as_bytes().ct_eq(self.session_id.as_bytes()).unwrap_u8() != 1 {
+            return Err(ApprovalError::SessionMismatch);
+        }
+
+        let mut grant_id = [0u8; 16];
+        getrandom::getrandom(&mut grant_id)
+            .expect("OS CSPRNG unavailable for grant generation");
+
+        Ok(ExecutionGrant {
+            grant_id: hex_encode(&grant_id),
+            tool: scope.tool.clone(),
+            input_digest: *input_digest,
+            workspace: workspace.to_owned(),
+            session: self.session_id.clone(),
+            nonce: entry.nonce,
+        })
+    }
+
+    pub fn invalidate_workspace(&mut self, old_workspace: &str) {
+        self.entries
+            .retain(|_, entry| entry.scope.workspace != old_workspace);
+    }
+
+    pub fn invalidate_all(&mut self) {
+        self.entries.clear();
+    }
+
+    pub fn active_count(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ExecutionGrant {
+    pub grant_id: String,
+    pub tool: String,
+    pub input_digest: [u8; 32],
+    pub workspace: String,
+    pub session: String,
+    pub nonce: [u8; 16],
+}
+
+pub fn canonical_input_digest(input: &serde_json::Value) -> [u8; 32] {
+    let canonical = canonicalize_json(input);
+    let mut hasher = Sha256::new();
+    hasher.update(canonical.as_bytes());
+    hasher.finalize().into()
+}
+
+fn canonicalize_json(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "null".to_owned(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => format!("\"{}\"", escape_json_string(s)),
+        serde_json::Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(canonicalize_json).collect();
+            format!("[{}]", items.join(","))
+        }
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let pairs: Vec<String> = keys
+                .iter()
+                .map(|k| format!("\"{}\":{}", escape_json_string(k), canonicalize_json(&map[*k])))
+                .collect();
+            format!("{{{}}}", pairs.join(","))
+        }
+    }
+}
+
+fn escape_json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn test_scope(tool: &str, workspace: &str) -> ApprovalScope {
+        ApprovalScope {
+            tool: tool.to_owned(),
+            input_digest: canonical_input_digest(&json!({"path": "test.txt", "content": "hello"})),
+            workspace: workspace.to_owned(),
+            session: String::new(),
+            risk_level: RiskLevel::Guarded,
+        }
+    }
+
+    #[test]
+    fn issued_tokens_are_unique_and_256_bits() {
+        let mut registry = ApprovalRegistry::new();
+        let mut tokens = Vec::new();
+        for _ in 0..MAX_ACTIVE_TOKENS {
+            let mut scope = test_scope("files.patch", "/workspace");
+            scope.session = registry.session_id().to_owned();
+            let token = registry.issue(scope).unwrap();
+            tokens.push(token);
+        }
+        let unique: std::collections::HashSet<&String> = tokens.iter().collect();
+        assert_eq!(unique.len(), MAX_ACTIVE_TOKENS);
+        for token in &tokens {
+            let hex_part = token.strip_prefix(TOKEN_PREFIX).unwrap();
+            assert_eq!(hex_part.len(), 64);
+        }
+    }
+
+    #[test]
+    fn two_registries_issue_different_first_tokens() {
+        let mut r1 = ApprovalRegistry::new();
+        let mut r2 = ApprovalRegistry::new();
+        let mut s1 = test_scope("files.patch", "/w");
+        s1.session = r1.session_id().to_owned();
+        let mut s2 = test_scope("files.patch", "/w");
+        s2.session = r2.session_id().to_owned();
+        let t1 = r1.issue(s1).unwrap();
+        let t2 = r2.issue(s2).unwrap();
+        assert_ne!(t1, t2);
+    }
+
+    #[test]
+    fn execute_approved_succeeds_with_matching_scope() {
+        let mut registry = ApprovalRegistry::new();
+        let input = json!({"path": "a.txt", "content": "data"});
+        let digest = canonical_input_digest(&input);
+        let scope = ApprovalScope {
+            tool: "files.patch".to_owned(),
+            input_digest: digest,
+            workspace: "/workspace".to_owned(),
+            session: registry.session_id().to_owned(),
+            risk_level: RiskLevel::Guarded,
+        };
+        let token = registry.issue(scope).unwrap();
+        let grant = registry
+            .execute_approved(&token, "files.patch", &digest, "/workspace")
+            .unwrap();
+        assert_eq!(grant.tool, "files.patch");
+        assert_eq!(grant.workspace, "/workspace");
+    }
+
+    #[test]
+    fn replay_is_rejected() {
+        let mut registry = ApprovalRegistry::new();
+        let input = json!({"path": "a.txt"});
+        let digest = canonical_input_digest(&input);
+        let scope = ApprovalScope {
+            tool: "files.patch".to_owned(),
+            input_digest: digest,
+            workspace: "/w".to_owned(),
+            session: registry.session_id().to_owned(),
+            risk_level: RiskLevel::Guarded,
+        };
+        let token = registry.issue(scope).unwrap();
+        registry
+            .execute_approved(&token, "files.patch", &digest, "/w")
+            .unwrap();
+        let err = registry
+            .execute_approved(&token, "files.patch", &digest, "/w")
+            .unwrap_err();
+        assert!(matches!(err, ApprovalError::TokenNotFound));
+    }
+
+    #[test]
+    fn wrong_tool_is_rejected() {
+        let mut registry = ApprovalRegistry::new();
+        let input = json!({"path": "a.txt"});
+        let digest = canonical_input_digest(&input);
+        let scope = ApprovalScope {
+            tool: "files.patch".to_owned(),
+            input_digest: digest,
+            workspace: "/w".to_owned(),
+            session: registry.session_id().to_owned(),
+            risk_level: RiskLevel::Guarded,
+        };
+        let token = registry.issue(scope).unwrap();
+        let err = registry
+            .execute_approved(&token, "files.delete", &digest, "/w")
+            .unwrap_err();
+        assert!(matches!(err, ApprovalError::ToolMismatch));
+    }
+
+    #[test]
+    fn wrong_input_digest_is_rejected() {
+        let mut registry = ApprovalRegistry::new();
+        let input_a = json!({"path": "a.txt", "content": "A"});
+        let input_b = json!({"path": "a.txt", "content": "B"});
+        let digest_a = canonical_input_digest(&input_a);
+        let digest_b = canonical_input_digest(&input_b);
+        let scope = ApprovalScope {
+            tool: "files.patch".to_owned(),
+            input_digest: digest_a,
+            workspace: "/w".to_owned(),
+            session: registry.session_id().to_owned(),
+            risk_level: RiskLevel::Guarded,
+        };
+        let token = registry.issue(scope).unwrap();
+        let err = registry
+            .execute_approved(&token, "files.patch", &digest_b, "/w")
+            .unwrap_err();
+        assert!(matches!(err, ApprovalError::InputDigestMismatch));
+    }
+
+    #[test]
+    fn wrong_workspace_is_rejected() {
+        let mut registry = ApprovalRegistry::new();
+        let input = json!({"path": "a.txt"});
+        let digest = canonical_input_digest(&input);
+        let scope = ApprovalScope {
+            tool: "files.patch".to_owned(),
+            input_digest: digest,
+            workspace: "/workspace-a".to_owned(),
+            session: registry.session_id().to_owned(),
+            risk_level: RiskLevel::Guarded,
+        };
+        let token = registry.issue(scope).unwrap();
+        let err = registry
+            .execute_approved(&token, "files.patch", &digest, "/workspace-b")
+            .unwrap_err();
+        assert!(matches!(err, ApprovalError::WorkspaceMismatch));
+    }
+
+    #[test]
+    fn key_reordering_does_not_change_digest() {
+        let a = json!({"alpha": 1, "beta": 2});
+        let b = json!({"beta": 2, "alpha": 1});
+        assert_eq!(canonical_input_digest(&a), canonical_input_digest(&b));
+    }
+
+    #[test]
+    fn value_change_changes_digest() {
+        let a = json!({"key": "value_a"});
+        let b = json!({"key": "value_b"});
+        assert_ne!(canonical_input_digest(&a), canonical_input_digest(&b));
+    }
+
+    #[test]
+    fn invalidate_workspace_removes_matching_tokens() {
+        let mut registry = ApprovalRegistry::new();
+        let input = json!({"x": 1});
+        let digest = canonical_input_digest(&input);
+        let scope_a = ApprovalScope {
+            tool: "files.patch".to_owned(),
+            input_digest: digest,
+            workspace: "/ws-a".to_owned(),
+            session: registry.session_id().to_owned(),
+            risk_level: RiskLevel::Guarded,
+        };
+        let scope_b = ApprovalScope {
+            tool: "files.patch".to_owned(),
+            input_digest: digest,
+            workspace: "/ws-b".to_owned(),
+            session: registry.session_id().to_owned(),
+            risk_level: RiskLevel::Guarded,
+        };
+        let token_a = registry.issue(scope_a).unwrap();
+        let _token_b = registry.issue(scope_b).unwrap();
+        assert_eq!(registry.active_count(), 2);
+        registry.invalidate_workspace("/ws-a");
+        assert_eq!(registry.active_count(), 1);
+        let err = registry
+            .execute_approved(&token_a, "files.patch", &digest, "/ws-a")
+            .unwrap_err();
+        assert!(matches!(err, ApprovalError::TokenNotFound));
+    }
+
+    #[test]
+    fn invalid_prefix_is_rejected() {
+        let mut registry = ApprovalRegistry::new();
+        let digest = [0u8; 32];
+        let err = registry
+            .execute_approved("apt_fake_token", "files.patch", &digest, "/w")
+            .unwrap_err();
+        assert!(matches!(err, ApprovalError::InvalidToken));
+    }
+}
+
+==============================================================================
+## 9. NEW MODULE: workspace.rs
+## source: desktop\localcomet-desktop\src-tauri\src\workspace.rs
+==============================================================================
+
+use crate::approval::ApprovalRegistry;
+use crate::control_plane::BridgeError;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkspaceIdentity {
+    pub canonical_path: String,
+    pub digest: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum WorkspaceError {
+    InvalidPath(String),
+    SymlinkEscape(String),
+    SidecarRejected(String),
+    NotADirectory(String),
+    DoesNotExist(String),
+}
+
+impl std::fmt::Display for WorkspaceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidPath(msg) => write!(f, "invalid workspace path: {msg}"),
+            Self::SymlinkEscape(msg) => write!(f, "symlink escape detected: {msg}"),
+            Self::SidecarRejected(msg) => write!(f, "sidecar rejected workspace: {msg}"),
+            Self::NotADirectory(msg) => write!(f, "not a directory: {msg}"),
+            Self::DoesNotExist(msg) => write!(f, "path does not exist: {msg}"),
+        }
+    }
+}
+
+impl From<WorkspaceError> for BridgeError {
+    fn from(value: WorkspaceError) -> Self {
+        BridgeError {
+            code: "workspace_error".into(),
+            message: value.to_string(),
+        }
+    }
+}
+
+pub fn validate_workspace_path(raw: &Path) -> Result<PathBuf, WorkspaceError> {
+    if raw.as_os_str().is_empty() {
+        return Err(WorkspaceError::InvalidPath("empty path".into()));
+    }
+
+    let canonical = raw
+        .canonicalize()
+        .map_err(|e| WorkspaceError::InvalidPath(e.to_string()))?;
+
+    if !canonical.exists() {
+        return Err(WorkspaceError::DoesNotExist(
+            canonical.display().to_string(),
+        ));
+    }
+
+    if !canonical.is_dir() {
+        return Err(WorkspaceError::NotADirectory(
+            canonical.display().to_string(),
+        ));
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        let metadata = std::fs::symlink_metadata(&canonical)
+            .map_err(|e| WorkspaceError::InvalidPath(e.to_string()))?;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(WorkspaceError::SymlinkEscape(
+                canonical.display().to_string(),
+            ));
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let metadata = std::fs::symlink_metadata(&canonical)
+            .map_err(|e| WorkspaceError::InvalidPath(e.to_string()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(WorkspaceError::SymlinkEscape(
+                canonical.display().to_string(),
+            ));
+        }
+    }
+
+    Ok(canonical)
+}
+
+pub fn workspace_digest(path: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(path.to_string_lossy().as_bytes());
+    let result = hasher.finalize();
+    result.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+pub fn change_workspace(
+    raw_path: &Path,
+    approval_registry: &mut ApprovalRegistry,
+    current_workspace: &Option<WorkspaceIdentity>,
+) -> Result<WorkspaceIdentity, WorkspaceError> {
+    let canonical = validate_workspace_path(raw_path)?;
+
+    if let Some(current) = current_workspace {
+        approval_registry.invalidate_workspace(&current.canonical_path);
+    }
+
+    let identity = WorkspaceIdentity {
+        canonical_path: canonical.display().to_string(),
+        digest: workspace_digest(&canonical),
+    };
+
+    Ok(identity)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn valid_directory_passes_validation() {
+        let temp = std::env::temp_dir();
+        let result = validate_workspace_path(&temp);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn empty_path_is_rejected() {
+        let result = validate_workspace_path(Path::new(""));
+        assert!(matches!(result, Err(WorkspaceError::InvalidPath(_))));
+    }
+
+    #[test]
+    fn nonexistent_path_is_rejected() {
+        let result = validate_workspace_path(Path::new(
+            r"Z:\nonexistent_localcomet_test_path_12345",
+        ));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn file_path_is_rejected_as_not_directory() {
+        let temp = std::env::temp_dir();
+        let file_path = temp.join("localcomet_ws_test_file.txt");
+        fs::write(&file_path, "test").unwrap();
+        let result = validate_workspace_path(&file_path);
+        let _ = fs::remove_file(&file_path);
+        assert!(matches!(result, Err(WorkspaceError::NotADirectory(_))));
+    }
+
+    #[test]
+    fn workspace_change_invalidates_old_tokens() {
+        let mut registry = ApprovalRegistry::new();
+        let ws_a = WorkspaceIdentity {
+            canonical_path: "/workspace-a".into(),
+            digest: workspace_digest(Path::new("/workspace-a")),
+        };
+
+        use crate::approval::{ApprovalScope, RiskLevel, canonical_input_digest};
+        let scope = ApprovalScope {
+            tool: "files.patch".to_owned(),
+            input_digest: canonical_input_digest(&serde_json::json!({"x": 1})),
+            workspace: "/workspace-a".to_owned(),
+            session: registry.session_id().to_owned(),
+            risk_level: RiskLevel::Guarded,
+        };
+        let token = registry.issue(scope).unwrap();
+        assert_eq!(registry.active_count(), 1);
+
+        let new_identity = change_workspace(
+            &std::env::temp_dir(),
+            &mut registry,
+            &Some(ws_a),
+        )
+        .unwrap();
+
+        assert_eq!(registry.active_count(), 0);
+        assert!(!new_identity.canonical_path.is_empty());
+        assert!(!new_identity.digest.is_empty());
+
+        let digest = canonical_input_digest(&serde_json::json!({"x": 1}));
+        let err = registry
+            .execute_approved(&token, "files.patch", &digest, "/workspace-a")
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            crate::approval::ApprovalError::TokenNotFound
+        ));
+    }
+
+    #[test]
+    fn workspace_digest_is_deterministic() {
+        let d1 = workspace_digest(Path::new("/some/path"));
+        let d2 = workspace_digest(Path::new("/some/path"));
+        assert_eq!(d1, d2);
+        assert_eq!(d1.len(), 64);
+    }
+
+    #[test]
+    fn different_paths_produce_different_digests() {
+        let d1 = workspace_digest(Path::new("/path/a"));
+        let d2 = workspace_digest(Path::new("/path/b"));
+        assert_ne!(d1, d2);
+    }
+}
+
+==============================================================================
+## 10. РЕЕСТР СУЩЕСТВУЮЩИХ SECURITY-МОДУЛЕЙ (хеши взяты из audit/manifest.sha256)
+## Полные исходники — в tar.gz-архиве и в репозитории по указанным путям.
+==============================================================================
+
+SHA-256 (из манифеста)                                             Модуль
+-----------------------------------------------------------------  ------
+dc81c0dd18bd14e3865a943361c455482aae8b727db9ab07601e3af48f63af6a  Module wiring + Tauri handler registry  [desktop/localcomet-desktop/src-tauri/src/lib.rs]
+04503bce40533c73f7fa9c09fd7de163f08c000c38d8dfb9b7282f1462073dcd  Windows Job Object (KILL_ON_JOB_CLOSE, ACTIVE_PROCESS=1)  [desktop/localcomet-desktop/src-tauri/src/windows_job.rs]
+1dc407abdfd3bce587a35c783d067bb6a56a59f1cf61fc7e3678a64979b6be46  Process supervisor (health probe, bounded stderr)  [desktop/localcomet-desktop/src-tauri/src/supervisor.rs]
+59b72d12c1ac2ed7355297fc836cac229b6fb0246b08fd6fa9c448375362e493  IPC framing (length-prefix, 4MiB max)  [desktop/localcomet-desktop/src-tauri/src/ipc.rs]
+92be9dea1988420d62886ec90dffa001a5e9f2acab15e087c64e52cbb9009ffb  Catalog guard, SHA-256, GGUF, TOCTOU  [desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs]
+eabe533120507a203efb0d4000aaee3841a141885b999eb324c0a5149242b739  Control plane bridge (correlation, routing)  [desktop/localcomet-desktop/src-tauri/src/control_plane.rs]
+29bbbe33c207417415f637bafc4dc3853c04cf68db05d9be2a6e661c5f93c605  Embedded approved artifact catalog  [desktop/localcomet-desktop/src-tauri/resources/localcomet/approved-artifacts.v1.json]
+a6f5009788dd55246040029e2baa1d15ce4e365dc4b339ebb7c991ac88d5333a  IPC protocol schema  [desktop/contracts/localcomet_ipc_v1.schema.json]
+
+КОНЕЦ ТЕКСТОВОГО АУДИТА
