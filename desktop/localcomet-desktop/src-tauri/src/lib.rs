@@ -1,4 +1,6 @@
 mod app_data_root;
+mod approval;
+mod approval_commands;
 mod artifact_acquisition;
 mod artifact_trust;
 mod control_plane;
@@ -10,7 +12,9 @@ mod single_instance;
 mod startup;
 mod supervisor;
 mod windows_job;
+mod workspace;
 
+use approval_commands::{execute_approved, request_approval, set_workspace, ApprovalState};
 use artifact_acquisition::{
     cancel_artifact_download, get_artifact_download_state, list_approved_downloadable_artifacts,
     remove_managed_model, start_approved_artifact_download, ArtifactAcquisitionManager,
@@ -171,6 +175,7 @@ pub fn run() {
             ))));
             app.manage(Arc::new(ManagedRuntimeSupervisor::new(artifact_trust)));
             app.manage(SelectedFilesManager::default());
+            app.manage(ApprovalState::default());
             let Some(window) = app.get_webview_window("main") else {
                 let _ = supervisor.shutdown();
                 startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_201");
@@ -242,7 +247,10 @@ pub fn run() {
             select_files,
             list_selected_files,
             preview_selected_file,
-            forget_selected_file
+            forget_selected_file,
+            request_approval,
+            execute_approved,
+            set_workspace
         ])
         .run(tauri::generate_context!());
 

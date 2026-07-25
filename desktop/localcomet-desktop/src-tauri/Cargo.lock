@@ -1804,10 +1804,12 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 name = "localcomet-desktop"
 version = "6.84.6"
 dependencies = [
+ "getrandom 0.2.17",
  "reqwest",
  "serde",
  "serde_json",
  "sha2",
+ "subtle",
  "tauri",
  "tauri-build",
  "windows-sys 0.61.2",

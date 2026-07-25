@@ -1,0 +1,79 @@
+# LocalComet Tool Risk Levels
+# Risk classification for LocalComet's REAL mutating operations.
+#
+# Console agent filesystem operations: modules/files.py
+#   (each tool calls safe_path() for Projects/ confinement)
+# Desktop mutating operations: Tauri commands in src-tauri/src/
+#
+# risk_level: read_only | guarded | dangerous
+# requires_approval: whether an approval token must be consumed before execution
+#
+# Gate: scripts/check_tool_risk_registry.py verifies every file-operation
+# function in modules/files.py is classified here, and that every mutating
+# function has requires_approval = true.
+
+schema_version = 1
+
+# --- Console agent filesystem operations (modules/files.py) ---
+
+[[tools]]
+name = "files.read"
+risk_level = "read_only"
+requires_approval = false
+implementation = "modules/files.py::read_file"
+
+[[tools]]
+name = "files.list"
+risk_level = "read_only"
+requires_approval = false
+implementation = "modules/files.py::list_files"
+
+[[tools]]
+name = "files.write"
+risk_level = "guarded"
+requires_approval = true
+implementation = "modules/files.py::write_file"
+
+[[tools]]
+name = "files.create_folder"
+risk_level = "guarded"
+requires_approval = true
+implementation = "modules/files.py::create_folder"
+
+[[tools]]
+name = "files.delete"
+risk_level = "dangerous"
+requires_approval = true
+implementation = "modules/files.py::delete_path"
+
+# --- Desktop mutating Tauri commands (src-tauri/src/) ---
+
+[[tools]]
+name = "artifact.download"
+risk_level = "guarded"
+requires_approval = true
+implementation = "src-tauri::start_approved_artifact_download"
+
+[[tools]]
+name = "artifact.remove"
+risk_level = "dangerous"
+requires_approval = true
+implementation = "src-tauri::remove_managed_model"
+
+[[tools]]
+name = "runtime.start"
+risk_level = "guarded"
+requires_approval = true
+implementation = "src-tauri::managed_runtime_start"
+
+[[tools]]
+name = "runtime.stop"
+risk_level = "guarded"
+requires_approval = true
+implementation = "src-tauri::managed_runtime_stop"
+
+[[tools]]
+name = "model.binding.set"
+risk_level = "guarded"
+requires_approval = true
+implementation = "src-tauri::model_binding_set"
