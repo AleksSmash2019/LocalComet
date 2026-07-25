@@ -129,8 +129,11 @@ severity = "high"
 owner = "Svelte frontend"
 implementation = [
     "desktop/localcomet-desktop/src/",
+    "scripts/check_ui_fake_state.py",
 ]
 test_ids = []
+verification_method = "scripts/check_ui_fake_state.py [прогон]"
+verified_at = "2026-07-25"
 status = "active"
 
 [[invariants]]
@@ -140,30 +143,59 @@ statement = "Test evidence must include source tree digest, command argv, exit c
 severity = "medium"
 owner = "scripts/"
 implementation = [
+    "scripts/refresh_evidence.py",
     "scripts/check_evidence_provenance.py",
 ]
-test_ids = []
-status = "planned"
+test_ids = [
+    "check_evidence_provenance_detects_stale",
+]
+verification_method = "scripts/check_evidence_provenance.py [прогон] + injection (modify covered source -> STALE, exit 1)"
+verified_at = "2026-07-25"
+status = "active"
 
 [[invariants]]
 id = "INV-APPROVAL-001"
 title = "Guarded tool cannot execute without atomic Rust authorization"
 statement = "Any guarded or dangerous tool call must pass through execute_approved() which atomically validates scope (tool, input digest, workspace, session, expiry), consumes the one-time token, and creates an execution grant. No bypass path exists."
 severity = "critical"
-owner = "approval.rs (planned)"
-implementation = []
-test_ids = []
-status = "planned"
+owner = "approval.rs + approval_commands.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/approval.rs",
+    "desktop/localcomet-desktop/src-tauri/src/approval_commands.rs",
+]
+test_ids = [
+    "execute_approved_succeeds_with_matching_scope",
+    "replay_is_rejected",
+    "wrong_tool_is_rejected",
+    "wrong_input_digest_is_rejected",
+    "wrong_workspace_is_rejected",
+    "wrong_session_is_rejected",
+    "expired_token_is_rejected",
+]
+verification_method = "cargo test approval [прогон]"
+verified_at = "2026-07-25"
+status = "active"
 
 [[invariants]]
 id = "INV-APPROVAL-002"
 title = "Approval token is one-time, scoped, and CSPRNG-generated"
 statement = "Approval tokens use getrandom/OsRng with minimum 256 bits. Tokens are bound to tool, canonical input digest, workspace, session, and expiry. Each token can be consumed exactly once. Comparison uses constant-time equality."
 severity = "critical"
-owner = "approval.rs (planned)"
-implementation = []
-test_ids = []
-status = "planned"
+owner = "approval.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/approval.rs",
+]
+test_ids = [
+    "issued_tokens_are_unique_and_256_bits",
+    "two_registries_issue_different_first_tokens",
+    "replay_is_rejected",
+    "ttl_sweep_frees_expired_slots_before_capacity_check",
+    "execution_grant_carries_short_lived_expiry",
+    "invalid_prefix_is_rejected",
+]
+verification_method = "cargo test approval [прогон]"
+verified_at = "2026-07-25"
+status = "active"
 
 [[invariants]]
 id = "INV-WORKSPACE-001"
