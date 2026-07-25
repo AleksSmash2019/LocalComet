@@ -1,2 +1,58 @@
-third_party/llama.cpp/LICENSE-MIT.txt text eol=lf
+* text=auto eol=lf
+
+# Trust-chain files: strict LF, no BOM
 desktop/localcomet-desktop/src-tauri/resources/localcomet/approved-artifacts.v1.json text eol=lf
+desktop/contracts/*.json text eol=lf
+localcomet_runtime_manifest.json text eol=lf
+memory/state.json text eol=lf
+config.py text eol=lf
+
+# Protocol contracts and schemas
+desktop/contracts/*.schema.json text eol=lf
+
+# Build and CI scripts
+scripts/*.py text eol=lf
+scripts/*.sh text eol=lf
+.github/workflows/*.yml text eol=lf
+
+# Rust sources
+desktop/localcomet-desktop/src-tauri/**/*.rs text eol=lf
+desktop/localcomet-desktop/src-tauri/Cargo.toml text eol=lf
+desktop/localcomet-desktop/src-tauri/Cargo.lock text eol=lf
+
+# Python sources
+*.py text eol=lf
+
+# Frontend sources
+desktop/localcomet-desktop/src/**/*.ts text eol=lf
+desktop/localcomet-desktop/src/**/*.svelte text eol=lf
+desktop/localcomet-desktop/package.json text eol=lf
+desktop/localcomet-desktop/package-lock.json text eol=lf
+desktop/localcomet-desktop/tsconfig.json text eol=lf
+desktop/localcomet-desktop/svelte.config.js text eol=lf
+desktop/localcomet-desktop/vite.config.ts text eol=lf
+desktop/localcomet-desktop/vitest.config.ts text eol=lf
+
+# Tauri manifest
+desktop/localcomet-desktop/src-tauri/tauri.conf.json text eol=lf
+
+# Third-party licenses (byte-exact)
+third_party/llama.cpp/LICENSE-MIT.txt text eol=lf
+
+# Security invariants
+security/invariants/*.toml text eol=lf
+security/invariants/*.json text eol=lf
+
+# Evidence and provenance
+artifacts/evidence/*.json text eol=lf
+
+# Binary files
+*.png -text
+*.ico -text
+*.bmp -text
+*.exe -text
+*.dll -text
+*.gguf -text
+*.zip -text
+*.tar.gz -text
+*.wasm -text

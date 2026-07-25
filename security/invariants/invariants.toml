@@ -1,0 +1,176 @@
+# LocalComet Security Invariants Registry
+# Machine-readable invariant definitions with test bindings.
+
+schema_version = 1
+
+[[invariants]]
+id = "INV-PROCESS-001"
+title = "Desktop owns entire sidecar process tree"
+statement = "The Tauri desktop process owns the sidecar and all descendants via Windows Job Object with KILL_ON_JOB_CLOSE and ACTIVE_PROCESS_LIMIT=1. No orphan processes survive desktop termination."
+severity = "critical"
+owner = "windows_job.rs, supervisor.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/windows_job.rs",
+    "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+]
+test_ids = [
+    "source_sets_active_process_limit_to_one",
+    "command_line_quotes_python_runner_and_flags",
+    "environment_block_is_double_null_terminated",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-READINESS-001"
+title = "Ready requires active correlated health response"
+statement = "Sidecar readiness is confirmed only after an active health probe (desk-health-{seq}) receives a correlated response with payload.status=ok. Passive hello events alone are insufficient."
+severity = "critical"
+owner = "supervisor.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+]
+test_ids = [
+    "lifecycle_frame_observation_requires_exact_health_response_shape",
+    "real_python_sidecar_can_start_when_test_environment_is_present",
+    "failed_readiness_stops_the_contained_sidecar",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-IPC-001"
+title = "IPC frames are bounded and length-prefixed"
+statement = "All IPC frames use 4-byte big-endian length prefix. Maximum frame size is 4MiB. Zero-length and oversized frames are rejected without allocation."
+severity = "high"
+owner = "ipc.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/ipc.rs",
+]
+test_ids = [
+    "frames_are_big_endian_length_prefixed_json",
+    "reader_rejects_zero_length_frame",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-IPC-002"
+title = "Pipe writes are bounded with timeout"
+statement = "Writing to sidecar stdin uses bounded retry with timeout. A non-reading sidecar cannot block the desktop indefinitely. Write failure terminates the sidecar and fails pending requests."
+severity = "high"
+owner = "windows_job.rs, supervisor.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/windows_job.rs",
+    "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+]
+test_ids = [
+    "bounded_writer_preserves_complete_frame_order_across_partial_writes",
+    "bounded_writer_times_out_when_pipe_never_accepts_data",
+    "bounded_writer_propagates_sidecar_failure_without_retrying",
+    "nonreading_sidecar_pipe_write_is_bounded_and_releases_supervisor",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-CATALOG-001"
+title = "Artifact catalog is embedded, hash-pinned, and canonical"
+statement = "The approved artifact catalog is compiled into the binary with a pinned SHA-256. It must be canonical JSON (LF, no BOM, no trailing whitespace, single final LF, sorted keys). Any deviation is rejected at startup."
+severity = "critical"
+owner = "artifact_trust.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs",
+]
+test_ids = []
+status = "active"
+
+[[invariants]]
+id = "INV-CATALOG-002"
+title = "LLM, filename, and app-data are not catalog approval authority"
+statement = "Model/runtime approval requires embedded catalog record with SHA-256. No LLM output, filename pattern, or database record can substitute for catalog verification."
+severity = "critical"
+owner = "artifact_trust.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs",
+    "security/invariants/non_authorities.toml",
+]
+test_ids = []
+status = "active"
+
+[[invariants]]
+id = "INV-MODEL-001"
+title = "Model cannot be installed or launched without verified digest"
+statement = "Model validation requires: correct size, GGUF magic bytes, SHA-256 match against catalog. Launch requires re-validation after opening file handles (TOCTOU mitigation)."
+severity = "critical"
+owner = "artifact_trust.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs",
+]
+test_ids = []
+status = "active"
+
+[[invariants]]
+id = "INV-PROCESS-002"
+title = "Sidecar environment is sanitized"
+statement = "Sidecar runs with -I (isolated) and -B (no bytecode) flags. Environment contains only lifecycle-safe variables. No TOKEN, SECRET, or user-site packages are accessible."
+severity = "high"
+owner = "supervisor.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+]
+test_ids = [
+    "environment_keeps_only_lifecycle_safe_python_values",
+    "debug_launch_spec_uses_fixed_python_runner_arguments",
+]
+status = "active"
+
+[[invariants]]
+id = "INV-UI-001"
+title = "Production UI does not generate false backend state"
+statement = "All UI state transitions (ready, running, installed, success) must originate from backend events. No Math.random(), no timer-based progress, no optimistic success without backend confirmation."
+severity = "high"
+owner = "Svelte frontend"
+implementation = [
+    "desktop/localcomet-desktop/src/",
+]
+test_ids = []
+status = "active"
+
+[[invariants]]
+id = "INV-EVIDENCE-001"
+title = "Evidence is bound to all execution inputs"
+statement = "Test evidence must include source tree digest, command argv, exit code, tool versions, and timestamp. Evidence without source binding is stale and must not be treated as proof."
+severity = "medium"
+owner = "scripts/"
+implementation = [
+    "scripts/check_evidence_provenance.py",
+]
+test_ids = []
+status = "planned"
+
+[[invariants]]
+id = "INV-APPROVAL-001"
+title = "Guarded tool cannot execute without atomic Rust authorization"
+statement = "Any guarded or dangerous tool call must pass through execute_approved() which atomically validates scope (tool, input digest, workspace, session, expiry), consumes the one-time token, and creates an execution grant. No bypass path exists."
+severity = "critical"
+owner = "approval.rs (planned)"
+implementation = []
+test_ids = []
+status = "planned"
+
+[[invariants]]
+id = "INV-APPROVAL-002"
+title = "Approval token is one-time, scoped, and CSPRNG-generated"
+statement = "Approval tokens use getrandom/OsRng with minimum 256 bits. Tokens are bound to tool, canonical input digest, workspace, session, and expiry. Each token can be consumed exactly once. Comparison uses constant-time equality."
+severity = "critical"
+owner = "approval.rs (planned)"
+implementation = []
+test_ids = []
+status = "planned"
+
+[[invariants]]
+id = "INV-WORKSPACE-001"
+title = "Sidecar uses confirmed current workspace"
+statement = "Workspace changes require IPC round-trip (workspace.set.request/response). Old approval tokens are invalidated on workspace change. Filesystem operations are blocked during transition."
+severity = "high"
+owner = "workspace.rs (planned)"
+implementation = []
+test_ids = []
+status = "planned"

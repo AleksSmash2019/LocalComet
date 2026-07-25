@@ -1,0 +1,117 @@
+# LocalComet Non-Authorities Registry
+# Things that are NOT authoritative sources of truth.
+# Each entry: what is NOT an authority, what IS the authority instead.
+
+schema_version = 1
+
+[[non_authorities]]
+id = "NA-001"
+statement = "LLM output is not an authority for file content, system state, or security decisions"
+prohibited_inference = "LLM said X exists, therefore X exists"
+authority_owner = "filesystem, process state, verified evidence"
+severity = "critical"
+
+[[non_authorities]]
+id = "NA-002"
+statement = "Filename is not an authority for file content or type"
+prohibited_inference = "File is named model.gguf, therefore it is a valid GGUF"
+authority_owner = "magic bytes, SHA-256, catalog record"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-003"
+statement = "Repository name is not an authority for artifact identity"
+prohibited_inference = "Repo is called llama.cpp, therefore it is llama.cpp"
+authority_owner = "upstream_revision, asset_sha256, catalog"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-004"
+statement = "Provider metadata (HF lfs.oid, ETag, Content-Length) is not an authority for artifact integrity"
+prohibited_inference = "HF says sha256 is X, therefore bytes are X"
+authority_owner = "local streaming SHA-256 over downloaded bytes"
+severity = "critical"
+
+[[non_authorities]]
+id = "NA-005"
+statement = "App-data or SQLite record is not an authority for installed state"
+prohibited_inference = "Database says model installed, therefore model is valid"
+authority_owner = "filesystem validation (bytes, hash, magic, path containment)"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-006"
+statement = "Frontend state is not an authority for backend state"
+prohibited_inference = "UI shows Ready, therefore sidecar is ready"
+authority_owner = "active health probe response from sidecar process"
+severity = "critical"
+
+[[non_authorities]]
+id = "NA-007"
+statement = "Open port is not an authority for service identity or health"
+prohibited_inference = "Port 8080 is open, therefore llama-server is running correctly"
+authority_owner = "process PID, health endpoint response, protocol handshake"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-008"
+statement = "Process name is not an authority for process identity"
+prohibited_inference = "Process named python.exe is our sidecar"
+authority_owner = "PID tracked by supervisor, Job Object containment"
+severity = "medium"
+
+[[non_authorities]]
+id = "NA-009"
+statement = "Loopback response without binding is not an authority for service readiness"
+prohibited_inference = "Got HTTP 200 from localhost, therefore our service is ready"
+authority_owner = "correlated health probe with session/protocol verification"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-010"
+statement = "Previous successful run is not an authority for current state"
+prohibited_inference = "It worked yesterday, therefore it works now"
+authority_owner = "current validation, current probe, current hash"
+severity = "medium"
+
+[[non_authorities]]
+id = "NA-011"
+statement = "Presence of file is not an authority for file validity"
+prohibited_inference = "File exists at expected path, therefore it is correct"
+authority_owner = "bytes, hash, magic, size, path containment, reparse check"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-012"
+statement = "Sidecar self-report without active probe is not an authority for readiness"
+prohibited_inference = "Sidecar sent ready event, therefore it can process requests"
+authority_owner = "active request/response health probe with correlation ID"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-013"
+statement = "Redirect result is not an authority for download source"
+prohibited_inference = "URL redirected to CDN, therefore CDN is approved"
+authority_owner = "allowed_redirect_hosts in catalog acquisition record"
+severity = "high"
+
+[[non_authorities]]
+id = "NA-014"
+statement = "Markdown documentation is not an authority for implementation state"
+prohibited_inference = "README says feature X is done, therefore X is implemented"
+authority_owner = "code, tests, evidence, running verification"
+severity = "medium"
+
+[[non_authorities]]
+id = "NA-015"
+statement = "Log output is not an authority for operation success"
+prohibited_inference = "Log says success, therefore operation succeeded"
+authority_owner = "exit code, filesystem state, response payload, evidence"
+severity = "medium"
+
+[[non_authorities]]
+id = "NA-016"
+statement = "Cache is not an authority for current data"
+prohibited_inference = "Cached catalog says X, therefore current catalog is X"
+authority_owner = "fresh read from source, hash verification"
+severity = "medium"
