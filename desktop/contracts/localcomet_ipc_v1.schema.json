@@ -149,6 +149,22 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "workspace.set"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/workspaceSetPayload"
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -398,6 +414,28 @@
         },
         "scope": {
           "$ref": "#/$defs/approvalScope"
+        }
+      }
+    },
+    "workspaceSetPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_path",
+        "workspace_digest",
+        "session_id"
+      ],
+      "properties": {
+        "canonical_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "workspace_digest": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "session_id": {
+          "$ref": "#/$defs/fingerprint"
         }
       }
     },
