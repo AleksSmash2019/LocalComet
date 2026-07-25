@@ -690,6 +690,35 @@ fn limit_text(text: &str, limit: usize) -> String {
 mod tests {
     use super::*;
 
+    /// Resolve the real-sidecar test environment.
+    ///
+    /// Without LOCALCOMET_TEST_PROJECT_ROOT / LOCALCOMET_TEST_PYTHON the test is
+    /// a silent no-op counted as "passed", which makes the suite count
+    /// semantically dishonest. When LOCALCOMET_REQUIRE_REAL_SIDECAR is set
+    /// (e.g. in CI after installing the sidecar) the absence of the environment
+    /// is a hard failure instead of a silent skip.
+    fn real_sidecar_env() -> Option<(PathBuf, PathBuf)> {
+        let root = std::env::var_os("LOCALCOMET_TEST_PROJECT_ROOT").map(PathBuf::from);
+        let python = std::env::var_os("LOCALCOMET_TEST_PYTHON").map(PathBuf::from);
+        match (root, python) {
+            (Some(root), Some(python)) => Some((root, python)),
+            _ => {
+                if std::env::var_os("LOCALCOMET_REQUIRE_REAL_SIDECAR").is_some() {
+                    panic!(
+                        "LOCALCOMET_REQUIRE_REAL_SIDECAR is set but the real-sidecar \
+                         environment (LOCALCOMET_TEST_PROJECT_ROOT, LOCALCOMET_TEST_PYTHON) \
+                         is not available"
+                    );
+                }
+                eprintln!(
+                    "SKIP: real-sidecar test - set LOCALCOMET_TEST_PROJECT_ROOT and \
+                     LOCALCOMET_TEST_PYTHON to enable"
+                );
+                None
+            }
+        }
+    }
+
     #[test]
     fn debug_launch_spec_uses_fixed_python_runner_arguments() {
         let root = PathBuf::from("LocalCometTest");
@@ -741,10 +770,7 @@ mod tests {
 
     #[test]
     fn real_python_sidecar_can_start_when_test_environment_is_present() {
-        let Some(root) = std::env::var_os("LOCALCOMET_TEST_PROJECT_ROOT").map(PathBuf::from) else {
-            return;
-        };
-        let Some(python) = std::env::var_os("LOCALCOMET_TEST_PYTHON").map(PathBuf::from) else {
+        let Some((root, python)) = real_sidecar_env() else {
             return;
         };
         let supervisor =
@@ -761,10 +787,7 @@ mod tests {
 
     #[test]
     fn failed_readiness_stops_the_contained_sidecar() {
-        let Some(root) = std::env::var_os("LOCALCOMET_TEST_PROJECT_ROOT").map(PathBuf::from) else {
-            return;
-        };
-        let Some(python) = std::env::var_os("LOCALCOMET_TEST_PYTHON").map(PathBuf::from) else {
+        let Some((root, python)) = real_sidecar_env() else {
             return;
         };
         let runner = root.join("tools/test_up00_unready_sidecar.py");
@@ -786,10 +809,7 @@ mod tests {
 
     #[test]
     fn nonreading_sidecar_pipe_write_is_bounded_and_releases_supervisor() {
-        let Some(root) = std::env::var_os("LOCALCOMET_TEST_PROJECT_ROOT").map(PathBuf::from) else {
-            return;
-        };
-        let Some(python) = std::env::var_os("LOCALCOMET_TEST_PYTHON").map(PathBuf::from) else {
+        let Some((root, python)) = real_sidecar_env() else {
             return;
         };
         let runner = root.join("tools/test_up00_unready_sidecar.py");
