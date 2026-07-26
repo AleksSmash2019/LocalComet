@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import '../../../app.css';
-  import LocalCometLogo from '$lib/components/common/LocalCometLogo.svelte';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
+  import CommandPalette from '$lib/components/common/CommandPalette.svelte';
   import Diagnostics from '$lib/components/agent/Diagnostics.svelte';
   import ChatHeader from './ChatHeader.svelte';
   import ConversationSidebar from './ConversationSidebar.svelte';
@@ -12,6 +12,7 @@
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import ModelSetupDrawer from '$lib/components/model/ModelSetupDrawer.svelte';
   import ReviewCenterWorkspace from '$lib/components/review/ReviewCenterWorkspace.svelte';
+  import OnboardingScreen from '$lib/components/onboarding/OnboardingScreen.svelte';
   import {
     activeWorkspace,
     chatMessages,
@@ -22,6 +23,7 @@
     inspectorDrawerOpen,
     inspectorVisible,
     modelSetupDrawerOpen,
+    openCommandPalette,
     openSettings,
     settingsPanelOpen,
     sidebarExpanded,
@@ -120,6 +122,11 @@
 
   onMount(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openCommandPalette();
+        return;
+      }
       if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key === ',') {
         event.preventDefault();
         openSettings();
@@ -131,6 +138,7 @@
         return;
       }
       if (handleGlobalEscape(event.key)) {
+        event.preventDefault();
         event.stopPropagation();
       }
     };
@@ -177,25 +185,23 @@
 <div class="app-shell" data-theme={resolvedTheme}>
   <a
     class="skip-link"
-    href={$activeWorkspace === 'review' ? '#review-workspace' : '#chat-workspace'}
+    href={$activeWorkspace === 'review' ? '#review-workspace' : $activeWorkspace === 'setup' ? '#setup-workspace' : '#chat-workspace'}
   >
-    {$activeWorkspace === 'review' ? $t('review.skip_link') : $t('common.skip_link')}
+    {$activeWorkspace === 'review' ? $t('review.skip_link') : $activeWorkspace === 'setup' ? $t('onboarding.skip_link') : $t('common.skip_link')}
   </a>
+  <NavigationRail />
   <header class="title-bar" aria-label={$t('app.title_bar')}>
-    <div class="brand">
-      <LocalCometLogo size={26} />
-      <span class="wordmark"><span class="wordmark-local">Local</span><span class="wordmark-comet">Comet</span></span>
+    <div class="palette-hint" aria-hidden="true">
+      <kbd>Ctrl</kbd><kbd>K</kbd><span>{$t('commandPalette.search')}</span>
     </div>
     <StatusBadge label={controlPlaneLabel} tone={controlPlaneTone} />
   </header>
 
   <div
-    class:review-mode={$activeWorkspace === 'review'}
+    class:focused-mode={$activeWorkspace !== 'chat'}
     class:diagnostics-open={$activeWorkspace === 'chat' && $inspectorVisible}
     class="shell-body"
   >
-    <NavigationRail />
-
     {#if $activeWorkspace === 'chat'}
       <ConversationSidebar />
       <main id="chat-workspace" class="main-workspace" aria-label="LocalComet chat workspace">
@@ -220,14 +226,17 @@
       {#if $modelSetupDrawerOpen}
         <ModelSetupDrawer onClose={closeModelSetup} />
       {/if}
-    {:else}
+    {:else if $activeWorkspace === 'review'}
       <ReviewCenterWorkspace />
+    {:else}
+      <OnboardingScreen />
     {/if}
   </div>
 
   {#if $settingsPanelOpen}
     <SettingsPanel onClose={closeSettingsAndRestoreFocus} />
   {/if}
+  <CommandPalette />
 </div>
 
 <style>
@@ -264,7 +273,7 @@
     min-width: 0;
   }
 
-  .shell-body.review-mode {
-    grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  .shell-body.focused-mode {
+    grid-template-columns: minmax(0, 1fr);
   }
 </style>

@@ -482,7 +482,8 @@ describe('Knowledge Operations Command Center components and boundaries', () => 
     expect(navigation).toContain("$t('nav.chat')");
     expect(navigation).toContain("$t('nav.settings')");
     expect(navigation).toContain('data-settings-trigger="true"');
-    expect(navigation).toContain('activateWithKeyboard');
+    expect(navigation.match(/type="button"/g)).toHaveLength(3);
+    expect(navigation).not.toContain('onkeydown=');
     expect(navigation).not.toContain("'nav.review_center'");
     expect(navigation).not.toContain("'nav.diagnostics'");
     expect(navigation).not.toContain("'nav.tasks'");

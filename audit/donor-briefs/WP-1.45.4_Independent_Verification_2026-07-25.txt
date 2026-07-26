@@ -1,0 +1,500 @@
+WP-1.45.4 / F1–F3 — НЕЗАВИСИМАЯ ПРОВЕРКА
+Архив: lad-wp1454.tar.gz
+Дата: 2026-07-25
+SHA-256 архива: 85109c26669462e40f2ff65c83dc94cfce3094d4a27a739575555ee6ec5e827d
+Содержимое tar: 195 файлов, 59 каталогов, 1 314 784 байта
+Размер архива: 353 250 байт
+
+===============================================================================
+1. ИТОГОВЫЙ ВЕРДИКТ
+===============================================================================
+
+Формулировка «F1, F2, F3 закрыты» пока слишком сильная.
+
+Рекомендуемый статус:
+- F1: PARTIALLY ACCEPTED — реальный процесс, active handshake, IPC и завершение
+  реализованы, но readiness допускает ложноположительный успех, stderr не
+  дренируется, product transport дублирует несовместимый IpcClient.
+- F2: REOPEN — scoped approval существует в Rust registry, но не является
+  обязательным gate для run_tool_call. Токен можно использовать через Python
+  после неуспешного/пропущенного Rust consume; rollback в smoke уже идёт таким
+  путём.
+- F3: PARTIALLY ACCEPTED — бинарный smoke реально существует и сохранённый
+  прогон 15/15 правдоподобен, но шаги 5, 9, 13 и 14 не доказывают заявленные
+  свойства; сам lad_smoke.rs не входит в tree_digest evidence.
+
+Допустимая текущая классификация:
+«security/architecture prototype с функциональным web-demo и ограниченно
+доказанным CLI/core-путём ниже GUI».
+
+Слово «доказанным» нельзя пока распространять на:
+- динамическую смену workspace;
+- обязательное Rust-consume для guarded tools;
+- end-to-end binding approval к аргументам;
+- строгую readiness;
+- долговременную устойчивость sidecar logging;
+- Tauri commands;
+- GUI;
+- Windows;
+- packaged binary.
+
+===============================================================================
+2. ЧТО ПОДТВЕРЖДЕНО
+===============================================================================
+
+2.1. Локально повторно выполнено:
+- pytest: 195 passed, 1 skipped;
+- check_docs_sync.py: exit 0;
+- check_invariants.py: exit 0;
+- check_module_wiring.py: exit 0;
+- check_security_negative.py: exit 0;
+- check_command_parity.py: exit 0;
+- check_evidence_provenance.py: exit 0.
+
+2.2. Сохранённый evidence содержит:
+- cargo test: 122 passed суммарно;
+- lad-smoke: код 0, 15/15;
+- pytest: 195 passed, 1 skipped;
+- 99 собранных Python security-negative cases;
+- 34 Vitest cases структурно, но прогон недоступен;
+- 23 инварианта, 20 охраняемых, 3 неохраняемых;
+- два critical open invariants: INV-010 и INV-015.
+
+2.3. Реальные улучшения:
+- ProcessSupervisor создаёт настоящий child process;
+- handshake изменён с ожидания выдуманного sidecar.ready на active
+  app.health.request/app.health.response;
+- ControlPlaneRuntime общается с настоящим Python sidecar;
+- runtime.health/model.list/request_plan проверены против реального процесса;
+- Rust approval token использует getrandom, 256 бит;
+- scope включает tool + input digest + workspace + session;
+- Unix termination использует process group и SIGTERM→SIGKILL;
+- smoke harness исправил прежнее безусловное OK в шаге 10;
+- D4 «rollback остаётся GUARDED» — разумное продуктовое решение;
+- F4–F6 и U-001…U-004 честно не объявлены закрытыми.
+
+===============================================================================
+3. КРИТИЧЕСКАЯ НАХОДКА: APPROVAL BINDING ОБХОДИТСЯ
+===============================================================================
+
+ControlPlaneRuntime::approve:
+1. создаёт scoped token в Rust;
+2. немедленно отправляет approval.grant.request в Python;
+3. Python register_external сохраняет только token → (tool, expiry).
+
+ControlPlaneRuntime::run_tool_call:
+- просто отправляет tool.call.request;
+- не вызывает consume_approval;
+- не требует доказательства успешного Rust consume.
+
+ControlPlaneRuntime::consume_approval:
+- является отдельным публичным методом;
+- вызывающий код может забыть его вызвать;
+- run_tool_call от этого не блокируется.
+
+Python ApprovalRegistry:
+- знает только token + tool + TTL;
+- не знает input digest, workspace или Rust session.
+
+Эксплуатируемая последовательность:
+1. rt.approve("files.patch", input_A) — токен зарегистрирован в Rust и Python;
+2. rt.consume_approval(token, "files.patch", input_B) → false, Rust-токен
+   сжигается из-за несовпадения digest;
+3. Python-копия токена остаётся валидной;
+4. rt.run_tool_call(files.patch, input_B, token) обходит Rust scope;
+5. Python проверяет только tool и может разрешить вызов.
+
+Шаг 9 smoke проверяет только локальный Rust consume и не отправляет victim token
+на реальное исполнение с другими аргументами. Поэтому end-to-end binding не
+доказан.
+
+Дополнительное прямое доказательство из smoke:
+- шаги 13 и 14 получают approval на files.rollback;
+- затем вызывают run_tool_call;
+- Rust consume_approval перед вызовом отсутствует;
+- rollback проходит только через Python registry.
+
+Следовательно, утверждение «Rust — единственный issuer и consumer» неверно.
+Rust является issuer и опциональным consumer; Python остаётся вторым реальным
+consumer.
+
+Обязательное исправление:
+- убрать отдельный публичный consume_approval из продуктового API;
+- создать execute_approved(token, tool, input), который атомарно:
+  a) пересчитывает scope;
+  b) consume-ит Rust token;
+  c) только при успехе создаёт одноразовый execution grant;
+  d) отправляет sidecar точный call;
+- run_tool_call должен сам блокировать guarded/dangerous call без успешного
+  Rust authorization;
+- execution grant должен быть связан минимум с call ID, tool, input digest,
+  workspace, session и expiry;
+- Python должен валидировать scope либо принимать уже авторизованный envelope
+  по доверенному transport contract;
+- при failed Rust consume/restart/workspace change grant должен отзываться или
+  становиться непригодным по scope;
+- добавить реальный тест: token для content=A пытается применить content=B через
+  run_tool_call и обязан дать отказ без изменения файла;
+- добавить реальный тест rollback: без Rust consume файл не меняется.
+
+===============================================================================
+4. ЛОЖНОПОЛОЖИТЕЛЬНЫЙ ШАГ 5: SET_WORKSPACE
+===============================================================================
+
+Smoke запускает sidecar сразу с:
+  LaunchSpec.workspace = Some(temp_workspace)
+
+Затем шаг 5 вызывает:
+  rt.set_workspace(the_same_temp_workspace)
+
+Но ControlPlaneRuntime::set_workspace:
+- меняет только ControlPlaneCore.workspace;
+- инвалидирует Rust approvals;
+- IPC-запрос sidecar не отправляет;
+- Python WorkspacePolicy динамически не обновляет.
+
+В Python protocol вообще нет workspace.set request; workspace читается только из
+CLI --workspace при старте.
+
+Поэтому шаг 5 доказывает лишь, что Rust сохранил непустую строку. Все последующие
+filesystem steps проходят потому, что sidecar уже был запущен с тем же workspace.
+
+Исправление:
+- добавить workspace.set.request/response;
+- Python атомарно заменяет WorkspacePolicy;
+- Rust подтверждает смену только после ответа;
+- smoke должен стартовать с workspace A, затем переключиться на B;
+- после смены:
+  - файл в A обязан стать недоступен;
+  - файл в B обязан читаться;
+  - старый token обязан стать недействительным;
+  - sidecar health должен сообщать новый workspace identity/digest.
+
+===============================================================================
+5. READINESS И HANDSHAKE ЕЩЁ ДОПУСКАЮТ ЛОЖНЫЙ УСПЕХ
+===============================================================================
+
+5.1. SupervisedSidecar::probe:
+- отправляет app.health.request с id="probe";
+- получает следующий кадр;
+- любой Ok(Ok(_)) переводит статус в Ready;
+- не проверяет correlation ID;
+- не проверяет type == app.health.response;
+- не проверяет protocol version;
+- не проверяет payload.status.
+
+log/event, поздний ответ или другой корректный кадр может дать Ready.
+
+5.2. perform_handshake:
+- active health probe — правильное улучшение;
+- но принимает sidecar.ready как альтернативу;
+- не проверяет, что health response коррелирует с id="handshake";
+- процесс, приславший заранее подготовленный ready frame, может быть принят до
+  доказательства request/response способности.
+
+Исправление:
+- handshake принимает только app.health.response с id/replyTo == handshake;
+- READY event может быть дополнительным сигналом, но не заменой active probe;
+- probe использует уникальный id и проверяет id/type/version/payload.status;
+- добавить инъекции:
+  - log.event перед health response;
+  - stale response;
+  - wrong response type с правильным id;
+  - wrong id;
+  - wrong payload status.
+
+===============================================================================
+6. STDERR PIPE НЕ ДРЕНИРУЕТСЯ
+===============================================================================
+
+ProcessSupervisor запускает:
+  stderr(Stdio::piped())
+
+Но после spawn:
+- stdout забирается и читается отдельным thread;
+- stdin забирается;
+- stderr не забирается и не читается.
+
+Python structured_logger пишет JSON в stderr и flush-ит каждую строку:
+- sidecar.ready;
+- plan.created;
+- tool.executed;
+- approval.granted;
+- agent.stopped;
+- engine events;
+- errors.
+
+После заполнения OS pipe buffer sidecar заблокируется на stderr.write/flush.
+Короткий smoke этого не ловит; длительная сессия может зависнуть.
+
+Исправление:
+- отдельный bounded stderr reader;
+- ring buffer/quota;
+- redaction;
+- rate limit;
+- запрет неограниченного накопления;
+- thread join/shutdown;
+- stress test с количеством log lines больше pipe capacity.
+
+===============================================================================
+7. STDOUT EVENT QUEUE НЕ ОГРАНИЧЕНА
+===============================================================================
+
+Используется std::sync::mpsc::channel(), то есть unbounded queue.
+Если sidecar быстрее пишет события, чем control plane читает, память растёт без
+лимита.
+
+Исправление:
+- bounded sync_channel или выделенный dispatcher;
+- лимиты по типу события;
+- drop/coalesce policy для telemetry;
+- обязательная доставка для responses/errors;
+- наблюдаемый counter dropped events;
+- stress/DoS test.
+
+===============================================================================
+8. ДВА IPC-ПУТИ РАСХОДЯТСЯ
+===============================================================================
+
+ipc_client.rs:
+- ждёт только поле replyTo;
+- реальный Python sidecar возвращает request id в поле id;
+- тест ipc_over_real_process работает только против stub_sidecar.py, который
+  специально использует replyTo.
+
+ControlPlaneRuntime:
+- реализует второй, отдельный цикл request/recv;
+- принимает replyTo или id;
+- именно он работает с настоящим sidecar;
+- не использует pending map/completed memory IpcClient.
+
+Следовательно:
+- canonical IpcClient остаётся несовместимым с реальным sidecar;
+- INV-014 опирается на тесты компонента, который не является product transport;
+- логика timeout/correlation продублирована и может снова разойтись.
+
+Исправление:
+- определить единственную форму correlation в protocol schema;
+- предпочтительно добавить явный replyTo в Python response либо официально
+  определить, что response.id повторяет request.id;
+- один IpcClient должен обслуживать ControlPlaneRuntime;
+- real-sidecar test обязан запускать именно IpcClient, а не второй transport;
+- удалить дублирующий request loop.
+
+===============================================================================
+9. RESPONSE TYPE НЕ ПРИВЯЗАН К REQUEST TYPE
+===============================================================================
+
+ControlPlaneRuntime::request после совпадения id:
+- отклоняет error.event;
+- проверяет version;
+- возвращает любой другой type.
+
+Например, correlated model.list.response может быть принят как ответ на
+runtime.health.request.
+
+Исправление:
+- таблица request type → expected response type;
+- unknown/wrong response type = PROTOCOL_ERROR;
+- schema validation payload;
+- тест wrong-type-with-correct-id.
+
+===============================================================================
+10. EVIDENCE TREE DIGEST НЕ ПОКРЫВАЕТ КРИТИЧЕСКИЕ ФАЙЛЫ
+===============================================================================
+
+В SOURCE_GLOBS отсутствуют:
+- core/src/bin/lad_smoke.rs;
+- tests/fixtures/stub_sidecar.py;
+- .github/workflows/ci.yml;
+- scripts/build.sh;
+- scripts/build.ps1;
+- Cargo.lock обоих крейтов;
+- package-lock.json;
+- tauri.conf.json;
+- bundle icons;
+- README.md;
+- docs/unverified-ledger.md;
+- остальные docs.
+
+Критическое следствие:
+можно изменить lad_smoke.rs так, чтобы он безусловно печатал 15/15, и
+check_evidence_provenance.py продолжит считать smoke_run.txt актуальным.
+
+Также evidence body не подписан и не хэшируется отдельно. Гейт проверяет шапку и
+tree digest, но не доказывает, что тело действительно было получено указанной
+командой.
+
+Исправление:
+- включить все execution inputs, test harnesses, fixtures, lockfiles, CI/build
+  scripts и manifests;
+- для каждого evidence хранить body_sha256;
+- сохранять exit_code;
+- сохранять command argv как массив;
+- привязывать к git commit + dirty-tree digest;
+- для сильного evidence использовать CI artifact attestation/signature/run ID;
+- smoke evidence должен содержать hash самого lad-smoke binary или source.
+
+===============================================================================
+11. REAL-SIDECAR TESTS МОГУТ МОЛЧА СТАТЬ ЗЕЛЁНЫМИ NO-OP
+===============================================================================
+
+В integration tests используется:
+  let Some(...) = prepare() else { return };
+
+Если Python или local_agent недоступны, тест просто возвращается и Cargo считает
+его passed, а не skipped/failed.
+
+В CI cargo test запускается ДО шага pip install sidecar. Поэтому real-sidecar
+tests могут стать no-op, а строка «122 passed» сохранится. Отдельный lad-smoke
+после установки sidecar частично компенсирует это, но test count остаётся
+семантически неоднородным.
+
+Исправление:
+- в CI установить sidecar до cargo test;
+- CI env LAD_REQUIRE_REAL_SIDECAR=1;
+- при env=1 отсутствие sidecar = panic/fail;
+- локально разрешён explicit ignored test, но не silent return;
+- evidence должен фиксировать число реально выполненных real-process tests.
+
+Дополнительно:
+- temp app_data строится только из PID и разделяется тестами одного binary;
+- возможны параллельные гонки SQLite/app-data;
+- нужен уникальный TempDir на каждый test.
+
+===============================================================================
+12. WINDOWS JOB OBJECT НЕ «НЕПРОВЕРЕН» — ОН НЕ РЕАЛИЗОВАН
+===============================================================================
+
+В коде отсутствуют:
+- CreateJobObject;
+- SetInformationJobObject;
+- JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+- AssignProcessToJobObject;
+- windows-sys/windows dependency.
+
+На non-Unix путь использует только child.kill(), что не гарантирует завершение
+llama-server или других descendants.
+
+Поэтому U-004 неверно классифицирует это как существующую, но непроверенную
+реализацию. Это implementation gap.
+
+Исправление:
+- перенести в active planned invariant;
+- реализовать Windows Job Object;
+- затем проверять на windows-latest;
+- тест должен породить grandchild и доказать его смерть при Drop.
+
+===============================================================================
+13. TAURI-КОМАНДЫ ОСТАЮТСЯ НЕ ПРОДУКТОВЫМ ПУТЁМ
+===============================================================================
+
+Правильно отмечено, что commands.rs не переведён на ControlPlaneRuntime.
+
+Но кроме семи честных NOT_IMPLEMENTED остаются команды, способные дать
+ложноположительный ответ:
+- restart_sidecar меняет policy/status, но не перезапускает процесс;
+- set_workspace сохраняет строку, но не обновляет sidecar;
+- approve_step выдаёт unscoped token только по имени tool;
+- stop_agent сообщает stopped=true, но не отменяет sidecar operation;
+- app_health/sidecar_status не наблюдают настоящий child process.
+
+Комментарий main.rs «владеет процессом sidecar» фактически неверен: Tauri
+управляет ControlPlaneCore, не ControlPlaneRuntime.
+
+До F4/F5:
+- native UI следует явно переводить в NOT_IMPLEMENTED/Unavailable;
+- нельзя позволять этим пяти командам выглядеть рабочими.
+
+===============================================================================
+14. CI И ГЕЙТЫ
+===============================================================================
+
+14.1. «Все гейты зелёные» требует уточнения:
+- invariants gate возвращает 0 при двух critical open invariants;
+- evidence gate возвращает 0 при unavailable vitest;
+- catalog verify возвращает 0 при нулевом каталоге;
+- это consistency/status gates, а не release-ready gates.
+
+Корректная фраза:
+«Все включённые consistency gates прошли; два critical invariants и четыре
+platform/product evidence items остаются открытыми».
+
+14.2. cargo_run.txt содержит warning:
+  unused variable `root` в real_sidecar_handshake.rs.
+
+security-audit запускает:
+  cargo clippy --all-targets --all-features -- -D warnings
+
+Этот warning, вероятно, сделает security-audit красным. Исправить root → _root
+или удалить параметр и реально прогнать clippy.
+
+14.3. windows-build не зависит от security-audit:
+  needs не включает security-audit.
+
+Installer может быть собран и загружен до завершения/успеха security audit.
+Добавить security-audit в needs либо отдельный release promotion job.
+
+14.4. Supply-chain:
+- GitHub Actions указаны по mutable tags, не commit SHA;
+- syft устанавливается через curl | sh из удалённого main script без checksum;
+- cargo-audit устанавливается без pinned version.
+
+Для проекта с жёсткой trust-chain это требует pinning и проверки digest/signature.
+
+===============================================================================
+15. РЕКОМЕНДУЕМАЯ ТОЧКА ОСТАНОВКИ
+===============================================================================
+
+Не переходить к F4 как к следующей большой фазе до короткого WP-1.45.4a:
+
+A. Approval:
+- атомарный execute_approved;
+- запрет run_tool_call bypass;
+- scoped execution grant;
+- E2E wrong-args execution rejection;
+- Rust consume обязателен для rollback.
+
+B. Workspace:
+- реальный workspace.set IPC;
+- A→B smoke.
+
+C. Readiness:
+- strict id/type/version/status checks.
+
+D. Transport:
+- один IpcClient;
+- real sidecar protocol;
+- expected response type.
+
+E. Process:
+- drain bounded stderr;
+- bounded event queue.
+
+F. Evidence:
+- включить lad_smoke.rs, fixtures, locks, workflow/build files;
+- body hash/exit code.
+
+G. Tests:
+- fail-closed real-sidecar tests in CI;
+- unique TempDir;
+- clippy warning fixed.
+
+После этого F1–F3 можно закрыть окончательно и переходить к F4–F6.
+
+===============================================================================
+16. ОЦЕНКА ИНЖЕНЕРНОЙ РАБОТЫ
+===============================================================================
+
+Сильная сторона цикла — агент действительно нашёл два собственных false green
+через тест с настоящим sidecar и честно их описал. Это правильная инженерная
+культура.
+
+Но новый smoke обнаруживает не все ложные зелёные. Самые важные оставшиеся:
+- approval binding проверяется отдельно от actual execution;
+- workspace step проверяет только Rust state;
+- rollback выполняется без Rust consume;
+- readiness принимает любой frame;
+- smoke provenance не включает smoke source.
+
+Поэтому цикл является заметным прогрессом, но не финальным закрытием F1–F3.

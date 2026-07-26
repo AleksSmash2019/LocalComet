@@ -1,0 +1,389 @@
+Gate run started: 2026-07-26T21:32:09+05:00
+Repository: C:\Users\DNS\Documents\LocalComet-build-week-clean
+
+===== cargo check =====
+started=2026-07-26T21:32:09+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri
+command=cargo check
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
+exit_code=0
+finished=2026-07-26T21:32:09+05:00
+
+===== cargo test =====
+started=2026-07-26T21:32:09+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri
+command=cargo test
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.29s
+     Running unittests src\lib.rs (target\debug\deps\localcomet_desktop_lib-1313da6c70f56dd1.exe)
+
+running 154 tests
+test app_data_root::tests::empty_and_relative_overrides_are_rejected_without_default_fallback ... ok
+test artifact_acquisition::tests::offline_approved_runtime_archive_validates_exact_envelope_and_extraction_plan ... ignored, requires an explicit operator-provided approved runtime archive path
+test app_data_root::tests::absolute_override_selects_the_exact_isolated_application_root ... ok
+test app_data_root::tests::default_resolution_preserves_the_existing_localcomet_path ... ok
+test app_data_root::tests::network_share_override_is_rejected_as_nonlocal ... ok
+test approval::tests::wrong_tool_is_rejected ... ok
+test approval::tests::expired_token_is_rejected ... ok
+test approval::tests::replay_is_rejected ... ok
+test approval::tests::two_registries_issue_different_first_tokens ... ok
+test approval::tests::wrong_input_digest_is_rejected ... ok
+test approval::tests::value_change_changes_digest ... ok
+test approval::tests::execution_grant_carries_short_lived_expiry ... ok
+test artifact_acquisition::tests::model_redirect_authority_requires_exact_https_host ... ok
+test approval::tests::invalid_prefix_is_rejected ... ok
+test approval::tests::key_reordering_does_not_change_digest ... ok
+test approval::tests::wrong_workspace_is_rejected ... ok
+test approval::tests::ttl_sweep_frees_expired_slots_before_capacity_check ... ok
+test approval::tests::wrong_session_is_rejected ... ok
+test artifact_acquisition::tests::runtime_archive_members_reject_windows_and_traversal_forms ... ok
+test approval::tests::execute_approved_succeeds_with_matching_scope ... ok
+test artifact_acquisition::tests::stale_cleanup_names_are_limited_to_opaque_job_resources ... ok
+test artifact_acquisition::tests::runtime_failure_codes_map_to_distinct_bounded_stages ... ok
+test approval::tests::invalidate_workspace_removes_matching_tokens ... ok
+test approval::tests::issued_tokens_are_unique_and_256_bits ... ok
+test artifact_acquisition::tests::model_validation_rejects_bad_gguf_magic_before_installation ... ok
+test artifact_trust::tests::production_bootstrap_absence_is_live_derived ... ignored, requires the owner-provisioned UP05-WP00 bootstrap artifacts to be temporarily moved
+test artifact_trust::tests::perf_logging_gates_on_localcomet_perf_flag ... ok
+test artifact_trust::tests::provisioned_bootstrap_is_discovered_only_through_the_catalog ... ignored, requires the owner-provisioned UP05-WP00 bootstrap artifacts
+test artifact_trust::tests::relative_windows_paths_reject_absolute_drive_traversal_and_reserved_forms ... ok
+test artifact_trust::tests::catalog_line_endings_reject_bare_cr_and_mixed_invalid_input ... ok
+test artifact_trust::tests::parser_rejects_duplicate_keys_unknown_fields_and_noncanonical_bytes ... ok
+test artifact_trust::tests::catalog_schema_rejects_all_authority_boundary_violations ... ok
+test control_plane::tests::acceptance_release_gate_preserves_buffered_event_order ... ok
+test control_plane::tests::accepted_request_does_not_release_events_during_cancel_round_trip ... ok
+test control_plane::tests::accepted_cancellation_rejects_content_and_completion ... ok
+test control_plane::tests::buffered_terminal_is_owned_when_registry_cleanup_wins ... ok
+test control_plane::tests::assistant_context_is_trusted_typed_and_fail_closed ... ok
+test control_plane::tests::cancellation_reserved_before_acceptance_forces_a_second_cancel ... ok
+test control_plane::tests::cancel_ack_and_registry_cleanup_are_bounded ... ok
+test control_plane::tests::cancellation_terminal_before_acceptance_keeps_entry_until_acceptance ... ok
+test control_plane::tests::command_input_validation_rejects_bad_values ... ok
+test control_plane::tests::empty_model_delta_advances_sequence_and_is_forwarded_for_ordering ... ok
+test control_plane::tests::event_validation_rejects_unknown_method_and_bad_id ... ok
+test control_plane::tests::knowledge_audit_is_allowed_only_on_started_event_and_projected ... ok
+test control_plane::tests::knowledge_model_receipts_cover_include_and_reject_dispatch ... ok
+test control_plane::tests::knowledge_review_payload_validation_rejects_extras_limits_and_bad_identity ... ok
+test control_plane::tests::knowledge_review_commands_permissions_and_capability_are_static_and_narrow ... ok
+test control_plane::tests::knowledge_review_decision_payload_is_exact_bounded_and_deny_by_default ... ok
+test artifact_trust::tests::catalog_normalization_cannot_bypass_the_pinned_sha256 ... ok
+test control_plane::tests::knowledge_review_request_helpers_build_exact_forwarding_payloads ... ok
+test control_plane::tests::method_enum_maps_to_exact_wire_vocabulary ... ok
+test control_plane::tests::method_vocabulary_count_mismatch_fails_clearly - should panic ... ok
+test control_plane::tests::model_event_envelope_uses_run_id_fallback_and_typed_top_level_identity ... ok
+test control_plane::tests::model_acceptance_requires_all_immutable_fields ... ok
+test artifact_acquisition::tests::owned_partial_cleanup_never_targets_an_unrelated_file ... ok
+test control_plane::tests::model_event_metadata_is_transactional_exact_and_projected ... ok
+test control_plane::tests::model_event_rejects_foreign_identity_and_out_of_order_sequence ... ok
+test control_plane::tests::pending_terminal_wakes_and_records_result ... ok
+test artifact_acquisition::tests::duplicate_job_is_returned_and_terminal_state_is_written_once ... ok
+test control_plane::tests::model_event_sequence_is_strict_and_terminal_is_unique ... ok
+test control_plane::tests::pre_ack_delta_releases_before_cancelled_terminal ... ok
+test control_plane::tests::registry_enforces_size_and_duplicate_ids ... ok
+test control_plane::tests::registry_failure_drains_before_pending_state_is_finished ... ok
+test control_plane::tests::removing_knowledge_admission_wakes_its_watchdog_immediately ... ok
+test control_plane::tests::synthetic_terminal_matches_frontend_metadata_shape_and_metrics ... ok
+test control_plane::tests::synthetic_terminal_waits_behind_an_owned_release_batch ... ok
+test control_plane::tests::removing_model_request_wakes_watchdog_without_full_timeout ... ok
+test control_plane::tests::typed_model_command_payloads_are_exact ... ok
+test control_plane::tests::reservation_check_releases_request_registry_before_writer_wait ... ok
+test artifact_acquisition::tests::runtime_archive_rejects_directory_members_before_staging_them ... ok
+test files::tests::mapped_network_drive_is_rejected_operator_proof ... ignored, operator-only: set LOCALCOMET_TEST_MAPPED_NETWORK_FILE to an isolated mapped/network-drive file
+test artifact_acquisition::tests::completed_job_does_not_emit_a_terminal_failure_event ... ok
+test files::tests::mount_point_and_directory_junction_are_rejected_operator_proof ... ignored, operator-only: set LOCALCOMET_TEST_MOUNT_POINT_FILE and LOCALCOMET_TEST_DIRECTORY_JUNCTION_FILE to isolated fixtures
+test artifact_acquisition::tests::cancellation_removes_only_the_active_job_partial ... ok
+test files::tests::picker_parser_handles_single_multi_unicode_cancel_and_rejects_malformed_input ... ok
+test artifact_trust::tests::embedded_catalog_is_canonical_and_exactly_pinned ... ok
+test artifact_trust::tests::synthetic_lf_and_crlf_catalogs_normalize_to_the_same_pinned_bytes ... ok
+test artifact_acquisition::tests::runtime_archive_rejects_traversal_duplicate_and_bad_member_hash ... ok
+test artifact_acquisition::tests::runtime_envelope_failure_diagnostic_records_only_bounded_member_context ... ok
+test artifact_acquisition::tests::stale_cleanup_only_removes_owned_job_partials ... ok
+test files::tests::short_path_and_protected_root_aliases_are_rejected_operator_proof ... ignored, operator-only: set LOCALCOMET_TEST_PROTECTED_SHORT_ALIAS_FILE to an isolated 8.3 alias whose resolved path contains LocalCometVault
+test artifact_trust::tests::app_data_ancestor_reparse_point_is_rejected_when_supported ... ok
+test files::tests::alternate_data_streams_and_non_drive_namespaces_are_rejected ... ok
+test files::tests::tauri_permissions_are_command_specific_and_have_no_filesystem_scope ... ok
+test files::tests::protected_locations_are_denied_before_filesystem_access ... ok
+test ipc::tests::frames_are_big_endian_length_prefixed_json ... ok
+test ipc::tests::reader_rejects_zero_length_frame ... ok
+test knowledge::tests::bounded_identifiers_are_enforced ... ok
+test knowledge::tests::exact_actions_and_intents_are_enforced ... ok
+test artifact_trust::tests::application_data_root_anchors_runtime_model_state_and_acquisition_paths ... ok
+test managed_runtime::tests::capability_probe_output_preserves_flags_after_secret_like_substrings ... ok
+test managed_runtime::tests::connection_event_rows_are_bounded_and_sanitized ... ok
+test managed_runtime::tests::fixed_runtime_args_disable_webui_and_agent ... ok
+test managed_runtime::tests::log_redaction_survives_split_read_boundaries ... ok
+test artifact_trust::tests::isolated_model_root_neither_discovers_nor_targets_a_default_profile_model ... ok
+test artifact_acquisition::tests::runtime_envelope_rejects_unknown_executable_library_and_text_members ... ok
+test managed_runtime::tests::managed_attach_requires_exact_identity_and_inference_readiness ... ok
+test managed_runtime::tests::model_load_deadline_returns_only_remaining_shared_budget ... ok
+test managed_runtime::tests::readiness_payloads_require_exact_json_fields ... ok
+test managed_runtime::tests::runtime_and_model_states_serialize_separately ... ok
+test managed_runtime::tests::loopback_listener_ownership_is_exact ... ok
+test managed_runtime::tests::runtime_args_keep_model_and_state_paths_inside_the_explicit_application_root ... ok
+test managed_runtime::tests::sanitized_environment_removes_proxy_llama_and_hf_names ... ok
+test managed_runtime::tests::startup_cancellation_is_immediate_and_generation_scoped ... ok
+test single_instance::platform::tests::named_mutex_rejects_a_second_instance ... ok
+test startup::tests::application_data_root_failure_is_explicit_and_does_not_echo_paths ... ok
+test startup::tests::diagnostic_failure_reason_is_stable_and_sanitized ... ok
+test startup::tests::log_tokens_reject_path_and_control_characters ... ok
+test startup::tests::startup_failure_message_is_actionable_and_path_sanitized ... ok
+test supervisor::tests::debug_launch_spec_uses_fixed_python_runner_arguments ... ok
+test supervisor::tests::environment_keeps_only_lifecycle_safe_python_values ... ok
+test supervisor::tests::failed_readiness_stops_the_contained_sidecar ... ok
+test supervisor::tests::lifecycle_frame_observation_requires_exact_health_response_shape ... ok
+test supervisor::tests::nonreading_sidecar_pipe_write_is_bounded_and_releases_supervisor ... ok
+test supervisor::tests::real_python_sidecar_can_start_when_test_environment_is_present ... ok
+test windows_job::bounded_write_tests::bounded_writer_preserves_complete_frame_order_across_partial_writes ... ok
+test windows_job::bounded_write_tests::bounded_writer_propagates_sidecar_failure_without_retrying ... ok
+test windows_job::bounded_write_tests::bounded_writer_times_out_when_pipe_never_accepts_data ... ok
+test windows_job::platform::tests::command_line_quotes_python_runner_and_flags ... ok
+test windows_job::platform::tests::environment_block_is_double_null_terminated ... ok
+test artifact_trust::tests::runtime_package_rejects_unlisted_files_and_model_rejects_bad_magic ... ok
+test windows_job::platform::tests::source_sets_active_process_limit_to_one ... ok
+test workspace::tests::different_paths_produce_different_digests ... ok
+test workspace::tests::empty_path_is_rejected ... ok
+test managed_runtime::tests::bounded_reader_join_does_not_wait_past_finished_reader ... ok
+test workspace::tests::nonexistent_path_is_rejected ... ok
+test workspace::tests::workspace_digest_is_deterministic ... ok
+test artifact_acquisition::tests::start_reuses_valid_artifact_and_rejects_conflicting_or_unknown_artifacts ... ok
+test workspace::tests::file_path_is_rejected_as_not_directory ... ok
+test artifact_acquisition::tests::terminal_event_uses_catalog_identity_and_backend_failure_values ... ok
+test workspace::tests::valid_directory_passes_validation ... ok
+test workspace::tests::workspace_change_invalidates_old_tokens ... ok
+test artifact_acquisition::tests::terminal_runtime_failure_is_persisted_before_owned_cleanup ... ok
+test files::tests::poisoned_registry_fails_closed_for_every_public_operation ... ok
+test files::tests::supported_utf8_text_is_selected_with_sanitized_metadata ... ok
+test files::tests::verbatim_and_trailing_alias_handling_is_fail_closed ... ok
+test artifact_trust::tests::readiness_distinguishes_missing_invalid_and_incompatible_runtime ... ok
+test files::tests::hostile_content_is_one_unescapable_json_record_without_bearer_id ... ok
+test files::tests::opaque_identity_and_forget_revoke_all_future_access ... ok
+test artifact_trust::tests::resolved_launch_holds_model_and_runtime_identity_guards ... ok
+test files::tests::reparse_points_cloud_placeholders_aliases_and_non_regular_files_are_rejected ... ok
+test files::tests::integration_select_preview_context_and_forget_is_fail_closed ... ok
+test files::tests::missing_changed_and_replaced_files_are_rejected_before_reread ... ok
+test files::tests::preview_truncation_is_deterministic_and_logs_have_no_content ... ok
+test files::tests::unsupported_oversized_binary_and_invalid_utf8_files_fail_closed ... ok
+test files::tests::growth_and_truncation_during_read_fail_closed_with_deterministic_hooks ... ok
+test files::tests::rename_replacement_stale_reselection_and_concurrent_forget_are_safe ... ok
+test artifact_trust::tests::live_inventory_revalidates_exact_bytes_and_ignores_appdata_authority ... ok
+test artifact_acquisition::tests::approved_runtime_envelope_installs_only_the_pinned_subset_and_license ... ok
+test artifact_acquisition::tests::runtime_envelope_rejects_missing_members_and_disposition_drift_before_promotion ... ok
+test control_plane::tests::knowledge_review_response_guard_enforces_one_megabyte_limit ... ok
+test artifact_acquisition::tests::runtime_license_asset_identity_is_checked_before_atomic_promotion ... ok
+test managed_runtime::tests::managed_http_slow_drip_cannot_extend_absolute_deadline ... ok
+test files::tests::active_context_enforces_five_mibibytes_and_stable_registry_order ... ok
+
+test result: ok. 148 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running unittests src\main.rs (target\debug\deps\localcomet_desktop-9f7fbc7e98822d05.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests localcomet_desktop_lib
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+exit_code=0
+finished=2026-07-26T21:32:10+05:00
+
+===== cargo fmt --check =====
+started=2026-07-26T21:32:10+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri
+command=cargo fmt --check
+exit_code=0
+finished=2026-07-26T21:32:11+05:00
+
+===== cargo clippy --all-targets --all-features -- -D warnings =====
+started=2026-07-26T21:32:11+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri
+command=cargo clippy --all-targets --all-features -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.37s
+exit_code=0
+finished=2026-07-26T21:32:11+05:00
+
+===== npm run build =====
+started=2026-07-26T21:32:11+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop
+command=npm.cmd run build
+
+> localcomet-desktop@0.0.0-v6.84.6 build
+> vite build
+
+vite v8.1.4 building ssr environment for production...
+
+transforming...✓ 240 modules transformed.
+rendering chunks...
+vite v8.1.4 building client environment for production...
+
+transforming...✓ 253 modules transformed.
+rendering chunks...
+computing gzip size...
+.svelte-kit/output/client/_app/version.json                         0.02 kB │ gzip:  0.04 kB
+.svelte-kit/output/client/.vite/manifest.json                       2.53 kB │ gzip:  0.52 kB
+.svelte-kit/output/client/_app/immutable/assets/2.P9OitIpZ.css     88.16 kB │ gzip: 13.06 kB
+.svelte-kit/output/client/_app/immutable/chunks/DWUmTzTr.js         0.02 kB │ gzip:  0.04 kB
+.svelte-kit/output/client/_app/immutable/chunks/xihTtKlq.js         0.06 kB │ gzip:  0.08 kB
+.svelte-kit/output/client/_app/immutable/entry/start.D4jMVC1x.js    0.07 kB │ gzip:  0.08 kB
+.svelte-kit/output/client/_app/immutable/nodes/0.Dyi4uXxu.js        0.23 kB │ gzip:  0.19 kB
+.svelte-kit/output/client/_app/immutable/nodes/1.H-ZKqt6Q.js        0.63 kB │ gzip:  0.35 kB
+.svelte-kit/output/client/_app/immutable/chunks/Bjy-W4x2.js         1.36 kB │ gzip:  0.65 kB
+.svelte-kit/output/client/_app/immutable/entry/app.C0YVELLU.js      3.99 kB │ gzip:  1.86 kB
+.svelte-kit/output/client/_app/immutable/chunks/Bp6cgPe_.js        26.71 kB │ gzip: 10.34 kB
+.svelte-kit/output/client/_app/immutable/chunks/Br5Gejwq.js        48.12 kB │ gzip: 18.45 kB
+.svelte-kit/output/client/_app/immutable/nodes/2.DxhmOLRS.js      331.35 kB │ gzip: 87.46 kB
+
+✓ built in 299ms
+computing gzip size...
+.svelte-kit/output/server/.vite/manifest.json                         3.40 kB │ gzip:  0.58 kB
+.svelte-kit/output/server/_app/immutable/assets/_page.CcnUitc2.css   87.78 kB │ gzip: 13.00 kB
+.svelte-kit/output/server/chunks/index-server2.js                     0.03 kB │ gzip:  0.05 kB
+.svelte-kit/output/server/entries/pages/_layout.ts.js                 0.11 kB │ gzip:  0.10 kB
+.svelte-kit/output/server/env.js                                      0.22 kB │ gzip:  0.14 kB
+.svelte-kit/output/server/entries/fallbacks/layout.svelte.js          0.28 kB │ gzip:  0.21 kB
+.svelte-kit/output/server/chunks/env.js                               0.28 kB │ gzip:  0.17 kB
+.svelte-kit/output/server/internal.js                                 0.40 kB │ gzip:  0.19 kB
+.svelte-kit/output/server/chunks/internal.js                          0.87 kB │ gzip:  0.38 kB
+.svelte-kit/output/server/chunks/index-server.js                      4.55 kB │ gzip:  1.68 kB
+.svelte-kit/output/server/entries/fallbacks/error.svelte.js           5.19 kB │ gzip:  1.99 kB
+.svelte-kit/output/server/chunks/exports.js                           8.98 kB │ gzip:  2.95 kB
+.svelte-kit/output/server/chunks/shared.js                           10.57 kB │ gzip:  3.38 kB
+.svelte-kit/output/server/chunks/internal2.js                        21.02 kB │ gzip:  6.50 kB
+.svelte-kit/output/server/chunks/utils.js                            31.76 kB │ gzip:  9.35 kB
+.svelte-kit/output/server/remote-entry.js                            54.47 kB │ gzip: 12.01 kB
+.svelte-kit/output/server/index.js                                  125.85 kB │ gzip: 31.89 kB
+.svelte-kit/output/server/chunks/server.js                          130.75 kB │ gzip: 33.96 kB
+.svelte-kit/output/server/entries/pages/_page.svelte.js             362.14 kB │ gzip: 67.58 kB
+
+✓ built in 1.79s
+
+Run npm run preview to preview your production build locally.
+
+> Using @sveltejs/adapter-static
+Overwriting build\index.html with fallback page. Consider using a different name for the fallback.
+  Wrote site to "build"
+  ✔ done
+exit_code=0
+finished=2026-07-26T21:32:14+05:00
+
+===== npm run check =====
+started=2026-07-26T21:32:14+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop
+command=npm.cmd run check
+
+> localcomet-desktop@0.0.0-v6.84.6 check
+> svelte-kit sync && svelte-check --tsconfig ./tsconfig.json
+
+Loading svelte-check in workspace: c:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop
+Getting Svelte diagnostics...
+
+c:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\common\LanguageSwitcher.svelte:56:5
+Warn: Elements with the 'listbox' interactive role must have a tabindex value
+https://svelte.dev/e/a11y_interactive_supports_focus (svelte)
+  {#if open}
+    <div
+      class="lang-menu"
+      bind:this={menu}
+      role="listbox"
+      aria-label={$t('lang.select')}
+      onkeydown={handleKeydown}
+    >
+      {#each languages as lang}
+        <button
+          type="button"
+          role="option"
+          class="lang-option"
+          class:selected={$locale === lang.code}
+          aria-selected={$locale === lang.code}
+          onclick={() => select(lang.code)}
+        >
+          <span>{$t(lang.labelKey)}</span>
+          {#if $locale === lang.code}
+            <span class="check" aria-hidden="true">✓</span>
+          {/if}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
+====================================
+svelte-check found 0 errors and 1 warning in 1 file
+
+exit_code=0
+finished=2026-07-26T21:32:17+05:00
+
+===== npm test =====
+started=2026-07-26T21:32:17+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop
+command=npm.cmd test
+
+> localcomet-desktop@0.0.0-v6.84.6 test
+> vitest run
+
+
+ RUN  v4.1.10 C:/Users/DNS/Documents/LocalComet-build-week-clean/desktop/localcomet-desktop
+
+
+ Test Files  18 passed (18)
+      Tests  286 passed (286)
+   Start at  21:32:18
+   Duration  1.52s (transform 12.99s, setup 0ms, import 16.28s, tests 597ms, environment 3ms)
+
+exit_code=0
+finished=2026-07-26T21:32:20+05:00
+
+===== python tests/test_trust_chain_invariants.py =====
+started=2026-07-26T21:32:20+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean
+command=C:\Users\DNS\AppData\Local\Python\pythoncore-3.14-64\python.exe tests/test_trust_chain_invariants.py
+OK: 15 trust-chain files pass byte invariants
+exit_code=0
+finished=2026-07-26T21:32:20+05:00
+
+===== python scripts/check_command_parity.py =====
+started=2026-07-26T21:32:20+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean
+command=C:\Users\DNS\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_command_parity.py
+OK: 42 commands registered and invoked (parity holds)
+exit_code=0
+finished=2026-07-26T21:32:20+05:00
+
+===== python scripts/check_tool_risk_registry.py =====
+started=2026-07-26T21:32:20+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean
+command=C:\Users\DNS\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_tool_risk_registry.py
+OK: 5 tool function(s) classified (3 mutating, all requiring approval); 10 registry entries valid
+exit_code=0
+finished=2026-07-26T21:32:20+05:00
+
+===== python scripts/check_ui_fake_state.py =====
+started=2026-07-26T21:32:20+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean
+command=C:\Users\DNS\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_ui_fake_state.py
+OK: no fake-state violations in 79 frontend file(s) (INV-UI-001)
+exit_code=0
+finished=2026-07-26T21:32:20+05:00
+
+===== python scripts/refresh_evidence.py =====
+started=2026-07-26T21:32:20+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean
+command=C:\Users\DNS\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/refresh_evidence.py
+tree_digest: 9c6662fbc45a18b317e718c7a0c8e2867c313c9eef7ea53f46836dbd34a28dc6 (286 source files)
+[OK] evidence/cargo_test.txt exit=0 tree=9c6662fbc45a18b3...
+[OK] evidence/trust_chain.txt exit=0 tree=9c6662fbc45a18b3...
+[OK] evidence/cmd_parity.txt exit=0 tree=9c6662fbc45a18b3...
+[OK] evidence/tool_risk_registry.txt exit=0 tree=9c6662fbc45a18b3...
+evidence refreshed: all gates green
+exit_code=0
+finished=2026-07-26T21:32:21+05:00
+
+===== python scripts/check_evidence_provenance.py =====
+started=2026-07-26T21:32:21+05:00
+cwd=C:\Users\DNS\Documents\LocalComet-build-week-clean
+command=C:\Users\DNS\AppData\Local\Python\pythoncore-3.14-64\python.exe scripts/check_evidence_provenance.py
+OK: 4 evidence file(s) fresh and intact (tree=9c6662fbc45a18b3...)
+exit_code=0
+finished=2026-07-26T21:32:21+05:00
+

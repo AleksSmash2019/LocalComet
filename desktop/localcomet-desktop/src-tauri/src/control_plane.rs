@@ -1,3 +1,4 @@
+use crate::artifact_trust::ArtifactTrustService;
 use crate::files::SelectedFilesManager;
 use crate::ipc;
 use crate::managed_runtime::ManagedRuntimeSupervisor;
@@ -1982,8 +1983,10 @@ pub async fn model_gateway_list_models(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn model_binding_set(
     state: State<'_, Arc<ControlPlaneBridge>>,
+    artifacts: State<'_, Arc<ArtifactTrustService>>,
     provider_id: String,
     harness_id: String,
     port: Option<u16>,
@@ -2019,8 +2022,12 @@ pub async fn model_binding_set(
         "runtime_instance_id": runtime_instance_id
     });
     let state = Arc::clone(&state);
+    let artifacts = Arc::clone(&artifacts);
+    let bound_model_id = model_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        state.request(ControlPlaneMethod::ModelBindingSet, payload)
+        state
+            .request(ControlPlaneMethod::ModelBindingSet, payload)
+            .inspect(|_| artifacts.invalidate_validation_cache_for_artifact(&bound_model_id))
     })
     .await
     .map_err(|_| BridgeError::new("runtime_unavailable", "model binding worker failed"))?

@@ -7,6 +7,7 @@
     connectSelectedManagedModel,
     discoverModels,
     inferenceBusy,
+    managedConnectionBusy,
     managedRuntimeStore,
     modelGatewayStore,
     probeGateway,
@@ -36,9 +37,9 @@
   $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
   $: managedSelectedModel = $managedRuntimeStore.catalog.find((m) => m.model_id === $managedRuntimeStore.selectedModelId);
   $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === managedSelectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
-  $: canStartManaged = !$inferenceBusy && Boolean(managedSelectedModel) && managedModelLaunchable && (managedState === 'Stopped' || managedState === 'Failed');
-  $: canStopManaged = !$inferenceBusy && (managedState === 'Ready' || managedState === 'Starting' || managedState === 'Validating' || managedState === 'Failed');
-  $: canBindManaged = !$inferenceBusy && managedModelLaunchable && ['Stopped', 'Failed', 'Ready'].includes(managedState) && Boolean($managedRuntimeStore.selectedModelId);
+  $: canStartManaged = !$inferenceBusy && !$managedConnectionBusy && Boolean(managedSelectedModel) && managedModelLaunchable && (managedState === 'Stopped' || managedState === 'Failed');
+  $: canStopManaged = !$inferenceBusy && !$managedConnectionBusy && (managedState === 'Ready' || managedState === 'Starting' || managedState === 'Validating' || managedState === 'Failed');
+  $: canBindManaged = !$inferenceBusy && !$managedConnectionBusy && managedModelLaunchable && ['Stopped', 'Failed', 'Ready'].includes(managedState) && Boolean($managedRuntimeStore.selectedModelId);
   $: managedTone = managedState === 'Ready' ? 'ready' : managedState === 'Failed' ? 'danger' : managedState === 'Starting' || managedState === 'Validating' || managedState === 'Stopping' ? 'info' : 'disabled';
 
   function onPortInput(event: Event) {
@@ -292,8 +293,12 @@
               onclick={onConfirmManagedBinding}
             >
               <Icon name="link" size={16} />
-              <span>{$t('setup.connect')}</span>
+              <span>{$t($managedConnectionBusy ? 'chat.model_connecting' : 'setup.connect')}</span>
             </button>
+
+            {#if $managedConnectionBusy}
+              <p class="connection-progress" role="status">{$t('chat.model_loading_detail')}</p>
+            {/if}
 
             {#if $managedRuntimeStore.binding}
               <div class="fingerprint">
@@ -566,6 +571,13 @@
     color: var(--lc-danger);
     font-weight: 700;
     font-size: 12px;
+  }
+
+  .connection-progress {
+    margin: 0;
+    color: var(--lc-muted);
+    font-size: 12px;
+    line-height: 1.5;
   }
 
   .managed-status-grid {

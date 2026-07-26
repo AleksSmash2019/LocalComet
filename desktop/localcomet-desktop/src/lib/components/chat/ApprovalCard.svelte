@@ -1,18 +1,19 @@
 <script lang="ts">
   import type { ApprovalMock } from '$lib/data/mockData';
+  import { t } from '$lib/i18n';
 
   export let item: ApprovalMock;
 </script>
 
-<article class="approval card-surface" aria-label="Подтверждения отключены">
+<article class="approval card-surface" aria-label={$t('approval.section_aria')}>
   <div>
-    <span class="status-pill"><span class="status-dot disabled"></span>Отключено</span>
+    <span class="status-pill"><span class="status-dot disabled"></span>{$t('approval.disabled')}</span>
     <h2>{item.title}</h2>
     <p>{item.detail}</p>
   </div>
   <div class="approval-actions">
-    <button type="button" disabled aria-label="Подтвердить отключено, так как desktop bridge не подключен">Подтвердить</button>
-    <button type="button" disabled aria-label="Отклонить отключено, так как desktop bridge не подключен">Отклонить</button>
+    <button type="button" disabled aria-label={$t('approval.confirm_aria')}>{$t('approval.confirm')}</button>
+    <button type="button" disabled aria-label={$t('approval.reject_aria')}>{$t('approval.reject')}</button>
   </div>
 </article>
 

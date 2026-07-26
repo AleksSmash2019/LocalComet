@@ -391,6 +391,8 @@ impl ArtifactAcquisitionManager {
         fs::remove_file(&destination).map_err(|_| {
             BridgeError::new("model_removal_failed", "managed model removal failed")
         })?;
+        self.artifacts
+            .invalidate_validation_cache_for_artifact(model_id);
         self.prune_empty_model_parents(&destination);
         Ok(ManagedModelRemovalResult {
             model_id: model_id.to_string(),
@@ -450,6 +452,8 @@ impl ArtifactAcquisitionManager {
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Downloading, None);
         self.download_to_partial(job_id, artifact, &partial, cancel_requested)?;
+        self.artifacts
+            .invalidate_validation_cache_for_artifact(artifact_id(artifact));
         self.require_not_cancelled(cancel_requested)?;
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingSize, None);
         let expected = expected_bytes(artifact);
@@ -484,8 +488,12 @@ impl ArtifactAcquisitionManager {
                 )?;
             }
         }
+        self.artifacts
+            .invalidate_validation_cache_for_artifact(artifact_id(artifact));
         if let Err(error) = self.require_not_cancelled(cancel_requested) {
             remove_installed_artifact(artifact, &destination);
+            self.artifacts
+                .invalidate_validation_cache_for_artifact(artifact_id(artifact));
             return Err(error);
         }
         let validation = self
@@ -494,6 +502,8 @@ impl ArtifactAcquisitionManager {
             .map_err(|_| AcquisitionError::new("post_install_validation_failed"))?;
         if validation.installation_status != InstallationStatus::Valid {
             remove_installed_artifact(artifact, &destination);
+            self.artifacts
+                .invalidate_validation_cache_for_artifact(artifact_id(artifact));
             return Err(AcquisitionError::new("post_install_validation_failed"));
         }
         remove_owned_file(&partial);

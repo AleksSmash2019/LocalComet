@@ -145,6 +145,7 @@ let initialized = false;
 let initializationPromise: Promise<void> | null = null;
 let eventSubscriptionPromise: Promise<void> | null = null;
 let managedSessionCheckPromise: Promise<boolean> | null = null;
+let managedConnectionPromise: Promise<boolean> | null = null;
 let managedHealthTimer: ReturnType<typeof setInterval> | null = null;
 let submissionInProgress = false;
 let subscriptionGeneration = 0;
@@ -158,6 +159,7 @@ export const inferenceRequestStore = writable<InferenceRequestState>(initialInfe
 export const inferenceBusy = derived(inferenceRequestStore, (state) =>
   ['submitted', 'accepted', 'streaming', 'cancelling'].includes(state.lifecycle)
 );
+export const managedConnectionBusy = writable(false);
 export const managedModelReady = derived(
   [managedRuntimeStore, modelGatewayStore],
   ([managed, gateway]) => isManagedModelReadySnapshot(managed, gateway)
@@ -246,6 +248,8 @@ function stopManagedHealthMonitor(): void {
   if (managedHealthTimer) clearInterval(managedHealthTimer);
   managedHealthTimer = null;
   managedSessionCheckPromise = null;
+  managedConnectionPromise = null;
+  managedConnectionBusy.set(false);
 }
 
 async function verifyLiveManagedSession(): Promise<boolean> {
@@ -471,6 +475,13 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
     }));
     if (!bindingTrusted) clearManagedGatewayBinding();
     if (selectedModelId) await setManagedSelectedModel(selectedModelId);
+    const runtimeError = status.last_error;
+    if (runtimeError) {
+      managedRuntimeStore.update((state) => ({
+        ...state,
+        lastError: { code: 'runtime_unavailable', message: runtimeError }
+      }));
+    }
   } catch (error) {
     managedRuntimeStore.update((state) => ({
       ...state,
@@ -517,7 +528,14 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
     }));
     clearManagedGatewayBinding();
     await startManagedRuntime(state.selectedModelId);
-    await refreshManagedRuntimeStatus();
+    const status = await getManagedRuntimeStatus();
+    managedRuntimeStore.update((current) => ({
+      ...current,
+      status,
+      lastError: status.last_error
+        ? { code: 'runtime_unavailable', message: status.last_error }
+        : null
+    }));
   } catch (error) {
     const normalized = normalizeGatewayError(error);
     await refreshManagedRuntimeStatus();
@@ -546,7 +564,7 @@ export async function stopSelectedManagedRuntime(): Promise<void> {
   await refreshManagedRuntimeStatus();
 }
 
-export async function confirmManagedBinding(): Promise<void> {
+export async function confirmManagedBinding(precomputedReadiness?: ModelReadinessSummary): Promise<void> {
   const state = get(managedRuntimeStore);
   const runtimeInstanceId = state.status?.runtime_instance_id ?? '';
   if (
@@ -559,7 +577,7 @@ export async function confirmManagedBinding(): Promise<void> {
     !state.readiness?.launchable
   ) return;
   try {
-    const readiness = await readManagedModelReadiness(state.selectedModelId);
+    const readiness = precomputedReadiness ?? await readManagedModelReadiness(state.selectedModelId);
     const current = get(managedRuntimeStore);
     if (
       !readiness.launchable ||
@@ -589,9 +607,30 @@ export async function confirmManagedBinding(): Promise<void> {
   }
 }
 
-export async function connectSelectedManagedModel(): Promise<boolean> {
+export function connectSelectedManagedModel(): Promise<boolean> {
+  if (managedConnectionPromise) return managedConnectionPromise;
+  managedConnectionBusy.set(true);
+  managedRuntimeStore.update((current) => ({
+    ...current,
+    lastError: null
+  }));
+  const pending = connectSelectedManagedModelOnce().finally(() => {
+    if (managedConnectionPromise === pending) managedConnectionPromise = null;
+    managedConnectionBusy.set(false);
+  });
+  managedConnectionPromise = pending;
+  return pending;
+}
+
+async function connectSelectedManagedModelOnce(): Promise<boolean> {
   let state = get(managedRuntimeStore);
-  if (!state.selectedModelId) return false;
+  if (!state.selectedModelId) {
+    managedRuntimeStore.update((current) => ({
+      ...current,
+      lastError: { code: 'model_not_selected', message: 'No approved managed model is selected' }
+    }));
+    return false;
+  }
   try {
     const readiness = await readManagedModelReadiness(state.selectedModelId);
     managedRuntimeStore.update((current) => ({ ...current, readiness, lastError: null }));
@@ -616,8 +655,18 @@ export async function connectSelectedManagedModel(): Promise<boolean> {
       state.status.model_state !== 'Ready' ||
       state.status.inference_ready !== true ||
       state.status.model_id !== state.selectedModelId
-    ) return false;
-    await confirmManagedBinding();
+    ) {
+      if (!state.lastError) {
+        managedRuntimeStore.update((current) => ({
+          ...current,
+          binding: null,
+          lastError: { code: 'runtime_not_ready', message: 'Managed runtime did not become ready' }
+        }));
+        clearManagedGatewayBinding();
+      }
+      return false;
+    }
+    await confirmManagedBinding(readiness);
     return get(managedModelReady);
   } catch (error) {
     const normalized = normalizeGatewayError(error);
@@ -1180,6 +1229,8 @@ export function resetModelGatewayStore(): void {
   bufferedEarlyEvents = [];
   modelGatewayStore.set(initialState);
   managedRuntimeStore.set(initialManagedState);
+  managedConnectionPromise = null;
+  managedConnectionBusy.set(false);
   inferenceRequestStore.set(initialInferenceState);
 }
 

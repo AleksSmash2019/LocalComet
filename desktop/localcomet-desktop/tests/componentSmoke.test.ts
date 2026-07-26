@@ -24,12 +24,12 @@ describe('component smoke tests', () => {
     expect(html).not.toContain('Задачи');
     expect(html).not.toContain('позже');
     expect(html).not.toContain('Центр проверки');
+    expect(html).toContain('LocalComet');
     expect(html).toContain('aria-current="page"');
   });
 
   it('renders functional sessions without placeholder or preference clutter', () => {
     const html = render(ConversationSidebar).body;
-    expect(html).toContain('LocalComet');
     expect(html).not.toContain('Зарезервировано');
     expect(html).not.toContain('Документы');
     expect(html).not.toContain('Новый тред');

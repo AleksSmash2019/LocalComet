@@ -1,10 +1,10 @@
 <script lang="ts">
   import Icon from '$lib/components/common/Icon.svelte';
-  import { conversationGroups, pinnedProject } from '$lib/data/mockData';
+  import { conversationGroups } from '$lib/data/mockData';
   import { selectedConversationId, setSelectedConversation, sidebarExpanded } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
-  const hiddenConversationGroupLabels = new Set(['Зарезервировано', 'Отключено']);
+  const hiddenConversationGroupLabels = new Set(['reserved', 'disabled']);
   const visibleConversationGroups = conversationGroups
     .filter((group) => !hiddenConversationGroupLabels.has(group.label))
     .map((group) => ({
@@ -40,11 +40,6 @@
     </button>
   </div>
 
-  <section class="pinned" aria-label={$t('sidebar.pinned_label')}>
-    <strong>{pinnedProject.title}</strong>
-    <span>{$t('project.detail')}</span>
-  </section>
-
   <div class="conversation-groups">
     {#each visibleConversationGroups as group}
       <section aria-label={tGroup(group.label, $t)}>
@@ -58,7 +53,6 @@
             onclick={() => setSelectedConversation(item.id)}
           >
             <span>{tItem(item.title, $t)}</span>
-            <small>{tItem(item.meta, $t)}</small>
           </button>
         {/each}
       </section>
@@ -72,7 +66,7 @@
     min-width: var(--sidebar-width);
     display: flex;
     flex-direction: column;
-    padding: var(--lc-space-4);
+    padding: 8px;
     overflow-y: auto;
     transition: transform var(--lc-transition-normal);
   }
@@ -81,55 +75,43 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--lc-space-2);
+    min-height: 36px;
   }
 
   .collapse-button {
-    width: 40px;
+    width: 34px;
+    min-height: 34px;
     display: grid;
     place-items: center;
   }
 
-  .pinned {
-    margin: var(--lc-space-4) 0;
-    padding: var(--lc-space-4);
-    display: grid;
-    gap: var(--lc-space-2);
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-md);
-    background: var(--lc-panel-solid);
-  }
-
-  .pinned span,
-  small {
-    color: var(--lc-muted);
-    font-size: 12px;
-  }
-
-  strong {
-    overflow-wrap: anywhere;
-  }
-
   h2 {
-    margin: var(--lc-space-5) 0 var(--lc-space-2);
-    color: var(--lc-muted);
+    margin: 12px 8px 6px;
+    color: var(--lc-faint);
     font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
   }
 
   .conversation-button {
     width: 100%;
-    min-height: 54px;
-    display: grid;
-    gap: var(--lc-space-1);
+    min-height: 34px;
+    display: block;
     text-align: left;
-    padding: var(--lc-space-2) var(--lc-space-3);
-    color: var(--lc-text);
+    padding: 6px 8px;
+    color: var(--lc-muted);
+    font-size: 12.5px;
+    font-weight: 560;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .conversation-button.selected {
     background: var(--lc-accent-dim);
-    border-color: var(--lc-line-strong);
+    border-color: transparent;
+    color: var(--lc-accent);
   }
 
   @media (max-width: 920px) {
@@ -139,12 +121,12 @@
 
     .sidebar.sidebar-open {
       position: fixed;
-      top: 38px;
+      top: var(--shell-header-height);
       left: var(--rail-width);
       z-index: 35;
       display: flex;
       width: min(var(--sidebar-width), calc(100vw - var(--rail-width)));
-      height: calc(100vh - 38px);
+      height: calc(100vh - var(--shell-header-height));
       box-shadow: var(--lc-shadow);
     }
   }

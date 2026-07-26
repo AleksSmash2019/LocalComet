@@ -60,19 +60,19 @@ export const inspectorSections: InspectorSection[] = ['Обзор', 'Телем�
 
 export const conversationGroups: ConversationGroup[] = [
   {
-    label: 'Локальные чаты',
+    label: 'local_chats',
     items: [
-      { id: 'local-chat', title: 'Новый чат', meta: 'Модель не подключена', selected: true },
-      { id: 'cancellation-demo', title: 'Демо отмены', meta: 'Требуется модель' }
+      { id: 'local-chat', title: 'new_chat', meta: 'model_not_connected', selected: true },
+      { id: 'cancellation-demo', title: 'cancellation_demo', meta: 'model_required' }
     ]
   },
   {
-    label: 'Зарезервировано',
-    items: [{ id: 'audit-placeholder', title: 'Аудит', meta: 'Позже' }]
+    label: 'reserved',
+    items: [{ id: 'audit-placeholder', title: 'audit', meta: 'later' }]
   },
   {
-    label: 'Отключено',
-    items: [{ id: 'documents', title: 'Документы', meta: 'Позже' }]
+    label: 'disabled',
+    items: [{ id: 'documents', title: 'documents', meta: 'later' }]
   }
 ];
 
@@ -165,7 +165,7 @@ export function conversationTitleById(id: string): string {
     const item = group.items.find((conversation) => conversation.id === id);
     if (item) return item.title;
   }
-  return 'Новый чат';
+  return 'new_chat';
 }
 
 export function getInitialMessages(lang: 'ru' | 'en'): MockMessage[] {

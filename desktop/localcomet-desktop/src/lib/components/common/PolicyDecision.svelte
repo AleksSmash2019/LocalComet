@@ -2,13 +2,21 @@
   import LocalCometSecurityEmblem from './LocalCometSecurityEmblem.svelte';
   import StatusBadge from './StatusBadge.svelte';
   import { t } from '$lib/i18n';
+  import type { RiskLevel } from '$lib/risk';
+  import { RISK_LABEL_KEY, RISK_TONE } from '$lib/risk';
+
+  export let risk: RiskLevel | undefined = undefined;
 </script>
 
 <section class="policy-decision" aria-label={$t('diag.policy_decision_label')}>
   <LocalCometSecurityEmblem size={34} labelled={false} />
   <div>
     <h3>{$t('diag.policy_decision')}</h3>
-    <StatusBadge label={$t('diag.not_evaluated')} tone="unknown" />
+    {#if risk}
+      <StatusBadge label={$t(RISK_LABEL_KEY[risk])} tone={RISK_TONE[risk]} />
+    {:else}
+      <StatusBadge label={$t('diag.not_evaluated')} tone="unknown" />
+    {/if}
   </div>
 </section>
 

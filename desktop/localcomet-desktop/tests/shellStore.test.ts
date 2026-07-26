@@ -3,11 +3,14 @@ import { get } from 'svelte/store';
 import { approvalCard, mockCodeBlock, mockToolCall, modeOptions, verificationCard } from '../src/lib/data/mockData';
 import {
   MAX_DRAFT_LENGTH,
+  activeWorkspace,
   activeInspectorSection,
   appendMockMessage,
+  closeCommandPalette,
   closeDiagnosticsPanel,
   closeModelSetup,
   closeSettings,
+  commandPaletteOpen,
   handleGlobalEscape,
   inspectorDrawerOpen,
   inspectorVisible,
@@ -16,15 +19,18 @@ import {
   modelSetupDrawerOpen,
   modelSetupMode,
   openSettings,
+  openCommandPalette,
   openModelSetup,
   resetShellStores,
   selectedMode,
   selectedModel,
   setSelectedMode,
   setSelectedModel,
+  setActiveWorkspace,
   setDiagnosticsPanelOpen,
   setThemeMode,
   settingsPanelOpen,
+  settingsSection,
   sidebarExpanded,
   themeMode,
   toolsPopoverOpen
@@ -92,6 +98,21 @@ describe('shell stores', () => {
     expect(get(settingsPanelOpen)).toBe(false);
   });
 
+  it('opens a requested Settings section and resets it on close', () => {
+    openSettings('models');
+    expect(get(settingsSection)).toBe('models');
+    closeSettings();
+    expect(get(settingsSection)).toBe('interface');
+  });
+
+  it('changes workspace without silently changing the diagnostics preference', () => {
+    setDiagnosticsPanelOpen(true);
+    setActiveWorkspace('setup');
+    expect(get(activeWorkspace)).toBe('setup');
+    expect(get(inspectorVisible)).toBe(true);
+    expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}').diagnosticsPanel).toBe('open');
+  });
+
   it('sets, persists, and closes diagnostics through bounded helpers', () => {
     setDiagnosticsPanelOpen(true);
     expect(get(inspectorVisible)).toBe(true);
@@ -155,6 +176,20 @@ describe('shell stores', () => {
     toolsPopoverOpen.set(true);
     expect(handleGlobalEscape('Escape')).toBe(true);
     expect(get(toolsPopoverOpen)).toBe(false);
+  });
+
+  it('opens and closes the command palette, with Escape taking priority', () => {
+    openSettings();
+    openCommandPalette();
+    expect(get(commandPaletteOpen)).toBe(true);
+
+    expect(handleGlobalEscape('Escape')).toBe(true);
+    expect(get(commandPaletteOpen)).toBe(false);
+    expect(get(settingsPanelOpen)).toBe(true);
+
+    openCommandPalette();
+    closeCommandPalette();
+    expect(get(commandPaletteOpen)).toBe(false);
   });
 
   it('closes Settings and diagnostics on Escape and reports whether it acted', () => {

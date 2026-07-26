@@ -2,7 +2,7 @@
   import Icon from '$lib/components/common/Icon.svelte';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import { conversationTitleById } from '$lib/data/mockData';
-  import { approvedManagedModelInstalled, inferenceRequestStore, managedModelReady, managedRuntimeStore, modelGatewayStore } from '$lib/stores/modelGateway';
+  import { approvedManagedModelInstalled, connectSelectedManagedModel, inferenceRequestStore, managedConnectionBusy, managedModelReady, managedRuntimeStore, modelGatewayStore } from '$lib/stores/modelGateway';
   import { selectedConversationId, sidebarExpanded, openModelSetup, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, openSettings, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
@@ -17,10 +17,16 @@
     if (['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle)) return { label: $t('conn.request_generating'), tone: 'info' as const };
     if ($inferenceRequestStore.lifecycle === 'failed' || $inferenceRequestStore.lifecycle === 'timed_out' || $modelGatewayStore.status === 'Failed') return { label: $t('conn.request_error'), tone: 'danger' as const };
     if ($managedModelReady) return { label: $t('conn.model_ready'), tone: 'ready' as const };
-    if (['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') || ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '')) return { label: $t('conn.model_loading'), tone: 'info' as const };
+    if ($managedRuntimeStore.lastError || $managedRuntimeStore.status?.last_error || $managedRuntimeStore.status?.state === 'Failed') return { label: $t('conn.model_error'), tone: 'danger' as const };
+    if ($managedConnectionBusy || ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') || ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '')) return { label: $t('conn.model_loading'), tone: 'info' as const };
     return { label: $t('conn.model_unavailable'), tone: 'disabled' as const };
   })();
   $: safeModelIdentity = $managedRuntimeStore.status?.model_display_name ?? $managedRuntimeStore.status?.model_id ?? '';
+
+  async function connectManagedModel(): Promise<void> {
+    openModelSetup('managed');
+    await connectSelectedManagedModel();
+  }
 
 </script>
 
@@ -40,7 +46,7 @@
     <h1>{title}</h1>
   </div>
 
-  <div class="connection-summary" aria-label="Connection status">
+  <div class="connection-summary" aria-label={$t('conn.status')}>
     <StatusBadge label={connectionSummary.label} tone={connectionSummary.tone} />
   </div>
 
@@ -49,12 +55,13 @@
       <button
         type="button"
         class="primary-button"
-        onclick={() => $approvedManagedModelInstalled ? openModelSetup('managed') : openSettings()}
+        onclick={() => $approvedManagedModelInstalled ? void connectManagedModel() : openSettings('models')}
+        disabled={$managedConnectionBusy}
         aria-expanded={$modelSetupDrawerOpen}
         aria-controls="model-setup-drawer"
       >
         <Icon name="link" size={16} />
-        <span>{$t($approvedManagedModelInstalled ? 'chat.connect_model' : 'chat.setup_local_ai')}</span>
+        <span>{$t($managedConnectionBusy ? 'chat.model_connecting' : $approvedManagedModelInstalled ? 'chat.connect_model' : 'chat.setup_local_ai')}</span>
       </button>
     {:else}
       <div class="ready-details" title={safeModelIdentity}>
@@ -81,24 +88,26 @@
 
 <style>
   .chat-header {
-    min-height: 56px;
+    min-height: 48px;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
-    gap: var(--lc-space-2);
+    gap: 8px;
     border-bottom: var(--border-thin);
-    background: var(--lc-bg-elevated);
-    padding: var(--lc-space-2) var(--lc-space-4);
+    background: color-mix(in srgb, var(--lc-bg-elevated) 64%, transparent);
+    padding: 8px 16px;
+    backdrop-filter: blur(12px);
   }
 
   .icon-button {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
     display: grid;
     place-items: center;
     border: var(--border-thin);
     border-radius: var(--lc-radius-sm);
-    background: var(--lc-panel-solid);
+    background: transparent;
     color: var(--lc-muted);
   }
 
@@ -118,10 +127,12 @@
 
   h1 {
     margin: 0;
-    overflow-wrap: anywhere;
+    overflow: hidden;
     font-size: 16px;
     font-weight: 700;
     color: var(--lc-text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .connection-summary {
@@ -143,11 +154,10 @@
   }
 
   .ready-details > span {
-    max-width: 180px;
+    max-width: 150px;
     overflow: hidden;
     color: var(--lc-muted);
-    font-family: var(--lc-mono);
-    font-size: 11px;
+    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -156,19 +166,24 @@
     display: inline-flex;
     align-items: center;
     gap: var(--lc-space-2);
-    min-height: 36px;
-    padding: 0 var(--lc-space-4);
+    min-height: 32px;
+    padding: 0 12px;
     border: none;
     border-radius: var(--lc-radius-sm);
     background: var(--lc-accent);
     color: var(--lc-logo-cut);
-    font-weight: 800;
+    font-weight: 650;
     font-size: 13px;
     cursor: pointer;
   }
 
   .primary-button:hover {
     background: var(--lc-accent-strong);
+  }
+
+  .primary-button:disabled {
+    cursor: wait;
+    opacity: 0.7;
   }
 
   .primary-button:focus-visible {
@@ -180,7 +195,7 @@
     .chat-header {
       grid-template-columns: auto minmax(0, 1fr) auto;
       min-height: 48px;
-      padding-inline: var(--lc-space-3);
+      padding-inline: 12px;
     }
 
     .primary-button span {

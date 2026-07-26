@@ -1,0 +1,211 @@
+Generated: 2026-07-26T21:31:04+05:00
+Last 200 lines per file. Logs are non-authoritative evidence.
+
+Code map from current Rust source:
+- LC_START_000: single-instance check begin/success; LC_START_DUPLICATE: another instance; LC_START_001: guard acquisition failure.
+- LC_START_100: backend start begin/success and successful correlated readiness; LC_START_101: local-data/artifact-trust/sidecar start or I/O unavailable.
+- LC_START_102: readiness timeout; LC_START_103: sidecar exited before ready.
+- LC_START_200: main window shown; LC_START_201: main window missing/show failure; LC_START_202: outer Tauri run failure.
+- LC_MODEL_CONNECT_000: overall managed connection request/success.
+- LC_MODEL_CONNECT_001: artifact validation; 002: runtime capability validation; 003: process start and active readiness; 004: attach exact runtime instance to Python gateway.
+Failure rows use the concrete bounded error code/message after token sanitization. A log row is diagnostic history, not proof that the process or binding is currently alive.
+
+===== C:\Users\DNS\AppData\Local\LocalComet\logs\startup.log =====
+timestamp_unix=1784869351	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784869351	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784869351	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784869352	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784869352	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784869352	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784869352	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784880211	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784880211	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784880211	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784880211	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784880212	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784880212	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784880212	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784880457	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784880457	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784880457	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784880457	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784880457	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784880457	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784880457	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784880550	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784880550	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784880550	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784880550	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784880550	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784880550	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784880550	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784880621	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784880621	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784880621	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784880621	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784880622	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784880622	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784880622	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784880893	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784880893	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784880893	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784880893	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784880893	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784880893	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784880893	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784881027	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784881027	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784881027	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784881028	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784881028	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784881028	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784881028	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784896764	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784896764	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784896764	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784896764	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784896765	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784896765	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784896765	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784897473	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784897473	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784897473	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784897473	phase=backend_start	status=python_selectedCUsersDNSAppDataLocalPythonpythoncore-3.11-64pyth	code=LC_START_100
+timestamp_unix=1784897473	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784897473	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784897473	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784897544	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784897544	phase=single_instance	status=already_running	code=LC_START_DUPLICATE
+timestamp_unix=1784916132	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784916132	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784916132	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784916133	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784916133	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784916133	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784941103	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784941103	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784941103	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784941104	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784941104	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784941104	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1784942280	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1784942280	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1784942280	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1784942281	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1784942281	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1784942281	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785039345	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785039345	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785039346	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785039346	phase=backend_readiness	status=failure.sidecar_exited_before_ready	code=LC_START_103
+timestamp_unix=1785040275	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785040275	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785040275	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785040275	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785040275	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785040275	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785040629	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785040629	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785040629	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785040629	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785040629	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785040629	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785076196	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785076196	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785076197	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785076197	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785076197	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785076197	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785076495	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785076495	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785076495	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785076495	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785076495	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785076495	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785077349	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785077349	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785077349	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785077349	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785077349	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785077349	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785077534	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785077534	phase=single_instance	status=already_running	code=LC_START_DUPLICATE
+timestamp_unix=1785077589	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785077589	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785077589	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785077589	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785077589	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785077589	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785077603	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785077603	phase=single_instance	status=already_running	code=LC_START_DUPLICATE
+timestamp_unix=1785077924	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785077924	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785077924	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785077925	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785077925	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785077925	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785078046	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785078046	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785078047	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785078047	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785078047	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785078047	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785080656	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785080656	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785080656	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785080656	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785080656	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785080656	phase=window_display	status=success	code=LC_START_200
+timestamp_unix=1785081162	phase=single_instance	status=begin	code=LC_START_000
+timestamp_unix=1785081162	phase=single_instance	status=success	code=LC_START_000
+timestamp_unix=1785081163	phase=backend_start	status=begin	code=LC_START_100
+timestamp_unix=1785081163	phase=backend_start	status=success	code=LC_START_100
+timestamp_unix=1785081163	phase=backend_readiness	status=success	code=LC_START_100
+timestamp_unix=1785081163	phase=window_display	status=success	code=LC_START_200
+
+===== C:\Users\DNS\AppData\Local\LocalComet\logs\managed-runtime.log =====
+timestamp_unix=1785077046	phase=request	status=begin	code=LC_MODEL_CONNECT_000	detail=requested
+timestamp_unix=1785077046	phase=validation	status=begin	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785077094	phase=validation	status=success	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785077094	phase=validation	status=success	code=LC_MODEL_CONNECT_002	detail=capabilities
+timestamp_unix=1785077094	phase=process	status=success	code=LC_MODEL_CONNECT_003	detail=started
+timestamp_unix=1785077095	phase=readiness	status=success	code=LC_MODEL_CONNECT_003	detail=ready
+timestamp_unix=1785077095	phase=attach	status=begin	code=LC_MODEL_CONNECT_004	detail=requested
+timestamp_unix=1785077095	phase=attach	status=success	code=LC_MODEL_CONNECT_004	detail=ready
+timestamp_unix=1785077095	phase=connect	status=success	code=LC_MODEL_CONNECT_000	detail=ready
+timestamp_unix=1785077839	phase=request	status=begin	code=LC_MODEL_CONNECT_000	detail=requested
+timestamp_unix=1785077839	phase=validation	status=begin	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785077885	phase=validation	status=success	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785077885	phase=validation	status=success	code=LC_MODEL_CONNECT_002	detail=capabilities
+timestamp_unix=1785077885	phase=process	status=success	code=LC_MODEL_CONNECT_003	detail=started
+timestamp_unix=1785077886	phase=readiness	status=success	code=LC_MODEL_CONNECT_003	detail=ready
+timestamp_unix=1785077886	phase=attach	status=begin	code=LC_MODEL_CONNECT_004	detail=requested
+timestamp_unix=1785077886	phase=attach	status=success	code=LC_MODEL_CONNECT_004	detail=ready
+timestamp_unix=1785077886	phase=connect	status=success	code=LC_MODEL_CONNECT_000	detail=ready
+timestamp_unix=1785078189	phase=request	status=begin	code=LC_MODEL_CONNECT_000	detail=requested
+timestamp_unix=1785078189	phase=validation	status=begin	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785078236	phase=validation	status=success	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785078236	phase=validation	status=success	code=LC_MODEL_CONNECT_002	detail=capabilities
+timestamp_unix=1785078236	phase=process	status=success	code=LC_MODEL_CONNECT_003	detail=started
+timestamp_unix=1785078237	phase=readiness	status=success	code=LC_MODEL_CONNECT_003	detail=ready
+timestamp_unix=1785078237	phase=attach	status=begin	code=LC_MODEL_CONNECT_004	detail=requested
+timestamp_unix=1785078237	phase=attach	status=success	code=LC_MODEL_CONNECT_004	detail=ready
+timestamp_unix=1785078237	phase=connect	status=success	code=LC_MODEL_CONNECT_000	detail=ready
+timestamp_unix=1785080817	phase=request	status=begin	code=LC_MODEL_CONNECT_000	detail=requested
+timestamp_unix=1785080817	phase=validation	status=begin	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785080867	phase=validation	status=success	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785080867	phase=validation	status=success	code=LC_MODEL_CONNECT_002	detail=capabilities
+timestamp_unix=1785080867	phase=process	status=success	code=LC_MODEL_CONNECT_003	detail=started
+timestamp_unix=1785080868	phase=readiness	status=success	code=LC_MODEL_CONNECT_003	detail=ready
+timestamp_unix=1785080868	phase=attach	status=begin	code=LC_MODEL_CONNECT_004	detail=requested
+timestamp_unix=1785080868	phase=attach	status=success	code=LC_MODEL_CONNECT_004	detail=ready
+timestamp_unix=1785080868	phase=connect	status=success	code=LC_MODEL_CONNECT_000	detail=ready
+timestamp_unix=1785081211	phase=request	status=begin	code=LC_MODEL_CONNECT_000	detail=requested
+timestamp_unix=1785081211	phase=validation	status=begin	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785081260	phase=validation	status=success	code=LC_MODEL_CONNECT_001	detail=artifacts
+timestamp_unix=1785081260	phase=validation	status=success	code=LC_MODEL_CONNECT_002	detail=capabilities
+timestamp_unix=1785081260	phase=process	status=success	code=LC_MODEL_CONNECT_003	detail=started
+timestamp_unix=1785081261	phase=readiness	status=success	code=LC_MODEL_CONNECT_003	detail=ready
+timestamp_unix=1785081261	phase=attach	status=begin	code=LC_MODEL_CONNECT_004	detail=requested
+timestamp_unix=1785081261	phase=attach	status=success	code=LC_MODEL_CONNECT_004	detail=ready
+timestamp_unix=1785081261	phase=connect	status=success	code=LC_MODEL_CONNECT_000	detail=ready

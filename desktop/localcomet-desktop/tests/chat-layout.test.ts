@@ -39,6 +39,15 @@ describe('bounded chat layout', () => {
     expect(composer).toMatch(/const generatingNow = isGenerating;\s*if \(previouslyGenerating && !generatingNow\)[\s\S]*previouslyGenerating = generatingNow;/);
   });
 
+  it('keeps the owner-directed donor proportions and bubble geometry', () => {
+    const messages = source('../src/lib/components/chat/MessageList.svelte');
+    const composer = source('../src/lib/components/chat/MessageComposer.svelte');
+
+    expect(messages).toMatch(/\.bubble\s*\{[^}]*max-width:\s*80%;[^}]*border-radius:\s*var\(--lc-radius-lg\);/s);
+    expect(messages).toMatch(/\.user \.bubble\s*\{[^}]*background:\s*var\(--lc-accent\);/s);
+    expect(composer).toMatch(/\.composer\s*\{[^}]*border-radius:\s*var\(--lc-radius-lg\);[^}]*box-shadow:\s*var\(--lc-shadow-e1\);/s);
+  });
+
   it.each([
     ['1920×1080', 1920, 1080, 1],
     ['1366×768', 1366, 768, 1],
@@ -47,8 +56,8 @@ describe('bounded chat layout', () => {
     ['125% equivalent', 1280, 720, 1.25],
     ['150% equivalent', 1024, 640, 1.5]
   ])('keeps a bounded positive transcript viewport at %s', (_name, width, height, scale) => {
-    const titleBar = 38 * scale;
-    const header = 56 * scale;
+    const titleBar = 48 * scale;
+    const header = 48 * scale;
     const composer = 118 * scale;
     expect(width / scale).toBeGreaterThanOrEqual(682);
     expect(height - titleBar - header - composer).toBeGreaterThan(300);

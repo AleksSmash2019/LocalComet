@@ -206,3 +206,27 @@ owner = "workspace.rs (planned)"
 implementation = []
 test_ids = []
 status = "planned"
+
+[[invariants]]
+id = "INV-VALIDATION-CACHE-001"
+title = "Artifact validation cache cannot bypass catalog-bound identity checks"
+statement = "A cached large-asset SHA-256 is reused only when cache format, embedded catalog digest, canonical absolute path, current file size, current mtime, current expected SHA-256, and the previously observed matching SHA-256 all agree. Cache misses and cache errors fall back to full hashing. Model files and the largest catalog-required runtime asset are the only cached files; licenses and all other required runtime files are always hashed. Same-size replacement with a restored prior mtime is an explicit boundary of this metadata-keyed cache."
+severity = "critical"
+owner = "artifact_validation_cache.rs, artifact_trust.rs, artifact_acquisition.rs"
+implementation = [
+    "desktop/localcomet-desktop/src-tauri/src/artifact_validation_cache.rs",
+    "desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs",
+    "desktop/localcomet-desktop/src-tauri/src/artifact_acquisition.rs",
+]
+test_ids = [
+    "valid_cache_hit_does_not_invoke_hasher",
+    "validation_cache_same_size_changed_mtime_rehashes_and_rejects_model",
+    "validation_cache_same_size_restored_mtime_is_declared_trust_boundary",
+    "catalog_digest_change_invalidates_all_entries",
+    "force_full_validation_rehashes_a_valid_cache_entry",
+    "corrupt_json_is_ignored_and_rehashed",
+    "validation_cache_deleted_model_reports_not_installed",
+]
+verification_method = "cargo test validation_cache [run] + cargo test force_full_validation_rehashes_a_valid_cache_entry [run] + cargo test corrupt_json_is_ignored_and_rehashed [run]"
+verified_at = "2026-07-26"
+status = "implemented"

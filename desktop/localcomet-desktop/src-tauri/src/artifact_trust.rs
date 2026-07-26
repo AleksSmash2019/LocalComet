@@ -1,3 +1,4 @@
+use crate::artifact_validation_cache::{ArtifactValidationCache, ValidationSource};
 use crate::control_plane::BridgeError;
 use serde::de::{MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -406,6 +407,12 @@ impl ValidationOutcome {
 }
 
 #[derive(Debug)]
+struct SourcedValidationOutcome {
+    outcome: ValidationOutcome,
+    source: ValidationSource,
+}
+
+#[derive(Debug)]
 pub(crate) struct ValidatedRuntimeModel {
     pub runtime_id: String,
     pub runtime_release_tag: String,
@@ -417,6 +424,7 @@ pub(crate) struct ValidatedRuntimeModel {
     pub model_handle: File,
     pub runtime_handles: Vec<File>,
     pub directory_handles: Vec<File>,
+    pub artifact_validation_source: ValidationSource,
 }
 
 #[derive(Clone, Debug)]
@@ -429,6 +437,7 @@ pub struct ArtifactTrustService {
     catalog: ApprovedArtifactCatalog,
     catalog_digest: String,
     roots: ManagedArtifactRoots,
+    validation_cache: ArtifactValidationCache,
 }
 
 impl ArtifactTrustService {
@@ -447,15 +456,50 @@ impl ArtifactTrustService {
         let catalog = parse_catalog(bytes)?;
         validate_catalog(&catalog)?;
         validate_canonical_catalog_bytes(bytes, &catalog)?;
+        let catalog_digest = sha256_bytes(bytes);
+        let validation_cache = ArtifactValidationCache::new(&roots.app_data_root, &catalog_digest);
         Ok(Self {
             catalog,
-            catalog_digest: sha256_bytes(bytes),
+            catalog_digest,
             roots,
+            validation_cache,
         })
     }
 
     pub(crate) fn roots(&self) -> &ManagedArtifactRoots {
         &self.roots
+    }
+
+    pub(crate) fn invalidate_validation_cache_for_artifact(&self, artifact_id: &str) {
+        if let Some(model) = self
+            .catalog
+            .models
+            .iter()
+            .find(|model| model.model_id == artifact_id)
+        {
+            if let Ok(path) =
+                resolve_contained(&self.roots.model_root, &model.managed_relative_path)
+            {
+                self.validation_cache.invalidate_path(&path);
+            }
+            return;
+        }
+        if let Some(runtime) = self
+            .catalog
+            .runtimes
+            .iter()
+            .find(|runtime| runtime.runtime_id == artifact_id)
+        {
+            if let Ok(package) =
+                resolve_contained(&self.roots.runtime_root, &runtime.managed_relative_path)
+            {
+                if let Some(asset) = runtime.required_files.iter().max_by_key(|file| file.bytes) {
+                    if let Ok(path) = resolve_contained(&package, &asset.relative_path) {
+                        self.validation_cache.invalidate_path(&path);
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) fn guard_runtime_state_root(&self) -> Result<Vec<File>, ArtifactTrustError> {
@@ -641,6 +685,14 @@ impl ArtifactTrustService {
         &self,
         model_id: &str,
     ) -> Result<ModelReadinessSummary, ArtifactTrustError> {
+        self.model_readiness_with_source(model_id)
+            .map(|(summary, _)| summary)
+    }
+
+    fn model_readiness_with_source(
+        &self,
+        model_id: &str,
+    ) -> Result<(ModelReadinessSummary, ValidationSource), ArtifactTrustError> {
         validate_artifact_id(model_id)?;
         let model = self
             .catalog
@@ -648,7 +700,9 @@ impl ArtifactTrustService {
             .iter()
             .find(|model| model.model_id == model_id)
             .ok_or_else(|| ArtifactTrustError::new("unknown_artifact", "unknown model id"))?;
-        let model_outcome = self.validate_model(model);
+        let model_validation = self.validate_model(model);
+        let mut validation_source = model_validation.source;
+        let model_outcome = model_validation.outcome;
         let mut selected_runtime_id = None;
         let mut selected_runtime_status = None;
         let mut saw_invalid_runtime = false;
@@ -661,7 +715,9 @@ impl ArtifactTrustService {
                 .ok_or_else(|| {
                     ArtifactTrustError::new("invalid_catalog", "unknown compatible runtime")
                 })?;
-            let outcome = self.validate_runtime(runtime);
+            let validation = self.validate_runtime(runtime);
+            validation_source = validation_source.combine(validation.source);
+            let outcome = validation.outcome;
             if outcome.status == InstallationStatus::Valid {
                 selected_runtime_id = Some(runtime.runtime_id.clone());
                 selected_runtime_status = Some(outcome.status);
@@ -683,7 +739,7 @@ impl ArtifactTrustService {
                     .compatible_runtime_ids
                     .iter()
                     .any(|runtime_id| runtime_id == &runtime.runtime_id)
-                    && self.validate_runtime(runtime).status == InstallationStatus::Valid
+                    && self.validate_runtime(runtime).outcome.status == InstallationStatus::Valid
             });
         let compatibility = if selected_runtime_id.is_some() {
             CompatibilityStatus::Compatible
@@ -706,27 +762,30 @@ impl ArtifactTrustService {
             InstallationStatus::Valid => (ModelReadiness::RuntimeNotInstalled, false),
             _ => (ModelReadiness::ModelInvalid, false),
         };
-        Ok(ModelReadinessSummary {
-            schema_version: self.catalog.schema_version,
-            catalog_id: self.catalog.catalog_id.clone(),
-            catalog_version: self.catalog.catalog_version.clone(),
-            catalog_digest: self.catalog_digest.clone(),
-            model_id: model.model_id.clone(),
-            model_status: model_outcome.status,
-            compatible_runtime_ids: model.compatible_runtime_ids.clone(),
-            selected_runtime_id,
-            runtime_status: selected_runtime_status,
-            compatibility,
-            readiness,
-            launchable,
-        })
+        Ok((
+            ModelReadinessSummary {
+                schema_version: self.catalog.schema_version,
+                catalog_id: self.catalog.catalog_id.clone(),
+                catalog_version: self.catalog.catalog_version.clone(),
+                catalog_digest: self.catalog_digest.clone(),
+                model_id: model.model_id.clone(),
+                model_status: model_outcome.status,
+                compatible_runtime_ids: model.compatible_runtime_ids.clone(),
+                selected_runtime_id,
+                runtime_status: selected_runtime_status,
+                compatibility,
+                readiness,
+                launchable,
+            },
+            validation_source,
+        ))
     }
 
     pub(crate) fn resolve_launch(
         &self,
         model_id: &str,
     ) -> Result<ValidatedRuntimeModel, ArtifactTrustError> {
-        let readiness = self.model_readiness(model_id)?;
+        let (readiness, mut validation_source) = self.model_readiness_with_source(model_id)?;
         if !readiness.launchable {
             return Err(ArtifactTrustError::new(
                 "artifact_not_ready",
@@ -780,14 +839,16 @@ impl ArtifactTrustService {
             runtime_handles.push(open_runtime_guard(&path)?);
         }
         let model_recheck = self.validate_model(model);
-        if model_recheck.status != InstallationStatus::Valid {
+        validation_source = validation_source.combine(model_recheck.source);
+        if model_recheck.outcome.status != InstallationStatus::Valid {
             return Err(ArtifactTrustError::new(
                 "artifact_changed",
                 "model identity changed before launch",
             ));
         }
         let runtime_recheck = self.validate_runtime(runtime);
-        if runtime_recheck.status != InstallationStatus::Valid {
+        validation_source = validation_source.combine(runtime_recheck.source);
+        if runtime_recheck.outcome.status != InstallationStatus::Valid {
             return Err(ArtifactTrustError::new(
                 "artifact_changed",
                 "runtime identity changed before launch",
@@ -804,21 +865,21 @@ impl ArtifactTrustService {
             model_handle,
             runtime_handles,
             directory_handles,
+            artifact_validation_source: validation_source,
         })
     }
 
     pub(crate) fn has_valid_runtime(&self) -> bool {
-        self.catalog
-            .runtimes
-            .iter()
-            .any(|runtime| self.validate_runtime(runtime).status == InstallationStatus::Valid)
+        self.catalog.runtimes.iter().any(|runtime| {
+            self.validate_runtime(runtime).outcome.status == InstallationStatus::Valid
+        })
     }
 
     fn runtime_validation_summary(
         &self,
         runtime: &ApprovedRuntimeArtifact,
     ) -> ArtifactValidationSummary {
-        let outcome = self.validate_runtime(runtime);
+        let outcome = self.validate_runtime(runtime).outcome;
         self.validation_summary(
             &runtime.runtime_id,
             ArtifactKind::Runtime,
@@ -830,7 +891,7 @@ impl ArtifactTrustService {
     }
 
     fn model_validation_summary(&self, model: &ApprovedModelArtifact) -> ArtifactValidationSummary {
-        let outcome = self.validate_model(model);
+        let outcome = self.validate_model(model).outcome;
         self.validation_summary(
             &model.model_id,
             ArtifactKind::Model,
@@ -868,9 +929,142 @@ impl ArtifactTrustService {
         }
     }
 
-    fn validate_runtime(&self, runtime: &ApprovedRuntimeArtifact) -> ValidationOutcome {
-        let package_dir =
-            match resolve_contained(&self.roots.runtime_root, &runtime.managed_relative_path) {
+    fn validate_runtime(&self, runtime: &ApprovedRuntimeArtifact) -> SourcedValidationOutcome {
+        let mut large_asset_source = ValidationSource::Hashed;
+        let cached_asset = runtime
+            .required_files
+            .iter()
+            .max_by_key(|file| file.bytes)
+            .map(|file| file.relative_path.as_str());
+        let outcome = (|| {
+            let package_dir =
+                match resolve_contained(&self.roots.runtime_root, &runtime.managed_relative_path) {
+                    Ok(path) => path,
+                    Err(_) => {
+                        return ValidationOutcome {
+                            status: InstallationStatus::InvalidPath,
+                            observed_bytes: None,
+                            observed_sha256: None,
+                            code: "invalid_path",
+                        }
+                    }
+                };
+            if !package_dir.exists() {
+                return ValidationOutcome::not_installed();
+            }
+            if ensure_existing_safe_path(
+                &self.roots.app_data_root,
+                &self.roots.runtime_root,
+                &package_dir,
+                true,
+            )
+            .is_err()
+            {
+                return ValidationOutcome {
+                    status: InstallationStatus::InvalidPath,
+                    observed_bytes: None,
+                    observed_sha256: None,
+                    code: "invalid_path",
+                };
+            }
+            let mut listed = BTreeSet::new();
+            for required in &runtime.required_files {
+                listed.insert(required.relative_path.to_ascii_lowercase());
+                let file_path = match resolve_contained(&package_dir, &required.relative_path) {
+                    Ok(path) => path,
+                    Err(_) => {
+                        return ValidationOutcome {
+                            status: InstallationStatus::InvalidPath,
+                            observed_bytes: None,
+                            observed_sha256: None,
+                            code: "invalid_path",
+                        }
+                    }
+                };
+                let metadata = match file_path.metadata() {
+                    Ok(metadata) if metadata.is_file() => metadata,
+                    _ => {
+                        return ValidationOutcome {
+                            status: InstallationStatus::MissingRequiredFile,
+                            observed_bytes: None,
+                            observed_sha256: None,
+                            code: "missing_required_file",
+                        }
+                    }
+                };
+                if reject_reparse_point(&file_path).is_err() {
+                    return ValidationOutcome {
+                        status: InstallationStatus::InvalidPath,
+                        observed_bytes: None,
+                        observed_sha256: None,
+                        code: "invalid_path",
+                    };
+                }
+                if metadata.len() != required.bytes {
+                    return ValidationOutcome {
+                        status: InstallationStatus::BytesMismatch,
+                        observed_bytes: Some(metadata.len()),
+                        observed_sha256: None,
+                        code: "bytes_mismatch",
+                    };
+                }
+                let validated = if Some(required.relative_path.as_str()) == cached_asset {
+                    self.validation_cache.hash_or_reuse(
+                        &file_path,
+                        &required.sha256,
+                        &self.catalog_digest,
+                        force_full_validation(),
+                        sha256_file,
+                    )
+                } else {
+                    sha256_file(&file_path).map(|observed_sha256| {
+                        crate::artifact_validation_cache::ValidatedHash {
+                            observed_sha256,
+                            source: ValidationSource::Hashed,
+                        }
+                    })
+                };
+                if Some(required.relative_path.as_str()) == cached_asset {
+                    if let Ok(validated) = &validated {
+                        large_asset_source = validated.source;
+                    }
+                }
+                match validated {
+                    Ok(validated) if validated.observed_sha256 == required.sha256 => {}
+                    Ok(_) => {
+                        return ValidationOutcome {
+                            status: InstallationStatus::HashMismatch,
+                            observed_bytes: Some(metadata.len()),
+                            observed_sha256: None,
+                            code: "hash_mismatch",
+                        }
+                    }
+                    Err(_) => {
+                        return ValidationOutcome {
+                            status: InstallationStatus::IoError,
+                            observed_bytes: Some(metadata.len()),
+                            observed_sha256: None,
+                            code: "io_error",
+                        }
+                    }
+                }
+            }
+            let license_bytes =
+                match source_controlled_runtime_license_bytes(&runtime.license_asset) {
+                    Ok(bytes) => bytes,
+                    Err(_) => {
+                        return ValidationOutcome {
+                            status: InstallationStatus::InvalidPath,
+                            observed_bytes: None,
+                            observed_sha256: None,
+                            code: "invalid_license_asset",
+                        }
+                    }
+                };
+            let license_path = match resolve_contained(
+                &package_dir,
+                &runtime.license_asset.destination_relative_path,
+            ) {
                 Ok(path) => path,
                 Err(_) => {
                     return ValidationOutcome {
@@ -881,39 +1075,13 @@ impl ArtifactTrustService {
                     }
                 }
             };
-        if !package_dir.exists() {
-            return ValidationOutcome::not_installed();
-        }
-        if ensure_existing_safe_path(
-            &self.roots.app_data_root,
-            &self.roots.runtime_root,
-            &package_dir,
-            true,
-        )
-        .is_err()
-        {
-            return ValidationOutcome {
-                status: InstallationStatus::InvalidPath,
-                observed_bytes: None,
-                observed_sha256: None,
-                code: "invalid_path",
-            };
-        }
-        let mut listed = BTreeSet::new();
-        for required in &runtime.required_files {
-            listed.insert(required.relative_path.to_ascii_lowercase());
-            let file_path = match resolve_contained(&package_dir, &required.relative_path) {
-                Ok(path) => path,
-                Err(_) => {
-                    return ValidationOutcome {
-                        status: InstallationStatus::InvalidPath,
-                        observed_bytes: None,
-                        observed_sha256: None,
-                        code: "invalid_path",
-                    }
-                }
-            };
-            let metadata = match file_path.metadata() {
+            listed.insert(
+                runtime
+                    .license_asset
+                    .destination_relative_path
+                    .to_ascii_lowercase(),
+            );
+            let license_metadata = match license_path.metadata() {
                 Ok(metadata) if metadata.is_file() => metadata,
                 _ => {
                     return ValidationOutcome {
@@ -924,7 +1092,7 @@ impl ArtifactTrustService {
                     }
                 }
             };
-            if reject_reparse_point(&file_path).is_err() {
+            if reject_reparse_point(&license_path).is_err() {
                 return ValidationOutcome {
                     status: InstallationStatus::InvalidPath,
                     observed_bytes: None,
@@ -932,20 +1100,22 @@ impl ArtifactTrustService {
                     code: "invalid_path",
                 };
             }
-            if metadata.len() != required.bytes {
+            if license_metadata.len() != runtime.license_asset.bytes
+                || license_bytes.len() as u64 != runtime.license_asset.bytes
+            {
                 return ValidationOutcome {
                     status: InstallationStatus::BytesMismatch,
-                    observed_bytes: Some(metadata.len()),
+                    observed_bytes: Some(license_metadata.len()),
                     observed_sha256: None,
                     code: "bytes_mismatch",
                 };
             }
-            match sha256_file(&file_path) {
-                Ok(hash) if hash == required.sha256 => {}
+            match sha256_file(&license_path) {
+                Ok(hash) if hash == runtime.license_asset.sha256 => {}
                 Ok(_) => {
                     return ValidationOutcome {
                         status: InstallationStatus::HashMismatch,
-                        observed_bytes: Some(metadata.len()),
+                        observed_bytes: Some(license_metadata.len()),
                         observed_sha256: None,
                         code: "hash_mismatch",
                     }
@@ -953,189 +1123,139 @@ impl ArtifactTrustService {
                 Err(_) => {
                     return ValidationOutcome {
                         status: InstallationStatus::IoError,
-                        observed_bytes: Some(metadata.len()),
+                        observed_bytes: Some(license_metadata.len()),
                         observed_sha256: None,
                         code: "io_error",
                     }
                 }
             }
-        }
-        let license_bytes = match source_controlled_runtime_license_bytes(&runtime.license_asset) {
-            Ok(bytes) => bytes,
-            Err(_) => {
+            if reject_unlisted_runtime_files(&package_dir, &listed).is_err() {
                 return ValidationOutcome {
-                    status: InstallationStatus::InvalidPath,
+                    status: InstallationStatus::UnexpectedFile,
                     observed_bytes: None,
                     observed_sha256: None,
-                    code: "invalid_license_asset",
-                }
+                    code: "unexpected_file",
+                };
             }
-        };
-        let license_path = match resolve_contained(
-            &package_dir,
-            &runtime.license_asset.destination_relative_path,
-        ) {
-            Ok(path) => path,
-            Err(_) => {
-                return ValidationOutcome {
-                    status: InstallationStatus::InvalidPath,
-                    observed_bytes: None,
-                    observed_sha256: None,
-                    code: "invalid_path",
-                }
-            }
-        };
-        listed.insert(
-            runtime
-                .license_asset
-                .destination_relative_path
-                .to_ascii_lowercase(),
-        );
-        let license_metadata = match license_path.metadata() {
-            Ok(metadata) if metadata.is_file() => metadata,
-            _ => {
-                return ValidationOutcome {
-                    status: InstallationStatus::MissingRequiredFile,
-                    observed_bytes: None,
-                    observed_sha256: None,
-                    code: "missing_required_file",
-                }
-            }
-        };
-        if reject_reparse_point(&license_path).is_err() {
-            return ValidationOutcome {
-                status: InstallationStatus::InvalidPath,
+            ValidationOutcome {
+                status: InstallationStatus::Valid,
                 observed_bytes: None,
                 observed_sha256: None,
-                code: "invalid_path",
-            };
-        }
-        if license_metadata.len() != runtime.license_asset.bytes
-            || license_bytes.len() as u64 != runtime.license_asset.bytes
-        {
-            return ValidationOutcome {
-                status: InstallationStatus::BytesMismatch,
-                observed_bytes: Some(license_metadata.len()),
-                observed_sha256: None,
-                code: "bytes_mismatch",
-            };
-        }
-        match sha256_file(&license_path) {
-            Ok(hash) if hash == runtime.license_asset.sha256 => {}
-            Ok(_) => {
-                return ValidationOutcome {
-                    status: InstallationStatus::HashMismatch,
-                    observed_bytes: Some(license_metadata.len()),
-                    observed_sha256: None,
-                    code: "hash_mismatch",
-                }
+                code: "valid",
             }
-            Err(_) => {
-                return ValidationOutcome {
-                    status: InstallationStatus::IoError,
-                    observed_bytes: Some(license_metadata.len()),
-                    observed_sha256: None,
-                    code: "io_error",
-                }
-            }
-        }
-        if reject_unlisted_runtime_files(&package_dir, &listed).is_err() {
-            return ValidationOutcome {
-                status: InstallationStatus::UnexpectedFile,
-                observed_bytes: None,
-                observed_sha256: None,
-                code: "unexpected_file",
-            };
-        }
-        ValidationOutcome {
-            status: InstallationStatus::Valid,
-            observed_bytes: None,
-            observed_sha256: None,
-            code: "valid",
+        })();
+        SourcedValidationOutcome {
+            outcome,
+            source: large_asset_source,
         }
     }
 
-    fn validate_model(&self, model: &ApprovedModelArtifact) -> ValidationOutcome {
-        let path = match resolve_contained(&self.roots.model_root, &model.managed_relative_path) {
-            Ok(path) => path,
-            Err(_) => {
+    fn validate_model(&self, model: &ApprovedModelArtifact) -> SourcedValidationOutcome {
+        self.validate_model_with_force(model, force_full_validation())
+    }
+
+    fn validate_model_with_force(
+        &self,
+        model: &ApprovedModelArtifact,
+        force_full: bool,
+    ) -> SourcedValidationOutcome {
+        let mut source = ValidationSource::Hashed;
+        let outcome = (|| {
+            let path = match resolve_contained(&self.roots.model_root, &model.managed_relative_path)
+            {
+                Ok(path) => path,
+                Err(_) => {
+                    return ValidationOutcome {
+                        status: InstallationStatus::InvalidPath,
+                        observed_bytes: None,
+                        observed_sha256: None,
+                        code: "invalid_path",
+                    }
+                }
+            };
+            if !path.exists() {
+                return ValidationOutcome::not_installed();
+            }
+            if ensure_existing_safe_path(
+                &self.roots.app_data_root,
+                &self.roots.model_root,
+                &path,
+                false,
+            )
+            .is_err()
+            {
                 return ValidationOutcome {
                     status: InstallationStatus::InvalidPath,
                     observed_bytes: None,
                     observed_sha256: None,
                     code: "invalid_path",
-                }
+                };
             }
-        };
-        if !path.exists() {
-            return ValidationOutcome::not_installed();
-        }
-        if ensure_existing_safe_path(
-            &self.roots.app_data_root,
-            &self.roots.model_root,
-            &path,
-            false,
-        )
-        .is_err()
-        {
-            return ValidationOutcome {
-                status: InstallationStatus::InvalidPath,
-                observed_bytes: None,
-                observed_sha256: None,
-                code: "invalid_path",
-            };
-        }
-        let metadata = match path.metadata() {
-            Ok(metadata) if metadata.is_file() => metadata,
-            _ => {
-                return ValidationOutcome {
-                    status: InstallationStatus::InvalidPath,
-                    observed_bytes: None,
-                    observed_sha256: None,
-                    code: "invalid_path",
+            let metadata = match path.metadata() {
+                Ok(metadata) if metadata.is_file() => metadata,
+                _ => {
+                    return ValidationOutcome {
+                        status: InstallationStatus::InvalidPath,
+                        observed_bytes: None,
+                        observed_sha256: None,
+                        code: "invalid_path",
+                    }
                 }
-            }
-        };
-        if metadata.len() != model.asset_bytes {
-            return ValidationOutcome {
-                status: InstallationStatus::BytesMismatch,
-                observed_bytes: Some(metadata.len()),
-                observed_sha256: None,
-                code: "bytes_mismatch",
             };
-        }
-        let mut magic = [0_u8; 4];
-        match File::open(&path).and_then(|mut file| file.read_exact(&mut magic)) {
-            Ok(()) if &magic == b"GGUF" => {}
-            _ => {
+            if metadata.len() != model.asset_bytes {
                 return ValidationOutcome {
-                    status: InstallationStatus::InvalidFormat,
+                    status: InstallationStatus::BytesMismatch,
                     observed_bytes: Some(metadata.len()),
                     observed_sha256: None,
-                    code: "invalid_format",
+                    code: "bytes_mismatch",
+                };
+            }
+            let mut magic = [0_u8; 4];
+            match File::open(&path).and_then(|mut file| file.read_exact(&mut magic)) {
+                Ok(()) if &magic == b"GGUF" => {}
+                _ => {
+                    return ValidationOutcome {
+                        status: InstallationStatus::InvalidFormat,
+                        observed_bytes: Some(metadata.len()),
+                        observed_sha256: None,
+                        code: "invalid_format",
+                    }
                 }
             }
-        }
-        match sha256_file(&path) {
-            Ok(hash) if hash == model.asset_sha256 => ValidationOutcome {
-                status: InstallationStatus::Valid,
-                observed_bytes: Some(metadata.len()),
-                observed_sha256: Some(hash),
-                code: "valid",
-            },
-            Ok(hash) => ValidationOutcome {
-                status: InstallationStatus::HashMismatch,
-                observed_bytes: Some(metadata.len()),
-                observed_sha256: Some(hash),
-                code: "hash_mismatch",
-            },
-            Err(_) => ValidationOutcome {
-                status: InstallationStatus::IoError,
-                observed_bytes: Some(metadata.len()),
-                observed_sha256: None,
-                code: "io_error",
-            },
-        }
+            match self.validation_cache.hash_or_reuse(
+                &path,
+                &model.asset_sha256,
+                &self.catalog_digest,
+                force_full,
+                sha256_file,
+            ) {
+                Ok(validated) if validated.observed_sha256 == model.asset_sha256 => {
+                    source = validated.source;
+                    ValidationOutcome {
+                        status: InstallationStatus::Valid,
+                        observed_bytes: Some(metadata.len()),
+                        observed_sha256: Some(validated.observed_sha256),
+                        code: "valid",
+                    }
+                }
+                Ok(validated) => {
+                    source = validated.source;
+                    ValidationOutcome {
+                        status: InstallationStatus::HashMismatch,
+                        observed_bytes: Some(metadata.len()),
+                        observed_sha256: Some(validated.observed_sha256),
+                        code: "hash_mismatch",
+                    }
+                }
+                Err(_) => ValidationOutcome {
+                    status: InstallationStatus::IoError,
+                    observed_bytes: Some(metadata.len()),
+                    observed_sha256: None,
+                    code: "io_error",
+                },
+            }
+        })();
+        SourcedValidationOutcome { outcome, source }
     }
 }
 
@@ -2235,6 +2355,18 @@ fn perf_logging_enabled_from(value: Option<&str>) -> bool {
     value == Some("1")
 }
 
+pub(crate) fn force_full_validation() -> bool {
+    force_full_validation_from(
+        std::env::var("LOCALCOMET_FORCE_FULL_VALIDATION")
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn force_full_validation_from(value: Option<&str>) -> bool {
+    value == Some("1")
+}
+
 fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2350,6 +2482,16 @@ mod tests {
         assert!(!perf_logging_enabled_from(Some("true")));
         assert!(!perf_logging_enabled_from(Some("")));
         assert!(!perf_logging_enabled_from(Some("11")));
+    }
+
+    #[test]
+    fn force_full_validation_gates_only_on_exact_one() {
+        assert!(force_full_validation_from(Some("1")));
+        assert!(!force_full_validation_from(Some("0")));
+        assert!(!force_full_validation_from(None));
+        assert!(!force_full_validation_from(Some("true")));
+        assert!(!force_full_validation_from(Some("")));
+        assert!(!force_full_validation_from(Some("11")));
     }
 
     struct TestWorkspace {
@@ -3086,6 +3228,125 @@ mod tests {
                 .expect("known runtime status")
                 .installation_status,
             InstallationStatus::HashMismatch
+        );
+    }
+
+    #[test]
+    fn validation_cache_same_size_changed_mtime_rehashes_and_rejects_model() {
+        let workspace = TestWorkspace::new();
+        let catalog = test_catalog();
+        let model_path = install_model(&workspace, &catalog.models[0], TEST_MODEL_BYTES);
+        let service = service_for(&catalog, &workspace);
+        let first = service.validate_model(&catalog.models[0]);
+        assert_eq!(first.outcome.status, InstallationStatus::Valid);
+        assert_eq!(first.source, ValidationSource::Hashed);
+
+        let original_modified = fs::metadata(&model_path)
+            .expect("model metadata")
+            .modified()
+            .expect("model mtime");
+        fs::write(&model_path, b"GGUFtest-mOdel").expect("same-size tamper");
+        let file = OpenOptions::new()
+            .write(true)
+            .open(&model_path)
+            .expect("open tampered model");
+        file.set_times(
+            fs::FileTimes::new()
+                .set_modified(original_modified + std::time::Duration::from_secs(2)),
+        )
+        .expect("set changed mtime");
+        drop(file);
+
+        let validation = service.validate_model(&catalog.models[0]);
+        assert_eq!(validation.source, ValidationSource::Hashed);
+        assert_eq!(validation.outcome.status, InstallationStatus::HashMismatch);
+        assert_ne!(
+            validation.outcome.observed_sha256.as_deref(),
+            Some(catalog.models[0].asset_sha256.as_str())
+        );
+    }
+
+    #[test]
+    fn validation_cache_same_size_restored_mtime_is_declared_trust_boundary() {
+        let workspace = TestWorkspace::new();
+        let catalog = test_catalog();
+        let model_path = install_model(&workspace, &catalog.models[0], TEST_MODEL_BYTES);
+        let service = service_for(&catalog, &workspace);
+        let first = service.validate_model(&catalog.models[0]);
+        assert_eq!(first.source, ValidationSource::Hashed);
+        let original_modified = fs::metadata(&model_path)
+            .expect("model metadata")
+            .modified()
+            .expect("model mtime");
+
+        fs::write(&model_path, b"GGUFtest-mOdel").expect("same-size tamper");
+        let file = OpenOptions::new()
+            .write(true)
+            .open(&model_path)
+            .expect("open tampered model");
+        file.set_times(fs::FileTimes::new().set_modified(original_modified))
+            .expect("restore prior mtime");
+        drop(file);
+        assert_eq!(
+            fs::metadata(&model_path)
+                .expect("tampered metadata")
+                .modified()
+                .expect("tampered mtime"),
+            original_modified
+        );
+        assert_ne!(
+            sha256_file(&model_path).expect("hash tampered bytes"),
+            catalog.models[0].asset_sha256
+        );
+
+        let validation = service.validate_model(&catalog.models[0]);
+        assert_eq!(validation.source, ValidationSource::Cached);
+        assert_eq!(validation.outcome.status, InstallationStatus::Valid);
+        assert_eq!(
+            validation.outcome.observed_sha256.as_deref(),
+            Some(catalog.models[0].asset_sha256.as_str())
+        );
+    }
+
+    #[test]
+    fn force_full_validation_rehashes_a_valid_cache_entry() {
+        let workspace = TestWorkspace::new();
+        let catalog = test_catalog();
+        install_model(&workspace, &catalog.models[0], TEST_MODEL_BYTES);
+        let service = service_for(&catalog, &workspace);
+        assert_eq!(
+            service.validate_model(&catalog.models[0]).source,
+            ValidationSource::Hashed
+        );
+        assert_eq!(
+            service.validate_model(&catalog.models[0]).source,
+            ValidationSource::Cached
+        );
+
+        let forced = service
+            .validate_model_with_force(&catalog.models[0], force_full_validation_from(Some("1")));
+        assert_eq!(forced.source, ValidationSource::Hashed);
+        assert_eq!(forced.outcome.status, InstallationStatus::Valid);
+    }
+
+    #[test]
+    fn validation_cache_deleted_model_reports_not_installed() {
+        let workspace = TestWorkspace::new();
+        let catalog = test_catalog();
+        let model_path = install_model(&workspace, &catalog.models[0], TEST_MODEL_BYTES);
+        let service = service_for(&catalog, &workspace);
+        assert_eq!(
+            service.validate_model(&catalog.models[0]).outcome.status,
+            InstallationStatus::Valid
+        );
+        fs::remove_file(model_path).expect("remove cached model");
+
+        assert_eq!(
+            service
+                .artifact_validation_status("test-model")
+                .expect("model status")
+                .installation_status,
+            InstallationStatus::NotInstalled
         );
     }
 

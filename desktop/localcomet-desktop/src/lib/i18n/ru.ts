@@ -7,6 +7,7 @@ export const ru: TranslationMap = {
   'nav.diagnostics': 'Диагностика',
   'nav.audit': 'Аудит',
   'nav.settings': 'Настройки',
+  'nav.setup': 'Настройка',
   'nav.main': 'Основная навигация',
   'app.title_bar': 'Панель приложения LocalComet',
   'nav.later': 'позже',
@@ -22,18 +23,18 @@ export const ru: TranslationMap = {
   'sidebar.project_labels': 'Метки проекта',
 
   // Sidebar groups
-  'group.Локальные чаты': 'Локальные чаты',
-  'group.Зарезервировано': 'Зарезервировано',
-  'group.Отключено': 'Отключено',
+  'group.local_chats': 'Локальные чаты',
+  'group.reserved': 'Зарезервировано',
+  'group.disabled': 'Отключено',
 
   // Sidebar items
-  'item.Новый чат': 'Новый чат',
-  'item.Демо отмены': 'Демо отмены',
-  'item.Аудит': 'Аудит',
-  'item.Документы': 'Документы',
-  'item.Модель не подключена': 'Модель не подключена',
-  'item.Требуется модель': 'Требуется модель',
-  'item.Позже': 'Позже',
+  'item.new_chat': 'Новый чат',
+  'item.cancellation_demo': 'Демо отмены',
+  'item.audit': 'Аудит',
+  'item.documents': 'Документы',
+  'item.model_not_connected': 'Модель не подключена',
+  'item.model_required': 'Требуется модель',
+  'item.later': 'Позже',
 
   // Chat
   'chat.type_message': 'Введите сообщение…',
@@ -64,12 +65,21 @@ export const ru: TranslationMap = {
   'chat.setup_local_ai': 'Настроить локальный AI',
   'chat.open_models': 'Открыть модели',
   'chat.model_installing': 'Настраивается локальный AI…',
+  'chat.model_connecting': 'Подключение модели…',
   'chat.user_message': 'Сообщение пользователя',
   'chat.model_response': 'Ответ модели',
   'chat.you': 'Вы',
   'chat.model': 'Модель',
   'chat.demo': 'ДЕМО',
   'chat.message_history': 'История сообщений',
+
+  // Approval
+  'approval.disabled': 'Отключено',
+  'approval.section_aria': 'Подтверждения отключены',
+  'approval.confirm': 'Подтвердить',
+  'approval.reject': 'Отклонить',
+  'approval.confirm_aria': 'Подтвердить отключено, так как desktop bridge не подключен',
+  'approval.reject_aria': 'Отклонить отключено, так как desktop bridge не подключен',
 
   // Files
   'files.title': 'Файлы',
@@ -152,6 +162,7 @@ export const ru: TranslationMap = {
 
   // Connection states
   'conn.not_connected': 'Не подключено',
+  'conn.status': 'Состояние подключения',
   'conn.model_connected': 'Модель: Подключена',
   'conn.connecting': 'Подключение',
   'conn.ready': 'Готово',
@@ -162,6 +173,7 @@ export const ru: TranslationMap = {
   'conn.model_ready': 'Модель: готова',
   'conn.model_loading': 'Модель: загрузка',
   'conn.model_unavailable': 'Модель: недоступна',
+  'conn.model_error': 'Модель: ошибка',
   'conn.runtime_ready': 'Среда: готова',
 
   // Model Setup
@@ -282,6 +294,20 @@ export const ru: TranslationMap = {
   // Common
   'common.skip_link': 'Перейти к чату',
 
+  // Палитра команд
+  'commandPalette.label': 'Палитра команд',
+  'commandPalette.search': 'Найти команду',
+  'commandPalette.placeholder': 'Введите команду…',
+  'commandPalette.commands': 'Доступные команды',
+  'commandPalette.empty': 'Подходящих команд нет',
+  'commandPalette.command.chat': 'Открыть чат',
+  'commandPalette.command.settings': 'Открыть настройки',
+  'commandPalette.command.setup': 'Открыть локальную настройку',
+  'commandPalette.command.models': 'Открыть управление моделями',
+  'commandPalette.command.observability': 'Открыть логи и наблюдаемость',
+  'commandPalette.command.showDiagnostics': 'Показать диагностику',
+  'commandPalette.command.hideDiagnostics': 'Скрыть диагностику',
+
   // Theme
   'theme.manage': 'Управление темой',
   'theme.system': 'Использовать системную тему',
@@ -299,6 +325,11 @@ export const ru: TranslationMap = {
 
   // Settings
   'settings.title': 'Настройки',
+  'settings.sections': 'Разделы настроек',
+  'settings.tab_interface': 'Интерфейс',
+  'settings.tab_models': 'Модели',
+  'settings.tab_observability': 'Логи',
+  'settings.tab_about': 'О приложении',
   'settings.close': 'Закрыть настройки',
   'settings.appearance': 'Оформление',
   'settings.theme': 'Тема',
@@ -330,6 +361,43 @@ export const ru: TranslationMap = {
   'capability.computer_use': 'Computer Use',
   'capability.shell': 'Shell',
   'capability.external_tools': 'Внешние инструменты',
+
+  // Настройка и наблюдаемость
+  'common.ready': 'Готово',
+  'common.verified': 'Проверено',
+  'common.not_determined': 'Не определено',
+  'onboarding.eyebrow': 'Локальная настройка',
+  'onboarding.skip_link': 'Перейти к локальной настройке',
+  'onboarding.title': 'Подготовьте приватное рабочее пространство',
+  'onboarding.subtitle': 'LocalComet проверяет доступные подсистемы по реальным ответам desktop-бэкенда. Неизвестные и недоступные состояния показаны явно.',
+  'onboarding.local_boundary': 'Локально по умолчанию. Загрузки требуют подтверждения.',
+  'onboarding.environment': 'Проверка окружения',
+  'onboarding.manage': 'Управление',
+  'onboarding.control_plane': 'Контур управления',
+  'onboarding.sidecar': 'Python sidecar',
+  'onboarding.catalog': 'Одобренный каталог',
+  'onboarding.runtime': 'Управляемый runtime',
+  'onboarding.model': 'Одобренная модель',
+  'onboarding.inference': 'Подключение вывода',
+  'onboarding.not_installed': 'Не установлено',
+  'onboarding.not_connected': 'Не подключено',
+  'onboarding.open_models': 'Открыть настройку модели',
+  'onboarding.continue_chat': 'Перейти в чат',
+  'onboarding.boundary': 'Этот экран не предполагает поддержку оборудования, исправность app-data, доступ к микрофону или сохранённое завершение. Показаны только состояния из бэкенда.',
+  'observability.eyebrow': 'Живые локальные данные',
+  'observability.title': 'Логи / комната наблюдаемости',
+  'observability.subtitle': 'Валидированные события сессии и ограниченный хвост логов управляемого runtime.',
+  'observability.refresh': 'Обновить runtime',
+  'observability.refreshing': 'Обновление',
+  'observability.boundary': 'Эти строки помогают диагностике. Они не являются долговременным или авторитетным доказательством; диагностический пакет не заявляется.',
+  'observability.control_events': 'Валидированные события',
+  'observability.runtime_state': 'Состояние runtime',
+  'observability.runtime_lines': 'Строки runtime-лога',
+  'observability.validated_events': 'События контура управления',
+  'observability.session_only': 'только сессия',
+  'observability.runtime_logs': 'Управляемый runtime',
+  'observability.sanitized_tail': 'санитизированный хвост',
+  'observability.no_runtime_logs': 'Строки лога управляемого runtime пока недоступны.',
 
   // Управление одобренной локальной моделью
   'models.title': 'Модели',
@@ -398,6 +466,11 @@ export const ru: TranslationMap = {
   // Project labels
   'project.label_frontend': 'Frontend',
   'project.label_russian_ux': 'Русский UX',
+
+  // Risk
+  'risk.read_only': 'Только чтение',
+  'risk.guarded': 'Требует подтверждения',
+  'risk.dangerous': 'Опасно',
 
   // Review Center
   "nav.review_center": "Центр проверки",

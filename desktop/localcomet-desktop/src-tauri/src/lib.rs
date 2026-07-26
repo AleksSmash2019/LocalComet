@@ -3,6 +3,7 @@ mod approval;
 mod approval_commands;
 mod artifact_acquisition;
 mod artifact_trust;
+mod artifact_validation_cache;
 mod control_plane;
 mod files;
 mod ipc;

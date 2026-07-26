@@ -37,7 +37,7 @@
       busy={modelLoading}
       statusLabel={modelLoading ? $t('chat.model_loading_status') : $managedModelReady ? $t('chat.local_only_status') : undefined}
       actionLabel={!$managedModelReady && !modelLoading ? $t('chat.setup_local_ai') : undefined}
-      onAction={!$managedModelReady && !modelLoading ? openSettings : undefined}
+      onAction={!$managedModelReady && !modelLoading ? () => openSettings('models') : undefined}
     />
   {:else}
     {#each $chatMessages as message}
@@ -77,48 +77,42 @@
     min-width: 0;
     max-width: 100%;
     display: grid;
-    gap: var(--lc-space-4);
+    gap: 12px;
   }
 
   .message {
     min-width: 0;
     max-width: 100%;
-    display: grid;
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: var(--lc-space-3);
+    display: flex;
+    justify-content: flex-start;
+    animation: message-in 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .message.user {
-    max-width: 760px;
-    margin-left: auto;
+    justify-content: flex-end;
   }
 
   .avatar {
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border: var(--border-thin);
-    border-radius: 50%;
-    background: var(--lc-panel-solid);
-    color: var(--lc-muted);
-    font-family: var(--lc-mono);
-    font-size: 11px;
-    font-weight: 800;
+    display: none;
   }
 
   .bubble {
     min-width: 0;
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-md);
-    background: var(--lc-panel-solid);
-    padding: var(--lc-space-4);
-    line-height: 1.58;
+    width: fit-content;
+    max-width: 80%;
+    border: 1px solid color-mix(in srgb, var(--lc-line) 84%, transparent);
+    border-radius: var(--lc-radius-lg);
+    background: color-mix(in srgb, var(--lc-panel-solid) 60%, transparent);
+    padding: 10px 16px;
+    font-size: 13.5px;
+    line-height: 1.625;
   }
 
   .user .bubble {
-    background: var(--lc-accent-dim);
-    border-color: var(--lc-line-strong);
+    border-color: transparent;
+    background: var(--lc-accent);
+    color: var(--lc-logo-cut);
+    font-weight: 500;
   }
 
   .runtime .bubble {
@@ -126,14 +120,7 @@
   }
 
   .bubble-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--lc-space-2);
-    margin-bottom: var(--lc-space-2);
-    color: var(--lc-muted);
-    font-size: 12px;
-    font-weight: 760;
+    display: none;
   }
 
   p {
@@ -148,6 +135,10 @@
     color: var(--lc-muted);
     font-size: 11px;
     font-family: var(--lc-mono);
+  }
+
+  .user .request-state {
+    color: currentColor;
   }
 
   .request-result {
@@ -179,13 +170,20 @@
     cursor: not-allowed;
   }
 
-  @media (max-width: 680px) {
-    .message {
-      grid-template-columns: 1fr;
+  @keyframes message-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
     }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 
-    .avatar {
-      display: none;
+  @media (max-width: 680px) {
+    .bubble {
+      max-width: 94%;
     }
   }
 </style>

@@ -6,7 +6,8 @@ import { loadUiPreferences, updateUiPreferences } from './uiPreferences';
 export const MAX_DRAFT_LENGTH = 1200;
 export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 
-export type WorkspaceMode = 'chat' | 'review';
+export type WorkspaceMode = 'chat' | 'review' | 'setup';
+export type SettingsSection = 'interface' | 'models' | 'observability' | 'about';
 
 const DEFAULT_CONVERSATION = 'local-chat';
 let messageCounter = 0;
@@ -22,6 +23,7 @@ export const sidebarExpanded = writable(true);
 export const inspectorVisible = writable(initialUiPreferences.diagnosticsPanel === 'open');
 export const inspectorDrawerOpen = writable(initialUiPreferences.diagnosticsPanel === 'open');
 export const settingsPanelOpen = writable(false);
+export const settingsSection = writable<SettingsSection>('interface');
 export const selectedConversationId = writable(DEFAULT_CONVERSATION);
 export const selectedModel = writable<ModelOption>(modelOptions[0]);
 export const selectedMode = writable<ModeOption>('Chat');
@@ -30,6 +32,7 @@ export const mockMessages = chatMessages;
 export const composerDraft = writable('');
 export const activeInspectorSection = writable<InspectorSection>(inspectorSections[0]);
 export const toolsPopoverOpen = writable(false);
+export const commandPaletteOpen = writable(false);
 
 export type ModelSetupMode = 'external' | 'managed';
 export const modelSetupDrawerOpen = writable(false);
@@ -38,7 +41,10 @@ export const modelConnected = writable(false);
 
 export function setActiveWorkspace(workspace: WorkspaceMode): void {
   activeWorkspace.set(workspace);
-  closePopovers();
+  toolsPopoverOpen.set(false);
+  closeCommandPalette();
+  closeSettings();
+  modelSetupDrawerOpen.set(false);
 }
 
 export function setThemeMode(mode: ThemeMode): void {
@@ -47,14 +53,25 @@ export function setThemeMode(mode: ThemeMode): void {
   updateUiPreferences({ theme: mode });
 }
 
-export function openSettings(): void {
+export function openSettings(sectionOrEvent: SettingsSection | Event = 'interface'): void {
+  const section = typeof sectionOrEvent === 'string' ? sectionOrEvent : 'interface';
   toolsPopoverOpen.set(false);
   modelSetupDrawerOpen.set(false);
+  settingsSection.set(section);
   settingsPanelOpen.set(true);
 }
 
 export function closeSettings(): void {
   settingsPanelOpen.set(false);
+  settingsSection.set('interface');
+}
+
+export function openCommandPalette(): void {
+  commandPaletteOpen.set(true);
+}
+
+export function closeCommandPalette(): void {
+  commandPaletteOpen.set(false);
 }
 
 export function setDiagnosticsPanelOpen(open: boolean): void {
@@ -185,6 +202,7 @@ export function setModelConnected(connected: boolean): void {
 
 export function closePopovers(): void {
   toolsPopoverOpen.set(false);
+  closeCommandPalette();
   closeSettings();
   if (get(inspectorVisible) || get(inspectorDrawerOpen)) closeDiagnosticsPanel();
   modelSetupDrawerOpen.set(false);
@@ -192,6 +210,10 @@ export function closePopovers(): void {
 
 export function handleGlobalEscape(key: string): boolean {
   if (key !== 'Escape') return false;
+  if (get(commandPaletteOpen)) {
+    closeCommandPalette();
+    return true;
+  }
   const hadOpenSurface =
     get(settingsPanelOpen) ||
     get(toolsPopoverOpen) ||
@@ -212,6 +234,7 @@ export function resetShellStores(): void {
   inspectorVisible.set(preferences.diagnosticsPanel === 'open');
   inspectorDrawerOpen.set(preferences.diagnosticsPanel === 'open');
   settingsPanelOpen.set(false);
+  settingsSection.set('interface');
   selectedConversationId.set(DEFAULT_CONVERSATION);
   selectedModel.set(modelOptions[0]);
   selectedMode.set('Chat');
@@ -219,6 +242,7 @@ export function resetShellStores(): void {
   composerDraft.set('');
   activeInspectorSection.set(inspectorSections[0]);
   toolsPopoverOpen.set(false);
+  commandPaletteOpen.set(false);
   modelSetupDrawerOpen.set(false);
   modelSetupMode.set('external');
   modelConnected.set(false);

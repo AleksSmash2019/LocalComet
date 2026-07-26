@@ -1,4 +1,5 @@
 use crate::artifact_trust::{perf_logging_enabled, ArtifactTrustService, ValidatedRuntimeModel};
+use crate::artifact_validation_cache::ValidationSource;
 use crate::control_plane::{BridgeError, ControlPlaneBridge, ControlPlaneMethod};
 use crate::windows_job::{ContainedManagedRuntimeProcess, ManagedRuntimeLaunchSpec};
 use serde::Serialize;
@@ -11,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 #[cfg(windows)]
@@ -50,6 +51,7 @@ const REQUIRED_FLAGS: &[&str] = &[
     "--no-agent",
     "--ctx-size",
     "--n-predict",
+    "--alias",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -380,7 +382,14 @@ impl ManagedRuntimeSupervisor {
         model_id: &str,
         bridge: &ControlPlaneBridge,
     ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
-        let attempt = self.begin_start()?;
+        self.record_connection_event("request", "begin", "LC_MODEL_CONNECT_000", "requested");
+        let attempt = match self.begin_start() {
+            Ok(attempt) => attempt,
+            Err(error) => {
+                self.record_connection_event("request", "failure", &error.code, &error.message);
+                return Err(error);
+            }
+        };
         let model_load_deadline = Instant::now() + MODEL_LOAD_TIMEOUT;
         let response = match self.start_inner(model_id, model_load_deadline, &attempt) {
             Ok(response) => response,
@@ -394,6 +403,7 @@ impl ManagedRuntimeSupervisor {
                 return Err(self.settle_start_failure(&attempt, error, bridge, false));
             }
         };
+        self.record_connection_event("attach", "begin", "LC_MODEL_CONNECT_004", "requested");
         let attach_response = remaining_model_load_timeout(model_load_deadline)
             .map_err(BridgeError::from)
             .and_then(|timeout| {
@@ -406,8 +416,12 @@ impl ManagedRuntimeSupervisor {
             let error = normalize_managed_attach_error(error);
             return Err(self.settle_start_failure(&attempt, error, bridge, true));
         }
+        self.record_connection_event("attach", "success", "LC_MODEL_CONNECT_004", "ready");
         match self.complete_start(&attempt) {
-            Ok(()) => Ok(response),
+            Ok(()) => {
+                self.record_connection_event("connect", "success", "LC_MODEL_CONNECT_000", "ready");
+                Ok(response)
+            }
             Err(error) => Err(self.settle_start_failure(&attempt, error, bridge, true)),
         }
     }
@@ -517,9 +531,25 @@ impl ManagedRuntimeSupervisor {
         attempt: &StartupAttempt,
     ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
         let roots = self.artifacts.roots();
+        self.record_connection_event("validation", "begin", "LC_MODEL_CONNECT_001", "artifacts");
         let launch = self.artifacts.resolve_launch(model_id)?;
+        let validation_detail = safe_log_token(artifact_validation_detail(
+            launch.artifact_validation_source,
+        ));
+        self.record_connection_event(
+            "validation",
+            "success",
+            "LC_MODEL_CONNECT_001",
+            &validation_detail,
+        );
         attempt.ensure_active()?;
         verify_runtime_capabilities(&launch, attempt)?;
+        self.record_connection_event(
+            "validation",
+            "success",
+            "LC_MODEL_CONNECT_002",
+            "capabilities",
+        );
         attempt.ensure_active()?;
         let state_directory_handles = self.artifacts.guard_runtime_state_root()?;
         let credential = generate_credential()?;
@@ -683,6 +713,7 @@ impl ManagedRuntimeSupervisor {
                 _directory_handles: launch.directory_handles,
                 _state_directory_handles: state_directory_handles,
             });
+            self.record_connection_event("process", "success", "LC_MODEL_CONNECT_003", "started");
             process
         };
 
@@ -696,6 +727,7 @@ impl ManagedRuntimeSupervisor {
                 &attempt.cancelled,
             )
         })?;
+        self.record_connection_event("readiness", "success", "LC_MODEL_CONNECT_003", "ready");
         Ok(response)
     }
 
@@ -760,6 +792,7 @@ impl ManagedRuntimeSupervisor {
         bridge: &ControlPlaneBridge,
         detach_attempted: bool,
     ) -> BridgeError {
+        self.record_connection_event("connect", "failure", &error.code, &error.message);
         let process = {
             let _transition = self
                 .transition
@@ -872,6 +905,23 @@ impl ManagedRuntimeSupervisor {
             ),
             (credential.into(), "<CREDENTIAL>".into()),
         ]
+    }
+
+    fn record_connection_event(&self, phase: &str, status: &str, code: &str, detail: &str) {
+        let path = self
+            .artifacts
+            .roots()
+            .app_data_root
+            .join("logs")
+            .join("managed-runtime.log");
+        append_connection_event(&path, phase, status, code, detail);
+    }
+}
+
+fn artifact_validation_detail(source: ValidationSource) -> &'static str {
+    match source {
+        ValidationSource::Cached => "artifacts_cached",
+        ValidationSource::Hashed => "artifacts_hashed",
     }
 }
 
@@ -1778,6 +1828,49 @@ fn sanitize_text(value: &str, limit: usize) -> String {
     text
 }
 
+fn append_connection_event(path: &Path, phase: &str, status: &str, code: &str, detail: &str) {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    if fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let row = connection_event_row(timestamp, phase, status, code, detail);
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = file.write_all(row.as_bytes());
+    }
+}
+
+fn connection_event_row(
+    timestamp: u64,
+    phase: &str,
+    status: &str,
+    code: &str,
+    detail: &str,
+) -> String {
+    format!(
+        "timestamp_unix={timestamp}\tphase={}\tstatus={}\tcode={}\tdetail={}\n",
+        safe_log_token(phase),
+        safe_log_token(status),
+        safe_log_token(code),
+        sanitize_text(&detail.replace(['\r', '\n', '\t'], " "), 240)
+    )
+}
+
+fn safe_log_token(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+        })
+        .take(64)
+        .collect()
+}
+
 fn spawn_log_reader(
     mut file: File,
     tail: Arc<Mutex<LogTail>>,
@@ -1954,6 +2047,43 @@ mod tests {
         for flag in REQUIRED_FLAGS {
             assert!(normalized.contains(flag), "missing required flag {flag}");
         }
+    }
+
+    #[test]
+    fn connection_event_rows_are_bounded_and_sanitized() {
+        let row = connection_event_row(
+            42,
+            "connect\ninvalid",
+            "failure",
+            "runtime/error",
+            "failed\tC:\\Users\\operator\\secret",
+        );
+
+        assert_eq!(
+            row,
+            "timestamp_unix=42\tphase=connectinvalid\tstatus=failure\tcode=runtimeerror\tdetail=failed <REDACTED>\n"
+        );
+        assert!(!row.contains("operator"));
+        assert_eq!(
+            safe_log_token(artifact_validation_detail(ValidationSource::Cached)),
+            "artifacts_cached"
+        );
+        assert_eq!(
+            safe_log_token(artifact_validation_detail(ValidationSource::Hashed)),
+            "artifacts_hashed"
+        );
+    }
+
+    #[test]
+    fn artifact_validation_details_distinguish_hashed_and_cached_paths() {
+        assert_eq!(
+            artifact_validation_detail(ValidationSource::Hashed),
+            "artifacts_hashed"
+        );
+        assert_eq!(
+            artifact_validation_detail(ValidationSource::Cached),
+            "artifacts_cached"
+        );
     }
 
     #[test]

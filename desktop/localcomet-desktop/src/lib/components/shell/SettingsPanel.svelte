@@ -2,11 +2,13 @@
   import { onMount } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
   import ModelManagerSection from '$lib/components/model/ModelManagerSection.svelte';
+  import ObservabilityRoom from '$lib/components/logs/ObservabilityRoom.svelte';
   import { controlPlaneStore } from '$lib/stores/controlPlane';
   import {
     inspectorDrawerOpen,
     inspectorVisible,
     setDiagnosticsPanelOpen,
+    settingsSection,
     setThemeMode,
     themeMode
   } from '$lib/stores/shellStore';
@@ -22,6 +24,13 @@
   export let onClose: () => void = () => undefined;
 
   let closeButton: HTMLButtonElement;
+
+  const sections = [
+    { id: 'interface', labelKey: 'settings.tab_interface' },
+    { id: 'models', labelKey: 'settings.tab_models' },
+    { id: 'observability', labelKey: 'settings.tab_observability' },
+    { id: 'about', labelKey: 'settings.tab_about' }
+  ] as const;
 
   const themes: ReadonlyArray<{ mode: ThemeMode; icon: string; labelKey: string }> = [
     { mode: 'system', icon: 'system', labelKey: 'settings.theme_system' },
@@ -77,8 +86,20 @@
     </button>
   </header>
 
+  <nav class="settings-tabs" aria-label={$t('settings.sections')}>
+    {#each sections as item}
+      <button
+        type="button"
+        class:active={$settingsSection === item.id}
+        aria-current={$settingsSection === item.id ? 'page' : undefined}
+        onclick={() => settingsSection.set(item.id)}
+      >{$t(item.labelKey)}</button>
+    {/each}
+  </nav>
+
   <div class="settings-content">
-    <section aria-labelledby="settings-appearance">
+    <div class:panel-hidden={$settingsSection !== 'interface'} aria-hidden={$settingsSection !== 'interface'}>
+      <section aria-labelledby="settings-appearance">
       <h3 id="settings-appearance">{$t('settings.appearance')}</h3>
       <div class="choice-grid theme-grid" role="group" aria-label={$t('settings.theme')}>
         {#each themes as item}
@@ -95,9 +116,9 @@
           </button>
         {/each}
       </div>
-    </section>
+      </section>
 
-    <section aria-labelledby="settings-language">
+      <section aria-labelledby="settings-language">
       <h3 id="settings-language">{$t('settings.language')}</h3>
       <div class="choice-grid language-grid" role="group" aria-label={$t('settings.language')}>
         {#each languages as item}
@@ -113,9 +134,9 @@
           </button>
         {/each}
       </div>
-    </section>
+      </section>
 
-    <section aria-labelledby="settings-diagnostics">
+      <section aria-labelledby="settings-diagnostics">
       <h3 id="settings-diagnostics">{$t('settings.diagnostics')}</h3>
       <div class="diagnostics-setting">
         <div class="connection-state">
@@ -133,11 +154,17 @@
           <span>{$t(diagnosticsOpen ? 'settings.hide_diagnostics' : 'settings.show_diagnostics')}</span>
         </button>
       </div>
-    </section>
+      </section>
+    </div>
 
-    <ModelManagerSection />
+    <div class:panel-hidden={$settingsSection !== 'models'} aria-hidden={$settingsSection !== 'models'}>
+      <ModelManagerSection />
+    </div>
+    <div class:panel-hidden={$settingsSection !== 'observability'} aria-hidden={$settingsSection !== 'observability'}>
+      <ObservabilityRoom />
+    </div>
 
-    <section aria-labelledby="settings-about">
+    <section class:panel-hidden={$settingsSection !== 'about'} aria-hidden={$settingsSection !== 'about'} aria-labelledby="settings-about">
       <h3 id="settings-about">{$t('settings.about')}</h3>
       <dl class="about-list">
         <div>
@@ -189,11 +216,11 @@
 <style>
   .settings-panel {
     position: fixed;
-    top: 56px;
+    top: var(--shell-header-height);
     right: 0;
     bottom: 0;
     z-index: 50;
-    width: min(372px, calc(100vw - var(--rail-width)));
+    width: min(820px, calc(100vw - var(--rail-width)));
     min-width: 0;
     overflow-y: auto;
     border-left: var(--border-thin);
@@ -213,6 +240,36 @@
     border-bottom: var(--border-thin);
     background: var(--lc-panel-solid);
     padding: var(--lc-space-4);
+  }
+
+  .settings-tabs {
+    position: sticky;
+    top: 79px;
+    z-index: 1;
+    display: flex;
+    gap: var(--lc-space-1);
+    overflow-x: auto;
+    border-bottom: var(--border-thin);
+    padding: 0 var(--lc-space-4);
+    background: var(--lc-panel-solid);
+  }
+
+  .settings-tabs button {
+    flex: 0 0 auto;
+    min-height: 42px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 0 var(--lc-space-3);
+    background: transparent;
+    color: var(--lc-muted);
+    font-size: 12px;
+    font-weight: 760;
+    cursor: pointer;
+  }
+
+  .settings-tabs button.active {
+    border-bottom-color: var(--lc-accent);
+    color: var(--lc-accent);
   }
 
   .eyebrow {
@@ -254,6 +311,15 @@
     display: grid;
     gap: var(--lc-space-5);
     padding: var(--lc-space-4);
+  }
+
+  .settings-content > div:not(.panel-hidden) {
+    display: grid;
+    gap: var(--lc-space-5);
+  }
+
+  .panel-hidden {
+    display: none;
   }
 
   section {

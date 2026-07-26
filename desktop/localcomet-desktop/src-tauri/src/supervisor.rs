@@ -598,28 +598,49 @@ fn locate_project_root() -> Option<PathBuf> {
 
 #[cfg(debug_assertions)]
 fn find_python_on_path() -> Option<PathBuf> {
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let local_app_data_path = PathBuf::from(&local_app_data);
+        let preferred = local_app_data_path.join("Python/pythoncore-3.11-64/python.exe");
+        if preferred.is_file() {
+            return Some(preferred);
+        }
+        if let Ok(entries) = std::fs::read_dir(local_app_data_path.join("Python")) {
+            let mut candidates: Vec<PathBuf> = entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.starts_with("pythoncore-"))
+                        .unwrap_or(false)
+                })
+                .collect();
+            candidates.sort();
+            candidates.reverse();
+            for dir in candidates {
+                let candidate = dir.join("python.exe");
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
     let path_value = std::env::var_os("PATH")?;
     for base in std::env::split_paths(&path_value) {
+        if base
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("windowsapps")
+        {
+            // Microsoft Store app-execution-alias stubs exit immediately
+            // instead of running a real interpreter; skip them.
+            continue;
+        }
         for name in ["python.exe", "python3.exe", "py.exe"] {
             let candidate = base.join(name);
             if candidate.is_file() {
                 return Some(candidate);
             }
-        }
-    }
-    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        let local_app_data_path = PathBuf::from(local_app_data);
-        let python_launcher = local_app_data_path.join("Microsoft/WindowsApps/python.exe");
-        if python_launcher.is_file() {
-            return Some(python_launcher);
-        }
-        let python_launcher = local_app_data_path.join("Microsoft/WindowsApps/python3.exe");
-        if python_launcher.is_file() {
-            return Some(python_launcher);
-        }
-        let python_launcher = local_app_data_path.join("Microsoft/WindowsApps/py.exe");
-        if python_launcher.is_file() {
-            return Some(python_launcher);
         }
     }
     if let Ok(program_files) = std::env::var("ProgramFiles") {

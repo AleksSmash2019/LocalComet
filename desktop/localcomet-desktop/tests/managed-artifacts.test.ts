@@ -17,7 +17,9 @@ import {
 } from '../src/lib/bridge/modelGateway';
 import {
   managedRuntimeStore,
+  managedConnectionBusy,
   modelGatewayStore,
+  connectSelectedManagedModel,
   refreshManagedRuntimeStatus,
   resetModelGatewayStore,
   setManagedSelectedModel,
@@ -40,7 +42,10 @@ let responses: Record<string, unknown> = {};
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
     invokeCalls.push({ command, args });
-    return responses[command] ?? {};
+    const response = responses[command];
+    return typeof response === 'function'
+      ? await (response as (args?: Record<string, unknown>) => unknown)(args)
+      : response ?? {};
   })
 }));
 
@@ -229,6 +234,15 @@ function installResponses(): void {
       runtime_instance_id: 'd'.repeat(32),
       runtime_instance_fingerprint: 'e'.repeat(64)
     },
+    model_binding_set: {
+      provider_id: 'managed-llama-cpp',
+      harness_id: 'minimal',
+      model_id: MODEL_ID,
+      binding_fingerprint: 'f'.repeat(64),
+      discovered_fingerprint: '9'.repeat(64),
+      persistence: false,
+      runtime_instance_id: 'd'.repeat(32)
+    },
     list_approved_downloadable_artifacts: [downloadableArtifactFixture('runtime'), downloadableArtifactFixture('model')],
     start_approved_artifact_download: downloadStateFixture(),
     get_artifact_download_state: downloadStateFixture(),
@@ -356,6 +370,96 @@ describe('managed artifact trust frontend contract', () => {
     expect(get(managedRuntimeStore).binding?.binding_fingerprint).toBe(boundFingerprint);
     expect(get(managedRuntimeStore).status?.binding_fingerprint).toBe(attachFingerprint);
     expect(get(modelGatewayStore).binding?.binding_fingerprint).toBe(boundFingerprint);
+  });
+
+  it('connects the approved managed model once without replacing backend status', async () => {
+    await refreshManagedRuntimeStatus();
+    const readyStatus = {
+      ...runtimeStatusFixture(),
+      state: 'Ready',
+      model_state: 'Ready',
+      inference_ready: true,
+      runtime_instance_id: 'd'.repeat(32),
+      runtime_instance_fingerprint: 'e'.repeat(64),
+      model_id: MODEL_ID,
+      model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+      binding_fingerprint: '9'.repeat(64)
+    };
+    responses.managed_runtime_start = () => {
+      responses.managed_runtime_status = readyStatus;
+      return {
+        state: 'Ready',
+        model_state: 'Ready',
+        inference_ready: true,
+        provider_id: 'managed-llama-cpp',
+        model_id: MODEL_ID,
+        model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+        runtime_instance_id: 'd'.repeat(32),
+        runtime_instance_fingerprint: 'e'.repeat(64)
+      };
+    };
+
+    const first = connectSelectedManagedModel();
+    const second = connectSelectedManagedModel();
+
+    expect(first).toBe(second);
+    expect(get(managedConnectionBusy)).toBe(true);
+    expect(get(managedRuntimeStore).status?.state).toBe('Stopped');
+    await expect(first).resolves.toBe(true);
+    expect(get(managedConnectionBusy)).toBe(false);
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start')).toHaveLength(1);
+    expect(invokeCalls.filter((call) => call.command === 'model_binding_set')).toHaveLength(1);
+  });
+
+  it('binds an already-ready selected model without restarting its runtime', async () => {
+    responses.managed_runtime_status = {
+      ...runtimeStatusFixture(),
+      state: 'Ready',
+      model_state: 'Ready',
+      inference_ready: true,
+      runtime_instance_id: 'd'.repeat(32),
+      runtime_instance_fingerprint: 'e'.repeat(64),
+      model_id: MODEL_ID,
+      model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+      binding_fingerprint: '9'.repeat(64)
+    };
+    await refreshManagedRuntimeStatus();
+
+    await expect(connectSelectedManagedModel()).resolves.toBe(true);
+
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start')).toHaveLength(0);
+    expect(invokeCalls.filter((call) => call.command === 'model_binding_set')).toHaveLength(1);
+  });
+
+  it('keeps authoritative stopped status when readiness validation fails', async () => {
+    await refreshManagedRuntimeStatus();
+    responses.managed_model_readiness = readinessFixture({
+      model_status: 'not_installed',
+      readiness: 'model_not_installed',
+      launchable: false
+    });
+
+    await expect(connectSelectedManagedModel()).resolves.toBe(false);
+
+    expect(get(managedRuntimeStore).status?.state).toBe('Stopped');
+    expect(get(managedRuntimeStore).lastError?.code).toBe('model_not_ready');
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start')).toHaveLength(0);
+  });
+
+  it('preserves the sanitized backend runtime error during refresh', async () => {
+    responses.managed_runtime_status = {
+      ...runtimeStatusFixture(),
+      state: 'Failed',
+      model_state: 'Failed',
+      last_error: 'managed runtime exited before readiness'
+    };
+
+    await refreshManagedRuntimeStatus();
+
+    expect(get(managedRuntimeStore).lastError).toEqual({
+      code: 'runtime_unavailable',
+      message: 'managed runtime exited before readiness'
+    });
   });
 
   it('rejects path-like or non-canonical artifact IDs before invoking Tauri', async () => {

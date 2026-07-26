@@ -108,8 +108,8 @@
         <strong>{$t('chat.model_not_connected')}</strong>
         <p>{$acquisitionBusy ? $t('chat.model_loading_detail') : $t('chat.model_not_connected_detail')}</p>
         <div>
-          <button type="button" class="setup-button" onclick={openSettings}>{$t('chat.setup_local_ai')}</button>
-          <button type="button" class="models-button" onclick={openSettings}>{$t('chat.open_models')}</button>
+          <button type="button" class="setup-button" onclick={() => openSettings('models')}>{$t('chat.setup_local_ai')}</button>
+          <button type="button" class="models-button" onclick={() => openSettings('models')}>{$t('chat.open_models')}</button>
         </div>
       </div>
     {/if}
@@ -125,24 +125,28 @@
 
   .composer-wrap {
     width: min(calc(100% - 48px), var(--content-width));
-    margin: 0 auto var(--lc-space-4);
+    margin: 0 auto 16px;
     z-index: 10;
   }
 
   .composer {
-    min-height: 66px;
+    min-height: 60px;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
-    gap: var(--lc-space-2);
-    padding: var(--lc-space-3);
-    box-shadow: var(--lc-shadow);
+    gap: 8px;
+    border-color: color-mix(in srgb, var(--lc-line) 84%, transparent);
+    border-radius: var(--lc-radius-lg);
+    padding: 8px;
+    background: color-mix(in srgb, var(--lc-panel-solid) 60%, transparent);
+    box-shadow: var(--lc-shadow-e1);
+    backdrop-filter: blur(12px);
   }
 
   textarea {
     width: 100%;
     min-width: 0;
-    min-height: 40px;
+    min-height: 42px;
     max-height: 150px;
     resize: none;
     overflow-y: auto;
@@ -150,8 +154,9 @@
     outline: 0;
     background: transparent;
     color: var(--lc-text);
+    font-size: 14px;
     line-height: 1.5;
-    padding: var(--lc-space-2) 0;
+    padding: 10px 8px;
   }
 
   textarea:disabled {
@@ -163,12 +168,14 @@
     align-items: center;
     justify-content: center;
     gap: var(--lc-space-2);
-    min-width: 84px;
+    min-width: 88px;
+    min-height: 40px;
     border: 0;
     border-radius: var(--lc-radius-sm);
     background: var(--lc-accent);
     color: #071009;
-    font-weight: 820;
+    font-size: 14px;
+    font-weight: 650;
     cursor: pointer;
   }
 
@@ -189,9 +196,9 @@
     gap: var(--lc-space-2);
     margin-top: var(--lc-space-2);
     border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
-    padding: var(--lc-space-3);
-    background: var(--lc-panel-soft);
+    border-radius: var(--lc-radius-lg);
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--lc-panel-solid) 50%, transparent);
     font-size: 12px;
   }
 
@@ -227,6 +234,19 @@
   .models-button {
     background: var(--lc-panel-solid);
     color: var(--lc-text);
+  }
+
+  .composer-wrap :global(.files-panel) {
+    gap: 8px;
+    margin-bottom: 6px;
+    border-color: color-mix(in srgb, var(--lc-line) 72%, transparent);
+    border-radius: var(--lc-radius-lg);
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--lc-panel-solid) 48%, transparent);
+  }
+
+  .composer-wrap :global(.knowledge-availability) {
+    padding: 2px 8px 7px;
   }
 
   @media (max-width: 760px) {

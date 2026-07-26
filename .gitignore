@@ -25,3 +25,10 @@
 .DS_Store
 Thumbs.db
 /artifacts/
+
+# added 2026-07-26: keep vendored runtimes and build artifacts out of git
+/Python/
+/response.json
+*.bak-*
+*.zip
+*.tar.gz

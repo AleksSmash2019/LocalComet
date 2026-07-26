@@ -7,6 +7,7 @@ export const en: TranslationMap = {
   'nav.diagnostics': 'Diagnostics',
   'nav.audit': 'Audit',
   'nav.settings': 'Settings',
+  'nav.setup': 'Setup',
   'nav.main': 'Main navigation',
   'app.title_bar': 'LocalComet application bar',
   'nav.later': 'later',
@@ -22,18 +23,18 @@ export const en: TranslationMap = {
   'sidebar.project_labels': 'Project labels',
 
   // Sidebar groups
-  'group.Локальные чаты': 'Local chats',
-  'group.Зарезервировано': 'Reserved',
-  'group.Отключено': 'Disabled',
+  'group.local_chats': 'Local chats',
+  'group.reserved': 'Reserved',
+  'group.disabled': 'Disabled',
 
   // Sidebar items
-  'item.Новый чат': 'New chat',
-  'item.Демо отмены': 'Cancellation demo',
-  'item.Аудит': 'Audit',
-  'item.Документы': 'Documents',
-  'item.Модель не подключена': 'Model not connected',
-  'item.Требуется модель': 'Model required',
-  'item.Позже': 'Later',
+  'item.new_chat': 'New chat',
+  'item.cancellation_demo': 'Cancellation demo',
+  'item.audit': 'Audit',
+  'item.documents': 'Documents',
+  'item.model_not_connected': 'Model not connected',
+  'item.model_required': 'Model required',
+  'item.later': 'Later',
 
   // Chat
   'chat.type_message': 'Type a message…',
@@ -64,12 +65,21 @@ export const en: TranslationMap = {
   'chat.setup_local_ai': 'Set up local AI',
   'chat.open_models': 'Open models',
   'chat.model_installing': 'Setting up local AI…',
+  'chat.model_connecting': 'Connecting model…',
   'chat.user_message': 'User message',
   'chat.model_response': 'Model response',
   'chat.you': 'You',
   'chat.model': 'Model',
   'chat.demo': 'DEMO',
   'chat.message_history': 'Message history',
+
+  // Approval
+  'approval.disabled': 'Disabled',
+  'approval.section_aria': 'Approvals disabled',
+  'approval.confirm': 'Confirm',
+  'approval.reject': 'Reject',
+  'approval.confirm_aria': 'Confirm disabled, because desktop bridge is not connected',
+  'approval.reject_aria': 'Reject disabled, because desktop bridge is not connected',
 
   // Files
   'files.title': 'Files',
@@ -152,6 +162,7 @@ export const en: TranslationMap = {
 
   // Connection states
   'conn.not_connected': 'Not connected',
+  'conn.status': 'Connection status',
   'conn.model_connected': 'Model: Connected',
   'conn.connecting': 'Connecting',
   'conn.ready': 'Ready',
@@ -162,6 +173,7 @@ export const en: TranslationMap = {
   'conn.model_ready': 'Model: Ready',
   'conn.model_loading': 'Model: Loading',
   'conn.model_unavailable': 'Model: Unavailable',
+  'conn.model_error': 'Model: Error',
   'conn.runtime_ready': 'Runtime: Ready',
 
   // Model Setup
@@ -282,6 +294,20 @@ export const en: TranslationMap = {
   // Common
   'common.skip_link': 'Skip to chat',
 
+  // Command palette
+  'commandPalette.label': 'Command palette',
+  'commandPalette.search': 'Find a command',
+  'commandPalette.placeholder': 'Type a command…',
+  'commandPalette.commands': 'Available commands',
+  'commandPalette.empty': 'No matching commands',
+  'commandPalette.command.chat': 'Open chat',
+  'commandPalette.command.settings': 'Open settings',
+  'commandPalette.command.setup': 'Open local setup',
+  'commandPalette.command.models': 'Open model manager',
+  'commandPalette.command.observability': 'Open logs and observability',
+  'commandPalette.command.showDiagnostics': 'Show diagnostics',
+  'commandPalette.command.hideDiagnostics': 'Hide diagnostics',
+
   // Theme
   'theme.manage': 'Theme settings',
   'theme.system': 'Use system theme',
@@ -299,6 +325,11 @@ export const en: TranslationMap = {
 
   // Settings
   'settings.title': 'Settings',
+  'settings.sections': 'Settings sections',
+  'settings.tab_interface': 'Interface',
+  'settings.tab_models': 'Models',
+  'settings.tab_observability': 'Logs',
+  'settings.tab_about': 'About',
   'settings.close': 'Close settings',
   'settings.appearance': 'Appearance',
   'settings.theme': 'Theme',
@@ -330,6 +361,43 @@ export const en: TranslationMap = {
   'capability.computer_use': 'Computer Use',
   'capability.shell': 'Shell',
   'capability.external_tools': 'External tools',
+
+  // Setup and observability
+  'common.ready': 'Ready',
+  'common.verified': 'Verified',
+  'common.not_determined': 'Not determined',
+  'onboarding.eyebrow': 'Local setup',
+  'onboarding.skip_link': 'Skip to local setup',
+  'onboarding.title': 'Prepare your private workspace',
+  'onboarding.subtitle': 'LocalComet checks each available subsystem from live desktop responses. Unknown and unavailable states remain explicit.',
+  'onboarding.local_boundary': 'Local by default. Downloads require confirmation.',
+  'onboarding.environment': 'Environment check',
+  'onboarding.manage': 'Manage',
+  'onboarding.control_plane': 'Control Plane',
+  'onboarding.sidecar': 'Python sidecar',
+  'onboarding.catalog': 'Approved catalog',
+  'onboarding.runtime': 'Managed runtime',
+  'onboarding.model': 'Approved model',
+  'onboarding.inference': 'Inference connection',
+  'onboarding.not_installed': 'Not installed',
+  'onboarding.not_connected': 'Not connected',
+  'onboarding.open_models': 'Open model setup',
+  'onboarding.continue_chat': 'Continue to chat',
+  'onboarding.boundary': 'This screen does not infer hardware support, application-data health, microphone access, or completion persistence. Only backend-derived states are shown.',
+  'observability.eyebrow': 'Live local data',
+  'observability.title': 'Logs / Observability Room',
+  'observability.subtitle': 'Validated session events and the bounded managed-runtime log tail.',
+  'observability.refresh': 'Refresh runtime',
+  'observability.refreshing': 'Refreshing',
+  'observability.boundary': 'These rows support diagnosis. They are not durable or authoritative evidence, and no diagnostic bundle is claimed.',
+  'observability.control_events': 'Validated events',
+  'observability.runtime_state': 'Runtime state',
+  'observability.runtime_lines': 'Runtime log lines',
+  'observability.validated_events': 'Control Plane events',
+  'observability.session_only': 'session only',
+  'observability.runtime_logs': 'Managed runtime',
+  'observability.sanitized_tail': 'sanitized tail',
+  'observability.no_runtime_logs': 'No managed-runtime log lines are available.',
 
   // Approved local model manager
   'models.title': 'Models',
@@ -398,6 +466,11 @@ export const en: TranslationMap = {
   // Project labels
   'project.label_frontend': 'Frontend',
   'project.label_russian_ux': 'Russian UX',
+
+  // Risk
+  'risk.read_only': 'Read-only',
+  'risk.guarded': 'Requires approval',
+  'risk.dangerous': 'Dangerous',
 
   // Review Center
   "nav.review_center": "Review Center",

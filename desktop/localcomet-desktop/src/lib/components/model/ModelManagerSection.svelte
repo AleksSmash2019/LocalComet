@@ -12,6 +12,7 @@
   } from '$lib/stores/artifactAcquisition';
   import {
     connectSelectedManagedModel,
+    managedConnectionBusy,
     managedModelReady,
     managedRuntimeStore,
     refreshManagedRuntimeStatus,
@@ -85,8 +86,13 @@
 
   async function connect(): Promise<void> {
     if (!model) return;
-    await setManagedSelectedModel(model.model_id);
-    await connectSelectedManagedModel();
+    actionPending = true;
+    try {
+      await setManagedSelectedModel(model.model_id);
+      await connectSelectedManagedModel();
+    } finally {
+      actionPending = false;
+    }
   }
 
   function isTerminal(download: { readonly lifecycle: string }): boolean {
@@ -166,6 +172,12 @@
       <span>{$t('models.connecting')}</span>
     </div>
   {/if}
+  {#if $managedConnectionBusy}
+    <div class="progress-panel" role="status">
+      <strong>{$t('models.connecting')}</strong>
+      <span>{$t('chat.model_loading_detail')}</span>
+    </div>
+  {/if}
 
   <div class="actions" aria-label={$t('models.actions')}>
     {#if (!runtimeInstalled || !modelInstalled) && !activeDownload}
@@ -192,6 +204,9 @@
   {/if}
   {#if $artifactAcquisitionStore.lastError}
     <p class="error" role="status">{$t('models.download_error')}</p>
+  {/if}
+  {#if $managedRuntimeStore.lastError}
+    <p class="error" role="status">{$managedRuntimeStore.lastError.message}</p>
   {/if}
 
   {#if confirmation}
