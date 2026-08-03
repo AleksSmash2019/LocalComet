@@ -1,3 +1,17 @@
+"""Development-task risk triage for the LocalComet console agent.
+
+Scores a *task goal* (a sentence describing work to be done) on the scale
+unclassified < docs_only < tests_only < low < medium < high, and emits a
+planning report to .localcomet/agent/risk_classification.{json,md}.
+
+This is NOT tool-execution risk. Tool risk levels are read_only / guarded /
+dangerous and live in security/invariants/tool_risk_levels.toml, which is
+their single source of truth (AGENTS.md); requires_approval derives from
+there and never from this module. The two scales are disjoint and this module
+is not consulted by scripts/check_tool_risk_registry.py. The output field is
+named task_risk_level so the two cannot be confused.
+"""
+
 from __future__ import annotations
 
 import json
@@ -83,7 +97,7 @@ def classify(task_goal: str) -> Dict[str, Any]:
     goal = str(task_goal or "").strip().lower()
     if not goal:
         return {
-            "risk_level": "unclassified",
+            "task_risk_level": "unclassified",
             "risk_score": _RISK_SCORE_MAP["unclassified"],
             "risk_reasons": ["No task goal provided. Risk cannot be assessed."],
         }
@@ -98,7 +112,7 @@ def classify(task_goal: str) -> Dict[str, Any]:
     if not matched_reasons:
         matched_reasons.append("No risk classification keywords matched the task goal.")
     return {
-        "risk_level": matched_level,
+        "task_risk_level": matched_level,
         "risk_score": _RISK_SCORE_MAP.get(matched_level, 0),
         "risk_reasons": matched_reasons,
     }
@@ -116,15 +130,15 @@ def generate(task_goal: str = "") -> Dict[str, Any]:
         except Exception:
             pass
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "project_name": "LocalComet",
         "base_version": base_version,
         "generated_at": _now(),
         "task_goal": task_goal,
-        "risk_level": result["risk_level"],
+        "task_risk_level": result["task_risk_level"],
         "risk_score": result.get("risk_score", 0),
         "risk_reasons": result["risk_reasons"],
-        "recommendations": _RECOMMENDATIONS_MAP.get(result["risk_level"], []),
+        "recommendations": _RECOMMENDATIONS_MAP.get(result["task_risk_level"], []),
         "allowed_files": [],
         "forbidden_files": [
             "secrets",
@@ -167,7 +181,7 @@ def _write_classification(payload: Dict[str, Any]) -> Dict[str, str]:
         f"- project_name: {payload.get('project_name')}",
         f"- base_version: {payload.get('base_version')}",
         f"- generated_at: {payload.get('generated_at')}",
-        f"- risk_level: {payload.get('risk_level')}",
+        f"- task_risk_level: {payload.get('task_risk_level')}",
         f"- risk_score: {payload.get('risk_score', 0)}",
         "",
         "## Task Goal",

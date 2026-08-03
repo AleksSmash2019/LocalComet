@@ -1235,10 +1235,10 @@ def contract_risk_classifier_docs_only_ru_v663() -> Dict[str, Any]:
     from modules.risk_classifier_ru import classify
     r = classify("fix typo in AGENTS.md documentation")
     return {
-        "ok": r.get("risk_level") == "docs_only",
+        "ok": r.get("task_risk_level") == "docs_only",
         "mode": "contract_risk_classifier_docs_only",
         "version": "v6.64",
-        "risk_level": r.get("risk_level"),
+        "task_risk_level": r.get("task_risk_level"),
     }
 
 
@@ -1246,10 +1246,10 @@ def contract_risk_classifier_high_ru_v663() -> Dict[str, Any]:
     from modules.risk_classifier_ru import classify
     r = classify("install new network dependency via subprocess")
     return {
-        "ok": r.get("risk_level") == "high",
+        "ok": r.get("task_risk_level") == "high",
         "mode": "contract_risk_classifier_high",
         "version": "v6.64",
-        "risk_level": r.get("risk_level"),
+        "task_risk_level": r.get("task_risk_level"),
     }
 
 
@@ -1257,10 +1257,10 @@ def contract_risk_classifier_unclassified_ru_v663() -> Dict[str, Any]:
     from modules.risk_classifier_ru import classify
     r = classify("")
     return {
-        "ok": r.get("risk_level") == "unclassified",
+        "ok": r.get("task_risk_level") == "unclassified",
         "mode": "contract_risk_classifier_unclassified",
         "version": "v6.64",
-        "risk_level": r.get("risk_level"),
+        "task_risk_level": r.get("task_risk_level"),
     }
 
 

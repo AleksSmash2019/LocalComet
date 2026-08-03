@@ -1183,15 +1183,15 @@ def _check_risk_classifier_ru_v663() -> Dict[str, Any]:
     docs = classify("fix typo in AGENTS.md")
     high_risk = classify("install new dependency via subprocess")
     return {
-        "ok": isinstance(r, dict) and r.get("ok") and r.get("handled") and isinstance(r.get("paths"), dict) and "json" in r.get("paths", {}) and version_ok and docs.get("risk_level") == "docs_only" and high_risk.get("risk_level") == "high",
+        "ok": isinstance(r, dict) and r.get("ok") and r.get("handled") and isinstance(r.get("paths"), dict) and "json" in r.get("paths", {}) and version_ok and docs.get("task_risk_level") == "docs_only" and high_risk.get("task_risk_level") == "high",
         "mode": "risk_classifier_functional_coverage",
         "version": "v6.64",
         "paths": r.get("paths"),
         "expected_version": expected,
         "actual_version": actual,
         "version_consistent": version_ok,
-        "docs_classification": docs.get("risk_level"),
-        "high_classification": high_risk.get("risk_level"),
+        "docs_classification": docs.get("task_risk_level"),
+        "high_classification": high_risk.get("task_risk_level"),
     }
 
 
