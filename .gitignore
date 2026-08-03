@@ -46,3 +46,6 @@ auth.json
 /.hermes/
 /.pi-subagents/
 /.pytest_cache/
+
+# added 2026-08-03: IDE workspace config is developer-local, not project source
+/.idea/
