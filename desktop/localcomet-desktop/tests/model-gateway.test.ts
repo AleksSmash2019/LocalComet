@@ -154,7 +154,32 @@ describe('Local Model Gateway frontend', () => {
     ]);
     expect(JSON.stringify(invokeCalls)).not.toContain('http://');
     expect(JSON.stringify(invokeCalls)).not.toContain('api');
-    expect(invokeCalls.at(-1)?.args).toMatchObject({ prompt: 'hello', fileIds: [], locale: 'ru' });
+    // Frozen model.turn.start contract: the invoke arguments must carry exactly
+    // the parameters of the Rust `model_turn_start` command
+    // (request_id, chat_session_id, model_id, submitted_at_unix_ms, max_tokens,
+    // prompt, file_ids, locale, binding_fingerprint) and nothing else.
+    expect(invokeCalls.at(-1)?.args).toEqual({
+      requestId: TURN_ID,
+      chatSessionId: 'local-chat',
+      modelId: 'local-model',
+      submittedAtUnixMs: 1,
+      maxTokens: 256,
+      prompt: 'hello',
+      fileIds: [],
+      locale: 'ru',
+      bindingFingerprint: FINGERPRINT
+    });
+    expect(Object.keys(invokeCalls.at(-1)?.args ?? {}).sort()).toEqual([
+      'bindingFingerprint',
+      'chatSessionId',
+      'fileIds',
+      'locale',
+      'maxTokens',
+      'modelId',
+      'prompt',
+      'requestId',
+      'submittedAtUnixMs'
+    ]);
   });
 
   it('passes only validated opaque file identities to the model command', async () => {

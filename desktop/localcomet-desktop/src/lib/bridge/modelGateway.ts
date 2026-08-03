@@ -189,8 +189,6 @@ export async function startModelTurn(args: {
   fileIds?: readonly string[];
   locale: AssistantLocale;
   bindingFingerprint: string;
-  messages?: readonly Record<string, unknown>[];
-  tools?: readonly Record<string, unknown>[];
 }): Promise<ModelTurnStartResponse> {
   const requestId = validateTurnId(args.requestId);
   const chatSessionId = validateChatSessionId(args.chatSessionId);
@@ -208,9 +206,7 @@ export async function startModelTurn(args: {
       prompt: bounded(args.prompt, 16_384),
       fileIds,
       locale: validateLocale(args.locale),
-      bindingFingerprint: validateFingerprint(args.bindingFingerprint),
-      messages: args.messages ?? [],
-      tools: args.tools ?? []
+      bindingFingerprint: validateFingerprint(args.bindingFingerprint)
     })
   );
   if (
