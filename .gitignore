@@ -32,3 +32,17 @@ Thumbs.db
 *.bak-*
 *.zip
 *.tar.gz
+*.pem
+*.key
+auth.json
+
+# added 2026-07-27: install.bat untracked (AGENTS.md forbids .bat in repo)
+*.bat
+
+# added 2026-07-28: audit archive is not committed (zip already covered by *.zip)
+/audit/2026-07-28/
+
+# added 2026-08-03: agent session artifacts are not project source
+/.hermes/
+/.pi-subagents/
+/.pytest_cache/

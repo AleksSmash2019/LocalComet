@@ -1,34 +1,28 @@
 <script lang="ts">
   import Icon from '$lib/components/common/Icon.svelte';
-  import { conversationGroups } from '$lib/data/mockData';
-  import { selectedConversationId, setSelectedConversation, sidebarExpanded } from '$lib/stores/shellStore';
+  import { conversationStore, createConversation, selectConversation } from '$lib/stores/conversationStore';
+  import { sidebarExpanded } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
-
-  const hiddenConversationGroupLabels = new Set(['reserved', 'disabled']);
-  const visibleConversationGroups = conversationGroups
-    .filter((group) => !hiddenConversationGroupLabels.has(group.label))
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => item.id !== 'cancellation-demo')
-    }))
-    .filter((group) => group.items.length > 0);
 
   type Translate = (key: string) => string;
 
-  function tGroup(label: string, translate: Translate): string {
-    const v = translate('group.' + label);
-    return v.startsWith('group.') ? label : v;
-  }
-
-  function tItem(value: string, translate: Translate): string {
+  function tTitle(value: string, translate: Translate): string {
     const v = translate('item.' + value);
     return v.startsWith('item.') ? value : v;
   }
-
 </script>
 
 <aside class="sidebar" class:sidebar-open={$sidebarExpanded} aria-label={$t('sidebar.label')}>
   <div class="sidebar-top">
+    <button
+      type="button"
+      class="plain-button new-conversation-button"
+      aria-label={$t('sidebar.new_conversation')}
+      title={$t('sidebar.new_conversation')}
+      onclick={() => createConversation()}
+    >
+      <Icon name="add" size={18} />
+    </button>
     <button
       type="button"
       class="plain-button collapse-button"
@@ -41,22 +35,24 @@
   </div>
 
   <div class="conversation-groups">
-    {#each visibleConversationGroups as group}
-      <section aria-label={tGroup(group.label, $t)}>
-        <h2>{tGroup(group.label, $t)}</h2>
-        {#each group.items as item}
+    <section aria-label={$t('group.local_chats')}>
+      <h2>{$t('group.local_chats')}</h2>
+      {#if $conversationStore.conversations.length === 0}
+        <p class="conversation-empty">{$t('conversation.empty')}</p>
+      {:else}
+        {#each $conversationStore.conversations as conversation (conversation.id)}
           <button
             type="button"
             class="conversation-button"
-            class:selected={$selectedConversationId === item.id}
-            aria-current={$selectedConversationId === item.id ? 'page' : undefined}
-            onclick={() => setSelectedConversation(item.id)}
+            class:selected={$conversationStore.activeId === conversation.id}
+            aria-current={$conversationStore.activeId === conversation.id ? 'page' : undefined}
+            onclick={() => selectConversation(conversation.id)}
           >
-            <span>{tItem(item.title, $t)}</span>
+            <span>{tTitle(conversation.title, $t)}</span>
           </button>
         {/each}
-      </section>
-    {/each}
+      {/if}
+    </section>
   </div>
 </aside>
 
@@ -75,14 +71,22 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    gap: 4px;
     min-height: 36px;
   }
 
-  .collapse-button {
+  .collapse-button,
+  .new-conversation-button {
     width: 34px;
     min-height: 34px;
     display: grid;
     place-items: center;
+  }
+
+  .conversation-empty {
+    margin: 8px;
+    color: var(--lc-faint);
+    font-size: 12px;
   }
 
   h2 {

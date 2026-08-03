@@ -10,7 +10,8 @@
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
   import { t } from '$lib/i18n';
 
-  $: showEmptyState = $chatMessages.length === 0;
+  $: visibleMessages = $chatMessages.filter((message) => message.conversationId === $selectedConversationId);
+  $: showEmptyState = visibleMessages.length === 0;
   $: modelLoading = $acquisitionBusy || ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') ||
     ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '');
   $: emptyTitleKey = $managedModelReady
@@ -40,7 +41,7 @@
       onAction={!$managedModelReady && !modelLoading ? () => openSettings('models') : undefined}
     />
   {:else}
-    {#each $chatMessages as message}
+    {#each visibleMessages as message}
       <article class="message {message.role}" aria-label={message.role === 'user' ? $t('chat.user_message') : $t('chat.model_response')}>
         <div class="avatar" aria-hidden="true">{message.role === 'user' ? 'U' : 'LC'}</div>
         <div class="bubble">

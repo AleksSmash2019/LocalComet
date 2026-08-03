@@ -20,6 +20,7 @@ import {
 } from '../src/lib/stores/modelGateway';
 import { appendAcceptedChatTurn, resetShellStores } from '../src/lib/stores/shellStore';
 import type { ModelGatewayEvent } from '../src/lib/types/modelGateway';
+import phaseCContract from '../../../security/contracts/adr015_tool_event_parity_v1.json';
 
 const TURN_ID = 'aaaaaaaaaaaaaaaaaaaaaaaa';
 const FINGERPRINT = 'b'.repeat(64);
@@ -35,6 +36,11 @@ let listener: ((event: { payload: unknown }) => void) | null = null;
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
     invokeCalls.push({ command, args });
+    if (command === 'request_approval') {
+      const tool = (args as { tool: string }).tool;
+      const familyMap: Record<string, string> = { 'artifact.download': 'artifact_download', 'artifact.remove': 'artifact_remove', 'runtime.start': 'runtime_start', 'runtime.stop': 'runtime_stop', 'model.binding.set': 'model_binding_set' };
+      return { token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}`, tool, riskLevel: 'guarded', commandFamily: familyMap[tool] ?? 'model_binding_set', expiresAtUnixMs: Date.now() + 300_000 };
+    }
     if (command === 'model_gateway_catalog') return catalogFixture();
     if (command === 'managed_runtime_status') return { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, model_state: 'Unavailable', inference_ready: false, last_error: null };
     if (command === 'managed_runtime_catalog') return { ...TRUST_CATALOG, runtimes: [] };
@@ -100,7 +106,9 @@ function modelEvent(method: ModelGatewayEvent['method'], sequence: number, patch
     'model.turn.completed': 'Completed',
     'model.turn.cancelled': 'Cancelled',
     'model.turn.timed_out': 'TimedOut',
-    'model.turn.failed': 'Failed'
+    'model.turn.failed': 'Failed',
+    'model.tool.request': 'Streaming',
+    'model.turn.tool_calls': 'ToolCalls'
   } as const;
   return {
     method,
@@ -112,7 +120,8 @@ function modelEvent(method: ModelGatewayEvent['method'], sequence: number, patch
     state: patch.state ?? stateByMethod[method],
     text: patch.text ?? null,
     model_called: patch.model_called ?? true,
-    tools_executed: 0,
+    tools_executed: patch.tools_executed ?? 0,
+    ...(patch.tool_calls ? { tool_calls: patch.tool_calls } : {}),
     persistence: false,
     generated_bytes: patch.generated_bytes ?? 0,
     provider_id: 'openai-compatible-local',
@@ -139,6 +148,7 @@ describe('Local Model Gateway frontend', () => {
       'model_gateway_catalog',
       'model_gateway_probe',
       'model_gateway_list_models',
+      'request_approval',
       'model_binding_set',
       'model_turn_start'
     ]);
@@ -166,6 +176,112 @@ describe('Local Model Gateway frontend', () => {
   it('rejects an unsupported assistant locale before invoking Tauri', async () => {
     await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT })).rejects.toMatchObject({ code: 'invalid_payload' });
     expect(invokeCalls).toHaveLength(0);
+  });
+
+  it('parses cumulative tool request and terminal telemetry and rejects disabled nonzero telemetry', async () => {
+    const seen: ModelGatewayEvent[] = [];
+    const errors: string[] = [];
+    await subscribeModelGatewayEvents(
+      (event) => seen.push(event),
+      (error) => errors.push(error.code),
+      { toolsEnabled: true }
+    );
+    const calls = [
+      { id: 'call_1', name: 'files.read', arguments: { path: 'a.txt' } },
+      { id: 'call_2', name: 'files.list', arguments: { path: '.' } }
+    ];
+    const payload = (method: string, sequence: number, state: string, toolsExecuted: unknown, toolCalls?: unknown) => ({
+      method, sequence, reply_to: TURN_ID, request_id: TURN_ID, chat_session_id: 'local-chat', turn_id: TURN_ID,
+      model_id: 'local-model', state, text: null,
+      metadata: { model_called: true, tools_executed: toolsExecuted, persistence: false, generated_bytes: 0, provider_id: 'openai-compatible-local', harness_id: 'minimal', binding_fingerprint: FINGERPRINT, ...(toolCalls ? { tool_calls: toolCalls } : {}) }
+    });
+    listener?.({ payload: payload('model.tool.request', 0, 'Streaming', 1, [calls[0]]) });
+    listener?.({ payload: payload('model.turn.tool_calls', 1, 'ToolCalls', 2, calls) });
+    listener?.({ payload: payload('model.output.delta', 2, 'Streaming', 1) });
+    expect(seen.map((event) => [event.method, event.tools_executed])).toEqual([
+      ['model.tool.request', 1],
+      ['model.turn.tool_calls', 2]
+    ]);
+    expect(errors).toEqual(['invalid_payload']);
+  });
+
+  it('rejects malformed non-string tool call identities', async () => {
+    const errors: string[] = [];
+    await subscribeModelGatewayEvents(() => { throw new Error('malformed tool call reached consumer'); }, (error) => errors.push(error.code), { toolsEnabled: true });
+    for (const badCall of [
+      { id: null, name: 'files.read', arguments: { path: 'a.txt' } },
+      { id: 'call_1', name: 42, arguments: { path: 'a.txt' } },
+      { name: 'files.read', arguments: { path: 'a.txt' } }
+    ]) {
+      listener?.({ payload: {
+        method: 'model.tool.request', sequence: 0, reply_to: TURN_ID, request_id: TURN_ID,
+        chat_session_id: 'local-chat', turn_id: TURN_ID, model_id: 'local-model', state: 'Streaming', text: null,
+        metadata: { model_called: true, tools_executed: 1, persistence: false, generated_bytes: 0, provider_id: 'openai-compatible-local', harness_id: 'minimal', binding_fingerprint: FINGERPRINT, tool_calls: [badCall] }
+      } });
+    }
+    expect(errors).toEqual(['invalid_payload', 'invalid_payload', 'invalid_payload']);
+  });
+
+  it('accepts the shared Phase C tool-event contract only when tools are enabled', async () => {
+    const { identity, enabled, disabled } = phaseCContract;
+    const eventPayload = (event: typeof enabled.events[number]) => ({
+      method: event.method,
+      sequence: event.sequence,
+      reply_to: identity.requestId,
+      request_id: identity.requestId,
+      chat_session_id: identity.chatSessionId,
+      turn_id: identity.requestId,
+      model_id: identity.modelId,
+      state: event.state,
+      text: null,
+      metadata: {
+        model_called: true,
+        tools_executed: event.toolsExecuted,
+        persistence: false,
+        generated_bytes: 0,
+        provider_id: 'openai-compatible-local',
+        harness_id: 'minimal',
+        binding_fingerprint: identity.bindingFingerprint,
+        tool_calls: event.toolCalls
+      }
+    });
+    const seen: ModelGatewayEvent[] = [];
+    const errors: string[] = [];
+    await subscribeModelGatewayEvents(
+      (event) => seen.push(event),
+      (error) => errors.push(error.code),
+      { toolsEnabled: true }
+    );
+    for (const event of enabled.events) listener?.({ payload: eventPayload(event) });
+    expect(seen.map((event) => [event.method, event.tools_executed, event.tool_calls])).toEqual(
+      enabled.events.map((event) => [event.method, event.toolsExecuted, event.toolCalls])
+    );
+    expect(errors).toEqual([]);
+
+    const rejected: string[] = [];
+    await subscribeModelGatewayEvents(
+      () => { throw new Error('tool event must not reach a disabled turn'); },
+      (error) => rejected.push(error.code)
+    );
+    listener?.({ payload: eventPayload(disabled) });
+    expect(rejected).toEqual(['invalid_payload']);
+  });
+
+  it('rejects tool events when the turn did not enable tools', async () => {
+    const seen: ModelGatewayEvent[] = [];
+    const errors: string[] = [];
+    await subscribeModelGatewayEvents((event) => seen.push(event), (error) => errors.push(error.code));
+    listener?.({ payload: {
+      method: 'model.tool.request', sequence: 0, reply_to: TURN_ID, request_id: TURN_ID,
+      chat_session_id: 'local-chat', turn_id: TURN_ID, model_id: 'local-model', state: 'Streaming', text: null,
+      metadata: {
+        model_called: true, tools_executed: 1, persistence: false, generated_bytes: 0,
+        provider_id: 'openai-compatible-local', harness_id: 'minimal', binding_fingerprint: FINGERPRINT,
+        tool_calls: [{ id: 'call_1', name: 'files.read', arguments: { path: 'a.txt' } }]
+      }
+    } });
+    expect(seen).toEqual([]);
+    expect(errors).toEqual(['invalid_payload']);
   });
 
   it('subscribes to model events and updates truthful telemetry', async () => {

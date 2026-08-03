@@ -19,6 +19,8 @@ PRODUCT_PATHS = (
 # Approved-by: operator, 2026-07-25
 # Sources: eaf20ce (artifact_acquisition ×5), c0c57bf (files ×5),
 # plus pre-existing commands from BASE ee221944.
+# Additions: request_approval/execute_approved/set_workspace (INV-APPROVAL-001/002),
+# run_tool_call (ADR-013) — approved by owner 2026-07-27.
 ALLOWED_TAURI_COMMANDS = frozenset((
     "cancel_artifact_download",
     "control_plane_bootstrap",
@@ -28,6 +30,7 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "control_plane_create_thread",
     "control_plane_get_turn_status",
     "control_plane_start_mock_turn",
+    "execute_approved",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
     "files_capability_status",
     "forget_selected_file",
     "get_artifact_download_state",
@@ -57,7 +60,11 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "model_turn_start",
     "preview_selected_file",
     "remove_managed_model",
+    "request_approval",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
+    # run_tool_call (ADR-013): добавить в том же коммите, что и саму команду —
+    # тест грепает HEAD, поэтому запись в whitelist до коммита даёт ALLOWED-minus-actual.
     "select_files",
+    "set_workspace",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
     "start_approved_artifact_download",
 ))
 

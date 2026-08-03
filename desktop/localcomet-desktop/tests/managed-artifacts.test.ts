@@ -25,7 +25,7 @@ import {
   setManagedSelectedModel,
   startSelectedManagedRuntime
 } from '../src/lib/stores/modelGateway';
-import type { ArtifactInstallationStatus } from '../src/lib/types/modelGateway';
+import type { ArtifactInstallationStatus, ManagedRuntimeStatus } from '../src/lib/types/modelGateway';
 
 const RUNTIME_ID = 'llama-cpp-windows-x86-64-cpu-bootstrap';
 const MODEL_ID = 'qwen2.5-1.5b-instruct-q4-k-m';
@@ -42,6 +42,11 @@ let responses: Record<string, unknown> = {};
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
     invokeCalls.push({ command, args });
+    if (command === 'request_approval') {
+      const tool = (args as { tool: string }).tool;
+      const familyMap: Record<string, string> = { 'artifact.download': 'artifact_download', 'artifact.remove': 'artifact_remove', 'runtime.start': 'runtime_start', 'runtime.stop': 'runtime_stop', 'model.binding.set': 'model_binding_set' };
+      return { token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}`, tool, riskLevel: 'guarded', commandFamily: familyMap[tool] ?? 'artifact_download', expiresAtUnixMs: Date.now() + 300_000 };
+    }
     const response = responses[command];
     return typeof response === 'function'
       ? await (response as (args?: Record<string, unknown>) => unknown)(args)
@@ -197,7 +202,7 @@ function downloadStateFixture(lifecycle = 'awaiting_confirmation') {
   };
 }
 
-function runtimeStatusFixture() {
+function runtimeStatusFixture(): ManagedRuntimeStatus {
   return {
     engine: 'llama.cpp',
     state: 'Stopped',
@@ -290,10 +295,12 @@ describe('managed artifact trust frontend contract', () => {
     expect(artifacts.map((artifact) => artifact.artifact_id)).toEqual([RUNTIME_ID, MODEL_ID]);
     expect(invokeCalls).toEqual([
       { command: 'list_approved_downloadable_artifacts', args: undefined },
-      { command: 'start_approved_artifact_download', args: { artifactId: RUNTIME_ID, confirmed: true } },
+      { command: 'request_approval', args: { tool: 'artifact.download', input: { artifact_id: RUNTIME_ID } } },
+      { command: 'start_approved_artifact_download', args: { artifactId: RUNTIME_ID, token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}` } },
       { command: 'get_artifact_download_state', args: { jobId: DOWNLOAD_JOB_ID } },
       { command: 'cancel_artifact_download', args: { jobId: DOWNLOAD_JOB_ID } },
-      { command: 'remove_managed_model', args: { modelId: MODEL_ID, confirmed: true } }
+      { command: 'request_approval', args: { tool: 'artifact.remove', input: { model_id: MODEL_ID } } },
+      { command: 'remove_managed_model', args: { modelId: MODEL_ID, token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}` } }
     ]);
     expect(JSON.stringify(invokeCalls)).not.toMatch(/url|destination|header|sha256/i);
   });
@@ -568,6 +575,21 @@ describe('managed artifact trust frontend contract', () => {
     await refreshManagedRuntimeStatus();
     expect(get(managedRuntimeStore).catalog).toEqual([]);
     expect(get(managedRuntimeStore).lastError?.code).toBe('invalid_payload');
+  });
+
+  it('clears an optimistic runtime status when the selected model changes', async () => {
+    managedRuntimeStore.update((state) => ({
+      ...state,
+      selectedModelId: MODEL_ID,
+      status: {
+        ...runtimeStatusFixture(),
+        state: 'Starting',
+        model_id: MODEL_ID,
+        model_state: 'Loading'
+      }
+    }));
+    await setManagedSelectedModel('');
+    expect(get(managedRuntimeStore).status).toBeNull();
   });
 
   it('rechecks readiness before start and never launches a non-ready model', async () => {

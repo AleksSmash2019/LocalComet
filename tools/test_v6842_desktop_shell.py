@@ -193,7 +193,6 @@ def main() -> None:
         "66": SRC / "lib" / "components" / "chat" / "MessageComposer.svelte",
         "67": SRC / "lib" / "components" / "chat" / "ToolCallCard.svelte",
         "68": SRC / "lib" / "components" / "chat" / "ApprovalCard.svelte",
-        "69": SRC / "lib" / "components" / "shell" / "AgentInspector.svelte",
     }
     for number, path in component_paths.items():
         check(path.exists(), f"{number} component missing {rel(path)}")

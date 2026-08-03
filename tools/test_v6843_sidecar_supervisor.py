@@ -23,7 +23,11 @@ FORBIDDEN_HASHES = {
     "modules/desktop_ipc_contract_ru.py": "C96538C5DAF210AFFC3AA1796FA6A7D23B29E14F71BEA772ECA32037A580CCF3",
     "tools/test_v6841_desktop_ipc.py": "49F827EC214BB4C2C8A59E1AC0EE9C294DC180B87A6E61467AD2D7D8CE6507CC",
     "docs/desktop_architecture_v6841.md": "A718EB7D53A72097359DABAE76702008D9CF0F87B6697C67444578B1603BCE47",
-    "desktop/contracts/localcomet_ipc_v1.schema.json": "A6F5009788DD55246040029E2BAA1D15CE4E365DC4B339EBB7C991AC88D5333A",
+    # localcomet_ipc_v1.schema.json: frozen hash updated A6F50097... -> CFAE31B8...
+    # for the additive workspace.set contract extension (commit 822575e
+    # "feat(workspace): WorkspacePolicy primitive + IPC schema workspace.set"),
+    # approved by owner 2026-07-27.
+    "desktop/contracts/localcomet_ipc_v1.schema.json": "CFAE31B80E5CE09D2E439CD8043165963090ED90B15659B3EBE6EABD353C135B",
 }
 
 CHECK_COUNT = 0

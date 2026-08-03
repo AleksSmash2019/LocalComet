@@ -32,6 +32,7 @@
     "allow-get-artifact-download-state",
     "allow-cancel-artifact-download",
     "allow-remove-managed-model",
+    "allow-request-approval",
     "allow-managed-runtime-catalog",
     "allow-managed-runtime-logs",
     "allow-managed-runtime-start",

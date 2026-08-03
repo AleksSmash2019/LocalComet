@@ -1,7 +1,8 @@
-import { get, writable } from 'svelte/store';
+import { derived, get, writable } from 'svelte/store';
 import { inspectorSections, modeOptions, modelOptions } from '$lib/data/mockData';
 import type { ChatMessageState, InspectorSection, MockMessage, ModeOption, ModelOption, ThemeMode } from '$lib/data/mockData';
 import { loadUiPreferences, updateUiPreferences } from './uiPreferences';
+import { conversationStore, getActiveConversationId, resetConversationStore, selectConversation as selectConversationInStore } from './conversationStore';
 
 export const MAX_DRAFT_LENGTH = 1200;
 export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
@@ -9,7 +10,6 @@ export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 export type WorkspaceMode = 'chat' | 'review' | 'setup';
 export type SettingsSection = 'interface' | 'models' | 'observability' | 'about';
 
-const DEFAULT_CONVERSATION = 'local-chat';
 let messageCounter = 0;
 const initialUiPreferences = loadUiPreferences();
 
@@ -24,7 +24,7 @@ export const inspectorVisible = writable(initialUiPreferences.diagnosticsPanel =
 export const inspectorDrawerOpen = writable(initialUiPreferences.diagnosticsPanel === 'open');
 export const settingsPanelOpen = writable(false);
 export const settingsSection = writable<SettingsSection>('interface');
-export const selectedConversationId = writable(DEFAULT_CONVERSATION);
+export const selectedConversationId = derived(conversationStore, ($state) => $state.activeId);
 export const selectedModel = writable<ModelOption>(modelOptions[0]);
 export const selectedMode = writable<ModeOption>('Chat');
 export const chatMessages = writable<MockMessage[]>(cloneMessages());
@@ -94,7 +94,7 @@ export function setSelectedMode(mode: ModeOption): void {
 }
 
 export function setSelectedConversation(id: string): void {
-  selectedConversationId.set(id);
+  selectConversationInStore(id);
 }
 
 export function setComposerDraft(value: string): void {
@@ -107,19 +107,21 @@ export function appendMockMessage(rawDraft: string): boolean {
   if (!body) return false;
 
   messageCounter += 1;
+  const conversationId = getActiveConversationId();
   mockMessages.update((messages) => [
     ...messages,
     {
       id: `mock-user-${messageCounter}`,
       role: 'user',
-      body
+      body,
+      conversationId
     }
   ]);
   composerDraft.set('');
   return true;
 }
 
-export function appendAcceptedChatTurn(requestId: string, rawDraft: string): boolean {
+export function appendAcceptedChatTurn(requestId: string, rawDraft: string, conversationId?: string): boolean {
   const bounded = rawDraft.slice(0, MAX_DRAFT_LENGTH);
   const body = bounded.trim();
   if (!body || !/^[0-9a-f]{24}$/.test(requestId)) return false;
@@ -132,13 +134,15 @@ export function appendAcceptedChatTurn(requestId: string, rawDraft: string): boo
       id: `chat-user-${messageCounter}`,
       role: 'user',
       body,
-      requestId
+      requestId,
+      conversationId
     },
     {
       id: `chat-assistant-${messageCounter}`,
       role: 'assistant',
       body: '',
       requestId,
+      conversationId,
       state: 'accepted'
     }
   ]);
@@ -235,7 +239,7 @@ export function resetShellStores(): void {
   inspectorDrawerOpen.set(preferences.diagnosticsPanel === 'open');
   settingsPanelOpen.set(false);
   settingsSection.set('interface');
-  selectedConversationId.set(DEFAULT_CONVERSATION);
+  resetConversationStore();
   selectedModel.set(modelOptions[0]);
   selectedMode.set('Chat');
   mockMessages.set(cloneMessages());

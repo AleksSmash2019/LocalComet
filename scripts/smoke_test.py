@@ -6,10 +6,11 @@ Drives the actual DesktopSidecarRuntime in-process via localcomet_test_harness
 the observed result. Expected rejections (duplicate id, blocked filesystem
 methods) are part of success.
 
-Scope: the desktop sidecar is a model-gateway/knowledge/session manager and
-performs NO filesystem tool execution. Approval and workspace confinement are
-enforced in the Rust control plane and covered by `cargo test`; those steps are
-reported as RUST-COVERED here, not fabricated as sidecar tool calls.
+Scope: the desktop sidecar is a model-gateway/knowledge/session manager.
+Filesystem tool execution is available via the tool.call method (ADR-013),
+confined to the confirmed workspace; approval authorization is enforced in the
+Rust control plane (execute_approved) and covered by `cargo test`, reported as
+RUST-COVERED here rather than re-driven through the sidecar.
 
 Exit: 0 = all steps gave the expected outcome
       1 = at least one step failed
@@ -61,7 +62,7 @@ def run_smoke() -> int:
     # [02] Readiness probe (active health request/response)
     try:
         status, ms = harness.readiness_probe(timeout_ms=5000)
-        if status == "ok":
+        if status == "ready":
             ok(2, "readiness probe", f"status={status} time={ms}ms")
         else:
             fail(2, "readiness probe", f"status={status}")
@@ -71,8 +72,13 @@ def run_smoke() -> int:
     # [03] runtime health
     try:
         health = harness.runtime_health()
-        if health.get("status") == "ok":
-            ok(3, "app.health", f"status=ok uptime_ms={health.get('uptime_ms')}")
+        if (
+            health.get("type") == "health.status"
+            and health.get("protocolVersion") == 1
+            and health.get("status") == "ready"
+            and health.get("capabilities", {}).get("toolExecution") is False
+        ):
+            ok(3, "app.health", "typed health.status ready")
         else:
             fail(3, "app.health", f"unexpected: {health}")
     except Exception as exc:  # noqa: BLE001
@@ -95,12 +101,14 @@ def run_smoke() -> int:
 
     # [05] duplicate message id is rejected
     try:
-        from modules.desktop_ipc_contract_ru import make_request
-
-        req = make_request("smoke-dup-fixed", "app.health", {})
+        req = harness.health_request("hreq_" + "d" * 32)
         first = harness.runtime.handle_message(req)
         dup = harness.runtime.handle_message(req)
-        first_ok = any(r.get("payload", {}).get("status") == "ok" for r in first)
+        first_ok = any(
+            r.get("payload", {}).get("type") == "health.status"
+            and r.get("payload", {}).get("status") == "ready"
+            for r in first
+        )
         dup_rejected = any(
             r.get("payload", {}).get("code") == "duplicate_message_id" for r in dup
         )
@@ -111,16 +119,41 @@ def run_smoke() -> int:
     except Exception as exc:  # noqa: BLE001
         fail(5, "duplicate message id rejected", str(exc))
 
-    # [06] filesystem tool method is NOT a sidecar path (must be rejected)
+    # [06] tool.call executes a confined read-only files.read (ADR-013)
     try:
-        reply = harness.request("files.read", {"path": "x.txt"})
-        code = reply.get("payload", {}).get("code")
-        if reply.get("type") == "error" and code == "unsupported_method":
-            ok(6, "files.read rejected (no sidecar fs-tool path)", "unsupported_method as expected")
-        else:
-            fail(6, "files.read rejected", f"unexpectedly handled: {reply}")
+        import tempfile
+
+        from modules.workspace_policy import workspace_digest
+
+        with tempfile.TemporaryDirectory(prefix="lc_smoke_ws_") as ws:
+            workspace = str(pathlib.Path(ws).resolve())
+            (pathlib.Path(workspace) / "smoke.txt").write_text("smoke-ok", encoding="utf-8")
+            base_payload = {
+                "tool": "files.read",
+                "input": {"path": "smoke.txt"},
+                "workspace": workspace,
+                "workspace_digest": workspace_digest(workspace),
+                "session": "s" * 64,
+            }
+            reply = harness.request("tool.call", base_payload)
+            payload = reply.get("payload", {})
+            read_ok = (
+                reply.get("type") == "response"
+                and payload.get("tool") == "files.read"
+                and payload.get("content") == "smoke-ok"
+            )
+            outside = dict(base_payload, input={"path": "../escape.txt"})
+            blocked = harness.request("tool.call", outside)
+            blocked_ok = (
+                blocked.get("type") == "error"
+                and blocked.get("payload", {}).get("code") == "policy_blocked"
+            )
+            if read_ok and blocked_ok:
+                ok(6, "tool.call files.read confined (ADR-013)", "read ok + outside policy_blocked")
+            else:
+                fail(6, "tool.call files.read confined", f"read_ok={read_ok} blocked_ok={blocked_ok}")
     except Exception as exc:  # noqa: BLE001
-        fail(6, "files.read rejected", str(exc))
+        fail(6, "tool.call files.read confined", str(exc))
 
     # [07] model gateway catalog is reachable
     try:
@@ -148,11 +181,11 @@ def run_smoke() -> int:
     except Exception as exc:  # noqa: BLE001
         fail(8, "shutdown produces goodbye", str(exc))
 
-    # [09-12] Approval / workspace / filesystem enforcement: Rust-side.
-    info(9, "approval token scope/replay/digest", "RUST-COVERED: cargo test approval (15 tests)")
+    # [09-12] Approval / workspace enforcement outside the read-only smoke path.
+    info(9, "approval token scope/replay/digest", "RUST-COVERED: cargo test approval")
     info(10, "workspace confinement + token invalidation", "RUST-COVERED: cargo test workspace")
-    info(11, "guarded tool without approval rejected", "N/A: sidecar has no fs-tool execution path")
-    info(12, "workspace escape rejected", "RUST-COVERED + modules/workspace_policy.py self-test")
+    info(11, "guarded tool without approval rejected", "RUST-COVERED: run_tool_call approval boundary")
+    info(12, "workspace escape rejected", "SMOKE-COVERED: tool.call rejects ../escape.txt")
 
     print()
     print(f"Results: {len(PASSED)} passed, {len(FAILED)} failed")

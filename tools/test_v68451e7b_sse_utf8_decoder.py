@@ -94,7 +94,7 @@ def _simulate_stream(
                     event_count += 1
                     if event_count > limits.maximum_sse_events:
                         raise GatewayError("budget_exceeded", "SSE event limit reached")
-                    delta, done = _parse_sse_event(event_lines)
+                    delta, _tool_calls, done = _parse_sse_event(event_lines)
                     event_lines = []
                     event_bytes_count = 0
                     if delta:

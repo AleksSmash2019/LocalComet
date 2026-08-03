@@ -620,8 +620,26 @@ class ModelChatBackendTests(unittest.TestCase):
             self.assertEqual("error", result[0][0]["type"])
             self.assertEqual("timeout", result[0][0]["payload"]["code"])
 
-            health = runtime.handle_message(make_request("health-after-timeout", "app.health", {}))
-            self.assertEqual("ok", health[0]["payload"]["status"])
+            health_id = "hreq_" + "f" * 32
+            health = runtime.handle_message(
+                make_request(
+                    health_id,
+                    "app.health",
+                    {
+                        "type": "health.check",
+                        "protocolVersion": 1,
+                        "requestId": health_id,
+                        "generationId": 1,
+                        "startupNonce": "scn_" + "a" * 64,
+                        "runtimeInstanceId": "rti_" + "b" * 32,
+                        "sentAtUnixMs": 1_700_000_000_000,
+                    },
+                )
+            )
+            self.assertEqual("response", health[0]["type"])
+            self.assertEqual("health.status", health[0]["payload"]["type"])
+            self.assertEqual("ready", health[0]["payload"]["status"])
+            self.assertIs(False, health[0]["payload"]["capabilities"]["toolExecution"])
             retry = runtime.handle_message(
                 make_request("retry-attach", "model.managed.attach", payload)
             )

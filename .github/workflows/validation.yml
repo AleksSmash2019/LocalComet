@@ -50,8 +50,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: cargo test
         run: cargo test
+      - name: Real-sidecar honesty gate
+        shell: pwsh
+        env:
+          LOCALCOMET_REQUIRE_REAL_SIDECAR: '1'
+          LOCALCOMET_TEST_PROJECT_ROOT: ${{ github.workspace }}
+          LOCALCOMET_TEST_PYTHON: ${{ env.pythonLocation }}\python.exe
+        working-directory: ${{ github.workspace }}
+        run: python scripts/check_real_sidecar_tests.py
       - name: cargo clippy (-D warnings)
         run: cargo clippy --all-targets -- -D warnings
       - name: cargo fmt --check

@@ -25,6 +25,7 @@ Injection: add a new mutating function to modules/files.py that calls
 safe_path() but is absent from the TOML -> this gate exits 1.
 """
 
+import ast
 import pathlib
 import re
 import sys
@@ -37,6 +38,7 @@ except ImportError:  # pragma: no cover
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILES_PY = REPO_ROOT / "modules" / "files.py"
+TOOL_EXECUTION_PY = REPO_ROOT / "modules" / "tool_execution_ru.py"
 REGISTRY = REPO_ROOT / "security" / "invariants" / "tool_risk_levels.toml"
 
 VALID_RISK_LEVELS = {"read_only", "guarded", "dangerous"}
@@ -48,6 +50,38 @@ MUTATION_MARKERS = (
     "shutil.move",
     "shutil.copy",
 )
+EXECUTION_MUTATING_TOOLS = {"files.write", "files.create_folder", "files.delete"}
+
+
+def parse_supported_tools(source: str) -> set[str]:
+    """Extract the static SUPPORTED_TOOLS dispatch vocabulary from the sidecar."""
+    tree = ast.parse(source)
+    assignments = [
+        node.value
+        for node in tree.body
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        if isinstance(target, ast.Name) and target.id == "SUPPORTED_TOOLS" and node.value is not None
+    ]
+    if len(assignments) != 1:
+        raise ValueError("SUPPORTED_TOOLS must have exactly one top-level assignment")
+    value = assignments[0]
+    if not (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id == "frozenset"
+        and len(value.args) == 1
+        and isinstance(value.args[0], (ast.Tuple, ast.List, ast.Set))
+    ):
+        raise ValueError("SUPPORTED_TOOLS must be a static frozenset literal")
+    names: set[str] = set()
+    for item in value.args[0].elts:
+        if not isinstance(item, ast.Constant) or not isinstance(item.value, str):
+            raise ValueError("SUPPORTED_TOOLS entries must be static strings")
+        names.add(item.value)
+    if not names:
+        raise ValueError("SUPPORTED_TOOLS must not be empty")
+    return names
 
 
 def parse_top_level_functions(source: str) -> dict:
@@ -70,8 +104,8 @@ def parse_top_level_functions(source: str) -> dict:
 
 
 def main() -> int:
-    if not FILES_PY.exists():
-        print(f"FAIL: cannot find {FILES_PY}")
+    if not FILES_PY.exists() or not TOOL_EXECUTION_PY.exists():
+        print(f"FAIL: cannot find required tool source ({FILES_PY}, {TOOL_EXECUTION_PY})")
         return 2
     if not REGISTRY.exists():
         print(f"FAIL: cannot find {REGISTRY}")
@@ -79,6 +113,11 @@ def main() -> int:
 
     source = FILES_PY.read_text(encoding="utf-8")
     functions = parse_top_level_functions(source)
+    try:
+        execution_tools = parse_supported_tools(TOOL_EXECUTION_PY.read_text(encoding="utf-8"))
+    except (SyntaxError, ValueError) as exc:
+        print(f"FAIL: cannot parse {TOOL_EXECUTION_PY}: {exc}")
+        return 2
 
     tool_functions = {
         name: body
@@ -118,6 +157,18 @@ def main() -> int:
         if fn:
             impl_to_entry[fn] = entry
 
+    registry_by_name = {entry.get("name"): entry for entry in tools if isinstance(entry.get("name"), str)}
+    for tool in sorted(execution_tools):
+        entry = registry_by_name.get(tool)
+        if entry is None:
+            errors.append(f"UNCLASSIFIED_EXECUTION_TOOL: {tool} not in registry")
+            continue
+        if tool in EXECUTION_MUTATING_TOOLS:
+            if entry.get("requires_approval") is not True:
+                errors.append(f"EXECUTION_MUTATING_WITHOUT_APPROVAL: {tool}")
+            if entry.get("risk_level") not in {"guarded", "dangerous"}:
+                errors.append(f"EXECUTION_MUTATING_WRONG_RISK: {tool}")
+
     for fn in sorted(tool_functions):
         if fn not in impl_to_entry:
             kind = "mutating" if fn in mutating_functions else "read-only"
@@ -141,15 +192,15 @@ def main() -> int:
             print(f"FAIL: {error}")
         print(
             f"\n{len(errors)} violation(s); "
-            f"{len(tool_functions)} tool function(s) introspected, "
-            f"{len(mutating_functions)} mutating"
+            f"{len(tool_functions)} console tool function(s) introspected, "
+            f"{len(mutating_functions)} mutating; {len(execution_tools)} sidecar tools checked"
         )
         return 1
 
     print(
-        f"OK: {len(tool_functions)} tool function(s) classified "
+        f"OK: {len(tool_functions)} console tool function(s) classified "
         f"({len(mutating_functions)} mutating, all requiring approval); "
-        f"{len(tools)} registry entries valid"
+        f"{len(execution_tools)} sidecar tools covered; {len(tools)} registry entries valid"
     )
     return 0
 

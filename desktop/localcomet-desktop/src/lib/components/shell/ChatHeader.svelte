@@ -1,13 +1,13 @@
 <script lang="ts">
   import Icon from '$lib/components/common/Icon.svelte';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
-  import { conversationTitleById } from '$lib/data/mockData';
+  import { activeConversation } from '$lib/stores/conversationStore';
   import { approvedManagedModelInstalled, connectSelectedManagedModel, inferenceRequestStore, managedConnectionBusy, managedModelReady, managedRuntimeStore, modelGatewayStore } from '$lib/stores/modelGateway';
-  import { selectedConversationId, sidebarExpanded, openModelSetup, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, openSettings, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
+  import { sidebarExpanded, openModelSetup, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, openSettings, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
   $: title = (() => {
-    const raw = conversationTitleById($selectedConversationId);
+    const raw = $activeConversation?.title ?? 'new_chat';
     const v = $t('item.' + raw);
     return v.startsWith('item.') ? raw : v;
   })();

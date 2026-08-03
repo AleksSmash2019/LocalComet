@@ -12,13 +12,13 @@ NOTEPAD_FILE = WINDOWS_DIR / "notepad_current.txt"
 
 
 APP_COMMANDS = {
-    "notepad": "notepad",
-    "calc": "calc",
-    "calculator": "calc",
-    "mspaint": "mspaint",
-    "paint": "mspaint",
-    "chrome": "chrome",
-    "explorer": "explorer",
+    "notepad": ["notepad"],
+    "calc": ["calc"],
+    "calculator": ["calc"],
+    "mspaint": ["mspaint"],
+    "paint": ["mspaint"],
+    "chrome": ["chrome"],
+    "explorer": ["explorer"],
 }
 
 
@@ -143,13 +143,16 @@ def _clear_notepad_file():
 def open_app(app: str):
     app = _normalize_app(app)
 
+    if app == "notepad":
+        return _open_notepad_file()
+
+    command = APP_COMMANDS.get(app)
+
+    if command is None:
+        raise ValueError(f"unknown application identifier: {app}")
+
     try:
-        if app == "notepad":
-            return _open_notepad_file()
-
-        command = APP_COMMANDS.get(app, app)
-
-        subprocess.Popen(command, shell=True)
+        subprocess.Popen(command)
         time.sleep(1)
 
         set_value("last_windows_app", app)

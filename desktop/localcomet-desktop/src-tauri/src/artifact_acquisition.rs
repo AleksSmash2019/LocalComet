@@ -816,10 +816,24 @@ pub fn list_approved_downloadable_artifacts(
 #[tauri::command]
 pub fn start_approved_artifact_download(
     state: State<'_, Arc<ArtifactAcquisitionManager>>,
+    approval: State<'_, crate::approval_commands::ApprovalState>,
     artifact_id: String,
     confirmed: bool,
+    token: String,
+    approval_id: String,
+    call_id: String,
 ) -> Result<ArtifactDownloadState, BridgeError> {
-    state.start(&artifact_id, confirmed)
+    let _ = confirmed;
+    let input = serde_json::json!({ "artifact_id": artifact_id });
+    crate::approval_commands::validate_approval_token(
+        &approval,
+        "artifact.download",
+        &input,
+        &token,
+        &approval_id,
+        &call_id,
+    )?;
+    state.start(&artifact_id, true)
 }
 
 #[tauri::command]
@@ -839,14 +853,29 @@ pub fn cancel_artifact_download(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn remove_managed_model(
     acquisition: State<'_, Arc<ArtifactAcquisitionManager>>,
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     bridge: State<'_, Arc<ControlPlaneBridge>>,
+    approval: State<'_, crate::approval_commands::ApprovalState>,
     model_id: String,
     confirmed: bool,
+    token: String,
+    approval_id: String,
+    call_id: String,
 ) -> Result<ManagedModelRemovalResult, BridgeError> {
-    acquisition.remove_model(&model_id, confirmed, &runtime, &bridge)
+    let _ = confirmed;
+    let input = serde_json::json!({ "model_id": model_id });
+    crate::approval_commands::validate_approval_token(
+        &approval,
+        "artifact.remove",
+        &input,
+        &token,
+        &approval_id,
+        &call_id,
+    )?;
+    acquisition.remove_model(&model_id, true, &runtime, &bridge)
 }
 
 fn artifact_id(artifact: &ApprovedDownloadArtifact) -> &str {

@@ -37,11 +37,11 @@
 <style>
   .source-card { min-width: 0; border: 1px solid var(--lc-border); border-radius: var(--lc-radius-sm); background: var(--lc-panel-soft); overflow: hidden; }
   button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, auto) 20px; gap: var(--lc-space-2); align-items: center; padding: var(--lc-space-3); border: 0; background: transparent; color: var(--lc-text); text-align: left; cursor: pointer; }
-  button:focus-visible { outline: 2px solid #78ff98; outline-offset: -3px; }
+  button:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: -3px; }
   .source-title, .source-id, .path { min-width: 0; overflow-wrap: anywhere; }
   .source-title { font-weight: 760; }
   .source-id, .provenance, .headings, .lines { color: var(--lc-muted); font-family: var(--lc-mono); font-size: .68rem; }
-  .chevron { color: #78ff98; font-size: 1.05rem; text-align: center; }
+  .chevron { color: var(--lc-accent); font-size: 1.05rem; text-align: center; }
   .provenance, .headings { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 0 var(--lc-space-3) var(--lc-space-2); }
   .path { flex-basis: 100%; color: var(--lc-text-soft); }
   .headings span { padding: 2px 6px; border: 1px solid var(--lc-border); border-radius: 999px; }

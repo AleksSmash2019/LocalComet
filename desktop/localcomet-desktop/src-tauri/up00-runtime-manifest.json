@@ -31,6 +31,8 @@
     "modules/knowledge_injection_ru.py",
     "modules/knowledge_review_ui_projection_ru.py",
     "modules/local_model_gateway_ru.py",
+    "modules/tool_execution_ru.py",
+    "modules/workspace_policy.py",
     "tools/run_localcomet_desktop_sidecar.py",
     "tools/validate_localcomet_vault.py"
   ]

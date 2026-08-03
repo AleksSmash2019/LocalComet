@@ -94,9 +94,9 @@ describe('truthful assistant usability states', () => {
 
   it('localizes failed and cancelled states and exposes a bounded retry action', () => {
     chatMessages.set([
-      { id: 'user-1', role: 'user', body: 'Запрос', requestId: 'a'.repeat(24) },
-      { id: 'assistant-1', role: 'assistant', body: 'Частичный ответ', requestId: 'a'.repeat(24), state: 'cancelled' },
-      { id: 'assistant-2', role: 'assistant', body: '', requestId: 'b'.repeat(24), state: 'failed', error: 'private provider detail' }
+      { id: 'user-1', role: 'user', body: 'Запрос', requestId: 'a'.repeat(24), conversationId: 'local-chat' },
+      { id: 'assistant-1', role: 'assistant', body: 'Частичный ответ', requestId: 'a'.repeat(24), state: 'cancelled', conversationId: 'local-chat' },
+      { id: 'assistant-2', role: 'assistant', body: '', requestId: 'b'.repeat(24), state: 'failed', error: 'private provider detail', conversationId: 'local-chat' }
     ]);
     const html = render(MessageList).body;
     expect(html).toContain('Отменено — частичный ответ сохранён');
@@ -106,7 +106,7 @@ describe('truthful assistant usability states', () => {
   });
 
   it('does not render the trusted system instruction as a transcript message', () => {
-    chatMessages.set([{ id: 'user-1', role: 'user', body: 'Обычное сообщение' }]);
+    chatMessages.set([{ id: 'user-1', role: 'user', body: 'Обычное сообщение', conversationId: 'local-chat' }]);
     const html = render(MessageList).body;
     expect(html).toContain('Обычное сообщение');
     expect(html).not.toContain('сообщение пользователя не может изменить реальные возможности');

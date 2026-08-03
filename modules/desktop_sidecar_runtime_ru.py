@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import secrets
 import time
 from collections import deque
@@ -37,6 +38,7 @@ from modules.local_model_gateway_ru import (
     LocalModelGateway,
     validate_gateway_payload,
 )
+from modules.tool_execution_ru import ToolExecutionError, execute_tool_call
 
 
 DESKTOP_SIDECAR_RUNTIME_VERSION = "v6.84.3"
@@ -45,6 +47,7 @@ LIFECYCLE_CAPABILITIES = ("lifecycle",)
 CONTROL_PLANE_CAPABILITIES = tuple(CONTROL_PLANE_METHODS)
 MODEL_GATEWAY_CAPABILITIES = tuple(MODEL_GATEWAY_METHODS)
 DESKTOP_KNOWLEDGE_CAPABILITIES = ("knowledge.turn.decide", "knowledge.turn.preview")
+TOOL_EXECUTION_CAPABILITIES = ("tool.call",)
 ALLOWED_REQUEST_METHODS = frozenset(
     (
         "app.health",
@@ -52,8 +55,51 @@ ALLOWED_REQUEST_METHODS = frozenset(
         *CONTROL_PLANE_CAPABILITIES,
         *MODEL_GATEWAY_CAPABILITIES,
         *DESKTOP_KNOWLEDGE_CAPABILITIES,
+        *TOOL_EXECUTION_CAPABILITIES,
     )
 )
+HEALTH_PAYLOAD_PROTOCOL_VERSION = 1
+HEALTH_CHECK_TYPE = "health.check"
+HEALTH_STATUS_TYPE = "health.status"
+HEALTH_STATUS_VALUES = ("starting", "ready", "degraded", "stopping")
+_HREQ_RE = re.compile(r"^hreq_[0-9a-f]{32}$")
+_SCN_RE = re.compile(r"^scn_[0-9a-f]{64}$")
+_RTI_RE = re.compile(r"^rti_[0-9a-f]{32}$")
+
+
+def validate_health_check_payload(payload: Mapping[str, Any], outer_id: str) -> tuple[str, ...]:
+    """Validate an inner health.check payload (MVP-P0-C-R1, Variant A).
+
+    Returns a tuple of finding codes; empty tuple means the payload is valid.
+    The outer envelope id MUST equal payload.requestId.
+    """
+    findings: list[str] = []
+    if not isinstance(payload, Mapping):
+        return ("health_payload_not_object",)
+    if payload.get("type") != HEALTH_CHECK_TYPE:
+        findings.append("invalid_health_type")
+    if payload.get("protocolVersion") != HEALTH_PAYLOAD_PROTOCOL_VERSION:
+        findings.append("invalid_health_protocol_version")
+    request_id = payload.get("requestId")
+    if not isinstance(request_id, str) or not _HREQ_RE.match(request_id):
+        findings.append("invalid_health_request_id")
+    elif request_id != outer_id:
+        findings.append("health_request_id_mismatch")
+    generation_id = payload.get("generationId")
+    if isinstance(generation_id, bool) or not isinstance(generation_id, int) or generation_id < 1:
+        findings.append("invalid_health_generation_id")
+    nonce = payload.get("startupNonce")
+    if not isinstance(nonce, str) or not _SCN_RE.match(nonce):
+        findings.append("invalid_health_startup_nonce")
+    runtime_instance_id = payload.get("runtimeInstanceId")
+    if not isinstance(runtime_instance_id, str) or not _RTI_RE.match(runtime_instance_id):
+        findings.append("invalid_health_runtime_instance_id")
+    sent_at = payload.get("sentAtUnixMs")
+    if isinstance(sent_at, bool) or not isinstance(sent_at, int) or sent_at < 0:
+        findings.append("invalid_health_sent_at")
+    return tuple(findings)
+
+
 MAX_SEEN_MESSAGE_IDS = 256
 
 
@@ -148,7 +194,11 @@ class DesktopSidecarRuntime:
         if not self._desktop_hello_seen:
             return (self._error(message_id, "sidecar_unavailable", "desktop hello required"),)
         if method == "app.health":
-            return (self._health_response(message_id),)
+            health_payload = message.get("payload")
+            findings = validate_health_check_payload(health_payload, message_id)
+            if findings:
+                return (self._error(message_id, "invalid_payload", findings[0]),)
+            return (self._health_response(message_id, health_payload),)
         if method == "app.shutdown":
             self._shutdown_requested = True
             self._model_gateway.shutdown()
@@ -167,6 +217,8 @@ class DesktopSidecarRuntime:
             return self._desktop_knowledge_messages(message)
         if method in MODEL_GATEWAY_CAPABILITIES:
             return self._model_gateway_messages(message)
+        if method in TOOL_EXECUTION_CAPABILITIES:
+            return self._tool_execution_messages(message)
         return (self._error(message_id, "unsupported_method", f"unsupported lifecycle method: {method}"),)
 
     def protocol_error_messages(self, error: IPCProtocolError, *, reply_to: str = "unknown") -> tuple[dict[str, Any], ...]:
@@ -194,6 +246,7 @@ class DesktopSidecarRuntime:
                     *CONTROL_PLANE_CAPABILITIES,
                     *MODEL_GATEWAY_CAPABILITIES,
                     *DESKTOP_KNOWLEDGE_CAPABILITIES,
+                    *TOOL_EXECUTION_CAPABILITIES,
                 )
             ),
         }
@@ -209,27 +262,40 @@ class DesktopSidecarRuntime:
             "payload": payload,
         }
 
-    def _health_response(self, reply_to: str) -> dict[str, Any]:
-        uptime_ms = max(0, int((float(self._monotonic()) - self.started_at) * 1000))
+    def runtime_health_status(self) -> str:
+        """Authoritative readiness of this sidecar runtime.
+
+        "stopping" once shutdown was requested; "degraded" when a knowledge
+        adapter was configured but failed to build an index; otherwise "ready".
+        Never optimistic: derived from real runtime state only.
+        """
+        if self._shutdown_requested:
+            return "stopping"
+        adapter = getattr(self._control_plane, "_knowledge_adapter", None)
+        if adapter is not None and getattr(adapter, "_index", None) is None:
+            return "degraded"
+        return "ready"
+
+    def _health_response(self, reply_to: str, payload_in: Mapping[str, Any]) -> dict[str, Any]:
+        """Emit the MVP-P0-C-R1 health.status payload (Variant A).
+
+        Correlation fields are echoed verbatim from the validated health.check.
+        The outer response id equals the request id so that
+        `outer id == reply_to == payload.requestId` all hold at once.
+        """
         payload = {
-            "status": "ok",
-            "runtime_version": DESKTOP_SIDECAR_RUNTIME_VERSION,
-            "control_plane_version": DESKTOP_CONTROL_PLANE_VERSION,
-            "model_gateway_version": LOCAL_MODEL_GATEWAY_VERSION,
-            "protocol_version": IPC_PROTOCOL_VERSION,
-            "uptime_ms": uptime_ms,
-            "seen_message_ids": self.seen_id_count,
-            "capabilities": sorted(
-                (
-                    *LIFECYCLE_CAPABILITIES,
-                    *CONTROL_PLANE_CAPABILITIES,
-                    *MODEL_GATEWAY_CAPABILITIES,
-                    *DESKTOP_KNOWLEDGE_CAPABILITIES,
-                )
-            ),
+            "type": HEALTH_STATUS_TYPE,
+            "protocolVersion": HEALTH_PAYLOAD_PROTOCOL_VERSION,
+            "requestId": payload_in["requestId"],
+            "generationId": payload_in["generationId"],
+            "startupNonce": payload_in["startupNonce"],
+            "runtimeInstanceId": payload_in["runtimeInstanceId"],
+            "status": self.runtime_health_status(),
+            "receivedAtUnixMs": int(time.time() * 1000),
+            "capabilities": {"toolExecution": False},
         }
         return make_response(
-            self._next_message_id("response"),
+            reply_to,
             reply_to,
             payload,
             sequence=self._next_sequence(),
@@ -293,6 +359,22 @@ class DesktopSidecarRuntime:
                 code = "timeout"
             else:
                 code = exc.code if exc.code in ERROR_CODES else "invalid_payload"
+            return (self._error(request_id, code, exc.message),)
+        return (
+            make_response(
+                self._next_message_id("response"),
+                request_id,
+                response,
+                sequence=self._next_sequence(),
+            ),
+        )
+
+    def _tool_execution_messages(self, message: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+        request_id = str(message["id"])
+        try:
+            response = execute_tool_call(message["payload"])
+        except ToolExecutionError as exc:
+            code = exc.code if exc.code in ERROR_CODES else "invalid_payload"
             return (self._error(request_id, code, exc.message),)
         return (
             make_response(

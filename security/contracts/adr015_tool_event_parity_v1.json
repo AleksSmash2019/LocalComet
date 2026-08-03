@@ -1,0 +1,54 @@
+{
+  "$schema": "localcomet.adr015-tool-event-parity/v1",
+  "description": "Canonical tool-event cases shared by ADR-015 Phase C parity tests. Valid events are emitted by the Python gateway, validated by Rust, and parsed by TypeScript. A tool event with tools disabled must be rejected in every layer.",
+  "identity": {
+    "requestId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+    "chatSessionId": "local-chat",
+    "modelId": "local-model",
+    "submittedAtUnixMs": 1700000000000,
+    "maxTokens": 128,
+    "bindingFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "enabled": {
+    "permittedTools": ["files.read", "files.write"],
+    "events": [
+      {
+        "method": "model.tool.request",
+        "sequence": 1,
+        "state": "Streaming",
+        "toolsExecuted": 1,
+        "toolCalls": [
+          {"id": "call_0", "name": "files.read", "arguments": {"path": "a.txt"}}
+        ]
+      },
+      {
+        "method": "model.tool.request",
+        "sequence": 2,
+        "state": "Streaming",
+        "toolsExecuted": 2,
+        "toolCalls": [
+          {"id": "call_1", "name": "files.write", "arguments": {"path": "out.txt", "content": "hello"}}
+        ]
+      },
+      {
+        "method": "model.turn.tool_calls",
+        "sequence": 3,
+        "state": "ToolCalls",
+        "toolsExecuted": 2,
+        "toolCalls": [
+          {"id": "call_0", "name": "files.read", "arguments": {"path": "a.txt"}},
+          {"id": "call_1", "name": "files.write", "arguments": {"path": "out.txt", "content": "hello"}}
+        ]
+      }
+    ]
+  },
+  "disabled": {
+    "method": "model.tool.request",
+    "sequence": 1,
+    "state": "Streaming",
+    "toolsExecuted": 1,
+    "toolCalls": [
+      {"id": "call_0", "name": "files.read", "arguments": {"path": "a.txt"}}
+    ]
+  }
+}

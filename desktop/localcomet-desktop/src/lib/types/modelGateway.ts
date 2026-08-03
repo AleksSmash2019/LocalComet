@@ -88,13 +88,21 @@ export interface ModelTurnCancelResponse {
   readonly worker_alive: boolean;
 }
 
+export interface ModelToolCall {
+  readonly id: string;
+  readonly name: string;
+  readonly arguments: Readonly<Record<string, unknown>>;
+}
+
 export type ModelEventMethod =
   | 'model.turn.started'
   | 'model.output.delta'
   | 'model.turn.completed'
   | 'model.turn.cancelled'
   | 'model.turn.timed_out'
-  | 'model.turn.failed';
+  | 'model.turn.failed'
+  | 'model.tool.request'
+  | 'model.turn.tool_calls';
 
 export interface ModelGatewayEvent {
   readonly method: ModelEventMethod;
@@ -103,10 +111,11 @@ export interface ModelGatewayEvent {
   readonly request_id: string;
   readonly chat_session_id: string;
   readonly turn_id: string;
-  readonly state: 'Streaming' | 'Completed' | 'Cancelled' | 'TimedOut' | 'Failed';
+  readonly state: 'Streaming' | 'Completed' | 'Cancelled' | 'TimedOut' | 'Failed' | 'ToolCalls';
   readonly text: string | null;
   readonly model_called: boolean;
-  readonly tools_executed: 0;
+  readonly tools_executed: number;
+  readonly tool_calls?: readonly ModelToolCall[];
   readonly persistence: false;
   readonly generated_bytes: number;
   readonly provider_id: ProviderId;

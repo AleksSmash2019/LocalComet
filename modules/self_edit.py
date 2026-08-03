@@ -1,4 +1,6 @@
 import json
+import re
+import shlex
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -727,12 +729,20 @@ def _restore_rollback(rollback_path: Path):
     return restored
 
 
+_SAFE_TEST_COMMAND_RE = re.compile(
+    r"^python -m py_compile [a-zA-Z0-9_/.\\-]+\.py$"
+)
+
+
 def _run_tests(tests, changed_files):
     commands = []
 
     for test in tests or []:
         if isinstance(test, str) and test.strip():
-            commands.append(test.strip())
+            cmd = test.strip()
+            if not _SAFE_TEST_COMMAND_RE.match(cmd):
+                return False, f"Command rejected (not an allowed py_compile invocation): {cmd}"
+            commands.append(cmd)
 
     for full in changed_files:
         if full.suffix == ".py":
@@ -749,9 +759,8 @@ def _run_tests(tests, changed_files):
 
     for cmd in commands:
         result = subprocess.run(
-            cmd,
+            shlex.split(cmd),
             cwd=str(ROOT_DIR),
-            shell=True,
             capture_output=True,
             text=True,
             timeout=120,
@@ -1127,9 +1136,8 @@ def project_health():
         rel = str(path.relative_to(ROOT_DIR)).replace("\\", "/")
 
         result = subprocess.run(
-            f"python -m py_compile {rel}",
+            ["python", "-m", "py_compile", rel],
             cwd=str(ROOT_DIR),
-            shell=True,
             capture_output=True,
             text=True,
             timeout=60,

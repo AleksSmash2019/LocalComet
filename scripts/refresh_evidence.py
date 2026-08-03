@@ -33,7 +33,9 @@ SOURCE_GLOBS = [
     "next/**/*.py",
     "tests/**/*.py",
     "scripts/**/*.py",
+    "tools/**/*.py",
     "security/invariants/*.toml",
+    "security/contracts/**/*.json",
     ".gitattributes",
     "config.py",
 ]

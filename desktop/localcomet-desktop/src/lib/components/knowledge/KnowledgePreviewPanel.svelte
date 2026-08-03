@@ -61,17 +61,17 @@
 {/if}
 
 <style>
-  .preview-panel { width: min(calc(100% - 48px), var(--content-width)); max-height: min(52vh, 620px); margin: 0 auto var(--lc-space-3); padding: var(--lc-space-4); overflow: auto; border: 1px solid rgb(120 255 152 / 42%); border-radius: var(--lc-radius); background: color-mix(in srgb, var(--lc-panel) 96%, #78ff98 4%); box-shadow: 0 0 24px rgb(120 255 152 / 8%); }
+  .preview-panel { width: min(calc(100% - 48px), var(--content-width)); max-height: min(52vh, 620px); margin: 0 auto var(--lc-space-3); padding: var(--lc-space-4); overflow: auto; border: 1px solid color-mix(in srgb, var(--lc-accent) 42%, transparent); border-radius: var(--lc-radius); background: color-mix(in srgb, var(--lc-panel) 96%, var(--lc-accent) 4%); box-shadow: 0 0 24px color-mix(in srgb, var(--lc-accent) 8%, transparent); }
   header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--lc-space-3); }
   h3 { margin: 0; color: var(--lc-text); font-size: .95rem; }
   p { margin: 5px 0 0; color: var(--lc-muted); font-size: .72rem; }
   .sources { display: grid; gap: var(--lc-space-2); margin-top: var(--lc-space-3); }
   .message { padding: var(--lc-space-4) 0; }
-  .error { color: #ff9292; }
+  .error { color: var(--lc-danger); }
   footer { display: flex; flex-wrap: wrap; gap: var(--lc-space-2); margin-top: var(--lc-space-3); }
   footer:empty { display: none; }
   footer button { min-height: 38px; padding: 7px 12px; border: 1px solid var(--lc-border); border-radius: var(--lc-radius-sm); background: var(--lc-panel-soft); color: var(--lc-text); cursor: pointer; font-weight: 720; }
-  footer button.primary { border-color: #78ff98; background: #78ff98; color: #071009; }
-  footer button:focus-visible { outline: 2px solid #78ff98; outline-offset: 2px; }
+  footer button.primary { border-color: var(--lc-accent); background: var(--lc-accent); color: var(--lc-logo-cut); }
+  footer button:focus-visible { outline: 2px solid var(--lc-accent); outline-offset: 2px; }
   @media (max-width: 760px) { .preview-panel { width: calc(100% - 24px); max-height: 58vh; padding: var(--lc-space-3); } header { align-items: center; } footer button { flex: 1 1 100%; } }
 </style>

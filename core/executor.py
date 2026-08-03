@@ -18,6 +18,21 @@ from agents import automation_agent
 from agents import gpt_browser_agent
 
 
+LEGACY_QUARANTINE_ACTIVE = True
+
+_QUARANTINED_TOOLS = frozenset({
+    "windows",
+    "self_edit",
+    "automation",
+    "browser",
+    "gpt_browser",
+    "chatgpt_relay",
+    "operator",
+    "code",
+    "codegen",
+})
+
+
 def execute(plan):
     if plan is None:
         return "Executor: пустой план."
@@ -53,6 +68,9 @@ def execute(plan):
 
     if not tool:
         return f"Executor: неизвестный инструмент. План: {plan}"
+
+    if LEGACY_QUARANTINE_ACTIVE and tool in _QUARANTINED_TOOLS:
+        return f"Quarantined: {tool} execution is disabled"
 
     if tool == "none":
         return plan.get("text", "OK")

@@ -66,8 +66,6 @@ def main() -> int:
 
     for relative in TRUST_CHAIN_FILES:
         path = REPO_ROOT / relative
-        if not path.exists():
-            continue
         checked += 1
         all_errors.extend(check_file(path))
 

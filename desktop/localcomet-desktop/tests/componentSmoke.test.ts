@@ -8,12 +8,14 @@ import MessageComposer from '../src/lib/components/chat/MessageComposer.svelte';
 import NavigationRail from '../src/lib/components/shell/NavigationRail.svelte';
 import SettingsPanel from '../src/lib/components/shell/SettingsPanel.svelte';
 import ToolCallCard from '../src/lib/components/chat/ToolCallCard.svelte';
-import { approvalCard, mockToolCall } from '../src/lib/data/mockData';
+import { mockToolCall } from '../src/lib/data/mockData';
 import { resetShellStores } from '../src/lib/stores/shellStore';
+import { requestApprovalForTool, resetApprovalStore } from '../src/lib/stores/approvalStore';
 
 describe('component smoke tests', () => {
   beforeEach(() => {
     resetShellStores();
+    resetApprovalStore();
   });
 
   it('renders only functional minimal primary navigation', () => {
@@ -53,12 +55,10 @@ describe('component smoke tests', () => {
     expect(html).toContain('SKIPPED');
   });
 
-  it('renders the disconnected approval card with disabled actions', () => {
-    const html = render(ApprovalCard, { props: { item: approvalCard } }).body;
-    expect(html).toContain('Подтверждения отключены');
-    expect(html).toContain('disabled');
-    expect(html).toContain('Подтвердить');
-    expect(html).toContain('Отклонить');
+  it('renders the approval card empty state when nothing is pending', () => {
+    const html = render(ApprovalCard).body;
+    expect(html).toContain('Нет запросов на подтверждение');
+    expect(html).not.toContain('Подтвердить');
   });
 
   it('renders useful Diagnostics without demo controls or no-op tabs', () => {
@@ -79,9 +79,13 @@ describe('component smoke tests', () => {
     expect(html).not.toContain('request-metrics');
   });
 
-  it('marks disabled approval buttons semantically', () => {
-    const html = render(ApprovalCard, { props: { item: approvalCard } }).body;
-    expect(html.match(/disabled/g)?.length).toBeGreaterThanOrEqual(2);
+  it('renders enabled approval actions for a pending tool call', () => {
+    requestApprovalForTool('files.write', { path: 'a.txt' });
+    const html = render(ApprovalCard).body;
+    expect(html).toContain('Подтверждение действия');
+    expect(html).toContain('files.write');
+    expect(html).toContain('Подтвердить');
+    expect(html).toContain('Отклонить');
   });
 
   it('keeps theme controls accessible in Settings', () => {

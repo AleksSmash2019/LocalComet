@@ -1,10 +1,8 @@
 {
   "entrypoints": [
-    "app.py",
     "config.py",
     "GenerateCapabilityMap.py",
-    "LocalComet_Control_Panel.py",
-    "next/app_v5.py"
+    "LocalComet_Control_Panel.py"
   ],
   "runtime": [
     "agents/automation_agent.py",
@@ -38,9 +36,7 @@
     "next/task_queue.py"
   ],
   "lazy_runtime": [
-    "modules/agent_onboarding_demo.py",
     "modules/agentos_kernel_blueprint.py",
-    "modules/agents_project_intelligence.py",
     "modules/ai_agent_core_ru.py",
     "modules/ai_agent_memory_ru.py",
     "modules/ai_patch_planner_ru.py",
@@ -63,9 +59,7 @@
     "modules/chatgpt_desktop_bridge.py",
     "modules/chatgpt_relay.py",
     "modules/codegen.py",
-    "modules/codex_agent_mode_ru.py",
     "modules/codex_bridge.py",
-    "modules/codex_connector.py",
     "modules/command_center_ui.py",
     "modules/command_explorer_ru.py",
     "modules/computer_use_agent_mission_ru.py",
@@ -82,7 +76,6 @@
     "modules/computer_use_real_actions_ru.py",
     "modules/computer_use_safety_ru.py",
     "modules/computer_use_schema_ru.py",
-    "modules/computer_use_screen_diff_ru.py",
     "modules/computer_use_test_fixtures_ru.py",
     "modules/computer_use_trace_ru.py",
     "modules/computer_use_type_guard_ru.py",
@@ -140,11 +133,7 @@
     "modules/pc_screen_planner.py",
     "modules/pc_ui_parser_adapter.py",
     "modules/plan_contract_ru.py",
-    "modules/premium_native_ui_ru.py",
     "modules/premium_task_panel_ru.py",
-    "modules/premium_ui_launcher.py",
-    "modules/premium_ui_now.py",
-    "modules/premium_ui_prototype.py",
     "modules/project_audit_bundle_ru.py",
     "modules/project_health.py",
     "modules/project_one_command_check_ru.py",
@@ -172,12 +161,14 @@
     "modules/task_clarifier.py",
     "modules/task_contract_registry_ru.py",
     "modules/task_planner_orchestrator_ru.py",
+    "modules/tool_execution_ru.py",
     "modules/true_auto_relay.py",
     "modules/voice.py",
     "modules/voice_control.py",
     "modules/windows.py",
     "modules/working_directory_guard_ru.py",
-    "modules/workspace.py"
+    "modules/workspace.py",
+    "modules/workspace_policy.py"
   ],
   "tests": [
     "test_full_flow.py",

@@ -1,0 +1,14 @@
+{
+  "$schema": "localcomet/approval-command-families/v1",
+  "description": "Canonical command-family values serialized by Rust CommandFamily enum (serde rename_all=snake_case). Both Rust and TypeScript tests consume this file as the single source of truth.",
+  "families": [
+    "artifact_download",
+    "artifact_remove",
+    "runtime_start",
+    "runtime_stop",
+    "model_binding_set",
+    "tool_filesystem_read",
+    "tool_filesystem_write",
+    "tool_filesystem_delete"
+  ]
+}

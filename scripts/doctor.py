@@ -43,7 +43,7 @@ def rust():
     return False, out
 
 
-@check("C linker (cc or ziglang)", "Rust linking")
+@check("C linker (cc, cl/link MSVC, or ziglang)", "Rust linking")
 def linker():
     if shutil.which("cc") or shutil.which("cl") or shutil.which("link"):
         return True, "system C linker found"

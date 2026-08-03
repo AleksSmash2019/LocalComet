@@ -1,0 +1,13 @@
+{
+  "$schema": "localcomet/source-digest-authority/v1",
+  "version": 1,
+  "authority": "scripts/refresh_evidence.py:SOURCE_GLOBS",
+  "addedGlob": "security/contracts/**/*.json",
+  "newlySelectedPaths": [
+    "security/contracts/sidecar_health_malformed_frames_v1.json",
+    "security/contracts/source_digest_authority_v1.json"
+  ],
+  "newlySelectedPathCount": 2,
+  "countRationale": "At MVP-P0-C-R1 creation time security/contracts contains exactly the shared malformed health corpus and this versioned digest-authority record. Both affect executable acceptance and therefore must bind the source digest. Future matching files are selected automatically by the recursive glob and require a new measured authority version when current counts are reported.",
+  "historicalProcessNonconformance": "The three inherited production files were already partially modified before the sole-writer resume, so one-file-one-writer compliance is not claimable retroactively. No fabricated RED count or session-compliance claim is made."
+}

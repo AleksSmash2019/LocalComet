@@ -43,25 +43,64 @@ Rust:
 
 Python:
 
+    python tests/test_check_bundle_parity.py
+    python tests/test_evidence_model.py
+    python tests/test_trust_chain_gate.py
+    python tests/test_tool_risk_registry_gate.py
+    python tests/test_mockdata_import_gate.py
     python tests/test_trust_chain_invariants.py
     python scripts/check_command_parity.py
     python scripts/check_tool_risk_registry.py
     python scripts/check_ui_fake_state.py
+    python scripts/check_mockdata_imports.py
+    python scripts/check_bundle_parity.py
+    python tools/test_bug1_inference_bundle_parity.py
+    python tools/test_adr015_tool_parsing.py
+    python tools/test_tool_risk_rust_parity.py
+    python scripts/smoke_test.py --mode=cli
     python scripts/refresh_evidence.py
     python scripts/check_evidence_provenance.py
 
-Проверенный базовый уровень фронтенда (26.07.2026, прогон Notion-агента):
+Block 3 stop point (2026-08-01): implementation halted per owner directive after
+finding TOOL_EXECUTION_ACTIVATION_ENABLED=false blocks run_tool_call for ALL
+risk levels (including read_only). Tool activation requires MVP-P0-C-A2
+independent PASS before P0-D, and P0-D alone does not authorize activation.
+Only capability-neutral, unreachable messages/tools transport prep remains
+in modules/local_model_gateway_ru.py (TurnRequest.messages/tools,
+HarnessAdapter.messages_for history threading) and the TS bridge/store
+(startModelTurn messages/tools args, ensureModelEventSubscription still
+calls subscribeModelGatewayEvents with toolsEnabled defaulted to false —
+tool events remain unparsed on the live path). No orchestration loop, no
+ApprovalCard mounting, no live tool execution was added. Next allowed step:
+fresh independent MVP-P0-C-A2 audit; do not resume Block 3 orchestration
+until it PASSes.
 
-- svelte-check: 0 ошибок, 1 предупреждение в 1 файле
-- vitest: 18 файлов, 285 тестов пройдено
+Real-sidecar gate — обязателен в CI с явно заданными
+LOCALCOMET_TEST_PROJECT_ROOT, LOCALCOMET_TEST_PYTHON и
+LOCALCOMET_REQUIRE_REAL_SIDECAR=1.
+ВАЖНО: LOCALCOMET_TEST_PYTHON должен указывать на системный Python,
+а не на venv-шим (venv\Scripts\python.exe при spawn через CreateProcess
+с env_clear мгновенно умирает с "Unable to create process", ломая
+real-sidecar тесты в ExitedBeforeReady вместо ReadinessTimeout).
 
-Проверенный базовый уровень Rust и Python (26.07.2026, прогон OpenCode):
+    python scripts/check_real_sidecar_tests.py
 
-- Rust: 148 passed, 0 failed, 6 ignored
+Проверенный базовый уровень (03.08.2026, прогон OpenCode после bundle refresh
+и фикса real-sidecar env):
+
+- svelte-check: 0 ошибок, 0 предупреждений
+- vitest: 24 файла, 364 теста пройдено
+- Rust: 460 passed, 0 failed, 6 ignored; fmt и clippy -D warnings зелёные
 - trust-chain: 15 файлов проходят byte invariants
-- command parity: 42 команды зарегистрированы и вызываются
-- tool risk registry: 5 функций классифицированы, 10 записей валидны
-- INV-UI-001: 79 frontend-файлов без fake-state violations
+- command parity: 43 команды зарегистрированы и вызываются
+- tool risk registry: 5 console tools и 5 sidecar tools покрыты, 10 записей валидны
+- INV-UI-001: 81 frontend-файл без fake-state violations
+- bundle parity: 146 shipped modules совпадают с source в обеих runtime locations
+- ADR-015 Python parity: 67 passed, 1 skipped (Block 3/4 iteration limit)
+- CLI smoke: 8 passed, 0 failed
+- real-sidecar gate (CI env, системный Python): green
+- evidence provenance: 4 evidence files fresh and intact
+- Full pytest: не повторял (нет mandate на правку legacy git-index failures)
 
 В отчёт вносить последние строки вывода каждого гейта дословно.
 Гейт не запускался - написать об этом явно.

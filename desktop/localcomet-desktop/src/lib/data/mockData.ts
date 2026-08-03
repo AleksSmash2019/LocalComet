@@ -11,21 +11,10 @@ export interface MockMessage {
   role: MessageRole;
   body: string;
   requestId?: string;
+  conversationId?: string;
   state?: ChatMessageState;
   error?: string;
   demo?: boolean;
-}
-
-export interface ConversationItem {
-  id: string;
-  title: string;
-  meta: string;
-  selected?: boolean;
-}
-
-export interface ConversationGroup {
-  label: string;
-  items: ConversationItem[];
 }
 
 export interface ToolCallMock {
@@ -57,24 +46,6 @@ export interface ApprovalMock {
 export const modelOptions: ModelOption[] = ['Not configured'];
 export const modeOptions: ModeOption[] = ['Chat', 'Plan', 'Agent'];
 export const inspectorSections: InspectorSection[] = ['Обзор', 'Телеметрия', 'События', 'Политика', 'Проверка'];
-
-export const conversationGroups: ConversationGroup[] = [
-  {
-    label: 'local_chats',
-    items: [
-      { id: 'local-chat', title: 'new_chat', meta: 'model_not_connected', selected: true },
-      { id: 'cancellation-demo', title: 'cancellation_demo', meta: 'model_required' }
-    ]
-  },
-  {
-    label: 'reserved',
-    items: [{ id: 'audit-placeholder', title: 'audit', meta: 'later' }]
-  },
-  {
-    label: 'disabled',
-    items: [{ id: 'documents', title: 'documents', meta: 'later' }]
-  }
-];
 
 export const pinnedProject = {
   title: 'LocalComet',
@@ -159,14 +130,6 @@ export const inspectorMock = {
     { label: 'Channels', state: 'Позже' }
   ]
 };
-
-export function conversationTitleById(id: string): string {
-  for (const group of conversationGroups) {
-    const item = group.items.find((conversation) => conversation.id === id);
-    if (item) return item.title;
-  }
-  return 'new_chat';
-}
 
 export function getInitialMessages(lang: 'ru' | 'en'): MockMessage[] {
   if (lang === 'en') {

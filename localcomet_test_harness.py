@@ -6,10 +6,10 @@ uses. This does NOT duplicate product logic and does NOT open a private IPC
 channel: it calls the same handle_message() entry point the runner uses.
 
 Scope note: the desktop sidecar is a model-gateway / knowledge / session
-manager. It performs NO filesystem tool execution (files.* methods are
-unsupported_method). Approval and workspace confinement are enforced in the
-Rust control plane (src-tauri/src/approval.rs, workspace.rs) and are covered by
-cargo tests, not by this Python smoke.
+manager. It handles the `tool.call` IPC route and delegates workspace-confined
+file operations to its tool-execution module. Approval authorization is still
+enforced by the Rust control plane and is covered by cargo tests; this smoke
+exercises only the read-only sidecar path and workspace escape rejection.
 """
 
 from __future__ import annotations
@@ -62,21 +62,34 @@ class LocalCometHarness:
                 return (0, self._runtime_version)
         raise RuntimeError("sidecar did not answer the desktop hello")
 
+    def health_request(self, request_id: str | None = None) -> dict[str, Any]:
+        """Build the typed MVP-P0-C health.check request used on the real wire."""
+        if request_id is None:
+            self._counter += 1
+            request_id = f"hreq_{self._counter:032x}"
+        payload = {
+            "type": "health.check",
+            "protocolVersion": 1,
+            "requestId": request_id,
+            "generationId": 1,
+            "startupNonce": "scn_" + "a" * 64,
+            "runtimeInstanceId": "rti_" + "b" * 32,
+            "sentAtUnixMs": 1_700_000_000_000,
+        }
+        return make_request(request_id, "app.health", payload)
+
     def readiness_probe(self, timeout_ms: int = 5000) -> tuple[str, int]:
         started = time.monotonic()
-        replies = self.runtime.handle_message(
-            make_request(self._next_id("health"), "app.health", {})
-        )
+        replies = self.runtime.handle_message(self.health_request())
         elapsed_ms = int((time.monotonic() - started) * 1000)
         for reply in replies:
-            if reply.get("type") == "response" and reply.get("payload", {}).get("status") == "ok":
-                return ("ok", elapsed_ms)
+            payload = reply.get("payload", {})
+            if reply.get("type") == "response" and payload.get("type") == "health.status":
+                return (str(payload.get("status", "error")), elapsed_ms)
         return ("error", elapsed_ms)
 
     def runtime_health(self) -> dict[str, Any]:
-        replies = self.runtime.handle_message(
-            make_request(self._next_id("health"), "app.health", {})
-        )
+        replies = self.runtime.handle_message(self.health_request())
         for reply in replies:
             if reply.get("type") == "response":
                 return reply["payload"]

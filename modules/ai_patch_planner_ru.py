@@ -203,6 +203,9 @@ def draft_patch(goal: str) -> dict[str, Any]:
     slug = _safe_slug(raw_goal)
     draft_path = DRAFT_DIR / f"response_agent_draft_{stamp}_{slug}.json"
     installer_path = f"tools/install_ai_agent_draft_marker_{stamp}.py"
+    # Python < 3.12 forbids backslashes inside f-string expressions;
+    # compute the Windows-style path outside the f-string instead.
+    installer_cmd_path = installer_path.replace('/', '\\')
 
     draft = {
         "summary": (
@@ -218,8 +221,8 @@ def draft_patch(goal: str) -> dict[str, Any]:
             }
         ],
         "tests": [
-            f"python {installer_path.replace('/', '\\\\')}",
-            f"python -m py_compile {installer_path.replace('/', '\\\\')}",
+            f"python {installer_cmd_path}",
+            f"python -m py_compile {installer_cmd_path}",
             "python -c \"from pathlib import Path; files=list(Path('Projects/AgentMemory/applied_drafts').glob('agent_draft_marker_*.json')); assert files; print(files[-1])\"",
         ],
     }

@@ -57,6 +57,7 @@
       class="lang-menu"
       bind:this={menu}
       role="listbox"
+      tabindex="0"
       aria-label={$t('lang.select')}
       onkeydown={handleKeydown}
     >

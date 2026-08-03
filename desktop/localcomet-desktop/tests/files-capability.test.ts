@@ -225,7 +225,7 @@ describe('Files capability frontend', () => {
   });
 
   it('never adds backend file context to the visible user chat transcript', () => {
-    expect(modelGatewayStoreSource).toContain('appendAcceptedChatTurn(requestId, cleanPrompt)');
+    expect(modelGatewayStoreSource).toContain('appendAcceptedChatTurn(requestId, cleanPrompt, chatSessionId)');
     expect(modelGatewayStoreSource).not.toContain('appendAcceptedChatTurn(requestId, acceptance.file_context');
     expect(modelGatewayStoreSource).not.toContain('appendAcceptedChatTurn(requestId, fileIds');
   });

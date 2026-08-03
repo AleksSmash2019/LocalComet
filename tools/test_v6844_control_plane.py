@@ -625,7 +625,6 @@ def run_source_checks() -> None:
             DESKTOP / "src" / "lib" / "stores" / "controlPlane.ts",
             DESKTOP / "src" / "lib" / "components" / "shell" / "ChatHeader.svelte",
             DESKTOP / "src" / "lib" / "components" / "chat" / "MessageComposer.svelte",
-            DESKTOP / "src" / "lib" / "components" / "shell" / "AgentInspector.svelte",
             DESKTOP / "src" / "lib" / "components" / "agent" / "Diagnostics.svelte",
             DESKTOP / "src" / "lib" / "data" / "mockData.ts",
             DESKTOP / "src" / "lib" / "i18n" / "en.ts",

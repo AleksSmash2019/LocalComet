@@ -1,0 +1,26 @@
+{
+  "$schema": "localcomet/sidecar-health-malformed-frames/v1",
+  "description": "Shared MVP-P0-C-R1 malformed-frame corpus executed through the production Rust parse_health_frame seam and Python decode_frame seam.",
+  "cases": [
+    {"id":"duplicate_request_id_key","json":"{\"requestId\":\"a\",\"requestId\":\"b\"}","parser_reject":true,"expected_parser_error":"duplicate_key"},
+    {"id":"unicode_decoded_duplicate_key","json":"{\"status\":1,\"st\\u0061tus\":2}","parser_reject":true,"expected_parser_error":"duplicate_key"},
+    {"id":"duplicate_generation_id_key","json":"{\"generationId\":1,\"generationId\":2}","parser_reject":true,"expected_parser_error":"duplicate_key"},
+    {"id":"duplicate_startup_nonce_key","json":"{\"startupNonce\":\"a\",\"startupNonce\":\"b\"}","parser_reject":true,"expected_parser_error":"duplicate_key"},
+    {"id":"duplicate_runtime_instance_key","json":"{\"runtimeInstanceId\":\"a\",\"runtimeInstanceId\":\"b\"}","parser_reject":true,"expected_parser_error":"duplicate_key"},
+    {"id":"duplicate_nested_tool_execution_key","json":"{\"capabilities\":{\"toolExecution\":false,\"toolExecution\":true}}","parser_reject":true,"expected_parser_error":"duplicate_key"},
+    {"id":"excessive_nesting","depth":20,"parser_reject":true,"expected_parser_error":"max_depth_exceeded"},
+    {"id":"oversized_frame","size_bytes":4194305,"parser_reject":true,"expected_parser_error":"frame_too_large"},
+    {"id":"invalid_utf8_descriptor","invalid_utf8":true,"parser_reject":true,"expected_parser_error":"invalid_utf8"},
+    {"id":"empty_frame","size_bytes":0,"parser_reject":true,"expected_parser_error":"empty_frame"},
+    {"id":"two_json_objects_one_frame","json":"{\"type\":\"health.status\"}{\"type\":\"health.status\"}","parser_reject":true,"expected_parser_error":"trailing_data"},
+    {"id":"trailing_garbage","json":"{\"type\":\"health.status\"}garbage","parser_reject":true,"expected_parser_error":"trailing_data"},
+    {"id":"unterminated_object","json":"{\"type\":\"health.status\"","parser_reject":true,"expected_parser_error":"invalid_json"},
+    {"id":"non_json_token","json":"not-json","parser_reject":true,"expected_parser_error":"invalid_json"},
+    {"id":"unknown_protocol_version","json":"{\"protocolVersion\":99}","parser_reject":false,"expected_validation_error":"sidecar_health_protocol_mismatch"},
+    {"id":"fractional_generation_id","json":"{\"generationId\":1.5}","parser_reject":false,"expected_validation_error":"sidecar_health_generation_mismatch"},
+    {"id":"negative_timestamp","json":"{\"receivedAtUnixMs\":-1}","parser_reject":false,"expected_validation_error":"sidecar_health_frame_invalid"},
+    {"id":"unknown_status","json":"{\"status\":\"exploded\"}","parser_reject":false,"expected_validation_error":"sidecar_health_status_invalid"},
+    {"id":"missing_required_field","json":"{\"type\":\"health.status\"}","parser_reject":false,"expected_validation_error":"sidecar_health_frame_invalid"},
+    {"id":"tool_execution_true","json":"{\"capabilities\":{\"toolExecution\":true}}","parser_reject":false,"expected_validation_error":"sidecar_health_capability_mismatch"}
+  ]
+}

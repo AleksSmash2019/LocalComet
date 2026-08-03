@@ -55,6 +55,11 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>) => {
     invocationOrder.push(command);
     invokeCalls.push({ command, args });
+    if (command === 'request_approval') {
+      const tool = (args as { tool: string }).tool;
+      const familyMap: Record<string, string> = { 'artifact.download': 'artifact_download', 'artifact.remove': 'artifact_remove', 'runtime.start': 'runtime_start', 'runtime.stop': 'runtime_stop', 'model.binding.set': 'model_binding_set' };
+      return { token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}`, tool, riskLevel: 'guarded', commandFamily: familyMap[tool] ?? 'model_binding_set', expiresAtUnixMs: Date.now() + 300_000 };
+    }
     if (command === 'model_turn_start') return startHandler(args ?? {});
     if (command === 'model_turn_cancel') return cancelHandler(args ?? {});
     if (command === 'managed_runtime_status') return managedStatusHandler();
@@ -156,7 +161,9 @@ function event(method: ModelGatewayEvent['method'], sequence: number, text: stri
     'model.turn.completed': 'Completed',
     'model.turn.cancelled': 'Cancelled',
     'model.turn.timed_out': 'TimedOut',
-    'model.turn.failed': 'Failed'
+    'model.turn.failed': 'Failed',
+    'model.tool.request': 'Streaming',
+    'model.turn.tool_calls': 'ToolCalls'
   } as const;
   return {
     method,
@@ -223,7 +230,7 @@ describe('typed real-model chat lifecycle', () => {
 
   it('registers the listener before submit and sends the fixed typed request', async () => {
     await startAccepted();
-    expect(invocationOrder).toEqual(['listen', 'managed_runtime_status', 'model_binding_set', 'model_turn_start']);
+    expect(invocationOrder).toEqual(['listen', 'managed_runtime_status', 'model_turn_start']);
     const args = invokeCalls.find((call) => call.command === 'model_turn_start')?.args ?? {};
     expect(args.requestId).toMatch(/^[0-9a-f]{24}$/);
     expect(args).toMatchObject({ chatSessionId: 'local-chat', modelId: MODEL_ID, maxTokens: 256, prompt: 'hello', bindingFingerprint: FINGERPRINT });

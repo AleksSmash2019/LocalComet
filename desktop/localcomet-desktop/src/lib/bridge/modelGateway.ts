@@ -29,9 +29,10 @@ import type {
   SanitizedGatewayError
 } from '$lib/types/modelGateway';
 import { CONTROL_PLANE_EVENT_CHANNEL } from './controlPlane';
+import { requestApproval } from './approval';
 import type { FileContextInclusion, FilesContextReport } from '$lib/types/files';
 
-type InvokeArgs = Readonly<Record<string, string | number | boolean | readonly string[]>>;
+type InvokeArgs = Readonly<Record<string, unknown>>;
 
 export async function getModelGatewayCatalog(): Promise<GatewayCatalog> {
   return validateCatalog(await invokeExact('model_gateway_catalog'));
@@ -51,18 +52,34 @@ export async function setModelBinding(args: {
   port?: number;
   modelId: string;
   runtimeInstanceId?: string;
+  isCurrent?: () => boolean;
 }): Promise<ModelBinding> {
-  const invokeArgs: Record<string, string | number | boolean> = {
+  const modelId = args.providerId === 'managed-llama-cpp' ? validateArtifactId(args.modelId) : validateModelId(args.modelId);
+  const port = args.providerId === 'openai-compatible-local' ? validatePort(Number(args.port)) : null;
+  const runtimeInstanceId = args.runtimeInstanceId ? args.runtimeInstanceId : null;
+  const envelope = await requestApproval('model.binding.set', {
+    provider_id: args.providerId,
+    harness_id: args.harnessId,
+    port,
+    model_id: modelId,
+    runtime_instance_id: runtimeInstanceId
+  });
+  if (args.isCurrent && !args.isCurrent()) {
+    throw { code: 'stale_request', message: 'Model binding request is no longer current' };
+  }
+  const invokeArgs: Record<string, string | number> = {
     providerId: args.providerId,
     harnessId: args.harnessId,
-    modelId: args.providerId === 'managed-llama-cpp' ? validateArtifactId(args.modelId) : validateModelId(args.modelId),
-    confirmed: true
+    modelId,
+    token: envelope.token,
+    approvalId: envelope.approvalId,
+    callId: envelope.callId
   };
-  if (args.providerId === 'openai-compatible-local') {
-    invokeArgs.port = validatePort(Number(args.port));
+  if (port !== null) {
+    invokeArgs.port = port;
   }
-  if (args.runtimeInstanceId) {
-    invokeArgs.runtimeInstanceId = args.runtimeInstanceId;
+  if (runtimeInstanceId !== null) {
+    invokeArgs.runtimeInstanceId = runtimeInstanceId;
   }
   return validateBinding(
     await invokeExact('model_binding_set', invokeArgs)
@@ -92,8 +109,9 @@ export async function listApprovedDownloadableArtifacts(): Promise<readonly Appr
 
 export async function startApprovedArtifactDownload(artifactId: string): Promise<ArtifactDownloadState> {
   const requestedId = validateArtifactId(artifactId);
+  const envelope = await requestApproval('artifact.download', { artifact_id: requestedId });
   const result = validateArtifactDownloadState(
-    await invokeExact('start_approved_artifact_download', { artifactId: requestedId, confirmed: true })
+    await invokeExact('start_approved_artifact_download', { artifactId: requestedId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId })
   );
   if (result.artifact_id !== requestedId) throw invalid();
   return result;
@@ -113,8 +131,9 @@ export async function cancelArtifactDownload(jobId: string): Promise<ArtifactDow
 
 export async function removeManagedModel(modelId: string): Promise<ManagedModelRemovalResult> {
   const requestedId = validateArtifactId(modelId);
+  const envelope = await requestApproval('artifact.remove', { model_id: requestedId });
   const object = expectExactRecord(
-    await invokeExact('remove_managed_model', { modelId: requestedId, confirmed: true }),
+    await invokeExact('remove_managed_model', { modelId: requestedId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId }),
     ['model_id', 'removed']
   );
   if (object.model_id !== requestedId || object.removed !== true) throw invalid();
@@ -139,12 +158,21 @@ export async function getManagedModelReadiness(modelId: string): Promise<ModelRe
   return result;
 }
 
-export async function startManagedRuntime(modelId: string): Promise<ManagedRuntimeStartResponse> {
-  return validateManagedStart(await invokeExact('managed_runtime_start', { modelId: validateArtifactId(modelId) }));
+export async function startManagedRuntime(
+  modelId: string,
+  isCurrent?: () => boolean
+): Promise<ManagedRuntimeStartResponse> {
+  const requestedId = validateArtifactId(modelId);
+  const envelope = await requestApproval('runtime.start', { model_id: requestedId });
+  if (isCurrent && !isCurrent()) {
+    throw { code: 'stale_request', message: 'Managed runtime start request is no longer current' };
+  }
+  return validateManagedStart(await invokeExact('managed_runtime_start', { modelId: requestedId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId }));
 }
 
 export async function stopManagedRuntime(): Promise<void> {
-  await invokeExact('managed_runtime_stop');
+  const envelope = await requestApproval('runtime.stop', {});
+  await invokeExact('managed_runtime_stop', { token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId });
 }
 
 export async function getManagedRuntimeLogs(): Promise<ManagedRuntimeLogs> {
@@ -161,6 +189,8 @@ export async function startModelTurn(args: {
   fileIds?: readonly string[];
   locale: AssistantLocale;
   bindingFingerprint: string;
+  messages?: readonly Record<string, unknown>[];
+  tools?: readonly Record<string, unknown>[];
 }): Promise<ModelTurnStartResponse> {
   const requestId = validateTurnId(args.requestId);
   const chatSessionId = validateChatSessionId(args.chatSessionId);
@@ -178,7 +208,9 @@ export async function startModelTurn(args: {
       prompt: bounded(args.prompt, 16_384),
       fileIds,
       locale: validateLocale(args.locale),
-      bindingFingerprint: validateFingerprint(args.bindingFingerprint)
+      bindingFingerprint: validateFingerprint(args.bindingFingerprint),
+      messages: args.messages ?? [],
+      tools: args.tools ?? []
     })
   );
   if (
@@ -221,11 +253,13 @@ export async function cancelModelTurn(requestId: string): Promise<ModelTurnCance
 
 export async function subscribeModelGatewayEvents(
   callback: (event: ModelGatewayEvent) => void,
-  onProtocolError?: (error: SanitizedGatewayError) => void
+  onProtocolError?: (error: SanitizedGatewayError) => void,
+  options: { readonly toolsEnabled?: boolean } = {}
 ): Promise<() => void> {
+  const toolsEnabled = options.toolsEnabled === true;
   const cleanup = await listen<unknown>(CONTROL_PLANE_EVENT_CHANNEL, (event) => {
     try {
-      const parsed = parseModelEvent(event.payload);
+      const parsed = parseModelEvent(event.payload, toolsEnabled);
       if (parsed) callback(parsed);
     } catch (error) {
       onProtocolError?.(normalizeGatewayError(error));
@@ -704,7 +738,7 @@ function validateTurnCancel(value: unknown): ModelTurnCancelResponse {
   };
 }
 
-function parseModelEvent(value: unknown): ModelGatewayEvent | null {
+function parseModelEvent(value: unknown, toolsEnabled: boolean): ModelGatewayEvent | null {
   const object = expectRecord(value);
   if (!isModelMethod(object.method)) return null;
   const metadata = expectRecord(object.metadata ?? {});
@@ -712,19 +746,25 @@ function parseModelEvent(value: unknown): ModelGatewayEvent | null {
   const turnId = validateTurnId(String(object.turn_id));
   const replyTo = validateTurnId(String(object.reply_to));
   if (requestId !== turnId || requestId !== replyTo) throw invalid();
-  const state = exactString(object.state, ['Streaming', 'Completed', 'Cancelled', 'TimedOut', 'Failed']);
+  const state = exactString(object.state, ['Streaming', 'Completed', 'Cancelled', 'TimedOut', 'Failed', 'ToolCalls']);
   const expectedState: Readonly<Record<ModelGatewayEvent['method'], ModelGatewayEvent['state']>> = {
     'model.turn.started': 'Streaming',
     'model.output.delta': 'Streaming',
     'model.turn.completed': 'Completed',
     'model.turn.cancelled': 'Cancelled',
     'model.turn.timed_out': 'TimedOut',
-    'model.turn.failed': 'Failed'
+    'model.turn.failed': 'Failed',
+    'model.tool.request': 'Streaming',
+    'model.turn.tool_calls': 'ToolCalls'
   };
   if (state !== expectedState[object.method]) throw invalid();
   const toolsExecuted = nonNegativeSafeInteger(metadata.tools_executed);
   const persistence = exactBoolean(metadata.persistence);
-  if (toolsExecuted !== 0 || persistence !== false) throw invalid();
+  if (persistence !== false) throw invalid();
+  const isToolEvent = object.method === 'model.tool.request' || object.method === 'model.turn.tool_calls';
+  if ((isToolEvent && !toolsEnabled) || (!isToolEvent && toolsExecuted !== 0)) throw invalid();
+  const toolCalls = isToolEvent ? validateModelToolCalls(metadata.tool_calls, object.method === 'model.tool.request') : undefined;
+  if (isToolEvent && toolsExecuted !== toolCalls?.length && object.method === 'model.turn.tool_calls') throw invalid();
   return {
     method: object.method,
     sequence: nonNegativeSafeInteger(object.sequence),
@@ -735,7 +775,8 @@ function parseModelEvent(value: unknown): ModelGatewayEvent | null {
     state,
     text: typeof object.text === 'string' ? bounded(object.text, 65_536) : null,
     model_called: exactBoolean(metadata.model_called),
-    tools_executed: 0,
+    tools_executed: toolsExecuted,
+    ...(toolCalls ? { tool_calls: toolCalls } : {}),
     persistence: false,
     generated_bytes: nonNegativeSafeInteger(metadata.generated_bytes),
     provider_id: exactString(metadata.provider_id, ['managed-llama-cpp', 'openai-compatible-local']),
@@ -752,8 +793,21 @@ function parseModelEvent(value: unknown): ModelGatewayEvent | null {
   };
 }
 
+function validateModelToolCalls(value: unknown, single: boolean) {
+  if (!Array.isArray(value) || value.length === 0 || (single && value.length !== 1)) throw invalid();
+  return value.map((item) => {
+    const call = expectExactRecord(item, ['id', 'name', 'arguments']);
+    if (typeof call.id !== 'string' || typeof call.name !== 'string') throw invalid();
+    const id = bounded(call.id, 256);
+    const name = bounded(call.name, 256);
+    const args = expectRecord(call.arguments);
+    if (!id.trim() || !name.trim()) throw invalid();
+    return { id, name, arguments: args };
+  });
+}
+
 function isModelMethod(value: unknown): value is ModelGatewayEvent['method'] {
-  return typeof value === 'string' && ['model.turn.started', 'model.output.delta', 'model.turn.completed', 'model.turn.cancelled', 'model.turn.timed_out', 'model.turn.failed'].includes(value);
+  return typeof value === 'string' && ['model.turn.started', 'model.output.delta', 'model.turn.completed', 'model.turn.cancelled', 'model.turn.timed_out', 'model.turn.failed', 'model.tool.request', 'model.turn.tool_calls'].includes(value);
 }
 
 function validateApprovedRuntime(value: unknown): ApprovedRuntimeSummary {

@@ -4,6 +4,7 @@
   import KnowledgeToggle from '$lib/components/knowledge/KnowledgeToggle.svelte';
   import FilesPanel from '$lib/components/files/FilesPanel.svelte';
   import { composerDraft, openSettings, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
+  import { applyAutoTitle } from '$lib/stores/conversationStore';
   import { t } from '$lib/i18n';
   import { cancelLocalModelTurn, inferenceRequestStore, managedModelReady, startLocalModelTurn } from '$lib/stores/modelGateway';
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
@@ -61,6 +62,7 @@
     if (!canSend) return;
     restoreComposerFocus = true;
     const draft = $composerDraft;
+    applyAutoTitle($selectedConversationId, draft);
     await startLocalModelTurn(draft, $selectedConversationId, $includedFileIds);
     await restoreFocusAfterRequest();
     resizeDraftBox();

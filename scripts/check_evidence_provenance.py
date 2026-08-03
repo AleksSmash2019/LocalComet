@@ -1,6 +1,16 @@
-"""Verify LocalComet evidence provenance.
+"""Verify LocalComet evidence provenance (CURRENT tier only).
 
-For every artifacts/evidence/*.txt file:
+Evidence model (owner decision 2026-07-29, B5 Evidence Model Fix):
+  current    = artifacts/evidence/*.txt (top-level only, non-recursive glob).
+               MUST match the live tree_digest; reported STALE otherwise.
+  historical = artifacts/evidence/historical/*.txt.
+               Honest snapshots of older source trees; checked SEPARATELY by
+               scripts/check_historical_evidence.py (body_sha256 integrity +
+               original tree_digest preservation). This gate does NOT inspect
+               the historical/ directory and does NOT require historical files
+               to match the current tree.
+
+For every top-level artifacts/evidence/*.txt file:
   - require a complete provenance header (command, exit_code, tree_digest,
     body_sha256);
   - recompute the current source tree digest;
@@ -8,7 +18,7 @@ For every artifacts/evidence/*.txt file:
     after the evidence was captured);
   - report BODY_MISMATCH if the recorded body_sha256 does not match the body.
 
-Exit 0 if all evidence is fresh and intact, 1 otherwise.
+Exit 0 if all current evidence is fresh and intact, 1 otherwise.
 
 Injection: modify any source file covered by refresh_evidence.SOURCE_GLOBS
 without re-running refresh_evidence.py -> this gate exits 1 (STALE).
@@ -21,7 +31,16 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from refresh_evidence import EVIDENCE_DIR, tree_digest  # noqa: E402
 
+# Meta-evidence (checker output, provenance snapshots) lives here; NOT scanned.
+META_DIR = EVIDENCE_DIR / "meta"
+
 REQUIRED_FIELDS = ("command", "exit_code", "tree_digest", "body_sha256")
+REQUIRED_EVIDENCE_FILES = (
+    "cargo_test.txt",
+    "trust_chain.txt",
+    "cmd_parity.txt",
+    "tool_risk_registry.txt",
+)
 
 
 def parse_evidence(text: str):
@@ -41,43 +60,44 @@ def main() -> int:
         print(f"FAIL: evidence directory missing: {EVIDENCE_DIR}")
         return 1
 
-    evidence_files = sorted(EVIDENCE_DIR.glob("*.txt"))
-    if not evidence_files:
-        print("FAIL: no evidence files found (run scripts/refresh_evidence.py)")
+    evidence_files = [EVIDENCE_DIR / name for name in REQUIRED_EVIDENCE_FILES]
+    missing_files = [path.name for path in evidence_files if not path.is_file()]
+    if missing_files:
+        print(f"FAIL: MISSING_REQUIRED_EVIDENCE: {', '.join(missing_files)}")
         return 1
 
-    current_digest = tree_digest()
-    errors = []
-
+    live_digest = tree_digest()
+    problems = 0
     for path in evidence_files:
-        text = path.read_text(encoding="utf-8")
-        fields, body = parse_evidence(text)
-        if fields is None:
-            errors.append(f"MISSING_PROVENANCE: {path.name} has no provenance header")
+        header, body = parse_evidence(path.read_text(encoding="utf-8"))
+        if header is None or body is None:
+            problems += 1
+            print(f"FAIL: MALFORMED_HEADER: {path.name}")
             continue
-        for field in REQUIRED_FIELDS:
-            if field not in fields:
-                errors.append(f"MISSING_FIELD: {path.name} lacks '{field}'")
-        if "tree_digest" in fields and fields["tree_digest"] != current_digest:
-            errors.append(
-                f"STALE: {path.name} tree_digest {fields['tree_digest'][:16]}... "
-                f"!= current {current_digest[:16]}..."
+        missing_fields = [field for field in REQUIRED_FIELDS if not header.get(field)]
+        if missing_fields:
+            problems += 1
+            print(f"FAIL: MISSING_FIELDS: {path.name} {', '.join(missing_fields)}")
+            continue
+        if header["exit_code"] != "0":
+            problems += 1
+            print(f"FAIL: NONZERO_EXIT: {path.name} exit_code={header['exit_code']}")
+        actual_body_sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        if header["body_sha256"] != actual_body_sha:
+            problems += 1
+            print(f"FAIL: BODY_MISMATCH: {path.name}")
+        if header["tree_digest"] != live_digest:
+            problems += 1
+            print(
+                f"FAIL: STALE: {path.name} tree_digest {header['tree_digest'][:16]}... "
+                f"!= current {live_digest[:16]}..."
             )
-        if "body_sha256" in fields and body is not None:
-            actual = hashlib.sha256(body.encode("utf-8")).hexdigest()
-            if actual != fields["body_sha256"]:
-                errors.append(f"BODY_MISMATCH: {path.name} body hash changed")
 
-    if errors:
-        for error in errors:
-            print(f"FAIL: {error}")
-        print(f"\n{len(errors)} provenance problem(s) across {len(evidence_files)} file(s)")
+    if problems:
+        print(f"\n{problems} provenance problem(s) across {len(evidence_files)} file(s)")
         return 1
 
-    print(
-        f"OK: {len(evidence_files)} evidence file(s) fresh and intact "
-        f"(tree={current_digest[:16]}...)"
-    )
+    print(f"OK: {len(evidence_files)} evidence file(s) fresh and intact (tree={live_digest[:16]}...)")
     return 0
 
 

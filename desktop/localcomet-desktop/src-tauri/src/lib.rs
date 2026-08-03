@@ -15,7 +15,9 @@ mod supervisor;
 mod windows_job;
 mod workspace;
 
-use approval_commands::{execute_approved, request_approval, set_workspace, ApprovalState};
+use approval_commands::{
+    execute_approved, request_approval, run_tool_call, set_workspace, ApprovalState,
+};
 use artifact_acquisition::{
     cancel_artifact_download, get_artifact_download_state, list_approved_downloadable_artifacts,
     remove_managed_model, start_approved_artifact_download, ArtifactAcquisitionManager,
@@ -251,6 +253,7 @@ pub fn run() {
             forget_selected_file,
             request_approval,
             execute_approved,
+            run_tool_call,
             set_workspace
         ])
         .run(tauri::generate_context!());

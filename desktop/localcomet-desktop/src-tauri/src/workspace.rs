@@ -48,6 +48,10 @@ pub fn validate_workspace_path(raw: &Path) -> Result<PathBuf, WorkspaceError> {
     if raw.as_os_str().is_empty() {
         return Err(WorkspaceError::InvalidPath("empty path".into()));
     }
+    // Inspect the caller-supplied path before canonicalization. Canonicalization
+    // resolves a link, so checking its metadata afterwards only examines the
+    // target and cannot enforce the no-link workspace boundary.
+    reject_raw_path_links(raw)?;
 
     let canonical = raw
         .canonicalize()
@@ -65,31 +69,34 @@ pub fn validate_workspace_path(raw: &Path) -> Result<PathBuf, WorkspaceError> {
         ));
     }
 
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-        let metadata = std::fs::symlink_metadata(&canonical)
-            .map_err(|e| WorkspaceError::InvalidPath(e.to_string()))?;
-        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            return Err(WorkspaceError::SymlinkEscape(
-                canonical.display().to_string(),
-            ));
-        }
-    }
+    Ok(canonical)
+}
 
-    #[cfg(not(windows))]
-    {
-        let metadata = std::fs::symlink_metadata(&canonical)
-            .map_err(|e| WorkspaceError::InvalidPath(e.to_string()))?;
+fn reject_raw_path_links(raw: &Path) -> Result<(), WorkspaceError> {
+    for component in raw.ancestors() {
+        let metadata = match std::fs::symlink_metadata(component) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(WorkspaceError::InvalidPath(error.to_string())),
+        };
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+            if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                return Err(WorkspaceError::SymlinkEscape(
+                    component.display().to_string(),
+                ));
+            }
+        }
+        #[cfg(not(windows))]
         if metadata.file_type().is_symlink() {
             return Err(WorkspaceError::SymlinkEscape(
-                canonical.display().to_string(),
+                component.display().to_string(),
             ));
         }
     }
-
-    Ok(canonical)
+    Ok(())
 }
 
 pub fn workspace_digest(path: &Path) -> String {
@@ -155,6 +162,26 @@ mod tests {
     }
 
     #[test]
+    fn supplied_symlink_workspace_is_rejected_before_canonicalization() {
+        let root =
+            std::env::temp_dir().join(format!("localcomet_workspace_link_{}", std::process::id()));
+        let target = root.join("target");
+        let link = root.join("link");
+        fs::create_dir_all(&target).unwrap();
+        #[cfg(windows)]
+        let created = std::os::windows::fs::symlink_dir(&target, &link);
+        #[cfg(not(windows))]
+        let created = std::os::unix::fs::symlink(&target, &link);
+        if let Err(error) = created {
+            let _ = fs::remove_dir_all(&root);
+            panic!("cannot create symlink fixture: {error}");
+        }
+        let result = validate_workspace_path(&link);
+        let _ = fs::remove_dir_all(&root);
+        assert!(matches!(result, Err(WorkspaceError::SymlinkEscape(_))));
+    }
+
+    #[test]
     fn workspace_change_invalidates_old_tokens() {
         let mut registry = ApprovalRegistry::new();
         let ws_a = WorkspaceIdentity {
@@ -162,13 +189,16 @@ mod tests {
             digest: workspace_digest(Path::new("/workspace-a")),
         };
 
-        use crate::approval::{canonical_input_digest, ApprovalScope, RiskLevel};
+        use crate::approval::{canonical_input_digest, ApprovalScope, CommandFamily, RiskLevel};
         let scope = ApprovalScope {
             tool: "files.patch".to_owned(),
             input_digest: canonical_input_digest(&serde_json::json!({"x": 1})),
             workspace: "/workspace-a".to_owned(),
             session: registry.session_id().to_owned(),
             risk_level: RiskLevel::Guarded,
+            command_family: CommandFamily::ToolFilesystemWrite,
+            approval_id: "appr_00000000000000000000000000000000".to_owned(),
+            call_id: "call_00000000000000000000000000000000".to_owned(),
         };
         let token = registry.issue(scope).unwrap();
         assert_eq!(registry.active_count(), 1);
@@ -182,7 +212,16 @@ mod tests {
 
         let digest = canonical_input_digest(&serde_json::json!({"x": 1}));
         let err = registry
-            .execute_approved(&token, "files.patch", &digest, "/workspace-a")
+            .execute_approved(
+                &token,
+                "files.patch",
+                &digest,
+                "/workspace-a",
+                "appr_00000000000000000000000000000000",
+                "call_00000000000000000000000000000000",
+                RiskLevel::Guarded,
+                CommandFamily::ToolFilesystemWrite,
+            )
             .unwrap_err();
         assert!(matches!(err, crate::approval::ApprovalError::TokenNotFound));
     }

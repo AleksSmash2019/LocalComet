@@ -1,4 +1,5 @@
 import { derived, get, writable } from 'svelte/store';
+import { DEFAULT_CONVERSATION_ID } from './conversationStore';
 import {
   cancelModelTurn,
   getManagedInstalledArtifacts,
@@ -187,6 +188,10 @@ export async function initializeModelGateway(): Promise<void> {
       modelGatewayStore.update((state) => ({ ...state, catalog, initialized: true, status: 'Binding required' }));
       await refreshManagedRuntimeStatus();
       if (generation !== subscriptionGeneration) return;
+      if (!get(managedModelReady) && get(approvedManagedModelInstalled)) {
+        await connectSelectedManagedModel();
+        if (generation !== subscriptionGeneration) return;
+      }
       startManagedHealthMonitor();
       initialized = true;
     } catch (error) {
@@ -238,8 +243,11 @@ async function ensureModelEventSubscription(): Promise<void> {
 function startManagedHealthMonitor(): void {
   if (managedHealthTimer) return;
   managedHealthTimer = setInterval(() => {
-    if (!get(inferenceBusy) && get(managedRuntimeStore).binding) {
+    if (get(inferenceBusy)) return;
+    if (get(managedRuntimeStore).binding) {
       void verifyLiveManagedSession();
+    } else if (get(approvedManagedModelInstalled) && !managedConnectionPromise) {
+      void connectSelectedManagedModel();
     }
   }, MANAGED_HEALTH_POLL_MS);
 }
@@ -290,23 +298,8 @@ async function verifyLiveManagedSession(): Promise<boolean> {
         return false;
       }
 
-      const rebound = await setModelBinding({
-        providerId: 'managed-llama-cpp',
-        harnessId: expected.harness_id,
-        modelId: expected.model_id,
-        runtimeInstanceId: expected.runtime_instance_id
-      });
-      if (generation !== subscriptionGeneration) return false;
-      const latest = get(managedRuntimeStore);
-      const bindingMatches =
-        latest.binding?.binding_fingerprint === expected.binding_fingerprint &&
-        rebound.provider_id === expected.provider_id &&
-        rebound.harness_id === expected.harness_id &&
-        rebound.model_id === expected.model_id &&
-        rebound.runtime_instance_id === expected.runtime_instance_id &&
-        rebound.binding_fingerprint === expected.binding_fingerprint;
-      if (!bindingMatches) throw { code: 'protocol_mismatch', message: 'Managed model session binding changed' };
-      modelGatewayStore.update((state) => ({ ...state, binding: rebound, status: 'Bound', lastError: null }));
+      // Binding approval is user-initiated. Health polling only verifies that
+      // the already-approved immutable runtime instance is still alive.
       return true;
     } catch (error) {
       if (generation !== subscriptionGeneration) return false;
@@ -382,16 +375,28 @@ export async function discoverModels(): Promise<void> {
 }
 
 export async function confirmBinding(): Promise<void> {
+  const generation = subscriptionGeneration;
   const state = get(modelGatewayStore);
+  const port = currentPort();
+  const stillCurrent = () => {
+    const current = get(modelGatewayStore);
+    return generation === subscriptionGeneration &&
+      current.harnessId === state.harnessId &&
+      current.selectedModelId === state.selectedModelId &&
+      Number(current.portText) === port;
+  };
   try {
     const binding = await setModelBinding({
       providerId: 'openai-compatible-local',
       harnessId: state.harnessId,
-      port: currentPort(),
-      modelId: state.selectedModelId
+      port,
+      modelId: state.selectedModelId,
+      isCurrent: stillCurrent
     });
+    if (!stillCurrent()) return;
     modelGatewayStore.update((current) => ({ ...current, binding, status: 'Bound', lastError: null }));
   } catch (error) {
+    if (!stillCurrent()) return;
     modelGatewayStore.update((current) => ({ ...current, status: 'Binding required', binding: null, lastError: normalizeGatewayError(error) }));
   }
 }
@@ -401,6 +406,11 @@ export async function setManagedSelectedModel(modelId: string): Promise<void> {
   managedRuntimeStore.update((state) => ({
     ...state,
     selectedModelId: modelId,
+    // Do not retain an optimistic start for the former selection. Stable
+    // backend statuses remain visible until the next authoritative refresh.
+    status: state.status?.state === 'Starting' && state.status.model_id !== modelId
+      ? null
+      : state.status,
     readiness: state.readiness?.model_id === modelId ? state.readiness : null,
     binding: state.binding?.model_id === modelId ? state.binding : null,
     lastError: null
@@ -412,12 +422,12 @@ export async function setManagedSelectedModel(modelId: string): Promise<void> {
     managedRuntimeStore.update((state) => state.selectedModelId === modelId
       ? { ...state, readiness, binding: readiness.launchable ? state.binding : null, lastError: null }
       : state);
-    if (!readiness.launchable) clearManagedGatewayBinding();
+    if (!readiness.launchable && get(managedRuntimeStore).selectedModelId === modelId) clearManagedGatewayBinding();
   } catch (error) {
     managedRuntimeStore.update((state) => state.selectedModelId === modelId
       ? { ...state, readiness: null, binding: null, lastError: normalizeGatewayError(error) }
       : state);
-    clearManagedGatewayBinding();
+    if (get(managedRuntimeStore).selectedModelId === modelId) clearManagedGatewayBinding();
   }
 }
 
@@ -499,11 +509,14 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
 }
 
 export async function startSelectedManagedRuntime(precomputedReadiness?: ModelReadinessSummary): Promise<void> {
+  const generation = subscriptionGeneration;
   const state = get(managedRuntimeStore);
+  const stillCurrent = () => generation === subscriptionGeneration &&
+    get(managedRuntimeStore).selectedModelId === state.selectedModelId;
   if (!state.selectedModelId) return;
   try {
     const readiness = precomputedReadiness ?? await readManagedModelReadiness(state.selectedModelId);
-    if (get(managedRuntimeStore).selectedModelId !== state.selectedModelId) return;
+    if (!stillCurrent()) return;
     if (!readiness.launchable) {
       managedRuntimeStore.update((current) => ({
         ...current,
@@ -527,8 +540,16 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
       lastError: null
     }));
     clearManagedGatewayBinding();
-    await startManagedRuntime(state.selectedModelId);
+    await startManagedRuntime(state.selectedModelId, stillCurrent);
+    if (!stillCurrent()) {
+      void refreshManagedRuntimeStatus();
+      return;
+    }
     const status = await getManagedRuntimeStatus();
+    if (!stillCurrent()) {
+      void refreshManagedRuntimeStatus();
+      return;
+    }
     managedRuntimeStore.update((current) => ({
       ...current,
       status,
@@ -537,8 +558,11 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
         : null
     }));
   } catch (error) {
+    if (!stillCurrent()) {
+      void refreshManagedRuntimeStatus();
+      return;
+    }
     const normalized = normalizeGatewayError(error);
-    await refreshManagedRuntimeStatus();
     managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalized }));
     clearManagedGatewayBinding();
   }
@@ -565,6 +589,7 @@ export async function stopSelectedManagedRuntime(): Promise<void> {
 }
 
 export async function confirmManagedBinding(precomputedReadiness?: ModelReadinessSummary): Promise<void> {
+  const generation = subscriptionGeneration;
   const state = get(managedRuntimeStore);
   const runtimeInstanceId = state.status?.runtime_instance_id ?? '';
   if (
@@ -576,19 +601,30 @@ export async function confirmManagedBinding(precomputedReadiness?: ModelReadines
     state.status.model_id !== state.selectedModelId ||
     !state.readiness?.launchable
   ) return;
+  const stillCurrent = () => {
+    const current = get(managedRuntimeStore);
+    return generation === subscriptionGeneration &&
+      current.selectedModelId === state.selectedModelId &&
+      current.harnessId === state.harnessId &&
+      current.status?.state === 'Ready' &&
+      current.status.model_state === 'Ready' &&
+      current.status.inference_ready === true &&
+      current.status.model_id === state.selectedModelId &&
+      current.status.runtime_instance_id === runtimeInstanceId;
+  };
+  const existing = state.binding;
+  if (
+    existing &&
+    existing.provider_id === 'managed-llama-cpp' &&
+    existing.harness_id === state.harnessId &&
+    existing.model_id === state.selectedModelId &&
+    existing.runtime_instance_id === runtimeInstanceId
+  ) return;
   try {
     const readiness = precomputedReadiness ?? await readManagedModelReadiness(state.selectedModelId);
-    const current = get(managedRuntimeStore);
-    if (
-      !readiness.launchable ||
-      current.selectedModelId !== state.selectedModelId ||
-      current.harnessId !== state.harnessId ||
-      current.status?.state !== 'Ready' ||
-      current.status.model_state !== 'Ready' ||
-      current.status.inference_ready !== true ||
-      current.status.model_id !== state.selectedModelId ||
-      current.status.runtime_instance_id !== runtimeInstanceId
-    ) {
+    if (generation !== subscriptionGeneration) return;
+    if (!stillCurrent()) return;
+    if (!readiness.launchable) {
       managedRuntimeStore.update((value) => ({ ...value, readiness, binding: null }));
       clearManagedGatewayBinding();
       return;
@@ -597,11 +633,14 @@ export async function confirmManagedBinding(precomputedReadiness?: ModelReadines
       providerId: 'managed-llama-cpp',
       harnessId: state.harnessId,
       modelId: state.selectedModelId,
-      runtimeInstanceId
+      runtimeInstanceId,
+      isCurrent: stillCurrent
     });
+    if (!stillCurrent()) return;
     managedRuntimeStore.update((value) => ({ ...value, readiness, binding, lastError: null }));
     modelGatewayStore.update((value) => ({ ...value, binding, status: 'Bound', lastError: null }));
   } catch (error) {
+    if (!stillCurrent()) return;
     managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalizeGatewayError(error) }));
     clearManagedGatewayBinding();
   }
@@ -623,8 +662,14 @@ export function connectSelectedManagedModel(): Promise<boolean> {
 }
 
 async function connectSelectedManagedModelOnce(): Promise<boolean> {
+  const generation = subscriptionGeneration;
   let state = get(managedRuntimeStore);
-  if (!state.selectedModelId) {
+  const selectedModelId = state.selectedModelId;
+  const harnessId = state.harnessId;
+  const stillCurrent = () => generation === subscriptionGeneration &&
+    get(managedRuntimeStore).selectedModelId === selectedModelId &&
+    get(managedRuntimeStore).harnessId === harnessId;
+  if (!selectedModelId) {
     managedRuntimeStore.update((current) => ({
       ...current,
       lastError: { code: 'model_not_selected', message: 'No approved managed model is selected' }
@@ -632,7 +677,8 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
     return false;
   }
   try {
-    const readiness = await readManagedModelReadiness(state.selectedModelId);
+    const readiness = await readManagedModelReadiness(selectedModelId);
+    if (!stillCurrent()) return false;
     managedRuntimeStore.update((current) => ({ ...current, readiness, lastError: null }));
     if (!readiness.launchable) {
       throw { code: 'model_not_ready', message: 'Approved managed model and runtime artifacts are not ready' };
@@ -646,7 +692,9 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
       state.status.model_id === state.selectedModelId;
     if (!runningSelectedModel) {
       if (state.status?.state === 'Ready') await stopSelectedManagedRuntime();
+      if (!stillCurrent()) return false;
       await startSelectedManagedRuntime(readiness);
+      if (!stillCurrent()) return false;
     }
 
     state = get(managedRuntimeStore);
@@ -667,8 +715,10 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
       return false;
     }
     await confirmManagedBinding(readiness);
+    if (!stillCurrent()) return false;
     return get(managedModelReady);
   } catch (error) {
+    if (!stillCurrent()) return false;
     const normalized = normalizeGatewayError(error);
     managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalized }));
     clearManagedGatewayBinding();
@@ -678,7 +728,7 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
 
 export async function startLocalModelTurn(
   prompt: string,
-  chatSessionId = 'local-chat',
+  chatSessionId = DEFAULT_CONVERSATION_ID,
   fileIds: readonly string[] = []
 ): Promise<boolean> {
   const cleanPrompt = prompt.slice(0, 12_000).trim();
@@ -775,7 +825,7 @@ async function startClaimedLocalModelTurn(
       !['submitted', 'cancelling', 'cancelled'].includes(current.lifecycle)
     ) return false;
     clearInferenceTimer('acceptance');
-    if (!appendAcceptedChatTurn(requestId, cleanPrompt)) {
+    if (!appendAcceptedChatTurn(requestId, cleanPrompt, chatSessionId)) {
       terminalizeCurrentRequest('failed', 'model.turn.failed', {
         code: 'chat_reducer_error',
         message: 'Unable to create the accepted chat response'
@@ -871,7 +921,7 @@ export async function cancelLocalModelTurn(): Promise<void> {
   }
 }
 
-export async function retryLocalModelTurn(requestId: string, chatSessionId = 'local-chat'): Promise<boolean> {
+export async function retryLocalModelTurn(requestId: string, chatSessionId = DEFAULT_CONVERSATION_ID): Promise<boolean> {
   if (!/^[0-9a-f]{24}$/.test(requestId) || get(inferenceBusy) || !get(managedModelReady)) return false;
   const messages = get(chatMessages);
   const assistant = messages.find((message) => message.role === 'assistant' && message.requestId === requestId);

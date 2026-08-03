@@ -51,7 +51,7 @@ from tools import validate_localcomet_vault as vault_validator  # noqa: E402
 
 REAL_VAULT = Path.home() / "Documents" / "LocalCometVault"
 REAL_PROJECT = ROOT
-CURRENT_VAULT_REVISION = "sha256:4afae782758bc99ee276db9c1d2bfd832bf134e45ec6940d18c968693094e1e3"
+CURRENT_VAULT_REVISION = "sha256:26a677e5b5db7d8a49777d0624a54faf5b3b887e80e74e3621a6bc32375e57ce"
 
 VALID_STABLE_IDS = frozenset(["canonical.current-state", "canonical.version-matrix", "vision.product", "canonical.system-architecture", 
     "canonical.source-map", "meta.knowledge-schema", "security.model", "roadmap.localcomet", "evidence.index", "incident.index"])

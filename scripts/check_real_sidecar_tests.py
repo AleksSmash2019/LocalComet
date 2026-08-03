@@ -8,9 +8,9 @@ not-actually-run tests.
 
 This gate enforces the CI contract:
   - Only meaningful when LOCALCOMET_REQUIRE_REAL_SIDECAR is set.
-  - Runs the test suite and fails if any test is reported "ignored" or if the
-    require-environment panic fired (meaning the sidecar was not installed
-    before cargo test).
+  - Runs only the explicitly named real-sidecar supervisor tests and fails if
+    any filtered test is reported "ignored" or if the require-environment panic
+    fired (meaning the sidecar was not installed before cargo test).
 
 Exit 0 = contract holds, 1 = violation, 2 = could not run.
 
@@ -27,6 +27,7 @@ import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 CARGO_MANIFEST = REPO_ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "Cargo.toml"
+REAL_SIDECAR_TEST_FILTER = "supervisor::tests::real_sidecar_"
 
 
 def main() -> int:
@@ -38,7 +39,14 @@ def main() -> int:
         return 0
 
     result = subprocess.run(
-        ["cargo", "test", "--manifest-path", str(CARGO_MANIFEST)],
+        [
+            "cargo",
+            "test",
+            "--manifest-path",
+            str(CARGO_MANIFEST),
+            "--lib",
+            REAL_SIDECAR_TEST_FILTER,
+        ],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -49,9 +57,10 @@ def main() -> int:
 
     problems = []
 
-    ignored = re.search(r"(\d+) ignored", output)
-    if ignored and int(ignored.group(1)) > 0:
-        problems.append(f"{ignored.group(1)} test(s) reported ignored under require mode")
+    ignored_counts = [int(value) for value in re.findall(r"(\d+) ignored", output)]
+    ignored_total = sum(ignored_counts)
+    if ignored_total > 0:
+        problems.append(f"{ignored_total} test(s) reported ignored under require mode")
 
     if "LOCALCOMET_REQUIRE_REAL_SIDECAR is set but the real-sidecar environment" in output:
         problems.append(

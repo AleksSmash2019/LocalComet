@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-request-approval"
+description = "Allow issuing a scoped one-time approval token bound to tool, input digest, workspace, and session."
+commands.allow = [
+  "request_approval",
+]
+

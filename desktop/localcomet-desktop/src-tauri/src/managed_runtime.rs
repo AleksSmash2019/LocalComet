@@ -1994,11 +1994,24 @@ pub async fn managed_runtime_status(
 pub async fn managed_runtime_start(
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     bridge: State<'_, Arc<ControlPlaneBridge>>,
+    approval: State<'_, crate::approval_commands::ApprovalState>,
     model_id: String,
+    token: String,
+    approval_id: String,
+    call_id: String,
 ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
     if model_id.is_empty() || model_id.len() > 96 || model_id.chars().any(char::is_whitespace) {
         return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
     }
+    let input = json!({ "model_id": model_id });
+    crate::approval_commands::validate_approval_token(
+        &approval,
+        "runtime.start",
+        &input,
+        &token,
+        &approval_id,
+        &call_id,
+    )?;
     let runtime = Arc::clone(&runtime);
     let bridge = Arc::clone(&bridge);
     tauri::async_runtime::spawn_blocking(move || runtime.start(&model_id, &bridge))
@@ -2012,7 +2025,19 @@ pub async fn managed_runtime_start(
 pub async fn managed_runtime_stop(
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     bridge: State<'_, Arc<ControlPlaneBridge>>,
+    approval: State<'_, crate::approval_commands::ApprovalState>,
+    token: String,
+    approval_id: String,
+    call_id: String,
 ) -> Result<ManagedRuntimeStopResponse, BridgeError> {
+    crate::approval_commands::validate_approval_token(
+        &approval,
+        "runtime.stop",
+        &json!({}),
+        &token,
+        &approval_id,
+        &call_id,
+    )?;
     let runtime = Arc::clone(&runtime);
     let bridge = Arc::clone(&bridge);
     tauri::async_runtime::spawn_blocking(move || runtime.stop(&bridge))

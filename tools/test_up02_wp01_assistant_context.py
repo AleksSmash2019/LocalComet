@@ -223,14 +223,9 @@ FILES_CHANGED_FILES = (
 
 class FilesChangedFileEolTests(unittest.TestCase):
     def test_files_capability_changed_files_have_one_expected_eol_convention(self) -> None:
-        autocrlf = subprocess.run(
-            ["git", "config", "--get", "core.autocrlf"],
-            cwd=ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        ).stdout.strip().lower()
-        expect_crlf = os.name == "nt" and autocrlf == "true"
+        # .gitattributes enforces eol=lf for all text files; checkout EOL
+        # expectation is determined by .gitattributes, not core.autocrlf.
+        expect_crlf = False
         self.assertEqual(24, len(FILES_CHANGED_FILES))
         for relative in FILES_CHANGED_FILES:
             with self.subTest(file=relative):

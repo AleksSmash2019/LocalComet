@@ -43,6 +43,8 @@
   let followTranscript = true;
   let transcriptRevision = 0;
 
+  $: document.documentElement.lang = $locale;
+
   function recordTranscriptPosition(): void {
     if (!transcriptViewport) return;
     followTranscript = isTranscriptNearBottom(transcriptViewport);
