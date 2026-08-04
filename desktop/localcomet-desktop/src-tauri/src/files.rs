@@ -1233,7 +1233,26 @@ fn comparable_path(path: &Path) -> Result<String, FileCapabilityError> {
     } else {
         text
     };
-    Ok(normalized.trim_end_matches('\\').to_ascii_lowercase())
+    let resolved = resolve_short_path(&normalized)?;
+    Ok(resolved.trim_end_matches('\\').to_ascii_lowercase())
+}
+
+#[cfg(windows)]
+fn resolve_short_path(path: &str) -> Result<String, FileCapabilityError> {
+    use windows_sys::Win32::Storage::FileSystem::GetLongPathNameW;
+    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut out = vec![0u16; 1024];
+    let len = unsafe { GetLongPathNameW(wide.as_ptr(), out.as_mut_ptr(), out.len() as u32) };
+    if len == 0 || len as usize >= out.len() {
+        return Ok(path.to_owned());
+    }
+    out.truncate(len as usize);
+    Ok(String::from_utf16_lossy(&out))
+}
+
+#[cfg(not(windows))]
+fn resolve_short_path(path: &str) -> Result<String, FileCapabilityError> {
+    Ok(path.to_owned())
 }
 
 #[cfg(windows)]
