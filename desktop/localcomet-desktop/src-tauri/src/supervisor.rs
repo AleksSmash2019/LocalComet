@@ -299,6 +299,7 @@ pub const HEALTH_ERR_PROCESS_EXITED: &str = "sidecar_process_exited";
 pub const HEALTH_ERR_STOPPING: &str = "sidecar_stopping";
 pub const HEALTH_ERR_GENERATION_EXHAUSTED: &str = "sidecar_generation_exhausted";
 const HEALTH_ERR_PROBE_SEND_FAILED: &str = "sidecar_health_probe_send_failed";
+const HEALTH_ERR_CSPRNG_FAILED: &str = "sidecar_csprng_failed";
 
 fn readiness_failure_code(error: &SupervisorError) -> &'static str {
     match error {
@@ -443,45 +444,52 @@ impl PendingHealthRegistry {
     }
 }
 
-pub fn generate_startup_nonce() -> String {
+pub fn generate_startup_nonce() -> Result<String, &'static str> {
     let mut bytes = [0u8; 32];
-    getrandom_fill(&mut bytes);
-    format!("scn_{}", hex_encode(&bytes))
+    getrandom_fill(&mut bytes)?;
+    Ok(format!("scn_{}", hex_encode(&bytes)))
 }
 
-pub fn generate_runtime_instance_id() -> String {
+pub fn generate_runtime_instance_id() -> Result<String, &'static str> {
     let mut bytes = [0u8; 16];
-    getrandom_fill(&mut bytes);
-    format!("rti_{}", hex_encode(&bytes))
+    getrandom_fill(&mut bytes)?;
+    Ok(format!("rti_{}", hex_encode(&bytes)))
 }
 
 #[allow(dead_code)]
-pub fn generate_health_request_id() -> String {
+pub fn generate_health_request_id() -> Result<String, &'static str> {
     let mut bytes = [0u8; 16];
-    getrandom_fill(&mut bytes);
-    format!("hreq_{}", hex_encode(&bytes))
+    getrandom_fill(&mut bytes)?;
+    Ok(format!("hreq_{}", hex_encode(&bytes)))
 }
 
-fn getrandom_fill(bytes: &mut [u8]) {
+fn getrandom_fill(bytes: &mut [u8]) -> Result<(), &'static str> {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::Security::Cryptography::{
             BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG,
         };
-        unsafe {
+        // NTSTATUS success values have the high bit clear; on failure we must
+        // not continue with silently zeroed nonces.
+        let status = unsafe {
             BCryptGenRandom(
                 std::ptr::null_mut(),
                 bytes.as_mut_ptr(),
                 bytes.len() as u32,
                 BCRYPT_USE_SYSTEM_PREFERRED_RNG,
-            );
+            )
+        };
+        if status < 0 {
+            return Err(HEALTH_ERR_CSPRNG_FAILED);
         }
+        Ok(())
     }
     #[cfg(not(target_os = "windows"))]
     {
         use std::io::Read;
-        let mut f = std::fs::File::open("/dev/urandom").expect("urandom");
-        f.read_exact(bytes).expect("urandom read");
+        let mut f = std::fs::File::open("/dev/urandom").map_err(|_| HEALTH_ERR_CSPRNG_FAILED)?;
+        f.read_exact(bytes).map_err(|_| HEALTH_ERR_CSPRNG_FAILED)?;
+        Ok(())
     }
 }
 
@@ -647,10 +655,19 @@ impl DesktopSidecarSupervisor {
         self.shared
             .generation_counter
             .store(generation_id, Ordering::SeqCst);
-        let generation = SidecarGeneration {
-            generation_id,
-            startup_nonce: generate_startup_nonce(),
-            runtime_instance_id: generate_runtime_instance_id(),
+        let generation = match (generate_startup_nonce(), generate_runtime_instance_id()) {
+            (Ok(startup_nonce), Ok(runtime_instance_id)) => SidecarGeneration {
+                generation_id,
+                startup_nonce,
+                runtime_instance_id,
+            },
+            _ => {
+                drop(state);
+                self.rollback_start_under_transition(generation_id, None, HEALTH_ERR_CSPRNG_FAILED);
+                return Err(SupervisorError::Unavailable(
+                    HEALTH_ERR_CSPRNG_FAILED.to_owned(),
+                ));
+            }
         };
         {
             let mut readiness = self
@@ -797,7 +814,8 @@ impl DesktopSidecarSupervisor {
         };
         // MVP-P0-C-R1: cryptographic hreq_ id, registered in the bounded pending
         // registry before the frame is written. No prefix/sequential correlation.
-        let request_id = generate_health_request_id();
+        let request_id = generate_health_request_id()
+            .map_err(|code| SupervisorError::Unavailable(code.to_owned()))?;
         let sent_at_unix_ms = unix_time_ms();
         let deadline_unix_ms = sent_at_unix_ms
             .checked_add(PENDING_HEALTH_TTL.as_millis() as u64)
@@ -2188,8 +2206,8 @@ mod tests {
 
     #[test]
     fn p0c_r1_health_request_id_is_cryptographic_shape() {
-        let first = generate_health_request_id();
-        let second = generate_health_request_id();
+        let first = generate_health_request_id().expect("csprng available");
+        let second = generate_health_request_id().expect("csprng available");
         assert_eq!(first.len(), 37);
         assert!(first.starts_with("hreq_"));
         assert!(first[5..].chars().all(|ch| ch.is_ascii_hexdigit()));

@@ -4172,11 +4172,12 @@ fn optional_model_id_payload(
 
 fn sanitize_text(value: &str, limit: usize) -> String {
     let mut text = value.replace('\0', "");
-    for marker in ["Traceback", "PRIVATE KEY", "sk-", "bearer ", "Bearer "] {
+    for marker in ["Traceback", "PRIVATE KEY", "bearer ", "Bearer "] {
         if let Some(index) = text.find(marker) {
             text.replace_range(index.., "<REDACTED_TEXT>");
         }
     }
+    redact_sk_tokens(&mut text);
     if text.len() > limit {
         let mut boundary = limit;
         while boundary > 0 && !text.is_char_boundary(boundary) {
@@ -4187,9 +4188,58 @@ fn sanitize_text(value: &str, limit: usize) -> String {
     text
 }
 
+/// Masks only tokens matching `sk-[A-Za-z0-9_-]{8,}` (parity with the frontend
+/// sanitizer), so legitimate output like `task-1`, `disk-usage` or `flask-app`
+/// is preserved instead of truncating everything after the first "sk-".
+fn redact_sk_tokens(text: &mut String) {
+    let mut output = String::with_capacity(text.len());
+    let mut rest = text.as_str();
+    while let Some(offset) = rest.find("sk-") {
+        output.push_str(&rest[..offset]);
+        let tail = &rest[offset + "sk-".len()..];
+        let run = tail
+            .bytes()
+            .take_while(|byte| byte.is_ascii_alphanumeric() || *byte == b'_' || *byte == b'-')
+            .count();
+        if run >= 8 {
+            output.push_str("<REDACTED_TEXT>");
+        } else {
+            output.push_str(&rest[offset..offset + "sk-".len() + run]);
+        }
+        rest = &tail[run..];
+    }
+    output.push_str(rest);
+    *text = output;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitize_text_masks_real_sk_secret_token() {
+        assert_eq!(
+            sanitize_text("token: sk-AbCd1234567890 done", 1024),
+            "token: <REDACTED_TEXT> done"
+        );
+    }
+
+    #[test]
+    fn sanitize_text_keeps_legit_sk_substrings() {
+        assert_eq!(
+            sanitize_text("task-1, disk-usage, flask-app", 1024),
+            "task-1, disk-usage, flask-app"
+        );
+    }
+
+    #[test]
+    fn sanitize_text_keeps_sk_prefix_without_long_tail() {
+        assert_eq!(sanitize_text("sk-short stays", 1024), "sk-short stays");
+        assert_eq!(
+            sanitize_text("edge sk-1234567 stays", 1024),
+            "edge sk-1234567 stays"
+        );
+    }
 
     #[test]
     fn method_enum_maps_to_exact_wire_vocabulary() {

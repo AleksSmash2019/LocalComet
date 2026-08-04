@@ -8,9 +8,12 @@ BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 def safe_path(path: str) -> Path:
     target = (BASE_DIR / path).resolve()
+    base = BASE_DIR.resolve()
 
-    if not str(target).startswith(str(BASE_DIR.resolve())):
-        raise ValueError("Запрещенный путь за пределами Projects.")
+    try:
+        target.relative_to(base)
+    except ValueError as exc:
+        raise ValueError("Запрещенный путь за пределами Projects.") from exc
 
     return target
 

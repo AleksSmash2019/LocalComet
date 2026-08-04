@@ -4,7 +4,9 @@ import type { ChatMessageState, InspectorSection, MockMessage, ModeOption, Model
 import { loadUiPreferences, updateUiPreferences } from './uiPreferences';
 import { conversationStore, getActiveConversationId, resetConversationStore, selectConversation as selectConversationInStore } from './conversationStore';
 
-export const MAX_DRAFT_LENGTH = 1200;
+// Must match the composer textarea maxlength="12000" (MessageComposer.svelte)
+// so the store never silently truncates input the UI allows.
+export const MAX_DRAFT_LENGTH = 12000;
 export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 
 export type WorkspaceMode = 'chat' | 'review' | 'setup';

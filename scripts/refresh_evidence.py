@@ -38,6 +38,10 @@ SOURCE_GLOBS = [
     "security/contracts/**/*.json",
     ".gitattributes",
     "config.py",
+    "agent.py",
+    "app.py",
+    "LocalComet_Control_Panel.py",
+    "LocalComet_Patch_Panel.py",
 ]
 
 EXCLUDE_PARTS = {"__pycache__", "node_modules", ".git", "target", ".svelte-kit", "build"}
