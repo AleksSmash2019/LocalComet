@@ -452,12 +452,9 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
     ]);
     assertManagedTrustBundle(runtimeCatalog, modelCatalog, installedArtifacts);
     const previous = get(managedRuntimeStore);
-    const defaultApprovedModel = modelCatalog.models.find((model) =>
-      isInstalledLaunchable(model, runtimeCatalog.runtimes, installedArtifacts.artifacts)
-    );
     const selectedModelId = modelCatalog.models.some((model) => model.model_id === previous.selectedModelId)
       ? previous.selectedModelId
-      : (defaultApprovedModel?.model_id ?? '');
+      : '';
     const selectedModel = modelCatalog.models.find((model) => model.model_id === selectedModelId);
     const bindingTrusted =
       status.state === 'Ready' &&
