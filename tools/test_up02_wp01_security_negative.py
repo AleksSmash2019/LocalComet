@@ -61,8 +61,7 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "preview_selected_file",
     "remove_managed_model",
     "request_approval",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
-    # run_tool_call (ADR-013): добавить в том же коммите, что и саму команду —
-    # тест грепает HEAD, поэтому запись в whitelist до коммита даёт ALLOWED-minus-actual.
+    "run_tool_call",     # ADR-013
     "select_files",
     "set_workspace",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
     "start_approved_artifact_download",

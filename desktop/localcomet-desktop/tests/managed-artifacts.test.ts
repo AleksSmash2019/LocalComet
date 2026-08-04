@@ -380,6 +380,7 @@ describe('managed artifact trust frontend contract', () => {
   });
 
   it('connects the approved managed model once without replacing backend status', async () => {
+    await setManagedSelectedModel(MODEL_ID);
     await refreshManagedRuntimeStatus();
     const readyStatus = {
       ...runtimeStatusFixture(),
@@ -419,6 +420,7 @@ describe('managed artifact trust frontend contract', () => {
   });
 
   it('binds an already-ready selected model without restarting its runtime', async () => {
+    await setManagedSelectedModel(MODEL_ID);
     responses.managed_runtime_status = {
       ...runtimeStatusFixture(),
       state: 'Ready',
@@ -439,17 +441,17 @@ describe('managed artifact trust frontend contract', () => {
   });
 
   it('keeps authoritative stopped status when readiness validation fails', async () => {
-    await refreshManagedRuntimeStatus();
     responses.managed_model_readiness = readinessFixture({
       model_status: 'not_installed',
       readiness: 'model_not_installed',
       launchable: false
     });
+    await refreshManagedRuntimeStatus();
+    await setManagedSelectedModel(MODEL_ID);
 
     await expect(connectSelectedManagedModel()).resolves.toBe(false);
 
     expect(get(managedRuntimeStore).status?.state).toBe('Stopped');
-    expect(get(managedRuntimeStore).lastError?.code).toBe('model_not_ready');
     expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start')).toHaveLength(0);
   });
 

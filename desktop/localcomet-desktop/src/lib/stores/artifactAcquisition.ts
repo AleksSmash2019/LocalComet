@@ -141,6 +141,57 @@ export async function removeApprovedManagedModel(modelId: string): Promise<boole
   }
 }
 
+export async function setUpManagedModel(modelId: string): Promise<boolean> {
+  const artifacts = get(artifactAcquisitionStore).artifacts;
+  const model = artifacts.find((candidate) => candidate.artifact_id === modelId);
+  if (!model) return false;
+  return setUpManagedArtifactsForModel(artifacts, model);
+}
+
+export async function downloadAndSetupManagedModel(modelId: string): Promise<boolean> {
+  const artifacts = get(artifactAcquisitionStore).artifacts;
+  const model = artifacts.find((candidate) => candidate.artifact_id === modelId);
+  if (!model) return false;
+  return setUpManagedArtifactsForModel(artifacts, model);
+}
+
+async function setUpManagedArtifactsForModel(artifacts: readonly ApprovedDownloadableArtifact[], model: ApprovedDownloadableArtifact): Promise<boolean> {
+  const runtime = artifacts.find((artifact) => artifact.kind === 'runtime');
+  if (!runtime) return false;
+  artifactAcquisitionStore.update((state) => ({
+    ...state,
+    setup: { lifecycle: 'running', artifact_id: null },
+    lastError: null
+  }));
+  for (const artifact of [runtime, model]) {
+    artifactAcquisitionStore.update((state) => ({
+      ...state,
+      setup: { lifecycle: 'running', artifact_id: artifact.artifact_id }
+    }));
+    if (isInstalled(artifact.artifact_id)) continue;
+    const terminal = await downloadApprovedArtifact(artifact.artifact_id);
+    if (terminal?.lifecycle !== 'completed') {
+      artifactAcquisitionStore.update((state) => ({
+        ...state,
+        setup: {
+          lifecycle: terminal?.lifecycle === 'cancelled' ? 'cancelled' : 'failed',
+          artifact_id: artifact.artifact_id
+        }
+      }));
+      return false;
+    }
+    await refreshManagedRuntimeStatus();
+  }
+  await setManagedSelectedModel(model.artifact_id);
+  const connected = await connectSelectedManagedModel();
+  artifactAcquisitionStore.update((state) => ({
+    ...state,
+    setup: { lifecycle: connected ? 'completed' : 'failed', artifact_id: model.artifact_id },
+    lastError: connected ? null : get(managedRuntimeStore).lastError
+  }));
+  return connected;
+}
+
 export function resetArtifactAcquisitionStore(): void {
   lifecycleGeneration += 1;
   initialization = null;

@@ -289,6 +289,8 @@ def test_launch_safety_static_and_env() -> None:
         sentinel_name = "LOCALCOMET_LAUNCHER_COPY_TEST"
         previous_sentinel = os.environ.get(sentinel_name)
         os.environ[sentinel_name] = "preserved"
+        prev_project_root = os.environ.get("LOCALCOMET_TEST_PROJECT_ROOT")
+        prev_python = os.environ.get("LOCALCOMET_TEST_PYTHON")
         env = launcher.build_launch_environment(source, paths)
         check(not launcher.is_relative_to(Path(env["CARGO_TARGET_DIR"]).resolve(), source.resolve()), "CARGO_TARGET_DIR is outside source")
         check(Path(env["LOCALCOMET_TEST_PROJECT_ROOT"]) == paths.workspace.resolve(), "child environment uses exact external runtime project root")
@@ -297,7 +299,7 @@ def test_launch_safety_static_and_env() -> None:
         check("LOCALCOMET_KNOWLEDGE_VAULT" not in env, "child environment grants no Vault authority")
         check("LOCALCOMET_KNOWLEDGE_PROJECT_ROOT" not in env, "child environment grants no project knowledge authority")
         check(env[sentinel_name] == "preserved", "existing environment is copied into child environment")
-        check("LOCALCOMET_TEST_PROJECT_ROOT" not in os.environ and "LOCALCOMET_TEST_PYTHON" not in os.environ, "sidecar environment does not mutate global environment")
+        check(os.environ.get("LOCALCOMET_TEST_PROJECT_ROOT") == prev_project_root and os.environ.get("LOCALCOMET_TEST_PYTHON") == prev_python, "sidecar environment does not mutate global environment")
         if previous_sentinel is None:
             os.environ.pop(sentinel_name, None)
         else:
