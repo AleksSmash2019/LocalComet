@@ -75,8 +75,62 @@ jobs:
           foreach ($file in $files) {
             New-Item -ItemType File -Force -Path $file | Out-Null
           }
+      # std::os::windows::fs::symlink_dir passes
+      # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE, which Windows only honours
+      # when Developer Mode is on. Hosted runners ship with it off, so the
+      # reparse-point fixtures (workspace.rs, files.rs, artifact_trust.rs) cannot
+      # be created and their tests either hard-fail or degrade to a skip.
+      # Enabling it keeps the coverage instead of weakening the assertions.
+      - name: Enable Developer Mode for reparse-point fixtures
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          # Never fail the job here: if the policy cannot be set, the probe below
+          # records why and cargo test still runs with its own diagnostics.
+          try {
+            $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
+            if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
+            New-ItemProperty -Path $key -Name AllowDevelopmentWithoutDevLicense `
+              -Value 1 -PropertyType DWord -Force | Out-Null
+            Write-Host 'Developer Mode: enabled'
+          } catch {
+            Write-Host "::warning title=could not enable Developer Mode::$($_.Exception.Message)"
+          }
+          $target = Join-Path $env:RUNNER_TEMP 'symlink-probe-target'
+          $link = Join-Path $env:RUNNER_TEMP 'symlink-probe-link'
+          Remove-Item -Recurse -Force $target, $link -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          try {
+            New-Item -ItemType SymbolicLink -Path $link -Target $target -ErrorAction Stop | Out-Null
+            Write-Host 'symlink fixtures: available'
+          } catch {
+            Write-Host "::warning title=symlink fixtures unavailable::$($_.Exception.Message)"
+          }
+          Remove-Item -Recurse -Force $target, $link -ErrorAction SilentlyContinue
+      # The raw job log is only readable by authenticated users, so a failing
+      # test name is invisible to anyone triaging from the public API. Mirror the
+      # failure tail into a check-run annotation, which is publicly readable.
       - name: cargo test
-        run: cargo test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $log = Join-Path $env:RUNNER_TEMP 'cargo-test.log'
+          cargo test --color never 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0 -and (Test-Path $log)) {
+            $lines = @(Get-Content -LiteralPath $log)
+            # Panic messages sit on the line *after* "panicked at", and a build
+            # break has no test lines at all, so take the whole tail rather than
+            # grepping individual patterns.
+            $named = @($lines | Select-String -Pattern '^test .+ \.\.\. FAILED' -Raw |
+              Select-Object -First 40)
+            $tail = @($lines | Select-Object -Last 60)
+            $digest = @('== failing tests ==') + $named + @('== log tail ==') + $tail
+            $esc = $digest | ForEach-Object { ($_.TrimEnd() -replace '%', '%25') -replace "`r", '' }
+            Write-Host "::error title=cargo test failure digest::$($esc -join '%0A')"
+          }
+          exit $code
       - name: Real-sidecar honesty gate
         shell: pwsh
         env:
