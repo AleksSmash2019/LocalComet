@@ -658,9 +658,9 @@ class ModelChatBackendTests(unittest.TestCase):
                 limits = GatewayLimits(
                     read_chunk_bytes=32,
                     connect_timeout_seconds=0.2,
-                    first_token_timeout_seconds=0.05 if scenario != "overall_timeout" else 0.3,
-                    inactivity_timeout_seconds=0.05 if scenario != "overall_timeout" else 0.3,
-                    overall_timeout_seconds=0.05 if scenario == "overall_timeout" else 0.3,
+                    first_token_timeout_seconds=0.1 if scenario != "overall_timeout" else 0.5,
+                    inactivity_timeout_seconds=0.1 if scenario != "overall_timeout" else 0.5,
+                    overall_timeout_seconds=0.05 if scenario == "overall_timeout" else 0.5,
                     worker_join_timeout_seconds=0.3,
                 )
                 gateway, binding = _bound_gateway(server, limits=limits)

@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest requests json_repair playwright
+        run: python -m pip install --upgrade pip pytest requests json_repair playwright pyperclip
       # Baseline ignore-list: pre-existing failures recorded in
       # pytest-baseline-failures-2026-07-24.txt (missing runtime manifest,
       # source node_modules, tauri/IPC invariant drift, real-vault fixture,
@@ -53,14 +53,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      # Tauri validates the configured external binary during compilation.
-      # Unit tests do not execute it; the real-sidecar gate below verifies the
-      # production path separately.
-      - name: Create sidecar placeholder for Tauri tests
+      # Tauri validates every configured bundle input during compilation.
+      # Unit tests do not execute or package these files; the real-sidecar gate
+      # below verifies the production path separately.
+      - name: Create bundle placeholders for Tauri tests
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path binaries | Out-Null
-          New-Item -ItemType File -Force -Path binaries/localcomet-core-x86_64-pc-windows-msvc.exe | Out-Null
+          $files = @(
+            "binaries/localcomet-core-x86_64-pc-windows-msvc.exe",
+            "binaries/LICENSE.python.txt",
+            "binaries/python3.dll",
+            "binaries/python314.dll",
+            "binaries/python314.zip",
+            "binaries/runtime-manifest.tsv",
+            "binaries/up00-runtime-manifest.json",
+            "binaries/vcruntime140.dll",
+            "binaries/vcruntime140_1.dll"
+          )
+          New-Item -ItemType Directory -Force -Path binaries/app, binaries/DLLs | Out-Null
+          New-Item -ItemType File -Force -Path binaries/app/.ci-placeholder, binaries/DLLs/.ci-placeholder | Out-Null
+          foreach ($file in $files) {
+            New-Item -ItemType File -Force -Path $file | Out-Null
+          }
       - name: cargo test
         run: cargo test
       - name: Real-sidecar honesty gate
