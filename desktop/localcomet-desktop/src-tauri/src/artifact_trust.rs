@@ -32,7 +32,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 const CATALOG_BYTES: &[u8] = include_bytes!("../resources/localcomet/approved-artifacts.v1.json");
 const EMBEDDED_CATALOG_SHA256: &str =
-    "29bbbe33c207417415f637bafc4dc3853c04cf68db05d9be2a6e661c5f93c605";
+    "d304cabc424816a8f095bdfd453ceccea85cb32b86f0acd3175c719bd3d71198";
 const CATALOG_ID: &str = "localcomet-approved-artifacts";
 const SCHEMA_VERSION: u32 = 1;
 const MAX_ARTIFACTS: usize = 32;
@@ -2817,7 +2817,7 @@ mod tests {
             EMBEDDED_CATALOG_SHA256
         );
         assert_eq!(service.catalog.runtimes.len(), 1);
-        assert_eq!(service.catalog.models.len(), 1);
+        assert_eq!(service.catalog.models.len(), 2);
 
         let runtime = &service.catalog.runtimes[0];
         assert_eq!(runtime.runtime_id, "llama-cpp-windows-x86-64-cpu-bootstrap");

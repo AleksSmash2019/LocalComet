@@ -454,6 +454,51 @@
       "installer_bundled": false,
       "bootstrap_purpose": "INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION",
       "status": "approved_internal_bootstrap"
+    },
+    {
+      "model_id": "qwen2.5-7b-instruct-q4-k-m",
+      "provider": "Qwen",
+      "family": "Qwen2.5",
+      "display_name": "Qwen2.5 7B Instruct Q4_K_M",
+      "format": "GGUF",
+      "quantization": "Q4_K_M",
+      "upstream_repository": "lmstudio-community/Qwen2.5-7B-Instruct-GGUF",
+      "upstream_revision": "a8bb3906b78b3009770d7ae7d116be2ea892802d",
+      "asset_filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "asset_bytes": 4683073952,
+      "asset_sha256": "3e357ab3eda2c442f25c0080bb8998eedc05fd16ce1728eacff9ccc5c3d240c6",
+      "acquisition": {
+        "artifact_id": "qwen2.5-7b-instruct-q4-k-m",
+        "artifact_kind": "model",
+        "source_type": "approved_https",
+        "primary_url": "https://huggingface.co/lmstudio-community/Qwen2.5-7B-Instruct-GGUF/resolve/a8bb3906b78b3009770d7ae7d116be2ea892802d/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "allowed_redirect_hosts": [
+          "cas-bridge.xethub.hf.co",
+          "cdn-lfs-us-1.hf.co",
+          "cdn-lfs.hf.co",
+          "huggingface.co",
+          "transfer.xethub.hf.co",
+          "us.aws.cdn.hf.co"
+        ],
+        "expected_filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "expected_bytes": 4683073952,
+        "expected_sha256": "3e357ab3eda2c442f25c0080bb8998eedc05fd16ce1728eacff9ccc5c3d240c6",
+        "content_type": "application/octet-stream",
+        "managed_relative_destination": "qwen2.5-7b-instruct-q4-k-m/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "public_distribution": false,
+        "installer_bundled": false,
+        "automatic_download": false,
+        "user_confirmation_required": true
+      },
+      "license_id": "Apache-2.0",
+      "compatible_runtime_ids": [
+        "llama-cpp-windows-x86-64-cpu-bootstrap"
+      ],
+      "managed_relative_path": "qwen2.5-7b-instruct-q4-k-m/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "public_distribution": false,
+      "installer_bundled": false,
+      "bootstrap_purpose": "INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION",
+      "status": "approved_internal_bootstrap"
     }
   ]
 }

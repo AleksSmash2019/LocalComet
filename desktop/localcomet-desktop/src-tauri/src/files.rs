@@ -1238,16 +1238,36 @@ fn comparable_path(path: &Path) -> Result<String, FileCapabilityError> {
 }
 
 #[cfg(windows)]
+const LONG_PATH_BUFFER_UTF16_UNITS: usize = 1024;
+
+/// Fail-closed interpretation of a `GetLongPathNameW` result.
+///
+/// `GetLongPathNameW` returns 0 on failure (missing path, denied path, invalid
+/// path) and returns the required buffer length when the supplied buffer is too
+/// small. In both cases the 8.3 short-name alias was NOT resolved, so returning
+/// the unresolved input would let an 8.3 alias reach the alias comparisons in
+/// `validate_explicit_selection` and `read_record` un-normalized, where two
+/// spellings of the same file can compare unequal (or an alias of a rejected
+/// location can compare equal to an accepted one). Both outcomes deny access.
+#[cfg(windows)]
+fn interpret_long_path_result(
+    returned_units: u32,
+    buffer: &[u16],
+) -> Result<String, FileCapabilityError> {
+    let returned = returned_units as usize;
+    if returned == 0 || returned >= buffer.len() {
+        return Err(access_denied());
+    }
+    Ok(String::from_utf16_lossy(&buffer[..returned]))
+}
+
+#[cfg(windows)]
 fn resolve_short_path(path: &str) -> Result<String, FileCapabilityError> {
     use windows_sys::Win32::Storage::FileSystem::GetLongPathNameW;
     let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-    let mut out = vec![0u16; 1024];
+    let mut out = vec![0u16; LONG_PATH_BUFFER_UTF16_UNITS];
     let len = unsafe { GetLongPathNameW(wide.as_ptr(), out.as_mut_ptr(), out.len() as u32) };
-    if len == 0 || len as usize >= out.len() {
-        return Ok(path.to_owned());
-    }
-    out.truncate(len as usize);
-    Ok(String::from_utf16_lossy(&out))
+    interpret_long_path_result(len, &out)
 }
 
 #[cfg(not(windows))]
@@ -2142,5 +2162,134 @@ mod tests {
             .register_paths(vec![path])
             .expect_err("protected-root 8.3 alias fixture must be rejected");
         assert_eq!(error.code, LC_FILE_ACCESS_DENIED);
+    }
+
+    /// E1: `GetLongPathNameW` returned 0 (failure) must deny, never fall back to
+    /// the unresolved input path.
+    #[cfg(windows)]
+    #[test]
+    fn long_path_resolution_failure_is_fail_closed() {
+        let buffer = vec![0_u16; LONG_PATH_BUFFER_UTF16_UNITS];
+        assert_eq!(
+            interpret_long_path_result(0, &buffer).unwrap_err().code,
+            LC_FILE_ACCESS_DENIED
+        );
+
+        // Real Win32 failure path: an absolute path whose parent cannot exist.
+        let missing = format!(
+            r"C:\localcomet-missing-{}-{}\LONGNA~1.TXT",
+            std::process::id(),
+            now_unix_ms()
+        );
+        let error = resolve_short_path(&missing)
+            .expect_err("unresolvable path must not fall back to the raw input");
+        assert_eq!(error.code, LC_FILE_ACCESS_DENIED);
+        assert_eq!(
+            comparable_path(Path::new(&missing)).unwrap_err().code,
+            LC_FILE_ACCESS_DENIED
+        );
+
+        // Positive control: a fully resolved result is still returned verbatim.
+        let resolved = [b'a' as u16, b'b' as u16, b'c' as u16, 0];
+        assert_eq!(
+            interpret_long_path_result(3, &resolved).expect("resolved path"),
+            "abc"
+        );
+    }
+
+    /// E2: a path whose long form does not fit the buffer (> 1024 UTF-16 code
+    /// units) must deny. `GetLongPathNameW` reports the required length in that
+    /// case, which is >= the buffer length.
+    #[cfg(windows)]
+    #[test]
+    fn long_path_buffer_overflow_is_fail_closed() {
+        let buffer = vec![0_u16; LONG_PATH_BUFFER_UTF16_UNITS];
+        for reported in [
+            LONG_PATH_BUFFER_UTF16_UNITS as u32,
+            LONG_PATH_BUFFER_UTF16_UNITS as u32 + 1,
+            u32::MAX,
+        ] {
+            assert_eq!(
+                interpret_long_path_result(reported, &buffer)
+                    .unwrap_err()
+                    .code,
+                LC_FILE_ACCESS_DENIED,
+                "reported length {reported} must not be treated as resolved"
+            );
+        }
+        assert_eq!(
+            interpret_long_path_result(LONG_PATH_BUFFER_UTF16_UNITS as u32 - 1, &buffer)
+                .expect("a length inside the buffer is resolvable")
+                .chars()
+                .count(),
+            LONG_PATH_BUFFER_UTF16_UNITS - 1
+        );
+
+        // A path longer than the buffer can never produce a comparable key.
+        let deep = format!(r"C:\{}\deep.txt", "localcometsegment\\".repeat(80));
+        assert!(deep.encode_utf16().count() > LONG_PATH_BUFFER_UTF16_UNITS);
+        assert_eq!(
+            resolve_short_path(&deep).unwrap_err().code,
+            LC_FILE_ACCESS_DENIED
+        );
+    }
+
+    #[cfg(windows)]
+    fn short_path_alias(path: &Path) -> Option<String> {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
+        let wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut out = vec![0_u16; LONG_PATH_BUFFER_UTF16_UNITS];
+        let length =
+            unsafe { GetShortPathNameW(wide.as_ptr(), out.as_mut_ptr(), out.len() as u32) };
+        if length == 0 || length as usize >= out.len() {
+            return None;
+        }
+        out.truncate(length as usize);
+        Some(String::from_utf16_lossy(&out))
+    }
+
+    /// E6: 8.3 alias vs long-path comparison. While both forms resolve they must
+    /// produce the identical comparable key; once resolution fails the alias must
+    /// be rejected instead of leaking an unresolved 8.3 spelling into comparisons.
+    #[cfg(windows)]
+    #[test]
+    fn short_alias_and_long_path_share_one_comparable_key_or_are_rejected() {
+        let workspace = TestDirectory::new("shortalias");
+        let path = workspace.write("longfilename-alias-target.txt", b"alias");
+        let long_key = comparable_path(&path).expect("normalize long path");
+
+        if let Some(alias) = short_path_alias(&path) {
+            let alias_path = PathBuf::from(&alias);
+            let alias_key = comparable_path(&alias_path).expect("normalize 8.3 alias");
+            assert_eq!(
+                alias_key, long_key,
+                "8.3 alias {alias} must normalize onto the long path key"
+            );
+            assert_ne!(
+                alias.to_ascii_lowercase().trim_end_matches('\\'),
+                "",
+                "alias spelling must be observable"
+            );
+            drop(workspace);
+            // Resolution now fails for the alias: reject, do not fall back to the
+            // raw 8.3 spelling.
+            assert_eq!(
+                comparable_path(&alias_path).unwrap_err().code,
+                LC_FILE_ACCESS_DENIED
+            );
+        } else {
+            // 8.3 generation is disabled on this volume: only the reject path is
+            // observable, and it must still be fail-closed.
+            drop(workspace);
+        }
+        assert_eq!(
+            comparable_path(&path).unwrap_err().code,
+            LC_FILE_ACCESS_DENIED
+        );
     }
 }

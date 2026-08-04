@@ -1,3 +1,4 @@
+use crate::approval::canonical_input_digest;
 use crate::artifact_trust::ArtifactTrustService;
 use crate::files::SelectedFilesManager;
 use crate::ipc;
@@ -437,6 +438,11 @@ struct ModelRequestEntry {
     tools_enabled: bool,
     permitted_tool_names: Vec<String>,
     intermediate_tool_calls: Vec<Value>,
+    /// Digest of the canonical `model.turn.start` wire payload this reservation
+    /// authorizes, including `assistant_context`. `None` until the reservation is
+    /// bound (knowledge turns are registered post-dispatch and stay unbound, so
+    /// they can never satisfy the dispatch check).
+    reserved_wire_digest: Option<[u8; 32]>,
 }
 
 impl ModelRequestEntry {
@@ -469,6 +475,7 @@ impl ModelRequestEntry {
             tools_enabled,
             permitted_tool_names,
             intermediate_tool_calls: Vec::new(),
+            reserved_wire_digest: None,
         }
     }
 
@@ -508,6 +515,24 @@ impl ModelRequestRegistry {
         let watchdog = Arc::clone(&entry.watchdog);
         self.entries.insert(identity.request_id, entry);
         Ok(watchdog)
+    }
+
+    fn bind_reserved_wire_digest(
+        &mut self,
+        request_id: &str,
+        wire_digest: [u8; 32],
+    ) -> Result<(), BridgeError> {
+        let entry = self.entries.get_mut(request_id).ok_or_else(|| {
+            BridgeError::new("request_not_found", "model request reservation is missing")
+        })?;
+        if entry.reserved_wire_digest.is_some() {
+            return Err(BridgeError::new(
+                "protocol_mismatch",
+                "model request reservation is already bound",
+            ));
+        }
+        entry.reserved_wire_digest = Some(wire_digest);
+        Ok(())
     }
 
     fn remove(&mut self, request_id: &str) -> Option<ModelRequestEntry> {
@@ -570,6 +595,61 @@ fn model_request_reservation_exists(
         .expect("model request registry poisoned")
         .entries
         .contains_key(request_id)
+}
+
+/// Canonical `model.turn.start` wire payload. Single construction site so the
+/// digest that authorizes a turn and the bytes that are framed cannot drift.
+fn model_turn_wire_payload(
+    identity: &ModelRequestIdentity,
+    prompt: &str,
+    assistant_context: &AssistantContext,
+) -> Value {
+    json!({
+        "request_id": identity.request_id,
+        "chat_session_id": identity.chat_session_id,
+        "model_id": identity.model_id,
+        "submitted_at_unix_ms": identity.submitted_at_unix_ms,
+        "max_tokens": identity.max_tokens,
+        "prompt": prompt,
+        "assistant_context": assistant_context,
+        "binding_fingerprint": identity.binding_fingerprint,
+    })
+}
+
+/// Digest over every dispatched `model.turn.start` field, `assistant_context`
+/// (application, conversation and the capability/tool grant) included.
+fn model_turn_wire_digest(payload: &Value) -> [u8; 32] {
+    canonical_input_digest(payload)
+}
+
+/// Fail-closed dispatch guard: the framed payload must hash to the digest the
+/// reservation was created with. A reservation that is missing, unbound, or bound
+/// to different bytes (including a different `assistant_context`) cannot dispatch.
+fn model_request_reservation_authorizes_wire(
+    registry: &Mutex<ModelRequestRegistry>,
+    request_id: &str,
+    wire_digest: &[u8; 32],
+) -> Result<(), BridgeError> {
+    if !model_request_reservation_exists(registry, request_id) {
+        return Err(BridgeError::new(
+            "request_not_found",
+            "model request reservation expired before dispatch",
+        ));
+    }
+    let registry = registry.lock().expect("model request registry poisoned");
+    let Some(entry) = registry.entries.get(request_id) else {
+        return Err(BridgeError::new(
+            "request_not_found",
+            "model request reservation expired before dispatch",
+        ));
+    };
+    match entry.reserved_wire_digest {
+        Some(reserved) if reserved == *wire_digest => Ok(()),
+        _ => Err(BridgeError::new(
+            "protocol_mismatch",
+            "model turn payload does not match the reserved turn",
+        )),
+    }
 }
 
 #[derive(Default)]
@@ -779,12 +859,22 @@ impl ControlPlaneBridge {
         self: &Arc<Self>,
         identity: &ModelRequestIdentity,
         permitted_tool_names: Vec<String>,
+        wire_digest: [u8; 32],
     ) -> Result<(), BridgeError> {
-        let watchdog = self
-            .model_requests
-            .lock()
-            .expect("model request registry poisoned")
-            .insert(identity.clone(), permitted_tool_names)?;
+        let watchdog = {
+            let mut registry = self
+                .model_requests
+                .lock()
+                .expect("model request registry poisoned");
+            let watchdog = registry.insert(identity.clone(), permitted_tool_names)?;
+            if let Err(error) =
+                registry.bind_reserved_wire_digest(&identity.request_id, wire_digest)
+            {
+                registry.remove(&identity.request_id);
+                return Err(error);
+            }
+            watchdog
+        };
         if let Err(error) = self.spawn_model_request_watchdog(identity.request_id.clone(), watchdog)
         {
             self.model_requests
@@ -802,16 +892,7 @@ impl ControlPlaneBridge {
         prompt: String,
         assistant_context: AssistantContext,
     ) -> Result<Value, BridgeError> {
-        let payload = json!({
-            "request_id": identity.request_id,
-            "chat_session_id": identity.chat_session_id,
-            "model_id": identity.model_id,
-            "submitted_at_unix_ms": identity.submitted_at_unix_ms,
-            "max_tokens": identity.max_tokens,
-            "prompt": prompt,
-            "assistant_context": assistant_context,
-            "binding_fingerprint": identity.binding_fingerprint,
-        });
+        let payload = model_turn_wire_payload(&identity, &prompt, &assistant_context);
         let response = match self.request_reserved_model_start(&identity.request_id, payload) {
             Ok(response) => response,
             Err(error) => {
@@ -880,6 +961,7 @@ impl ControlPlaneBridge {
     ) -> Result<Value, BridgeError> {
         self.ensure_ready()?;
         validate_payload_for_method(ControlPlaneMethod::ModelTurnStart, &payload)?;
+        let wire_digest = model_turn_wire_digest(&payload);
         let transport_id = self.next_request_id();
         let envelope = json!({
             "protocol": ipc::IPC_PROTOCOL,
@@ -901,17 +983,17 @@ impl ControlPlaneBridge {
             .lock()
             .expect("control-plane registry poisoned")
             .insert(transport_id.clone(), None)?;
-        let reservation_exists =
-            model_request_reservation_exists(&self.model_requests, model_request_id);
-        let send_result = if reservation_exists {
-            self.supervisor
+        let reservation_authorized = model_request_reservation_authorizes_wire(
+            &self.model_requests,
+            model_request_id,
+            &wire_digest,
+        );
+        let send_result = match reservation_authorized {
+            Ok(()) => self
+                .supervisor
                 .send_ipc_frame(frame)
-                .map_err(|error| BridgeError::unavailable(&error.to_string()))
-        } else {
-            Err(BridgeError::new(
-                "request_not_found",
-                "model request reservation expired before dispatch",
-            ))
+                .map_err(|error| BridgeError::unavailable(&error.to_string())),
+            Err(error) => Err(error),
         };
         if let Err(error) = send_result {
             self.registry
@@ -2196,7 +2278,19 @@ pub async fn model_turn_start(
         max_tokens,
         binding_fingerprint,
     };
-    state.reserve_model_turn(&identity, assistant_context.capabilities.tools.clone())?;
+    // The reservation is bound to the digest of the exact wire payload it
+    // authorizes, assistant_context (and therefore the capability/tool grant that
+    // drives permitted_tool_names) included. Dispatch re-derives this digest.
+    let wire_digest = model_turn_wire_digest(&model_turn_wire_payload(
+        &identity,
+        &prompt,
+        &assistant_context,
+    ));
+    state.reserve_model_turn(
+        &identity,
+        assistant_context.capabilities.tools.clone(),
+        wire_digest,
+    )?;
     let cleanup_state = Arc::clone(&state);
     let cleanup_request_id = identity.request_id.clone();
     let worker_state = Arc::clone(&state);
@@ -4747,6 +4841,118 @@ mod tests {
         assert!(registry.try_lock().is_ok());
         release_tx.send(()).unwrap();
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn model_turn_wire_digest_covers_assistant_context() {
+        let identity = model_identity();
+        let neutral = AssistantContext::trusted("ru", false).expect("trusted context");
+        let baseline =
+            model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &neutral));
+        assert_eq!(
+            baseline,
+            model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &neutral)),
+            "the digest must be stable for identical inputs"
+        );
+
+        let mut with_tools = neutral.clone();
+        with_tools.capabilities.tools = vec!["files.read".to_string()];
+        assert_ne!(
+            baseline,
+            model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &with_tools)),
+            "a capability/tool grant change must change the wire digest"
+        );
+
+        let mut with_filesystem = neutral.clone();
+        with_filesystem.capabilities.filesystem = true;
+        assert_ne!(
+            baseline,
+            model_turn_wire_digest(&model_turn_wire_payload(
+                &identity,
+                "prompt",
+                &with_filesystem
+            )),
+            "a capability flag change must change the wire digest"
+        );
+
+        let mut with_locale = neutral.clone();
+        with_locale.conversation.locale = "en".to_string();
+        assert_ne!(
+            baseline,
+            model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &with_locale)),
+            "a conversation context change must change the wire digest"
+        );
+
+        assert_ne!(
+            baseline,
+            model_turn_wire_digest(&model_turn_wire_payload(&identity, "other", &neutral)),
+            "a prompt change must change the wire digest"
+        );
+    }
+
+    #[test]
+    fn model_turn_dispatch_requires_the_reserved_wire_digest() {
+        let identity = model_identity();
+        let request_id = identity.request_id.clone();
+        let neutral = AssistantContext::trusted("ru", false).expect("trusted context");
+        let reserved =
+            model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &neutral));
+        let registry = Mutex::new(ModelRequestRegistry::default());
+
+        // Missing reservation.
+        assert_eq!(
+            model_request_reservation_authorizes_wire(&registry, &request_id, &reserved)
+                .unwrap_err()
+                .code,
+            "request_not_found"
+        );
+
+        registry
+            .lock()
+            .unwrap()
+            .insert(identity.clone(), Vec::new())
+            .unwrap();
+
+        // Reserved but unbound: fail closed.
+        assert_eq!(
+            model_request_reservation_authorizes_wire(&registry, &request_id, &reserved)
+                .unwrap_err()
+                .code,
+            "protocol_mismatch"
+        );
+
+        registry
+            .lock()
+            .unwrap()
+            .bind_reserved_wire_digest(&request_id, reserved)
+            .expect("bind reserved wire digest");
+        assert!(
+            model_request_reservation_authorizes_wire(&registry, &request_id, &reserved).is_ok()
+        );
+
+        // A payload whose assistant_context escalates capabilities cannot dispatch
+        // on a reservation authorized for the capability-neutral context.
+        let mut escalated = neutral.clone();
+        escalated.capabilities.tools = vec!["files.read".to_string()];
+        let escalated_digest =
+            model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &escalated));
+        assert_eq!(
+            model_request_reservation_authorizes_wire(&registry, &request_id, &escalated_digest)
+                .unwrap_err()
+                .code,
+            "protocol_mismatch"
+        );
+
+        // Rebinding an already bound reservation is refused.
+        assert_eq!(
+            registry
+                .lock()
+                .unwrap()
+                .bind_reserved_wire_digest(&request_id, escalated_digest)
+                .unwrap_err()
+                .code,
+            "protocol_mismatch"
+        );
     }
 
     fn model_event(
