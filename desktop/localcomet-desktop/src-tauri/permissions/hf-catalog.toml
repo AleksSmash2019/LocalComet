@@ -1,0 +1,12 @@
+[[permission]]
+identifier = "allow-hf-catalog"
+description = """
+Allow read-only Hugging Face catalog lookups proxied through the Rust backend.
+Requests are restricted to https://huggingface.co with redirects and proxies
+disabled; responses are size-bounded. Downloads are NOT covered here and still
+require an approval token via start_approved_artifact_download.
+"""
+commands.allow = [
+  "hf_search_models",
+  "hf_list_repo_files",
+]

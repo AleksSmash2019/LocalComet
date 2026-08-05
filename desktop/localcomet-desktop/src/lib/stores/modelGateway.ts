@@ -47,7 +47,7 @@ import {
   finalizeAssistantMessage,
   setModelConnected
 } from '$lib/stores/shellStore';
-import { locale } from '$lib/i18n';
+import { assistantLocaleFor, locale } from '$lib/i18n';
 import { reportFilesContextInclusion, reportFilesRequestError } from '$lib/stores/files';
 
 export const MAX_GENERATED_TEXT = 262_144;
@@ -833,7 +833,9 @@ async function startClaimedLocalModelTurn(
       maxTokens: MODEL_REQUEST_MAX_TOKENS,
       prompt: cleanPrompt,
       fileIds,
-      locale: get(locale),
+      // Interface chrome may be in any registered language, but the backend
+      // only accepts ru | en for a turn, so map before sending.
+      locale: assistantLocaleFor(get(locale)),
       bindingFingerprint: binding.binding_fingerprint
     });
     reportFilesContextInclusion(acceptance.file_context);

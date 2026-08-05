@@ -1,4 +1,5 @@
-import subprocess
+import logging
+import os
 from pathlib import Path
 from modules.project_paths import projects_dir
 
@@ -59,11 +60,11 @@ def open_report(path: str):
     remember_report(path)
 
     try:
-        subprocess.Popen(["code", str(report_path)], shell=True)
-        return f"Открыл отчет в VS Code: {report_path}"
-    except Exception:
-        subprocess.Popen(["notepad", str(report_path)], shell=True)
-        return f"Открыл отчет в Блокноте: {report_path}"
+        os.startfile(str(report_path))
+        return f"Открыл отчет: {report_path}"
+    except (OSError, AttributeError) as e:
+        logging.warning("open_report: os.startfile failed for %s: %s", report_path, e)
+        return f"Не удалось открыть отчет: {report_path} ({e})"
 
 
 def open_last_report():

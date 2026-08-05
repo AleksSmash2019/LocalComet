@@ -13,7 +13,6 @@
   import ReviewCenterWorkspace from '$lib/components/review/ReviewCenterWorkspace.svelte';
   import OnboardingScreen from '$lib/components/onboarding/OnboardingScreen.svelte';
   import HuggingFaceBrowser from '$lib/components/model/HuggingFaceBrowser.svelte';
-  import { exposeInvokeForModelFit } from '$lib/bridge/modelfit';
   import {
     activeWorkspace,
     chatMessages,
@@ -102,8 +101,6 @@
   }
 
   onMount(() => {
-    exposeInvokeForModelFit();
-
     const media = window.matchMedia?.('(prefers-color-scheme: dark)');
     if (media) {
       systemDark = media.matches;
@@ -229,8 +226,6 @@
       {/if}
     {:else if $activeWorkspace === 'review'}
       <ReviewCenterWorkspace />
-    {:else if $activeWorkspace === 'modelfit'}
-      <iframe src="/modelfit.html" title="ModelFit AI" class="modelfit-frame"></iframe>
     {:else if $activeWorkspace === 'hf_browser'}
       <HuggingFaceBrowser />
     {:else}
@@ -272,13 +267,6 @@
     overflow-x: hidden;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-  }
-
-  .modelfit-frame {
-    width: 100%;
-    height: 100%;
-    border: none;
-    background: transparent;
   }
 
   .content-column {

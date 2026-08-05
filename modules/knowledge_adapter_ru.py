@@ -13,7 +13,7 @@ import threading
 import time
 import unicodedata
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Mapping
 
 from modules.knowledge_contract_ru import (
     AdapterState,

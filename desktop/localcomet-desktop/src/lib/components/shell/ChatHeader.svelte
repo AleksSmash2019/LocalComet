@@ -49,25 +49,11 @@
   </div>
 
   <div class="header-right">
-    {#if !$managedModelReady}
-      <button
-        type="button"
-        class="primary-button outline compact"
-        onclick={() => $approvedManagedModelInstalled ? void connectManagedModel() : openSettings('models')}
-        disabled={$managedConnectionBusy}
-        aria-expanded={$modelSetupDrawerOpen}
-        aria-controls="model-setup-drawer"
-      >
-        <Icon name="download" size={14} />
-        <span>{$t($managedConnectionBusy ? 'chat.model_connecting' : $approvedManagedModelInstalled ? 'chat.connect_model' : 'chat.setup_local_ai')}</span>
-      </button>
-    {/if}
-
-    <button type="button" class="think-button compact" onclick={() => {}}>
-      <Icon name="chat" size={14} />
-      <span>Think</span>
-    </button>
-
+    <!--
+      The model connect action moved next to the composer: it belongs where the
+      user is blocked from typing, not in the far corner of the header.
+      The non-functional "Think" button was removed with it.
+    -->
     <button
       type="button"
       class="icon-button"
@@ -112,35 +98,6 @@
     }
   }
 
-  .primary-button.outline {
-    background: transparent;
-    border: 1px solid var(--lc-accent);
-    color: var(--lc-accent);
-  }
-
-  .primary-button.outline.compact,
-  .think-button.compact {
-    height: 28px;
-    min-height: 28px;
-    padding: 0 10px;
-    font-size: 12px;
-    border-radius: 14px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-  }
-
-  .think-button.compact {
-    background: var(--lc-panel-soft);
-    border: 1px solid var(--lc-line);
-    color: var(--lc-text);
-  }
-
-  .think-button.compact:hover {
-    background: var(--lc-panel);
-  }
-  
   .icon-button {
     width: 28px;
     height: 28px;

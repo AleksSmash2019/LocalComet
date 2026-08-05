@@ -173,7 +173,7 @@ describe('ModelManagerSection multi-model selection', () => {
       binding: null
     } as any);
 
-    const html = render(ModelManagerSection, { props: { mode: 'huggingface' } }).body;
+    const html = render(ModelManagerSection).body;
     expect(html).toContain('Скачанные модели');
     expect(html).toContain('Внимание: модели скачиваются без гарантий');
     expect(html).toContain(customArtifact.source_identity);

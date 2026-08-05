@@ -1,6 +1,5 @@
 import threading
 import urllib.parse
-from pathlib import Path
 from modules.project_paths import projects_dir
 
 from playwright.sync_api import sync_playwright

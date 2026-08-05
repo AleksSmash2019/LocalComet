@@ -7,7 +7,13 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 1420,
-    strictPort: true
+    strictPort: true,
+    watch: {
+      // The Rust build tree is not frontend source. Watching it made the dev
+      // server crash (ENOENT on target/debug/deps/*.exe) whenever cargo
+      // replaced a binary mid-watch, which killed the app's page load.
+      ignored: ['**/src-tauri/target/**', '**/src-tauri/gen/**']
+    }
   },
   preview: {
     host: '127.0.0.1',

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
   import { downloadArbitraryHuggingFaceArtifact } from '$lib/stores/artifactAcquisition';
+  import { listHuggingFaceRepoFiles, searchHuggingFaceModels } from '$lib/bridge/modelGateway';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
 
   interface HfModel {
@@ -37,22 +38,15 @@
     searchError = null;
     results = [];
     try {
-      const params = new URLSearchParams({
-        search: trimmed,
-        filter: 'gguf',
-        sort: 'downloads',
-        direction: '-1',
-        limit: '30'
-      });
-      const response = await fetch(`https://huggingface.co/api/models?${params.toString()}`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: Array<{ modelId?: string; id?: string; downloads?: number; tags?: string[]; lastModified?: string; pipeline_tag?: string }> = await response.json();
+      // Routed through the Rust backend so the webview never opens its own
+      // connection to huggingface.co.
+      const data = await searchHuggingFaceModels(trimmed);
       results = data.map((item) => ({
-        id: item.modelId ?? item.id ?? '',
-        downloads: item.downloads ?? 0,
-        tags: item.tags ?? [],
-        lastModified: item.lastModified ?? '',
-        pipeline_tag: item.pipeline_tag
+        id: item.id,
+        downloads: item.downloads,
+        tags: [...item.tags],
+        lastModified: item.last_modified,
+        pipeline_tag: item.pipeline_tag ?? undefined
       }));
     } catch (err) {
       searchError = err instanceof Error ? err.message : String(err);
@@ -77,12 +71,11 @@
       [modelId]: { id: modelId, siblings: [], loading: true, error: null }
     };
     try {
-      const response = await fetch(`https://huggingface.co/api/models/${modelId}`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: { siblings?: Array<{ rfilename?: string; size?: number }> } = await response.json();
-      const siblings: HfSibling[] = (data.siblings ?? [])
-        .filter((s) => s.rfilename?.endsWith('.gguf'))
-        .map((s) => ({ rfilename: s.rfilename ?? '', size: s.size }));
+      const files = await listHuggingFaceRepoFiles(modelId);
+      const siblings: HfSibling[] = files.map((file) => ({
+        rfilename: file.filename,
+        size: file.size ?? undefined
+      }));
       expandedRepos = {
         ...expandedRepos,
         [modelId]: { id: modelId, siblings, loading: false, error: null }

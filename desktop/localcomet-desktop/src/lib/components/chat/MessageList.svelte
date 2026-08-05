@@ -1,6 +1,6 @@
 <script lang="ts">
   import EmptyState from '$lib/components/common/EmptyState.svelte';
-  import { chatMessages, openSettings, selectedConversationId } from '$lib/stores/shellStore';
+  import { chatMessages, composerDraft, openSettings, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import {
     inferenceBusy,
     managedModelReady,
@@ -9,6 +9,19 @@
   } from '$lib/stores/modelGateway';
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
   import { t } from '$lib/i18n';
+
+  /**
+   * Prefill the composer from a prompt card.
+   *
+   * These cards previously had empty handlers, so clicking them did nothing.
+   * Filling the draft keeps the user in control: nothing is sent until they
+   * press send.
+   */
+  function insertPrompt(titleKey: string): void {
+    const translate = $t;
+    const text = `${translate(titleKey)} — ${translate(`${titleKey}_sub`)}`;
+    setComposerDraft($composerDraft.trim() ? `${$composerDraft.trim()}\n${text}` : text);
+  }
 
   $: visibleMessages = $chatMessages.filter((message) => message.conversationId === $selectedConversationId);
   $: showEmptyState = visibleMessages.length === 0;
@@ -42,23 +55,23 @@
       />
       {#if $managedModelReady}
         <div class="prompt-cards-section">
-          <h3>{$t('chat.how_can_i_help') ?? 'Чем помочь?'}</h3>
+          <h3>{$t('chat.how_can_i_help')}</h3>
           <div class="cards-grid">
-            <button type="button" class="prompt-card" onclick={() => {}}>
-              <span>Создать компонент</span>
-              <span class="prompt-sub">React с Tailwind</span>
+            <button type="button" class="prompt-card" onclick={() => insertPrompt('prompt.create_component')}>
+              <span>{$t('prompt.create_component')}</span>
+              <span class="prompt-sub">{$t('prompt.create_component_sub')}</span>
             </button>
-            <button type="button" class="prompt-card" onclick={() => {}}>
-              <span>Объяснить ошибку</span>
-              <span class="prompt-sub">в консоли сервера</span>
+            <button type="button" class="prompt-card" onclick={() => insertPrompt('prompt.explain_error')}>
+              <span>{$t('prompt.explain_error')}</span>
+              <span class="prompt-sub">{$t('prompt.explain_error_sub')}</span>
             </button>
-            <button type="button" class="prompt-card" onclick={() => {}}>
-              <span>Написать тесты</span>
-              <span class="prompt-sub">для API эндпоинта</span>
+            <button type="button" class="prompt-card" onclick={() => insertPrompt('prompt.write_tests')}>
+              <span>{$t('prompt.write_tests')}</span>
+              <span class="prompt-sub">{$t('prompt.write_tests_sub')}</span>
             </button>
-            <button type="button" class="prompt-card" onclick={() => {}}>
-              <span>Оптимизировать</span>
-              <span class="prompt-sub">SQL запрос</span>
+            <button type="button" class="prompt-card" onclick={() => insertPrompt('prompt.optimize')}>
+              <span>{$t('prompt.optimize')}</span>
+              <span class="prompt-sub">{$t('prompt.optimize_sub')}</span>
             </button>
           </div>
         </div>

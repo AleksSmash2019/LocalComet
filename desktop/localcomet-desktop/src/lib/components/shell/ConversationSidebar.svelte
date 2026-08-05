@@ -44,17 +44,6 @@
       <button
         type="button"
         class="nav-button"
-        aria-label="ModelFit AI"
-        title="ModelFit AI"
-        class:active={$activeWorkspace === 'modelfit' && !$settingsPanelOpen}
-        onclick={() => setActiveWorkspace('modelfit')}
-      >
-        <Icon name="hardware" size={16} />
-        ModelFit AI
-      </button>
-      <button
-        type="button"
-        class="nav-button"
         aria-label={$t('nav.hf_browser')}
         title={$t('nav.hf_browser')}
         class:active={$activeWorkspace === 'hf_browser' && !$settingsPanelOpen}

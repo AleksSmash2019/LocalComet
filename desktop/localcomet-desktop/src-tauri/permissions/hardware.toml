@@ -1,6 +1,0 @@
-[[permission]]
-identifier = "allow-scan-hardware"
-description = "Allow reading system hardware specs (read-only sysinfo)."
-commands.allow = [
-  "scan_hardware",
-]

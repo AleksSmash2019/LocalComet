@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
-import { locale, setLocale, t } from '../src/lib/i18n';
+import { LANGUAGES, assistantLocaleFor, locale, setLocale, t } from '../src/lib/i18n';
 import { getInitialMessages } from '../src/lib/data/mockData';
 import type { Language } from '../src/lib/i18n';
 import {
@@ -29,13 +29,14 @@ if (typeof window === 'undefined') {
 
 // Minimal document polyfill for node test environment
 if (typeof document === 'undefined') {
-  const doc = { documentElement: { lang: '' } } as any;
+  const doc = { documentElement: { lang: '', dir: '' } } as any;
   globalThis.document = doc;
 }
 
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.lang = '';
+  document.documentElement.dir = '';
   locale.set('ru');
 });
 
@@ -45,8 +46,50 @@ describe('language store', () => {
   });
 
   it('invalid stored value falls back to ru', () => {
-    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({ locale: 'fr' }));
+    // 'kl' is not a registered interface language ('fr' now is one).
+    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({ locale: 'kl' }));
     expect(loadUiPreferences().locale).toBe('ru');
+  });
+
+  it('a registered additional locale is accepted and persisted', () => {
+    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({ locale: 'fr' }));
+    expect(loadUiPreferences().locale).toBe('fr');
+  });
+
+  it('partially translated locales fall back to English, never to raw keys', () => {
+    setLocale('ja');
+    const tf = get(t);
+    // Translated in the ja chrome dictionary.
+    expect(tf('settings.language')).toBe('言語');
+    // Not translated in ja: must fall back to English, not to the key itself.
+    const deep = tf('models.approved_catalog_title');
+    expect(deep).not.toBe('models.approved_catalog_title');
+    expect(deep).not.toMatch(/[а-яё]/i);
+  });
+
+  it('every registered language resolves core chrome keys', () => {
+    for (const entry of LANGUAGES) {
+      setLocale(entry.code);
+      const tf = get(t);
+      for (const key of ['settings.language', 'settings.title', 'chat.send', 'nav.settings']) {
+        expect(tf(key), `${entry.code}/${key}`).not.toBe(key);
+      }
+    }
+  });
+
+  it('document direction follows the locale writing direction', () => {
+    setLocale('ar');
+    expect(document.documentElement.dir).toBe('rtl');
+    setLocale('ru');
+    expect(document.documentElement.dir).toBe('ltr');
+  });
+
+  it('assistant locale stays within the backend-supported ru | en', () => {
+    for (const entry of LANGUAGES) {
+      expect(['ru', 'en']).toContain(assistantLocaleFor(entry.code));
+    }
+    expect(assistantLocaleFor('ru')).toBe('ru');
+    expect(assistantLocaleFor('ja')).toBe('en');
   });
 
   it('selecting English changes visible UI text', () => {

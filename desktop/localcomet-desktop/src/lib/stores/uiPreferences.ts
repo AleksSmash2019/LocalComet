@@ -1,8 +1,17 @@
+// locales.ts holds only the language registry and has no store imports, so
+// importing it here cannot create a cycle with $lib/i18n/index.ts.
+import { isLanguage, type Language } from '$lib/i18n/locales';
+
 export const UI_PREFERENCES_KEY = 'localcomet.ui.preferences.v1';
 export const LEGACY_LANGUAGE_KEY = 'localcomet.ui.language';
 
 export type UiTheme = 'system' | 'light' | 'dark';
-export type UiLocale = 'ru' | 'en';
+
+/**
+ * Interface locale codes. The canonical list lives in $lib/i18n/locales so the
+ * picker, the translation registry and this validator cannot drift apart.
+ */
+export type UiLocale = Language;
 export type DiagnosticsPanelPreference = 'open' | 'closed';
 
 export interface UiPreferences {
@@ -30,7 +39,7 @@ function isTheme(value: unknown): value is UiTheme {
 }
 
 function isLocale(value: unknown): value is UiLocale {
-  return value === 'ru' || value === 'en';
+  return isLanguage(value);
 }
 
 function isDiagnosticsPanel(value: unknown): value is DiagnosticsPanelPreference {

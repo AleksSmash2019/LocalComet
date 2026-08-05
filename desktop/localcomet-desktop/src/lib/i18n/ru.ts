@@ -358,7 +358,6 @@ export const ru: TranslationMap = {
   'settings.sections': 'Разделы настроек',
   'settings.tab_interface': 'Интерфейс',
   'settings.tab_models': 'Модели',
-  'settings.tab_huggingface': 'Hugging Face',
   'settings.tab_observability': 'Логи',
   'settings.tab_about': 'О приложении',
   'settings.close': 'Закрыть настройки',
@@ -753,4 +752,16 @@ export const ru: TranslationMap = {
   "review.connection.CONNECTED": "ПОДКЛЮЧЕНО",
   "review.connection.UNAVAILABLE": "НЕДОСТУПНО",
   "review.connection.ERROR": "ОШИБКА",
+
+  // Model picker and prompt cards
+  'chat.search': 'Искать',
+  'chat.how_can_i_help': 'Чем помочь?',
+  'prompt.create_component': 'Создать компонент',
+  'prompt.create_component_sub': 'React с Tailwind',
+  'prompt.explain_error': 'Объяснить ошибку',
+  'prompt.explain_error_sub': 'в консоли сервера',
+  'prompt.write_tests': 'Написать тесты',
+  'prompt.write_tests_sub': 'для API эндпоинта',
+  'prompt.optimize': 'Оптимизировать',
+  'prompt.optimize_sub': 'SQL запрос',
 };

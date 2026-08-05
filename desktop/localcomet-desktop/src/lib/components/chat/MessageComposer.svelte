@@ -6,7 +6,15 @@
   import { composerDraft, openSettings, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import { applyAutoTitle } from '$lib/stores/conversationStore';
   import { t } from '$lib/i18n';
-  import { cancelLocalModelTurn, inferenceRequestStore, managedModelReady, startLocalModelTurn } from '$lib/stores/modelGateway';
+  import {
+    approvedManagedModelInstalled,
+    cancelLocalModelTurn,
+    connectSelectedManagedModel,
+    inferenceRequestStore,
+    managedConnectionBusy,
+    managedModelReady,
+    startLocalModelTurn
+  } from '$lib/stores/modelGateway';
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
   import { includedFileIds, addFiles } from '$lib/stores/files';
 
@@ -80,6 +88,11 @@
   <form class="composer-wrap" aria-label={$t('chat.type_message')} onsubmit={(event) => event.preventDefault()}>
     <FilesPanel />
     <KnowledgeToggle />
+    <!--
+      No connect button here: the empty-state card above the composer already
+      offers the single "Set up local AI" action, so a second control would be
+      a duplicate.
+    -->
     <div class="composer pill-surface">
       <button type="button" class="composer-icon-button" aria-label={$t('files.add')} title={$t('files.add')} onclick={() => void addFiles()}>
         <Icon name="attach" size={20} />
@@ -101,10 +114,6 @@
         onkeydown={handleKeydown}
       ></textarea>
 
-      <button type="button" class="composer-icon-button" aria-label="Искать" title="Искать" onclick={() => {}}>
-        <Icon name="search" size={18} />
-      </button>
-
       <button
         type="button"
         class="send-button pill-send"
@@ -118,15 +127,6 @@
     </div>
     {#if $inferenceRequestStore.lastError}
       <p class="request-error" role="status">{$t(requestErrorKey)}</p>
-    {/if}
-    {#if !$managedModelReady && !isGenerating}
-      <div class="first-use" style="display: none;" role="status">
-        <strong>{$t('chat.model_not_connected')}</strong>
-        <div>
-          <button type="button" class="setup-button" onclick={() => openSettings('models')}>{$t('chat.setup_local_ai')}</button>
-          <button type="button" class="models-button" onclick={() => openSettings('models')}>{$t('chat.open_models')}</button>
-        </div>
-      </div>
     {/if}
   </form>
 </div>
@@ -241,51 +241,6 @@
     color: var(--lc-danger);
     font-size: 12px;
     font-weight: 700;
-  }
-
-  .first-use {
-    display: grid;
-    gap: var(--lc-space-2);
-    margin-top: var(--lc-space-2);
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-lg);
-    padding: 10px 12px;
-    background: color-mix(in srgb, var(--lc-panel-solid) 50%, transparent);
-    font-size: 12px;
-  }
-
-  .first-use p {
-    margin: 0;
-    color: var(--lc-muted);
-    line-height: 1.45;
-  }
-
-  .first-use > div {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--lc-space-2);
-  }
-
-  .setup-button,
-  .models-button {
-    min-height: 34px;
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
-    padding: 0 var(--lc-space-3);
-    font-size: 12px;
-    font-weight: 760;
-    cursor: pointer;
-  }
-
-  .setup-button {
-    border-color: var(--lc-accent);
-    background: var(--lc-accent);
-    color: #071009;
-  }
-
-  .models-button {
-    background: var(--lc-panel-solid);
-    color: var(--lc-text);
   }
 
   .composer-wrap :global(.files-panel) {

@@ -1,7 +1,7 @@
 from modules.project_paths import get_project_root, projects_dir
 
 from config import MODEL, LMSTUDIO_API
-from core.state import load_state, get_value
+from modules.state_store import load_state, get_value
 from modules.git_status import short_status as git_short_status
 from modules.llm_provider import provider_status
 from modules.patch_registry import short_status as patch_registry_short_status
@@ -444,7 +444,6 @@ def show_status():
     last_gpt_browser_response = get_value("last_gpt_browser_response", "нет")
     last_gpt_browser_error = get_value("last_gpt_browser_error", "нет")
     gpt_browser_chat_url = get_value("gpt_browser_chat_url", "нет")
-    last_gpt_browser_response_mode = get_value("last_gpt_browser_response_mode", "file_response_json_first")
     last_gpt_browser_response_mode = get_value("last_gpt_browser_response_mode", "file_response_json_first")
     last_true_auto_relay_report = get_value("last_true_auto_relay_report", "нет")
     last_true_auto_relay_screenshot = get_value("last_true_auto_relay_screenshot", "нет")

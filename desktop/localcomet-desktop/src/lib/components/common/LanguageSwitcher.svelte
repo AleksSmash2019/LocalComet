@@ -1,15 +1,12 @@
 <script lang="ts">
-  import { locale, setLocale, t } from '$lib/i18n';
+  import { availableLanguages, locale, setLocale, t } from '$lib/i18n';
   import type { Language } from '$lib/i18n';
 
   let open = false;
   let menu: HTMLDivElement;
   let button: HTMLButtonElement;
 
-  const languages: Array<{ code: Language; labelKey: string }> = [
-    { code: 'ru', labelKey: 'lang.russian' },
-    { code: 'en', labelKey: 'lang.english' }
-  ];
+  const languages = availableLanguages;
 
   function toggle() {
     open = !open;
@@ -48,7 +45,7 @@
     onclick={toggle}
     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
   >
-    <span class="lang-label">{$locale === 'ru' ? 'RU' : 'EN'}</span>
+    <span class="lang-label">{$locale.split('-')[0].toUpperCase()}</span>
     <span class="lang-arrow" aria-hidden="true">{open ? '▲' : '▾'}</span>
   </button>
 
@@ -70,7 +67,7 @@
           aria-selected={$locale === lang.code}
           onclick={() => select(lang.code)}
         >
-          <span>{$t(lang.labelKey)}</span>
+          <span>{lang.endonym}</span>
           {#if $locale === lang.code}
             <span class="check" aria-hidden="true">✓</span>
           {/if}

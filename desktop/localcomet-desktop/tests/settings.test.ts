@@ -1,7 +1,7 @@
 import { render } from 'svelte/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 import SettingsPanel from '../src/lib/components/shell/SettingsPanel.svelte';
-import { setLocale } from '../src/lib/i18n';
+import { LANGUAGES, setLocale } from '../src/lib/i18n';
 import { controlPlaneStore, resetControlPlaneStore } from '../src/lib/stores/controlPlane';
 import {
   resetShellStores,
@@ -33,14 +33,24 @@ describe('minimal Settings surface', () => {
     }
   });
 
-  it('exposes theme and language choices as semantic pressed buttons', () => {
+  it('exposes theme choices as semantic pressed buttons', () => {
     const html = settingsHtml('en');
     expect(html).toContain('title="System"');
     expect(html).toContain('title="Light"');
     expect(html).toContain('title="Dark"');
-    expect(html).toContain('title="Русский"');
-    expect(html).toContain('title="English"');
-    expect(html.match(/aria-pressed=/g)?.length).toBeGreaterThanOrEqual(6);
+    expect(html.match(/aria-pressed=/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('exposes language choice as a labelled select listing every locale', () => {
+    const html = settingsHtml('en');
+    expect(html).toContain('aria-label="Select language"');
+    expect(html).toContain('<select');
+    // Endonyms: each language is offered in its own script.
+    for (const endonym of ['Русский', 'English', 'Español', '日本語', '简体中文', 'العربية']) {
+      expect(html).toContain(endonym);
+    }
+    const options = html.match(/<option /g)?.length ?? 0;
+    expect(options).toBeGreaterThanOrEqual(LANGUAGES.length);
   });
 
   it('renders repository-proven About values', () => {

@@ -7,7 +7,7 @@ from modules.windows import (
     open_notepad_file,
 )
 
-from core.state import set_value, get_value
+from modules.state_store import set_value, get_value
 
 
 def _normalize_app(app: str):

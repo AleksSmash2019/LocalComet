@@ -1927,6 +1927,11 @@ def run_direct_command(user_text: str):
     planned = plan(user_text, route_name)
     print("PLAN:", planned)
 
+    if not planned:
+        print("PLAN returned None — skipping execute.")
+        append_log(user_text, None, "plan returned None", status="error")
+        return False
+
     result = execute(planned)
     print("RESULT:", result)
 
@@ -1998,6 +2003,11 @@ def run_goal(user_goal: str, max_steps: int = 10, save_as_real_goal: bool = True
 
             planned = plan(task, route_name)
             print("PLAN:", planned)
+
+            if not planned:
+                print("PLAN returned None — skipping execute.")
+                append_log(task, None, "plan returned None", status="error")
+                continue
 
             result = execute(planned)
             print("RESULT:", result)

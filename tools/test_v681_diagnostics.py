@@ -217,16 +217,23 @@ def test_ast_single_dispatcher_and_route_present() -> None:
 
 
 def test_previous_suites_and_staging() -> None:
-    commands = [
-        [sys.executable, "tools/test_v677_regression.py"],
-        [sys.executable, "tools/test_v678_router_registry.py"],
-        [sys.executable, "tools/test_v679_retention.py"],
-        [sys.executable, "tools/test_v6801_audit_bundle.py"],
-        [sys.executable, "tools/test_v6802_bundle_security.py"],
-    ]
-    optional = ROOT / "tools" / "test_v680_reproducibility.py"
-    if optional.exists():
-        commands.insert(3, [sys.executable, "tools/test_v680_reproducibility.py"])
+    # Re-entrancy guard — see tools/test_v680_reproducibility.py for the full
+    # rationale. This suite sat at the top of the cascade
+    # (v681 -> v6802 -> v680 -> v677/v678/v679/v6801).
+    if os.environ.get("LOCALCOMET_NESTED_SUITE") == "1":
+        commands = []
+    else:
+        commands = [
+            [sys.executable, "tools/test_v677_regression.py"],
+            [sys.executable, "tools/test_v678_router_registry.py"],
+            [sys.executable, "tools/test_v679_retention.py"],
+            [sys.executable, "tools/test_v6801_audit_bundle.py"],
+            [sys.executable, "tools/test_v6802_bundle_security.py"],
+        ]
+        optional = ROOT / "tools" / "test_v680_reproducibility.py"
+        if optional.exists():
+            commands.insert(3, [sys.executable, "tools/test_v680_reproducibility.py"])
+    child_env = {**os.environ, "LOCALCOMET_NESTED_SUITE": "1"}
     for command in commands:
         completed = subprocess.run(
             command,
@@ -237,6 +244,7 @@ def test_previous_suites_and_staging() -> None:
             errors="replace",
             timeout=240,
             check=False,
+            env=child_env,
         )
         _assert(completed.returncode == 0, f"Regression failed: {' '.join(command)}")
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=str(ROOT), capture_output=True, text=True, check=False)

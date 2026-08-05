@@ -26,8 +26,7 @@ import os
 import re
 import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 from modules.knowledge_contract_ru import (
     KnowledgeAdapterError,

@@ -77,3 +77,15 @@ name = "model.binding.set"
 risk_level = "guarded"
 requires_approval = true
 implementation = "src-tauri::model_binding_set"
+
+[[tools]]
+name = "files.rollback"
+risk_level = "guarded"
+requires_approval = true
+implementation = "modules/files.py::rollback"
+
+[[tools]]
+name = "files.rollback_undo"
+risk_level = "guarded"
+requires_approval = true
+implementation = "modules/files.py::rollback_undo"

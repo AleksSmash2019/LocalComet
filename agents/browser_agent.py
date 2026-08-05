@@ -46,7 +46,7 @@ from modules.browser_super import (
     run_site_workflow,
     run_youtube_search,
 )
-from core.state import get_value, set_value
+from modules.state_store import get_value, set_value
 
 
 def _short(text, limit: int = 1500):
@@ -284,7 +284,10 @@ def handle(action: str, data: dict):
         )
 
     if action == "open_url":
-        result = open_url(data["url"])
+        url = data.get("url")
+        if not url:
+            return "Browser Agent: нет url для открытия."
+        result = open_url(url)
         return _save_browser_state("open_url", result)
 
     if action == "open_local_site":
@@ -323,11 +326,6 @@ def handle(action: str, data: dict):
         text = data.get("text", "")
         result = _friendly_browser_action_result("find_text", find_text_on_page(text))
         return _save_browser_state("find_text", result)
-
-    if action == "click_text":
-        text = data.get("text", "")
-        result = click_by_text(text)
-        return _save_browser_state("click_text", result)
 
     if action == "click_selector":
         selector = data.get("selector", "")

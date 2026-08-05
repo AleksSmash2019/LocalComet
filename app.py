@@ -1,3 +1,7 @@
+# DEPRECATED: This is the v3 legacy REPL.
+# Use next/app_v5.py for the current command loop.
+# Removal decision is reserved for the repository owner.
+
 from core.router import route
 from core.planner import plan
 from core.executor import execute

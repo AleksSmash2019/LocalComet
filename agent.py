@@ -1,3 +1,7 @@
+# DEPRECATED: This is the v1 legacy agent with hardcoded pyautogui/subprocess.
+# It is not imported by any production module and is kept for reference only.
+# Do not add new functionality here. Use next/app_v5.py for the current agent loop.
+
 import requests
 import subprocess
 import pyautogui

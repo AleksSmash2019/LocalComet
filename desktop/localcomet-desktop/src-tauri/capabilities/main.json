@@ -45,7 +45,7 @@
     "allow-model-turn-cancel",
     "allow-model-turn-start",
     "allow-preview-selected-file",
-    "allow-scan-hardware",
+    "allow-hf-catalog",
     "allow-select-files",
     "core:window:allow-create",
     "core:webview:allow-create-webview-window",

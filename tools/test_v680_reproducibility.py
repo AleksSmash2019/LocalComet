@@ -35,6 +35,14 @@ def _paths_under(root: Path) -> dict[str, str]:
         "Projects/Reports/",
         "Projects/ComputerUse/",
         "Projects/ChatGPTRelay/",
+        # Build outputs and vendored dependencies: not source, and hashing them
+        # dominated this check (~14k Rust target files + ~2.3k node_modules
+        # files out of ~18.7k total). They are also excluded from the repo by
+        # .gitignore, so they cannot represent a source-tree mutation.
+        "desktop/localcomet-desktop/node_modules/",
+        "desktop/localcomet-desktop/.svelte-kit/",
+        "desktop/localcomet-desktop/build/",
+        "desktop/localcomet-desktop/src-tauri/target/",
     )
     for path in root.rglob("*"):
         rel = path.relative_to(root).as_posix()
@@ -186,14 +194,25 @@ def test_clean_temp_copy_passes_without_source_access() -> None:
 
 
 def test_previous_suites_and_staging() -> None:
-    commands = [
+    # Re-entrancy guard: these suites invoke each other as subprocesses
+    # (v681 -> v6802 -> v680 -> v677/v678/v679/v6801), so a single pytest run
+    # spawned 39 processes instead of 7 and re-ran the same suites up to 8
+    # times. The nested runs also inherited the 180-240s timeouts, which made
+    # the whole set fail non-deterministically under load.
+    # When already running as a nested child, the parent has verified these
+    # suites, so skip the redundant re-execution and keep the staging check.
+    if os.environ.get("LOCALCOMET_NESTED_SUITE") == "1":
+        commands = []
+    else:
+        commands = [
         [sys.executable, "tools/test_v677_regression.py"],
         [sys.executable, "tools/test_v678_router_registry.py"],
         [sys.executable, "tools/test_v679_retention.py"],
         [sys.executable, "tools/test_v6801_audit_bundle.py"],
     ]
+    child_env = {**os.environ, "LOCALCOMET_NESTED_SUITE": "1"}
     for command in commands:
-        completed = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240, check=False)
+        completed = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240, check=False, env=child_env)
         _assert(completed.returncode == 0, f"Regression failed: {' '.join(command)}")
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=str(ROOT), capture_output=True, text=True, check=False)
     _assert(staged.returncode == 0 and staged.stdout.strip() == "", "Staged files are present.")

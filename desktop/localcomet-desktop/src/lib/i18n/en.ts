@@ -358,7 +358,6 @@ export const en: TranslationMap = {
   'settings.sections': 'Settings sections',
   'settings.tab_interface': 'Interface',
   'settings.tab_models': 'Models',
-  'settings.tab_huggingface': 'Hugging Face',
   'settings.tab_observability': 'Logs',
   'settings.tab_about': 'About',
   'settings.close': 'Close settings',
@@ -753,4 +752,16 @@ export const en: TranslationMap = {
   "review.connection.CONNECTED": "CONNECTED",
   "review.connection.UNAVAILABLE": "UNAVAILABLE",
   "review.connection.ERROR": "ERROR",
+
+  // Model picker and prompt cards
+  'chat.search': 'Search',
+  'chat.how_can_i_help': 'How can I help?',
+  'prompt.create_component': 'Create a component',
+  'prompt.create_component_sub': 'React with Tailwind',
+  'prompt.explain_error': 'Explain an error',
+  'prompt.explain_error_sub': 'in the server console',
+  'prompt.write_tests': 'Write tests',
+  'prompt.write_tests_sub': 'for an API endpoint',
+  'prompt.optimize': 'Optimize',
+  'prompt.optimize_sub': 'an SQL query',
 };

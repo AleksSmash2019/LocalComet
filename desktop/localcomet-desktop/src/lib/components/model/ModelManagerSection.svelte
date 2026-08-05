@@ -6,7 +6,6 @@
     artifactAcquisitionStore,
     cancelApprovedArtifactDownload,
     downloadApprovedArtifact,
-    downloadArbitraryHuggingFaceArtifact,
     initializeArtifactAcquisition,
     removeApprovedManagedModel,
     setUpManagedModel,
@@ -24,18 +23,20 @@
   import { t } from '$lib/i18n';
   import type { ApprovedDownloadableArtifact, ManagedDownloadableArtifact } from '$lib/types/modelGateway';
 
-  export let mode: 'catalog' | 'huggingface' = 'catalog';
+  // The separate "Hugging Face" settings tab was removed: the approved catalog
+  // and the list of already-downloaded models now render together in one
+  // "Models" section, so this component no longer needs a mode switch.
 
   type Confirmation =
     | { readonly action: 'setup'; readonly artifacts: readonly ManagedDownloadableArtifact[] }
     | { readonly action: 'download'; readonly artifacts: readonly ApprovedDownloadableArtifact[] }
     | { readonly action: 'remove'; readonly artifacts: readonly ManagedDownloadableArtifact[] }
-    | { readonly action: 'custom-download'; readonly url: string };
+;
 
   let confirmation: Confirmation | null = null;
   let actionPending = false;
   let selectedModelId = $managedRuntimeStore.selectedModelId;
-  let customUrl = '';
+
 
   $: runtime = $managedRuntimeStore.runtimeCatalog?.[0] ?? null;
   $: modelArtifacts = $artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model');
@@ -79,20 +80,13 @@
     confirmation = { action: 'remove', artifacts: [artifact] };
   }
 
-  function requestCustomDownload(): void {
-    if (customUrl.length === 0) return;
-    confirmation = { action: 'custom-download', url: customUrl };
-  }
-
   async function confirm(): Promise<void> {
     const selected = confirmation;
     confirmation = null;
     if (!selected) return;
     actionPending = true;
     try {
-      if (selected.action === 'custom-download') {
-        await downloadCustom(selected.url);
-      } else if (selected.action === 'setup') {
+      if (selected.action === 'setup') {
         await setUpManagedModel(selected.artifacts.find((artifact) => artifact.kind === 'model')!.artifact_id);
       } else if (selected.action === 'download') {
         await downloadApprovedArtifact(selected.artifacts[0].artifact_id);
@@ -113,11 +107,6 @@
     } finally {
       actionPending = false;
     }
-  }
-
-  async function downloadCustom(url: string): Promise<void> {
-    const terminal = await downloadArbitraryHuggingFaceArtifact(url);
-    if (terminal?.lifecycle === 'completed' && customUrl === url) customUrl = '';
   }
 
   function onModelChange(event: Event) {
@@ -212,7 +201,6 @@
     </dl>
   </div>
 
-  {#if mode === 'catalog'}
   <div class="catalog-card">
     <div class="catalog-heading">
       <div>
@@ -240,9 +228,7 @@
       {/each}
     </ul>
   </div>
-  {/if}
 
-  {#if mode === 'huggingface'}
   <div class="catalog-card custom-card">
     <div class="catalog-heading">
       <div>
@@ -251,13 +237,6 @@
       </div>
       <span class="catalog-count">{customModelArtifacts.length} {$t('models.custom_count')}</span>
     </div>
-    <label class="custom-url-field">
-      <span>{$t('models.custom_url_label')}</span>
-      <div class="custom-url-controls">
-        <input type="url" bind:value={customUrl} placeholder={$t('models.custom_url_placeholder')} disabled={actionPending || $managedConnectionBusy} />
-        <button type="button" disabled={customUrl.length === 0 || actionPending || $managedConnectionBusy} onclick={requestCustomDownload}>{$t('models.custom_download')}</button>
-      </div>
-    </label>
     <p class="warning">{$t('models.custom_warning')}</p>
     <ul class="catalog-list">
       {#each customModelArtifacts as artifact}
@@ -280,7 +259,6 @@
       {/each}
     </ul>
   </div>
-  {/if}
 
   {#if activeDownload}
     <div class="progress-panel" role="status">
@@ -342,23 +320,16 @@
       <h4 id="models-confirmation-title">
         {confirmation.action === 'remove'
           ? $t('models.remove_confirm_title')
-          : confirmation.action === 'custom-download'
-            ? $t('models.custom_confirm_title')
-            : $t('models.confirm_title')}
+          : $t('models.confirm_title')}
       </h4>
       <p>
         {confirmation.action === 'remove'
           ? $t('models.remove_confirm_detail')
-          : confirmation.action === 'custom-download'
-            ? $t('models.custom_confirm_detail')
-            : $t('models.confirm_detail')}
+          : $t('models.confirm_detail')}
       </p>
-      {#if confirmation.action === 'custom-download'}
-        <dl>
-          <div><dt>{$t('models.custom_source')}</dt><dd>{confirmation.url}</dd></div>
-          <div><dt>{$t('models.license')}</dt><dd>{$t('models.license_unknown')}</dd></div>
-        </dl>
-        <p class="warning">{$t('models.custom_warning')}</p>
+      {#if false}
+        <!-- custom URL download removed: models are installed from the
+             curated catalog or the Hugging Face browser only -->
       {:else}
         <ul>
           {#each confirmation.artifacts as artifact}
@@ -410,8 +381,5 @@
   .catalog-main { display: flex; align-items: center; justify-content: space-between; gap: var(--lc-space-2); }
   .catalog-empty { color: var(--lc-muted); font-size: 12px; }
   .custom-card { border-color: var(--lc-warning); }
-  .custom-url-field { display: grid; gap: var(--lc-space-1); color: var(--lc-muted); font-size: 11px; }
-  .custom-url-controls { display: flex; gap: var(--lc-space-2); }
-  .custom-url-controls input { min-width: 0; flex: 1; border: var(--border-thin); border-radius: var(--lc-radius-sm); padding: 0 var(--lc-space-2); background: var(--lc-panel-solid); color: var(--lc-text); }
   .warning { margin: 0; color: var(--lc-warning); font-size: 11px; line-height: 1.45; }
 </style>

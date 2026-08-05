@@ -130,3 +130,14 @@ Improve this website design.
         "folder": folder,
         "changed": changed
     }
+
+
+def format_sources_text(sources, fallback="Источники не найдены."):
+    """Форматировать список источников (первые 8) в читаемый текст."""
+    source_lines = []
+    for i, source in enumerate(sources[:8], start=1):
+        source_lines.append(
+            f"{i}. {source.get('title', 'Без названия')}\n"
+            f"   {source.get('url', '')}"
+        )
+    return "\n".join(source_lines) if source_lines else fallback

@@ -17,6 +17,12 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 LIB_RS = REPO_ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "src" / "lib.rs"
 SRC_DIR = REPO_ROOT / "desktop" / "localcomet-desktop" / "src"
 
+# Static assets that call Tauri commands outside the Svelte source tree.
+# ModelFit AI ships as a prebuilt HTML bundle loaded in an iframe; it reaches
+# the backend through the window.__modelfit_invoke bridge exposed by
+# src/lib/bridge/modelfit.ts, so its invocations never appear in src/.
+STATIC_DIR = REPO_ROOT / "desktop" / "localcomet-desktop" / "static"
+
 
 def extract_registered_commands(lib_rs_text: str) -> set[str]:
     match = re.search(
@@ -46,6 +52,33 @@ def extract_frontend_invokes(src_dir: pathlib.Path) -> set[str]:
     return invokes
 
 
+def extract_static_invokes(static_dir: pathlib.Path) -> set[str]:
+    """Collect Tauri commands invoked from bundled static HTML assets.
+
+    Bundled assets are minified: the resolved invoke function is stored in a
+    single-letter local, so the call site looks like `await e("scan_hardware")`
+    rather than `invoke("scan_hardware")`. Matching only on `invoke(` would
+    miss it, so we also accept a bare call whose sole argument is a quoted
+    snake_case literal, and keep the result intersected with the registered
+    command set by the caller.
+    """
+    invokes: set[str] = set()
+    if not static_dir.is_dir():
+        return invokes
+    patterns = (
+        # Explicit bridge / invoke call sites.
+        re.compile(r"""__modelfit_invoke\s*(?:\?\.)?\(\s*["']([a-z_]+)["']"""),
+        re.compile(r"""(?:invoke\w*)\s*(?:<[^>]*>)?\(\s*["']([a-z_]+)["']"""),
+        # Minified call through a local alias, e.g. await e("scan_hardware").
+        re.compile(r"""\b[A-Za-z_$][\w$]*\(\s*["']([a-z][a-z0-9_]*_[a-z0-9_]+)["']\s*\)"""),
+    )
+    for html_file in static_dir.rglob("*.html"):
+        text = html_file.read_text(encoding="utf-8", errors="replace")
+        for pattern in patterns:
+            invokes.update(pattern.findall(text))
+    return invokes
+
+
 def main() -> int:
     if not LIB_RS.exists():
         print(f"FAIL: cannot find {LIB_RS}")
@@ -62,7 +95,7 @@ def main() -> int:
         print(f"FAIL: cannot find {SRC_DIR}")
         return 2
 
-    invoked = extract_frontend_invokes(SRC_DIR)
+    invoked = extract_frontend_invokes(SRC_DIR) | extract_static_invokes(STATIC_DIR)
 
     registered_not_invoked = registered - invoked
     invoked_not_registered = invoked - registered

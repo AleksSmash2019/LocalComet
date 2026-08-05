@@ -1,3 +1,4 @@
+from modules.codegen import format_sources_text
 from modules.research import make_research_report
 from modules.report_opener import open_report, open_last_report, read_last_report, remember_report
 
@@ -11,27 +12,26 @@ def handle(action: str, data: dict):
 
         result = make_research_report(query)
 
-        remember_report(result["path"])
+        report_path = result.get("path")
+        if not report_path:
+            return "Research Agent: отчёт не вернул path."
+        report_text = result.get("report")
+        if not report_text:
+            return "Research Agent: отчёт не вернул report."
+
+        remember_report(report_path)
 
         sources = result.get("sources", [])
-        source_lines = []
-
-        for i, source in enumerate(sources[:8], start=1):
-            source_lines.append(
-                f"{i}. {source.get('title', 'Без названия')}\n"
-                f"   {source.get('url', '')}"
-            )
-
-        sources_text = "\n".join(source_lines) if source_lines else "Источники не найдены."
+        sources_text = format_sources_text(sources, fallback="Источники не найдены.")
 
         search_queries = result.get("search_queries", [])
         search_queries_text = "\n".join([f"- {q}" for q in search_queries])
 
-        opened = open_report(result["path"])
+        opened = open_report(report_path)
 
         return (
             "Отчет создан:\n"
-            + result["path"]
+            + report_path
             + "\n\n"
             + opened
             + "\n\n"
@@ -42,7 +42,7 @@ def handle(action: str, data: dict):
             + "Источники:\n"
             + sources_text
             + "\n\n"
-            + result["report"]
+            + report_text
         )
 
     if action == "open_last_report":

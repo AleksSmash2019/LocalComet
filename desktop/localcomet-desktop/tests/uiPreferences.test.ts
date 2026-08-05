@@ -110,9 +110,11 @@ describe('UI preferences', () => {
       locale: 'ru',
       diagnosticsPanel: 'open'
     }));
+    // 'kl' is deliberately not a registered interface language; 'fr' used to
+    // serve that role but is now a real locale.
     const unsafePatch = {
       theme: 'sepia',
-      locale: 'fr',
+      locale: 'kl',
       diagnosticsPanel: 'floating',
       prompt: 'do not persist'
     } as unknown as Parameters<typeof updateUiPreferences>[0];

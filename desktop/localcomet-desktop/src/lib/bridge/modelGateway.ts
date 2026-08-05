@@ -133,6 +133,52 @@ export async function startArbitraryHuggingFaceDownload(url: string): Promise<Ar
   );
 }
 
+export interface HfModelSummary {
+  readonly id: string;
+  readonly downloads: number;
+  readonly tags: readonly string[];
+  readonly last_modified: string;
+  readonly pipeline_tag: string | null;
+}
+
+export interface HfRepoFile {
+  readonly filename: string;
+  readonly size: number | null;
+}
+
+/**
+ * Search Hugging Face through the Rust backend.
+ *
+ * The webview must not call huggingface.co directly: routing through Tauri
+ * keeps every outbound request behind the vetted host allowlist and the
+ * no-redirect/no-proxy policy enforced in src-tauri/src/hf_catalog.rs.
+ */
+export async function searchHuggingFaceModels(query: string): Promise<readonly HfModelSummary[]> {
+  const result = await invokeExact<unknown>('hf_search_models', { query });
+  return boundedArray(result, 30).map((item) => {
+    const object = expectRecord(item);
+    return {
+      id: String(object.id ?? ''),
+      downloads: Number(object.downloads ?? 0),
+      tags: boundedArray(object.tags, 24).map((tag) => String(tag)),
+      last_modified: String(object.last_modified ?? ''),
+      pipeline_tag: object.pipeline_tag == null ? null : String(object.pipeline_tag)
+    };
+  });
+}
+
+/** List downloadable GGUF files for one repository, via the Rust backend. */
+export async function listHuggingFaceRepoFiles(modelId: string): Promise<readonly HfRepoFile[]> {
+  const result = await invokeExact<unknown>('hf_list_repo_files', { modelId });
+  return boundedArray(result, 64).map((item) => {
+    const object = expectRecord(item);
+    return {
+      filename: String(object.filename ?? ''),
+      size: object.size == null ? null : Number(object.size)
+    };
+  });
+}
+
 export async function getArtifactDownloadState(jobId: string): Promise<ArtifactDownloadState> {
   return validateArtifactDownloadState(
     await invokeExact('get_artifact_download_state', { jobId: validateDownloadJobId(jobId) })

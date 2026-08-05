@@ -284,17 +284,24 @@ def _repo_snapshot() -> str:
 
 
 def test_previous_suites_and_staging() -> None:
-    commands = [
-        [sys.executable, "tools/test_v677_regression.py"],
-        [sys.executable, "tools/test_v678_router_registry.py"],
-        [sys.executable, "tools/test_v679_retention.py"],
-        [sys.executable, "tools/test_v6801_audit_bundle.py"],
-    ]
-    optional = ROOT / "tools" / "test_v680_reproducibility.py"
-    if optional.exists():
-        commands.insert(3, [sys.executable, "tools/test_v680_reproducibility.py"])
+    # Re-entrancy guard — see tools/test_v680_reproducibility.py for the full
+    # rationale. Without it these mutually-invoking suites re-ran each other up
+    # to 8 times per pytest run and hit their own subprocess timeouts.
+    if os.environ.get("LOCALCOMET_NESTED_SUITE") == "1":
+        commands = []
+    else:
+        commands = [
+            [sys.executable, "tools/test_v677_regression.py"],
+            [sys.executable, "tools/test_v678_router_registry.py"],
+            [sys.executable, "tools/test_v679_retention.py"],
+            [sys.executable, "tools/test_v6801_audit_bundle.py"],
+        ]
+        optional = ROOT / "tools" / "test_v680_reproducibility.py"
+        if optional.exists():
+            commands.insert(3, [sys.executable, "tools/test_v680_reproducibility.py"])
+    child_env = {**os.environ, "LOCALCOMET_NESTED_SUITE": "1"}
     for command in commands:
-        completed = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, timeout=180, check=False)
+        completed = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, timeout=180, check=False, env=child_env)
         _assert(completed.returncode == 0, f"Regression failed: {' '.join(command)}\n{completed.stdout}\n{completed.stderr}")
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=str(ROOT), capture_output=True, text=True, check=False)
     _assert(staged.returncode == 0 and staged.stdout.strip() == "", "Staged files are present.")

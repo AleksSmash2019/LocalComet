@@ -18,6 +18,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Files that may act as entrypoints, in declaration order.
+ENTRYPOINT_CANDIDATES = (
+    "app.py",
+    "LocalComet_Control_Panel.py",
+    "config.py",
+    "next/app_v5.py",
+    "GenerateCapabilityMap.py",
+)
+
+# MVP-P0-A legacy execution quarantine: these legacy consoles must not be
+# advertised as runtime entrypoints. They remain in the tree, but listing them
+# here would re-expose the quarantined console as an MVP entrypoint.
+# Enforced by tools/test_p0a_legacy_quarantine.py::QuarantineManifestTests.
+QUARANTINED_ENTRYPOINTS = frozenset({"app.py", "next/app_v5.py"})
+
 
 def generate() -> dict[str, list[str]]:
     categories: dict[str, list[str]] = {
@@ -32,7 +47,9 @@ def generate() -> dict[str, list[str]]:
         return f.relative_to(ROOT).as_posix()
 
     entrypoints_set: set[str] = set()
-    for name in ("app.py", "LocalComet_Control_Panel.py", "config.py", "next/app_v5.py", "GenerateCapabilityMap.py"):
+    for name in ENTRYPOINT_CANDIDATES:
+        if name in QUARANTINED_ENTRYPOINTS:
+            continue
         if (ROOT / name).is_file():
             categories["entrypoints"].append(name)
             entrypoints_set.add(name)

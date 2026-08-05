@@ -12,7 +12,7 @@
     setThemeMode,
     themeMode
   } from '$lib/stores/shellStore';
-  import { locale, setLocale, t, type Language } from '$lib/i18n';
+  import { availableLanguages, isLanguage, locale, setLocale, t } from '$lib/i18n';
   import type { ThemeMode } from '$lib/data/mockData';
   import {
     DESKTOP_BUILD_LABEL,
@@ -20,7 +20,6 @@
     DESKTOP_SHELL_VERSION
   } from '$lib/version';
   import { filesCapabilityAvailable, initializeFilesCapability } from '$lib/stores/files';
-  import { openModelFitWindow } from '$lib/bridge/modelfit';
 
   export let onClose: () => void = () => undefined;
 
@@ -29,7 +28,6 @@
   const sections = [
     { id: 'interface', labelKey: 'settings.tab_interface' },
     { id: 'models', labelKey: 'settings.tab_models' },
-    { id: 'huggingface', labelKey: 'settings.tab_huggingface' },
     { id: 'observability', labelKey: 'settings.tab_observability' },
     { id: 'about', labelKey: 'settings.tab_about' }
   ] as const;
@@ -40,10 +38,14 @@
     { mode: 'dark', icon: 'moon', labelKey: 'settings.theme_dark' }
   ];
 
-  const languages: ReadonlyArray<{ code: Language; labelKey: string }> = [
-    { code: 'ru', labelKey: 'lang.russian' },
-    { code: 'en', labelKey: 'lang.english' }
-  ];
+  // Languages come from the shared registry, so adding a locale there makes it
+  // appear here without touching this component.
+  const languages = availableLanguages;
+
+  function onLanguageChange(event: Event): void {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (isLanguage(value)) setLocale(value);
+  }
 
   $: diagnosticsOpen = $inspectorVisible || $inspectorDrawerOpen;
   $: connectionLabel =
@@ -122,19 +124,18 @@
 
       <section aria-labelledby="settings-language">
       <h3 id="settings-language">{$t('settings.language')}</h3>
-      <div class="choice-grid language-grid" role="group" aria-label={$t('settings.language')}>
-        {#each languages as item}
-          <button
-            type="button"
-            class:selected={$locale === item.code}
-            aria-label={$t(item.labelKey)}
-            aria-pressed={$locale === item.code}
-            title={$t(item.labelKey)}
-            onclick={() => setLocale(item.code)}
-          >
-            <span>{$t(item.labelKey)}</span>
-          </button>
-        {/each}
+      <div class="language-field">
+        <select
+          class="language-select"
+          aria-label={$t('lang.select')}
+          title={$t('lang.select')}
+          value={$locale}
+          onchange={onLanguageChange}
+        >
+          {#each languages as item}
+            <option value={item.code} selected={$locale === item.code}>{item.endonym}</option>
+          {/each}
+        </select>
       </div>
       </section>
 
@@ -160,18 +161,7 @@
     </div>
 
     <div class:panel-hidden={$settingsSection !== 'models'} aria-hidden={$settingsSection !== 'models'}>
-      <section class="modelfit-section" aria-labelledby="settings-modelfit">
-        <h3 id="settings-modelfit">ModelFit AI</h3>
-        <p class="modelfit-desc">Умный подбор локальной модели под характеристики вашего ПК.</p>
-        <button type="button" class="primary-button" onclick={openModelFitWindow}>
-          <Icon name="hardware" size={16} />
-          <span>Подобрать модель (ModelFit AI)</span>
-        </button>
-      </section>
-      <ModelManagerSection mode="catalog" />
-    </div>
-    <div class:panel-hidden={$settingsSection !== 'huggingface'} aria-hidden={$settingsSection !== 'huggingface'}>
-      <ModelManagerSection mode="huggingface" />
+      <ModelManagerSection />
     </div>
     <div class:panel-hidden={$settingsSection !== 'observability'} aria-hidden={$settingsSection !== 'observability'}>
       <ObservabilityRoom />
@@ -266,21 +256,6 @@
     background: var(--lc-panel-solid);
   }
 
-  .modelfit-section {
-    padding: var(--lc-space-4);
-    border-bottom: var(--border-thin);
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .modelfit-desc {
-    color: var(--lc-muted);
-    font-size: 14px;
-    margin: 0;
-  }
-
   .settings-tabs button {
     flex: 0 0 auto;
     min-height: 42px;
@@ -369,8 +344,31 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .language-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .language-field {
+    display: grid;
+  }
+
+  .language-select {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 var(--lc-space-3);
+    border: var(--border-thin);
+    border-radius: var(--lc-radius-sm);
+    background: var(--lc-panel-soft);
+    color: var(--lc-text);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .language-select:hover {
+    border-color: var(--lc-line);
+  }
+
+  .language-select:focus-visible {
+    outline: 2px solid var(--lc-accent);
+    outline-offset: 2px;
   }
 
   .choice-grid button,

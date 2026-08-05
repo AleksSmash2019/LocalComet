@@ -36,9 +36,18 @@ describe('component smoke tests', () => {
     expect(html).toContain('aria-expanded="true"');
   });
 
-  it('renders the chat header with truthful runtime labels', () => {
+  it('renders the chat header without the removed Think and connect controls', () => {
     const html = render(ChatHeader).body;
-    expect(html).toContain('Настроить локальный AI');
+    // The connect action moved next to the composer; "Think" was a no-op.
+    expect(html).not.toContain('Think');
+    expect(html).not.toContain('Настроить локальный AI');
+  });
+
+  it('keeps the composer free of duplicate connect controls', () => {
+    // The empty-state card is the single place offering model setup.
+    const html = render(MessageComposer).body;
+    expect(html).not.toContain('connect-model-button');
+    expect(html).not.toContain('Настроить локальный AI');
   });
 
   it('renders the tool card with sanitized target', () => {

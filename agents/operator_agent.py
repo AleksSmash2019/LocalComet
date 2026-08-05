@@ -1,4 +1,5 @@
 from modules.browser_operator import make_operator_report
+from modules.codegen import format_sources_text
 from modules.local_llm_picker import make_local_llm_picker_report
 from modules.report_opener import open_report, remember_report
 
@@ -43,26 +44,25 @@ def handle(action: str, data: dict):
         else:
             result = make_operator_report(query)
 
-        remember_report(result["path"])
-        opened = open_report(result["path"])
+        report_path = result.get("path")
+        if not report_path:
+            return "Operator Agent: отчёт не вернул path."
+        report_text = result.get("report")
+        if not report_text:
+            return "Operator Agent: отчёт не вернул report."
+
+        remember_report(report_path)
+        opened = open_report(report_path)
 
         sources = result.get("sources", [])
-        source_lines = []
-
-        for i, source in enumerate(sources[:8], start=1):
-            source_lines.append(
-                f"{i}. {source.get('title', 'Без названия')}\n"
-                f"   {source.get('url', '')}"
-            )
-
-        sources_text = "\n".join(source_lines) if source_lines else "Источники не использовались."
+        sources_text = format_sources_text(sources, fallback="Источники не использовались.")
 
         search_queries = result.get("search_queries", [])
         search_queries_text = "\n".join([f"- {q}" for q in search_queries]) if search_queries else "Поиск не выполнялся."
 
         return (
             "Сравнение создано:\n"
-            + result["path"]
+            + report_path
             + "\n\n"
             + opened
             + "\n\n"
@@ -74,7 +74,7 @@ def handle(action: str, data: dict):
             + "Источники:\n"
             + sources_text
             + "\n\n"
-            + result["report"]
+            + report_text
         )
 
     return "Operator Agent: неизвестное действие."

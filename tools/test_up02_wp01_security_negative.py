@@ -21,6 +21,15 @@ PRODUCT_PATHS = (
 # plus pre-existing commands from BASE ee221944.
 # Additions: request_approval/execute_approved/set_workspace (INV-APPROVAL-001/002),
 # run_tool_call (ADR-013) — approved by owner 2026-07-27.
+# scan_hardware was approved on 2026-08-05 for ModelFit AI and REMOVED on the
+# same day together with that feature (src-tauri/src/hardware.rs,
+# permissions/hardware.toml, static/modelfit.html). The allowlist entry is gone
+# so a future re-introduction requires a fresh owner decision.
+# hf_search_models / hf_list_repo_files (read-only Hugging Face catalog lookups)
+# — approved by owner 2026-08-05. These REPLACE direct browser fetch() calls to
+# huggingface.co from the webview: requests now run in Rust behind a fixed host
+# allowlist with redirects and proxies disabled and bounded response sizes.
+# Downloads remain gated by start_approved_artifact_download.
 ALLOWED_TAURI_COMMANDS = frozenset((
     "cancel_artifact_download",
     "control_plane_bootstrap",
@@ -62,6 +71,8 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "remove_managed_model",
     "request_approval",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
     "run_tool_call",     # ADR-013
+    "hf_list_repo_files",  # read-only HF metadata; approved by owner 2026-08-05
+    "hf_search_models",    # read-only HF metadata; approved by owner 2026-08-05
     "select_files",
     "set_workspace",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
     "start_approved_artifact_download",
@@ -81,12 +92,25 @@ def git(*args: str) -> str:
     return completed.stdout
 
 
+# Individually reviewed lines that may use an otherwise-forbidden API.
+#
+# Each entry is matched against the FULL stripped added line, so it waives
+# exactly one reviewed call site and nothing else.
+#
+# Currently empty: the only waiver (detect_gpus() invoking the NVIDIA driver
+# helper) was removed on 2026-08-05 together with src-tauri/src/hardware.rs,
+# so the product code no longer spawns any external process.
+REVIEWED_EXTERNAL_AUTHORITY_LINES: frozenset[str] = frozenset()
+
+
 def added_product_lines() -> str:
     diff = git("diff", "--unified=0", f"{BASE}..HEAD", "--", *PRODUCT_PATHS)
     return "\n".join(
         line[1:]
         for line in diff.splitlines()
-        if line.startswith("+") and not line.startswith("+++")
+        if line.startswith("+")
+        and not line.startswith("+++")
+        and line[1:].strip() not in REVIEWED_EXTERNAL_AUTHORITY_LINES
     )
 
 
