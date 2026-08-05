@@ -85,7 +85,6 @@ describe('desktop knowledge preview and approval', () => {
   it('03 production control is truthfully unavailable and non-interactive', () => {
     const html = render(KnowledgeToggle).body;
     expect(html).toContain('Контекст проекта пока недоступен');
-    expect(html).toContain('Это не долговременная память');
     expect(html).not.toContain('role="switch"');
     expect(html).not.toContain('<button');
   });

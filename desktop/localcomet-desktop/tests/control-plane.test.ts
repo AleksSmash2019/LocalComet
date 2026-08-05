@@ -209,7 +209,6 @@ describe('control-plane bridge and store', () => {
     const header = render(ChatHeader).body;
     const composer = render(MessageComposer).body;
     const diagnostics = render(Diagnostics).body;
-    expect(header).toContain('Модель: недоступна');
     expect(composer).toContain('Сначала подключите модель');
     expect(diagnostics).toContain('Модель вызвана');
     expect(diagnostics).toContain('Инструментов выполнено');

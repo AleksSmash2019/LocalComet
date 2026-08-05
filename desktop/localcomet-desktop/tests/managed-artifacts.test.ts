@@ -13,7 +13,8 @@ import {
   getManagedRuntimeCatalog,
   listApprovedDownloadableArtifacts,
   removeManagedModel,
-  startApprovedArtifactDownload
+  startApprovedArtifactDownload,
+  startArbitraryHuggingFaceDownload
 } from '../src/lib/bridge/modelGateway';
 import {
   managedRuntimeStore,
@@ -25,6 +26,11 @@ import {
   setManagedSelectedModel,
   startSelectedManagedRuntime
 } from '../src/lib/stores/modelGateway';
+import {
+  artifactAcquisitionStore,
+  initializeArtifactAcquisition,
+  resetArtifactAcquisitionStore
+} from '../src/lib/stores/artifactAcquisition';
 import type { ArtifactInstallationStatus, ManagedRuntimeStatus } from '../src/lib/types/modelGateway';
 
 const RUNTIME_ID = 'llama-cpp-windows-x86-64-cpu-bootstrap';
@@ -35,6 +41,10 @@ const MODEL_SHA256 = 'c'.repeat(64);
 const RUNTIME_BYTES = 1_000_000;
 const MODEL_BYTES = 2_000_000;
 const DOWNLOAD_JOB_ID = 'd'.repeat(64);
+const CUSTOM_MODEL_ID = 'custom-owner-repo-model-1234567890ab';
+const CUSTOM_MODEL_SHA256 = 'e'.repeat(64);
+const CUSTOM_MODEL_BYTES = 3_000_000;
+const CUSTOM_MODEL_URL = 'https://huggingface.co/owner/repo/resolve/main/model.gguf';
 
 let invokeCalls: { command: string; args?: Record<string, unknown> }[] = [];
 let responses: Record<string, unknown> = {};
@@ -121,7 +131,26 @@ function modelCatalogFixture(digest = CATALOG_DIGEST) {
     engine: 'llama.cpp',
     model_root: '<MANAGED_MODEL_ROOT>',
     models: [modelFixture()],
-    maximum_models: 32
+    maximum_models: 32,
+    custom_models: [],
+    maximum_custom_models: 32
+  };
+}
+
+function customModelFixture() {
+  return {
+    model_id: CUSTOM_MODEL_ID,
+    display_name: 'Owner custom model',
+    format: 'GGUF',
+    source_url: CUSTOM_MODEL_URL,
+    source_repository: 'owner/repo',
+    source_revision: 'main',
+    asset_filename: 'model.gguf',
+    asset_bytes: CUSTOM_MODEL_BYTES,
+    asset_sha256: CUSTOM_MODEL_SHA256,
+    license_id: null,
+    compatible_runtime_ids: [RUNTIME_ID],
+    trust_kind: 'user_supplied'
   };
 }
 
@@ -147,13 +176,29 @@ function validationFixture(
   };
 }
 
+function customValidationFixture(status: ArtifactInstallationStatus = 'valid') {
+  return {
+    artifact_id: CUSTOM_MODEL_ID,
+    kind: 'model',
+    trust_kind: 'user_supplied',
+    installation_status: status,
+    expected_bytes: CUSTOM_MODEL_BYTES,
+    expected_sha256: CUSTOM_MODEL_SHA256,
+    observed_bytes: status === 'not_installed' ? null : CUSTOM_MODEL_BYTES,
+    observed_sha256: status === 'not_installed' ? null : CUSTOM_MODEL_SHA256,
+    validation_code: status,
+    verified_unix_ms: 1_750_000_000_000
+  };
+}
+
 function installedArtifactsFixture() {
   return {
     ...catalogIdentity(),
     artifacts: [
       validationFixture(RUNTIME_ID, 'runtime'),
       validationFixture(MODEL_ID, 'model')
-    ]
+    ],
+    custom_artifacts: []
   };
 }
 
@@ -161,6 +206,7 @@ function readinessFixture(patch: Record<string, unknown> = {}) {
   return {
     ...catalogIdentity(),
     model_id: MODEL_ID,
+    model_trust_kind: 'approved_catalog',
     model_status: 'valid',
     compatible_runtime_ids: [RUNTIME_ID],
     selected_runtime_id: RUNTIME_ID,
@@ -177,6 +223,7 @@ function downloadableArtifactFixture(kind: 'runtime' | 'model') {
   return {
     artifact_id: artifactId,
     kind,
+    trust_kind: 'approved_catalog',
     display_name: kind === 'runtime' ? 'llama.cpp b6000' : 'Qwen2.5 1.5B Instruct Q4_K_M',
     source_identity: kind === 'runtime' ? 'ggml-org/llama.cpp' : 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
     expected_bytes: kind === 'runtime' ? RUNTIME_BYTES : MODEL_BYTES,
@@ -259,6 +306,7 @@ function installResponses(): void {
 describe('managed artifact trust frontend contract', () => {
   beforeEach(() => {
     resetModelGatewayStore();
+    resetArtifactAcquisitionStore();
     installResponses();
   });
 
@@ -303,6 +351,102 @@ describe('managed artifact trust frontend contract', () => {
       { command: 'remove_managed_model', args: { modelId: MODEL_ID, token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}` } }
     ]);
     expect(JSON.stringify(invokeCalls)).not.toMatch(/url|destination|header|sha256/i);
+  });
+
+  it('validates exact custom catalog and installed-artifact contracts', async () => {
+    responses.managed_model_catalog = {
+      ...modelCatalogFixture(),
+      custom_models: [customModelFixture()]
+    };
+    responses.managed_installed_artifacts = {
+      ...installedArtifactsFixture(),
+      custom_artifacts: [customValidationFixture()]
+    };
+
+    const catalog = await getManagedModelCatalog();
+    const installed = await getManagedInstalledArtifacts();
+
+    expect(catalog.custom_models).toEqual([customModelFixture()]);
+    expect(catalog.maximum_custom_models).toBe(32);
+    expect(installed.custom_artifacts).toEqual([customValidationFixture()]);
+    expect(installed.custom_artifacts[0]).not.toHaveProperty('catalog_digest');
+
+    responses.managed_model_catalog = {
+      ...modelCatalogFixture(),
+      custom_models: [{ ...customModelFixture(), license_id: 'unknown' }]
+    };
+    await expect(getManagedModelCatalog()).rejects.toMatchObject({ code: 'invalid_payload' });
+  });
+
+  it('merges approved downloads with custom catalog summaries for acquisition UI', async () => {
+    responses.managed_model_catalog = {
+      ...modelCatalogFixture(),
+      custom_models: [customModelFixture()]
+    };
+
+    await initializeArtifactAcquisition();
+
+    expect(get(artifactAcquisitionStore).artifacts).toEqual([
+      downloadableArtifactFixture('runtime'),
+      downloadableArtifactFixture('model'),
+      {
+        artifact_id: CUSTOM_MODEL_ID,
+        kind: 'model',
+        trust_kind: 'user_supplied',
+        display_name: 'Owner custom model',
+        source_identity: CUSTOM_MODEL_URL,
+        expected_bytes: CUSTOM_MODEL_BYTES,
+        expected_sha256: CUSTOM_MODEL_SHA256,
+        license_id: null,
+        format: 'GGUF',
+        quantization: null,
+        user_confirmation_required: true,
+        automatic_download: false
+      }
+    ]);
+  });
+
+  it('binds a canonical Hugging Face URL to approval and the approved download command', async () => {
+    responses.start_approved_artifact_download = {
+      ...downloadStateFixture(),
+      artifact_id: CUSTOM_MODEL_ID,
+      expected_bytes: CUSTOM_MODEL_BYTES
+    };
+
+    await expect(startArbitraryHuggingFaceDownload(CUSTOM_MODEL_URL)).resolves.toMatchObject({
+      artifact_id: CUSTOM_MODEL_ID,
+      lifecycle: 'awaiting_confirmation'
+    });
+
+    expect(invokeCalls).toEqual([
+      { command: 'request_approval', args: { tool: 'artifact.download', input: { custom_url: CUSTOM_MODEL_URL } } },
+      {
+        command: 'start_approved_artifact_download',
+        args: {
+          customUrl: CUSTOM_MODEL_URL,
+          token: `lcap_${'a'.repeat(64)}`,
+          approvalId: `appr_${'b'.repeat(32)}`,
+          callId: `call_${'c'.repeat(32)}`
+        }
+      }
+    ]);
+  });
+
+  it('rejects non-canonical or non-Hugging Face custom URLs before approval', async () => {
+    for (const url of [
+      'http://huggingface.co/owner/repo/resolve/main/model.gguf',
+      'https://huggingface.co.evil/owner/repo/resolve/main/model.gguf',
+      'https://user@huggingface.co/owner/repo/resolve/main/model.gguf',
+      'https://huggingface.co:444/owner/repo/resolve/main/model.gguf',
+      'https://huggingface.co/owner/repo/blob/main/model.gguf',
+      'https://huggingface.co/owner/repo/resolve/main/model.gguf?download=true',
+      'https://huggingface.co/owner/repo/resolve/main/model.gguf#fragment',
+      'https://HUGGINGFACE.CO/owner/repo/resolve/main/model.gguf',
+      'https://huggingface.co/owner/repo/resolve/main/model.GGUF'
+    ]) {
+      await expect(startArbitraryHuggingFaceDownload(url)).rejects.toMatchObject({ code: 'invalid_payload' });
+    }
+    expect(invokeCalls).toEqual([]);
   });
 
   it('rejects path-like artifact IDs and malformed acquisition projections before use', async () => {
@@ -527,13 +671,42 @@ describe('managed artifact trust frontend contract', () => {
     expect(body).not.toMatch(/C:\\|absolute_path|Model path|Executable|Approve artifact|Download model/i);
   });
 
+  it('combines custom models and validation without treating them as approved catalog entries', async () => {
+    responses.managed_model_catalog = {
+      ...modelCatalogFixture(),
+      custom_models: [customModelFixture()]
+    };
+    responses.managed_installed_artifacts = {
+      ...installedArtifactsFixture(),
+      custom_artifacts: [customValidationFixture()]
+    };
+    responses.managed_model_readiness = readinessFixture({
+      model_id: CUSTOM_MODEL_ID,
+      model_trust_kind: 'user_supplied'
+    });
+
+    await refreshManagedRuntimeStatus();
+    await setManagedSelectedModel(CUSTOM_MODEL_ID);
+    const state = get(managedRuntimeStore);
+
+    expect(state.catalog.find((model) => model.model_id === MODEL_ID)).toMatchObject({ trust_kind: 'approved_catalog' });
+    expect(state.catalog.find((model) => model.model_id === CUSTOM_MODEL_ID)).toMatchObject({ trust_kind: 'user_supplied' });
+    expect(state.installedArtifacts.find((artifact) => artifact.artifact_id === CUSTOM_MODEL_ID)).toEqual(customValidationFixture());
+    expect(state.readiness).toMatchObject({
+      model_id: CUSTOM_MODEL_ID,
+      model_trust_kind: 'user_supplied',
+      launchable: true
+    });
+  });
+
   it('keeps approval visible but derives non-installed UI state only from inventory and readiness', async () => {
     responses.managed_installed_artifacts = {
       ...catalogIdentity(),
       artifacts: [
         validationFixture(RUNTIME_ID, 'runtime'),
         validationFixture(MODEL_ID, 'model', 'not_installed')
-      ]
+      ],
+      custom_artifacts: []
     };
     responses.managed_model_readiness = readinessFixture({
       model_status: 'not_installed',
@@ -572,7 +745,8 @@ describe('managed artifact trust frontend contract', () => {
       artifacts: [
         validationFixture(RUNTIME_ID, 'runtime'),
         validationFixture('unknown-approved-model', 'model')
-      ]
+      ],
+      custom_artifacts: []
     };
     await refreshManagedRuntimeStatus();
     expect(get(managedRuntimeStore).catalog).toEqual([]);

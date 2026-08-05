@@ -2,10 +2,12 @@ import { derived, get, writable } from 'svelte/store';
 import {
   cancelArtifactDownload,
   getArtifactDownloadState,
+  getManagedModelCatalog,
   listApprovedDownloadableArtifacts,
   normalizeGatewayError,
   removeManagedModel,
-  startApprovedArtifactDownload
+  startApprovedArtifactDownload,
+  startArbitraryHuggingFaceDownload
 } from '$lib/bridge/modelGateway';
 import {
   connectSelectedManagedModel,
@@ -14,15 +16,17 @@ import {
   setManagedSelectedModel
 } from '$lib/stores/modelGateway';
 import type {
-  ApprovedDownloadableArtifact,
   ArtifactDownloadState,
+  CustomDownloadableArtifact,
+  CustomModelSummary,
+  ManagedDownloadableArtifact,
   SanitizedGatewayError
 } from '$lib/types/modelGateway';
 
 const DOWNLOAD_POLL_MS = 500;
 
 export interface ArtifactAcquisitionPanelState {
-  readonly artifacts: readonly ApprovedDownloadableArtifact[];
+  readonly artifacts: readonly ManagedDownloadableArtifact[];
   readonly downloads: Readonly<Record<string, ArtifactDownloadState>>;
   readonly setup: {
     readonly lifecycle: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed';
@@ -51,9 +55,7 @@ export async function initializeArtifactAcquisition(): Promise<void> {
   const generation = lifecycleGeneration;
   const pending = (async () => {
     try {
-      const artifacts = await listApprovedDownloadableArtifacts();
-      if (generation !== lifecycleGeneration) return;
-      artifactAcquisitionStore.update((state) => ({ ...state, artifacts, lastError: null }));
+      await refreshAvailableArtifacts(generation);
     } catch (error) {
       if (generation !== lifecycleGeneration) return;
       artifactAcquisitionStore.update((state) => ({ ...state, lastError: normalizeGatewayError(error) }));
@@ -68,12 +70,28 @@ export async function initializeArtifactAcquisition(): Promise<void> {
 }
 
 export async function downloadApprovedArtifact(artifactId: string): Promise<ArtifactDownloadState | null> {
-  const artifact = get(artifactAcquisitionStore).artifacts.find((candidate) => candidate.artifact_id === artifactId);
+  const artifact = get(artifactAcquisitionStore).artifacts.find((candidate) =>
+    candidate.trust_kind === 'approved_catalog' && candidate.artifact_id === artifactId
+  );
   if (!artifact) return null;
   try {
     const started = await startApprovedArtifactDownload(artifact.artifact_id);
     recordDownload(started);
     return await followDownload(started);
+  } catch (error) {
+    artifactAcquisitionStore.update((state) => ({ ...state, lastError: normalizeGatewayError(error) }));
+    return null;
+  }
+}
+
+export async function downloadArbitraryHuggingFaceArtifact(url: string): Promise<ArtifactDownloadState | null> {
+  const generation = lifecycleGeneration;
+  try {
+    const started = await startArbitraryHuggingFaceDownload(url);
+    recordDownload(started);
+    const terminal = await followDownload(started);
+    if (terminal.lifecycle === 'completed' && generation === lifecycleGeneration) await refreshAvailableArtifacts(generation);
+    return terminal;
   } catch (error) {
     artifactAcquisitionStore.update((state) => ({ ...state, lastError: normalizeGatewayError(error) }));
     return null;
@@ -93,7 +111,7 @@ export async function cancelApprovedArtifactDownload(artifactId: string): Promis
 export async function setUpLocalAi(): Promise<boolean> {
   const artifacts = get(artifactAcquisitionStore).artifacts;
   const runtime = artifacts.find((artifact) => artifact.kind === 'runtime');
-  const model = artifacts.find((artifact) => artifact.kind === 'model');
+  const model = artifacts.find((artifact) => artifact.kind === 'model' && artifact.trust_kind === 'approved_catalog');
   if (!runtime || !model) return false;
   artifactAcquisitionStore.update((state) => ({
     ...state,
@@ -133,6 +151,7 @@ export async function removeApprovedManagedModel(modelId: string): Promise<boole
   try {
     await removeManagedModel(modelId);
     await refreshManagedRuntimeStatus();
+    await refreshAvailableArtifacts(lifecycleGeneration);
     artifactAcquisitionStore.update((state) => ({ ...state, lastError: null }));
     return true;
   } catch (error) {
@@ -155,9 +174,9 @@ export async function downloadAndSetupManagedModel(modelId: string): Promise<boo
   return setUpManagedArtifactsForModel(artifacts, model);
 }
 
-async function setUpManagedArtifactsForModel(artifacts: readonly ApprovedDownloadableArtifact[], model: ApprovedDownloadableArtifact): Promise<boolean> {
-  const runtime = artifacts.find((artifact) => artifact.kind === 'runtime');
-  if (!runtime) return false;
+async function setUpManagedArtifactsForModel(artifacts: readonly ManagedDownloadableArtifact[], model: ManagedDownloadableArtifact): Promise<boolean> {
+  const runtime = artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog');
+  if (!runtime || model.kind !== 'model' || (model.trust_kind === 'user_supplied' && !isInstalled(model.artifact_id))) return false;
   artifactAcquisitionStore.update((state) => ({
     ...state,
     setup: { lifecycle: 'running', artifact_id: null },
@@ -192,6 +211,37 @@ async function setUpManagedArtifactsForModel(artifacts: readonly ApprovedDownloa
   return connected;
 }
 
+async function refreshAvailableArtifacts(generation: number): Promise<void> {
+  const [approvedArtifacts, modelCatalog] = await Promise.all([
+    listApprovedDownloadableArtifacts(),
+    getManagedModelCatalog()
+  ]);
+  if (generation !== lifecycleGeneration) return;
+  const customArtifacts = modelCatalog.custom_models.map(toCustomDownloadableArtifact);
+  artifactAcquisitionStore.update((state) => ({
+    ...state,
+    artifacts: [...approvedArtifacts, ...customArtifacts],
+    lastError: null
+  }));
+}
+
+function toCustomDownloadableArtifact(model: CustomModelSummary): CustomDownloadableArtifact {
+  return {
+    artifact_id: model.model_id,
+    kind: 'model',
+    trust_kind: 'user_supplied',
+    display_name: model.display_name,
+    source_identity: model.source_url,
+    expected_bytes: model.asset_bytes,
+    expected_sha256: model.asset_sha256,
+    license_id: null,
+    format: 'GGUF',
+    quantization: null,
+    user_confirmation_required: true,
+    automatic_download: false
+  };
+}
+
 export function resetArtifactAcquisitionStore(): void {
   lifecycleGeneration += 1;
   initialization = null;
@@ -215,7 +265,7 @@ function recordDownload(download: ArtifactDownloadState): void {
     ...state,
     downloads: { ...state.downloads, [download.artifact_id]: download },
     lastError: download.lifecycle === 'failed'
-      ? { code: download.error_code ?? 'download_failed', message: 'Approved artifact download failed' }
+      ? { code: download.error_code ?? 'download_failed', message: 'Managed artifact download failed' }
       : state.lastError
   }));
 }

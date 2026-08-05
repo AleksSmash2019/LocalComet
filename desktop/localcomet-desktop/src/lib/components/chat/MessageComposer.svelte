@@ -8,7 +8,7 @@
   import { t } from '$lib/i18n';
   import { cancelLocalModelTurn, inferenceRequestStore, managedModelReady, startLocalModelTurn } from '$lib/stores/modelGateway';
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
-  import { includedFileIds } from '$lib/stores/files';
+  import { includedFileIds, addFiles } from '$lib/stores/files';
 
   let textarea: HTMLTextAreaElement;
   let restoreComposerFocus = false;
@@ -80,7 +80,11 @@
   <form class="composer-wrap" aria-label={$t('chat.type_message')} onsubmit={(event) => event.preventDefault()}>
     <FilesPanel />
     <KnowledgeToggle />
-    <div class="composer card-surface">
+    <div class="composer pill-surface">
+      <button type="button" class="composer-icon-button" aria-label={$t('files.add')} title={$t('files.add')} onclick={() => void addFiles()}>
+        <Icon name="attach" size={20} />
+      </button>
+
       <label class="sr-only" for="composer-draft">{$t('chat.type_message')}</label>
       <textarea
         id="composer-draft"
@@ -97,8 +101,18 @@
         onkeydown={handleKeydown}
       ></textarea>
 
-      <button type="button" class="send-button" disabled={isGenerating ? false : !canSend} onclick={() => void send()}>
-        <span>{isGenerating ? $t('chat.stop') : $t('chat.send')}</span>
+      <button type="button" class="composer-icon-button" aria-label="Искать" title="Искать" onclick={() => {}}>
+        <Icon name="search" size={18} />
+      </button>
+
+      <button
+        type="button"
+        class="send-button pill-send"
+        aria-label={$t(isGenerating ? 'chat.stop' : 'chat.send')}
+        title={$t(isGenerating ? 'chat.stop' : 'chat.send')}
+        disabled={isGenerating ? false : !canSend}
+        onclick={() => void send()}
+      >
         <Icon name={isGenerating ? 'stop' : 'send'} size={18} />
       </button>
     </div>
@@ -106,9 +120,8 @@
       <p class="request-error" role="status">{$t(requestErrorKey)}</p>
     {/if}
     {#if !$managedModelReady && !isGenerating}
-      <div class="first-use" role="status">
+      <div class="first-use" style="display: none;" role="status">
         <strong>{$t('chat.model_not_connected')}</strong>
-        <p>{$acquisitionBusy ? $t('chat.model_loading_detail') : $t('chat.model_not_connected_detail')}</p>
         <div>
           <button type="button" class="setup-button" onclick={() => openSettings('models')}>{$t('chat.setup_local_ai')}</button>
           <button type="button" class="models-button" onclick={() => openSettings('models')}>{$t('chat.open_models')}</button>
@@ -132,36 +145,73 @@
   }
 
   .composer {
-    min-height: 60px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
+    min-height: 52px;
+    display: flex;
+    align-items: flex-end;
     gap: 8px;
-    border-color: color-mix(in srgb, var(--lc-line) 84%, transparent);
-    border-radius: var(--lc-radius-lg);
-    padding: 8px;
-    background: color-mix(in srgb, var(--lc-panel-solid) 60%, transparent);
+    border: 1px solid var(--lc-line);
+    border-radius: 26px; /* Pill shape */
+    padding: 6px 8px;
+    background: var(--lc-panel);
     box-shadow: var(--lc-shadow-e1);
-    backdrop-filter: blur(12px);
+  }
+
+  .composer-icon-button {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--lc-muted);
+    cursor: pointer;
+    margin-bottom: 2px;
+  }
+
+  .composer-icon-button:hover {
+    background: var(--lc-panel-soft);
+    color: var(--lc-text);
+  }
+
+  .send-button.pill-send {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    margin-bottom: 2px;
+  }
+  
+  .send-button.pill-send span {
+    display: none;
   }
 
   textarea {
-    width: 100%;
+    flex: 1;
     min-width: 0;
-    min-height: 42px;
-    max-height: 150px;
-    resize: none;
-    overflow-y: auto;
-    border: 0;
-    outline: 0;
+    min-height: 24px;
+    max-height: 200px;
+    margin-bottom: 8px;
+    padding: 0;
+    border: none;
     background: transparent;
     color: var(--lc-text);
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.5;
-    padding: 10px 8px;
+    resize: none;
+    outline: none;
   }
 
   textarea:disabled {
+    color: var(--lc-muted);
+    cursor: not-allowed;
+  }
+
+  textarea::placeholder {
     color: var(--lc-faint);
   }
 

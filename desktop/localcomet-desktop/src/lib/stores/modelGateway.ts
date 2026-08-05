@@ -21,14 +21,15 @@ import {
 import type {
   ApprovedModelSummary,
   ApprovedRuntimeSummary,
-  ArtifactValidationSummary,
   GatewayCatalog,
   GatewayStatus,
   HarnessId,
   InferenceRequestState,
+  ManagedArtifactValidationSummary,
   ManagedCatalogIdentity,
   ManagedInstalledArtifacts,
   ManagedModelCatalog,
+  ManagedModelSummary,
   ModelReadinessSummary,
   ManagedRuntimeCatalog,
   ManagedRuntimeLogs,
@@ -77,13 +78,17 @@ export interface ModelGatewayState {
   readonly initialized: boolean;
 }
 
+type ManagedRuntimePanelReadiness = Omit<ModelReadinessSummary, 'model_trust_kind'> & {
+  readonly model_trust_kind?: ModelReadinessSummary['model_trust_kind'];
+};
+
 export interface ManagedRuntimePanelState {
   readonly status: ManagedRuntimeStatus | null;
   readonly catalogIdentity: ManagedCatalogIdentity | null;
   readonly runtimeCatalog: readonly ApprovedRuntimeSummary[];
-  readonly catalog: readonly ApprovedModelSummary[];
-  readonly installedArtifacts: readonly ArtifactValidationSummary[];
-  readonly readiness: ModelReadinessSummary | null;
+  readonly catalog: readonly (ManagedModelSummary | ApprovedModelSummary)[];
+  readonly installedArtifacts: readonly ManagedArtifactValidationSummary[];
+  readonly readiness: ManagedRuntimePanelReadiness | null;
   readonly selectedModelId: string;
   readonly harnessId: HarnessId;
   readonly binding: ModelBinding | null;
@@ -167,6 +172,7 @@ export const managedModelReady = derived(
 );
 export const approvedManagedModelInstalled = derived(managedRuntimeStore, (managed) =>
   managed.catalog.some((model) =>
+    modelTrustKind(model) === 'approved_catalog' &&
     managed.installedArtifacts.some((artifact) => artifact.kind === 'model' && artifact.artifact_id === model.model_id && artifact.installation_status === 'valid') &&
     model.compatible_runtime_ids.some((runtimeId) =>
       managed.installedArtifacts.some((artifact) => artifact.kind === 'runtime' && artifact.artifact_id === runtimeId && artifact.installation_status === 'valid')
@@ -290,7 +296,7 @@ async function verifyLiveManagedSession(): Promise<boolean> {
         binding: runtimeReady ? state.binding : null,
         lastError: runtimeReady ? null : {
           code: status.state === 'Failed' ? 'runtime_unavailable' : 'model_not_ready',
-          message: status.state === 'Failed' ? 'Managed runtime is unavailable' : 'Approved managed model is not ready'
+          message: status.state === 'Failed' ? 'Managed runtime is unavailable' : 'Managed model is not ready'
         }
       }));
       if (!runtimeReady) {
@@ -451,11 +457,19 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
       getManagedRuntimeLogs()
     ]);
     assertManagedTrustBundle(runtimeCatalog, modelCatalog, installedArtifacts);
+    const models: readonly ManagedModelSummary[] = [
+      ...modelCatalog.models.map((model) => ({ ...model, trust_kind: 'approved_catalog' as const })),
+      ...modelCatalog.custom_models
+    ];
+    const validations: readonly ManagedArtifactValidationSummary[] = [
+      ...installedArtifacts.artifacts,
+      ...installedArtifacts.custom_artifacts
+    ];
     const previous = get(managedRuntimeStore);
-    const selectedModelId = modelCatalog.models.some((model) => model.model_id === previous.selectedModelId)
+    const selectedModelId = models.some((model) => model.model_id === previous.selectedModelId)
       ? previous.selectedModelId
       : '';
-    const selectedModel = modelCatalog.models.find((model) => model.model_id === selectedModelId);
+    const selectedModel = models.find((model) => model.model_id === selectedModelId);
     const bindingTrusted =
       status.state === 'Ready' &&
       status.model_state === 'Ready' &&
@@ -466,14 +480,14 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
       previous.binding.model_id === selectedModelId &&
       previous.binding.runtime_instance_id === status.runtime_instance_id &&
       selectedModel !== undefined &&
-      isInstalledLaunchable(selectedModel, runtimeCatalog.runtimes, installedArtifacts.artifacts);
+      isInstalledLaunchable(selectedModel, runtimeCatalog.runtimes, validations);
     managedRuntimeStore.update((state) => ({
       ...state,
       status,
       catalogIdentity: catalogIdentityOf(runtimeCatalog),
       runtimeCatalog: runtimeCatalog.runtimes,
-      catalog: modelCatalog.models,
-      installedArtifacts: installedArtifacts.artifacts,
+      catalog: models,
+      installedArtifacts: validations,
       readiness: null,
       selectedModelId,
       logs,
@@ -519,7 +533,7 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
         ...current,
         readiness,
         binding: null,
-        lastError: { code: 'model_not_ready', message: 'Approved managed model and runtime artifacts are not ready' }
+        lastError: { code: 'model_not_ready', message: 'Managed model and runtime artifacts are not ready' }
       }));
       clearManagedGatewayBinding();
       return;
@@ -537,7 +551,14 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
       lastError: null
     }));
     clearManagedGatewayBinding();
-    await startManagedRuntime(state.selectedModelId, stillCurrent);
+    const selectedModel = state.catalog.find((model) => model.model_id === state.selectedModelId);
+    if (!selectedModel) throw trustPayloadError();
+    const trustKind = modelTrustKind(selectedModel);
+    await startManagedRuntime(
+      state.selectedModelId,
+      trustKind === 'user_supplied' ? selectedModel.asset_sha256 : stillCurrent,
+      trustKind === 'user_supplied' ? stillCurrent : undefined
+    );
     if (!stillCurrent()) {
       void refreshManagedRuntimeStatus();
       return;
@@ -669,7 +690,7 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
   if (!selectedModelId) {
     managedRuntimeStore.update((current) => ({
       ...current,
-      lastError: { code: 'model_not_selected', message: 'No approved managed model is selected' }
+      lastError: { code: 'model_not_selected', message: 'No managed model is selected' }
     }));
     return false;
   }
@@ -678,7 +699,7 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
     if (!stillCurrent()) return false;
     managedRuntimeStore.update((current) => ({ ...current, readiness, lastError: null }));
     if (!readiness.launchable) {
-      throw { code: 'model_not_ready', message: 'Approved managed model and runtime artifacts are not ready' };
+      throw { code: 'model_not_ready', message: 'Managed model and runtime artifacts are not ready' };
     }
 
     state = get(managedRuntimeStore);
@@ -745,7 +766,7 @@ async function startClaimedLocalModelTurn(
   fileIds: readonly string[]
 ): Promise<boolean> {
   if (!get(managedModelReady)) {
-    const error = { code: 'model_not_ready', message: 'Approved managed model is not ready' };
+    const error = { code: 'model_not_ready', message: 'Managed model is not ready' };
     modelGatewayStore.update((state) => ({ ...state, status: 'Binding required', lastError: error }));
     inferenceRequestStore.update((state) => ({ ...state, lifecycle: 'idle', lastError: error }));
     return false;
@@ -1143,8 +1164,12 @@ async function readManagedModelReadiness(modelId: string): Promise<ModelReadines
   const model = state.catalog.find((candidate) => candidate.model_id === modelId);
   if (!identity || !model) throw trustPayloadError();
   const readiness = await getManagedModelReadiness(modelId);
-  assertSameCatalogIdentity(identity, readiness);
-  if (!sameStrings(readiness.compatible_runtime_ids, model.compatible_runtime_ids)) throw trustPayloadError();
+  const trustKind = modelTrustKind(model);
+  if (trustKind === 'approved_catalog') assertSameCatalogIdentity(identity, readiness);
+  if (
+    readiness.model_trust_kind !== trustKind ||
+    !sameStrings(readiness.compatible_runtime_ids, model.compatible_runtime_ids)
+  ) throw trustPayloadError();
   if (readiness.selected_runtime_id && !state.runtimeCatalog.some((runtime) => runtime.runtime_id === readiness.selected_runtime_id)) {
     throw trustPayloadError();
   }
@@ -1160,7 +1185,8 @@ function assertManagedTrustBundle(
   assertSameCatalogIdentity(runtimeCatalog, installedArtifacts);
   const runtimes = new Map(runtimeCatalog.runtimes.map((runtime) => [runtime.runtime_id, runtime] as const));
   const models = new Map(modelCatalog.models.map((model) => [model.model_id, model] as const));
-  for (const model of modelCatalog.models) {
+  const customModels = new Map(modelCatalog.custom_models.map((model) => [model.model_id, model] as const));
+  for (const model of [...modelCatalog.models, ...modelCatalog.custom_models]) {
     if (model.compatible_runtime_ids.some((runtimeId) => !runtimes.has(runtimeId))) throw trustPayloadError();
   }
   if (installedArtifacts.artifacts.length !== runtimes.size + models.size) throw trustPayloadError();
@@ -1171,6 +1197,15 @@ function assertManagedTrustBundle(
       approved.status !== artifact.catalog_status ||
       approved.asset_bytes !== artifact.expected_bytes ||
       approved.asset_sha256 !== artifact.expected_sha256
+    ) throw trustPayloadError();
+  }
+  if (installedArtifacts.custom_artifacts.length !== customModels.size) throw trustPayloadError();
+  for (const artifact of installedArtifacts.custom_artifacts) {
+    const model = customModels.get(artifact.artifact_id);
+    if (
+      !model ||
+      model.asset_bytes !== artifact.expected_bytes ||
+      model.asset_sha256 !== artifact.expected_sha256
     ) throw trustPayloadError();
   }
 }
@@ -1194,9 +1229,9 @@ function catalogIdentityOf(value: ManagedCatalogIdentity): ManagedCatalogIdentit
 }
 
 function isInstalledLaunchable(
-  model: ApprovedModelSummary,
+  model: ManagedModelSummary | ApprovedModelSummary,
   runtimes: readonly ApprovedRuntimeSummary[],
-  installedArtifacts: readonly ArtifactValidationSummary[]
+  installedArtifacts: readonly ManagedArtifactValidationSummary[]
 ): boolean {
   const modelValidation = installedArtifacts.find((artifact) => artifact.kind === 'model' && artifact.artifact_id === model.model_id);
   if (modelValidation?.installation_status !== 'valid') return false;
@@ -1216,8 +1251,10 @@ export function isManagedModelReadySnapshot(
   const status = managed.status;
   const readiness = managed.readiness;
   const binding = managed.binding;
+  const selectedModel = managed.catalog.find((model) => model.model_id === selectedModelId);
   if (
     !selectedModelId ||
+    !selectedModel ||
     !status ||
     status.state !== 'Ready' ||
     status.model_state !== 'Ready' ||
@@ -1227,6 +1264,7 @@ export function isManagedModelReadySnapshot(
     !status.binding_fingerprint ||
     !readiness ||
     readiness.model_id !== selectedModelId ||
+    (readiness.model_trust_kind ?? 'approved_catalog') !== modelTrustKind(selectedModel) ||
     !readiness.launchable ||
     !binding ||
     binding.provider_id !== 'managed-llama-cpp' ||
@@ -1247,6 +1285,10 @@ export function isManagedModelReadySnapshot(
     artifact.kind === 'runtime' && artifact.artifact_id === readiness.selected_runtime_id && artifact.installation_status === 'valid'
   );
   return modelInstalled && runtimeInstalled;
+}
+
+function modelTrustKind(model: ManagedModelSummary | ApprovedModelSummary): ModelReadinessSummary['model_trust_kind'] {
+  return 'trust_kind' in model ? model.trust_kind : 'approved_catalog';
 }
 
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {

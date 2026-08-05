@@ -8,8 +8,11 @@ import type {
   ArtifactDownloadState,
   ArtifactInstallationStatus,
   ArtifactValidationSummary,
+  CustomArtifactValidationSummary,
+  CustomModelSummary,
   GatewayCatalog,
   HarnessId,
+  ManagedArtifactValidationSummary,
   ManagedCatalogIdentity,
   ManagedInstalledArtifacts,
   ManagedModelCatalog,
@@ -117,6 +120,19 @@ export async function startApprovedArtifactDownload(artifactId: string): Promise
   return result;
 }
 
+export async function startArbitraryHuggingFaceDownload(url: string): Promise<ArtifactDownloadState> {
+  const customUrl = validateCanonicalHuggingFaceUrl(url);
+  const envelope = await requestApproval('artifact.download', { custom_url: customUrl });
+  return validateArtifactDownloadState(
+    await invokeExact('start_approved_artifact_download', {
+      customUrl,
+      token: envelope.token,
+      approvalId: envelope.approvalId,
+      callId: envelope.callId
+    })
+  );
+}
+
 export async function getArtifactDownloadState(jobId: string): Promise<ArtifactDownloadState> {
   return validateArtifactDownloadState(
     await invokeExact('get_artifact_download_state', { jobId: validateDownloadJobId(jobId) })
@@ -140,9 +156,9 @@ export async function removeManagedModel(modelId: string): Promise<ManagedModelR
   return { model_id: requestedId, removed: true };
 }
 
-export async function getManagedArtifactValidationStatus(artifactId: string): Promise<ArtifactValidationSummary> {
+export async function getManagedArtifactValidationStatus(artifactId: string): Promise<ManagedArtifactValidationSummary> {
   const requestedId = validateArtifactId(artifactId);
-  const result = validateArtifactValidationSummary(
+  const result = validateManagedArtifactValidationSummary(
     await invokeExact('managed_artifact_validation_status', { artifactId: requestedId })
   );
   if (result.artifact_id !== requestedId) throw invalid();
@@ -160,14 +176,31 @@ export async function getManagedModelReadiness(modelId: string): Promise<ModelRe
 
 export async function startManagedRuntime(
   modelId: string,
-  isCurrent?: () => boolean
+  customSha256OrIsCurrent?: string | (() => boolean),
+  maybeIsCurrent?: () => boolean
 ): Promise<ManagedRuntimeStartResponse> {
   const requestedId = validateArtifactId(modelId);
-  const envelope = await requestApproval('runtime.start', { model_id: requestedId });
+  const customSha256 = typeof customSha256OrIsCurrent === 'string'
+    ? validateHash(customSha256OrIsCurrent)
+    : null;
+  const isCurrent = typeof customSha256OrIsCurrent === 'function'
+    ? customSha256OrIsCurrent
+    : maybeIsCurrent;
+  const approvalInput = customSha256 === null
+    ? { model_id: requestedId }
+    : { model_id: requestedId, custom_sha256: customSha256 };
+  const envelope = await requestApproval('runtime.start', approvalInput);
   if (isCurrent && !isCurrent()) {
     throw { code: 'stale_request', message: 'Managed runtime start request is no longer current' };
   }
-  return validateManagedStart(await invokeExact('managed_runtime_start', { modelId: requestedId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId }));
+  const invokeArgs: Record<string, string> = {
+    modelId: requestedId,
+    token: envelope.token,
+    approvalId: envelope.approvalId,
+    callId: envelope.callId
+  };
+  if (customSha256 !== null) invokeArgs.customSha256 = customSha256;
+  return validateManagedStart(await invokeExact('managed_runtime_start', invokeArgs));
 }
 
 export async function stopManagedRuntime(): Promise<void> {
@@ -364,27 +397,56 @@ function validateManagedModelCatalog(value: unknown): ManagedModelCatalog {
     'engine',
     'model_root',
     'models',
-    'maximum_models'
+    'maximum_models',
+    'custom_models',
+    'maximum_custom_models'
   ]);
-  if (object.engine !== 'llama.cpp' || object.model_root !== '<MANAGED_MODEL_ROOT>' || object.maximum_models !== 32) throw invalid();
+  if (
+    object.engine !== 'llama.cpp' ||
+    object.model_root !== '<MANAGED_MODEL_ROOT>' ||
+    object.maximum_models !== 32 ||
+    object.maximum_custom_models !== 32
+  ) throw invalid();
   const identity = validateCatalogIdentity(object);
   const models = boundedArray(object.models, 32).map(validateApprovedModel);
+  const customModels = boundedArray(object.custom_models, 32).map(validateCustomModel);
   validateUniqueSorted(models.map((model) => model.model_id));
-  return { ...identity, engine: 'llama.cpp', model_root: '<MANAGED_MODEL_ROOT>', models, maximum_models: 32 };
+  validateUniqueSorted(customModels.map((model) => model.model_id));
+  validateUnique([...models, ...customModels].map((model) => model.model_id));
+  return {
+    ...identity,
+    engine: 'llama.cpp',
+    model_root: '<MANAGED_MODEL_ROOT>',
+    models,
+    maximum_models: 32,
+    custom_models: customModels,
+    maximum_custom_models: 32
+  };
 }
 
 function validateManagedInstalledArtifacts(value: unknown): ManagedInstalledArtifacts {
-  const object = expectExactRecord(value, ['schema_version', 'catalog_id', 'catalog_version', 'catalog_digest', 'artifacts']);
+  const object = expectExactRecord(value, [
+    'schema_version',
+    'catalog_id',
+    'catalog_version',
+    'catalog_digest',
+    'artifacts',
+    'custom_artifacts'
+  ]);
   const identity = validateCatalogIdentity(object);
   const artifacts = boundedArray(object.artifacts, 64).map(validateArtifactValidationSummary);
+  const customArtifacts = boundedArray(object.custom_artifacts, 32).map(validateCustomArtifactValidationSummary);
   validateUnique(artifacts.map((artifact) => artifact.artifact_id));
-  return { ...identity, artifacts };
+  validateUnique(customArtifacts.map((artifact) => artifact.artifact_id));
+  validateUnique([...artifacts, ...customArtifacts].map((artifact) => artifact.artifact_id));
+  return { ...identity, artifacts, custom_artifacts: customArtifacts };
 }
 
 function validateApprovedDownloadableArtifact(value: unknown): ApprovedDownloadableArtifact {
   const object = expectExactRecord(value, [
     'artifact_id',
     'kind',
+    'trust_kind',
     'display_name',
     'source_identity',
     'expected_bytes',
@@ -398,6 +460,7 @@ function validateApprovedDownloadableArtifact(value: unknown): ApprovedDownloada
   const format = object.format === null ? null : safeText(object.format, 64);
   const quantization = object.quantization === null ? null : safeText(object.quantization, 64);
   if (
+    object.trust_kind !== 'approved_catalog' ||
     object.user_confirmation_required !== true ||
     object.automatic_download !== false ||
     (kind === 'runtime' && (format !== 'zip' || quantization !== null)) ||
@@ -406,6 +469,7 @@ function validateApprovedDownloadableArtifact(value: unknown): ApprovedDownloada
   return {
     artifact_id: validateArtifactId(String(object.artifact_id)),
     kind,
+    trust_kind: 'approved_catalog',
     display_name: safeText(object.display_name, 192),
     source_identity: safeText(object.source_identity, 256),
     expected_bytes: positiveSafeInteger(object.expected_bytes),
@@ -470,6 +534,13 @@ function validateArtifactDownloadState(value: unknown): ArtifactDownloadState {
   };
 }
 
+function validateManagedArtifactValidationSummary(value: unknown): ManagedArtifactValidationSummary {
+  const object = expectRecord(value);
+  return object.trust_kind === 'user_supplied'
+    ? validateCustomArtifactValidationSummary(value)
+    : validateArtifactValidationSummary(value);
+}
+
 function validateArtifactValidationSummary(value: unknown): ArtifactValidationSummary {
   const object = expectExactRecord(value, [
     'schema_version',
@@ -517,6 +588,43 @@ function validateArtifactValidationSummary(value: unknown): ArtifactValidationSu
   };
 }
 
+function validateCustomArtifactValidationSummary(value: unknown): CustomArtifactValidationSummary {
+  const object = expectExactRecord(value, [
+    'artifact_id',
+    'kind',
+    'trust_kind',
+    'installation_status',
+    'expected_bytes',
+    'expected_sha256',
+    'observed_bytes',
+    'observed_sha256',
+    'validation_code',
+    'verified_unix_ms'
+  ]);
+  if (object.kind !== 'model' || object.trust_kind !== 'user_supplied') throw invalid();
+  const installationStatus = validateInstallationStatus(object.installation_status);
+  const expectedBytes = positiveSafeInteger(object.expected_bytes);
+  const expectedSha256 = validateHash(object.expected_sha256);
+  const observedBytes = object.observed_bytes === null ? null : nonNegativeSafeInteger(object.observed_bytes);
+  const observedSha256 = object.observed_sha256 === null ? null : validateHash(object.observed_sha256);
+  const validationCode = safeText(object.validation_code, 64);
+  if (validationCode !== installationStatus) throw invalid();
+  if (installationStatus === 'not_installed' && (observedBytes !== null || observedSha256 !== null)) throw invalid();
+  if (installationStatus === 'valid' && (observedBytes !== expectedBytes || observedSha256 !== expectedSha256)) throw invalid();
+  return {
+    artifact_id: validateArtifactId(String(object.artifact_id)),
+    kind: 'model',
+    trust_kind: 'user_supplied',
+    installation_status: installationStatus,
+    expected_bytes: expectedBytes,
+    expected_sha256: expectedSha256,
+    observed_bytes: observedBytes,
+    observed_sha256: observedSha256,
+    validation_code: validationCode,
+    verified_unix_ms: nonNegativeSafeInteger(object.verified_unix_ms)
+  };
+}
+
 function validateModelReadiness(value: unknown): ModelReadinessSummary {
   const object = expectExactRecord(value, [
     'schema_version',
@@ -524,6 +632,7 @@ function validateModelReadiness(value: unknown): ModelReadinessSummary {
     'catalog_version',
     'catalog_digest',
     'model_id',
+    'model_trust_kind',
     'model_status',
     'compatible_runtime_ids',
     'selected_runtime_id',
@@ -571,6 +680,7 @@ function validateModelReadiness(value: unknown): ModelReadinessSummary {
   return {
     ...identity,
     model_id: validateArtifactId(String(object.model_id)),
+    model_trust_kind: exactString(object.model_trust_kind, ['approved_catalog', 'user_supplied']),
     model_status: modelStatus,
     compatible_runtime_ids: compatibleRuntimeIds,
     selected_runtime_id: selectedRuntimeId,
@@ -906,6 +1016,44 @@ function validateApprovedModel(value: unknown): ApprovedModelSummary {
   };
 }
 
+function validateCustomModel(value: unknown): CustomModelSummary {
+  const object = expectExactRecord(value, [
+    'model_id',
+    'display_name',
+    'format',
+    'source_url',
+    'source_repository',
+    'source_revision',
+    'asset_filename',
+    'asset_bytes',
+    'asset_sha256',
+    'license_id',
+    'compatible_runtime_ids',
+    'trust_kind'
+  ]);
+  if (object.format !== 'GGUF' || object.license_id !== null || object.trust_kind !== 'user_supplied') throw invalid();
+  const sourceUrl = validateCanonicalHuggingFaceUrl(object.source_url);
+  const assetFilename = safeFilename(object.asset_filename);
+  const urlFilename = new URL(sourceUrl).pathname.split('/').at(-1);
+  if (!assetFilename.endsWith('.gguf') || urlFilename !== assetFilename) throw invalid();
+  const compatibleRuntimeIds = boundedArray(object.compatible_runtime_ids, 32).map((item) => validateArtifactId(String(item)));
+  validateUniqueSorted(compatibleRuntimeIds);
+  return {
+    model_id: validateArtifactId(String(object.model_id)),
+    display_name: safeText(object.display_name, 256),
+    format: 'GGUF',
+    source_url: sourceUrl,
+    source_repository: safeText(object.source_repository, 256),
+    source_revision: safeText(object.source_revision, 256),
+    asset_filename: assetFilename,
+    asset_bytes: positiveSafeInteger(object.asset_bytes),
+    asset_sha256: validateHash(object.asset_sha256),
+    license_id: null,
+    compatible_runtime_ids: compatibleRuntimeIds,
+    trust_kind: 'user_supplied'
+  };
+}
+
 function validateCatalogIdentity(object: Readonly<Record<string, unknown>>): ManagedCatalogIdentity {
   if (object.schema_version !== 1 || object.catalog_id !== 'localcomet-approved-artifacts') throw invalid();
   return {
@@ -946,6 +1094,34 @@ function validateDownloadJobId(value: string): string {
 
 function validateHash(value: unknown): string {
   return patternString(value, /^[0-9a-f]{64}$/);
+}
+
+function validateCanonicalHuggingFaceUrl(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 2_048) throw invalid();
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw invalid();
+  }
+  const segments = parsed.pathname.split('/');
+  if (
+    parsed.href !== value ||
+    parsed.protocol !== 'https:' ||
+    parsed.hostname !== 'huggingface.co' ||
+    parsed.host !== 'huggingface.co' ||
+    parsed.port !== '' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== '' ||
+    segments.length < 6 ||
+    segments[0] !== '' ||
+    segments[3] !== 'resolve' ||
+    segments.slice(1).some((segment) => segment.length === 0 || /%2f|%5c/i.test(segment)) ||
+    !segments.at(-1)!.endsWith('.gguf')
+  ) throw invalid();
+  return value;
 }
 
 function safeFilename(value: unknown): string {

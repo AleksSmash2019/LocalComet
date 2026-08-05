@@ -34,9 +34,9 @@ severity = "critical"
 
 [[non_authorities]]
 id = "NA-005"
-statement = "App-data or SQLite record is not an authority for installed state"
-prohibited_inference = "Database says model installed, therefore model is valid"
-authority_owner = "filesystem validation (bytes, hash, magic, path containment)"
+statement = "App-data, SQLite, or a persisted custom-model record alone is not an authority for installed state"
+prohibited_inference = "A persisted custom nomination says model installed, therefore the model is valid or approved"
+authority_owner = "filesystem validation (bytes, locally verified hash, magic, path containment), launch-time TOCTOU revalidation, and digest-bound user approval"
 severity = "high"
 
 [[non_authorities]]

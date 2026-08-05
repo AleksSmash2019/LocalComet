@@ -20,6 +20,7 @@
     DESKTOP_SHELL_VERSION
   } from '$lib/version';
   import { filesCapabilityAvailable, initializeFilesCapability } from '$lib/stores/files';
+  import { openModelFitWindow } from '$lib/bridge/modelfit';
 
   export let onClose: () => void = () => undefined;
 
@@ -28,6 +29,7 @@
   const sections = [
     { id: 'interface', labelKey: 'settings.tab_interface' },
     { id: 'models', labelKey: 'settings.tab_models' },
+    { id: 'huggingface', labelKey: 'settings.tab_huggingface' },
     { id: 'observability', labelKey: 'settings.tab_observability' },
     { id: 'about', labelKey: 'settings.tab_about' }
   ] as const;
@@ -158,7 +160,18 @@
     </div>
 
     <div class:panel-hidden={$settingsSection !== 'models'} aria-hidden={$settingsSection !== 'models'}>
-      <ModelManagerSection />
+      <section class="modelfit-section" aria-labelledby="settings-modelfit">
+        <h3 id="settings-modelfit">ModelFit AI</h3>
+        <p class="modelfit-desc">Умный подбор локальной модели под характеристики вашего ПК.</p>
+        <button type="button" class="primary-button" onclick={openModelFitWindow}>
+          <Icon name="hardware" size={16} />
+          <span>Подобрать модель (ModelFit AI)</span>
+        </button>
+      </section>
+      <ModelManagerSection mode="catalog" />
+    </div>
+    <div class:panel-hidden={$settingsSection !== 'huggingface'} aria-hidden={$settingsSection !== 'huggingface'}>
+      <ModelManagerSection mode="huggingface" />
     </div>
     <div class:panel-hidden={$settingsSection !== 'observability'} aria-hidden={$settingsSection !== 'observability'}>
       <ObservabilityRoom />
@@ -220,7 +233,7 @@
     right: 0;
     bottom: 0;
     z-index: 50;
-    width: min(820px, calc(100vw - var(--rail-width)));
+    width: min(820px, calc(100vw - var(--sidebar-width)));
     min-width: 0;
     overflow-y: auto;
     border-left: var(--border-thin);
@@ -247,11 +260,25 @@
     top: 79px;
     z-index: 1;
     display: flex;
-    gap: var(--lc-space-1);
-    overflow-x: auto;
-    border-bottom: var(--border-thin);
+    gap: var(--lc-space-6);
     padding: 0 var(--lc-space-4);
+    border-bottom: var(--border-thin);
     background: var(--lc-panel-solid);
+  }
+
+  .modelfit-section {
+    padding: var(--lc-space-4);
+    border-bottom: var(--border-thin);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .modelfit-desc {
+    color: var(--lc-muted);
+    font-size: 14px;
+    margin: 0;
   }
 
   .settings-tabs button {
@@ -480,7 +507,7 @@
 
   @media (max-width: 520px) {
     .settings-panel {
-      width: calc(100vw - var(--rail-width));
+      width: calc(100vw - var(--sidebar-width));
     }
 
     .theme-grid {

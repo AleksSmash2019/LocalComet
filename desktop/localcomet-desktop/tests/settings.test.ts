@@ -26,7 +26,7 @@ describe('minimal Settings surface', () => {
     for (const section of ['Appearance', 'Language', 'Diagnostics', 'Models', 'About']) {
       expect(html).toContain(section);
     }
-    expect(html).toContain('Only the approved bootstrap engine and model can be installed here');
+    expect(html).toContain('Use approved catalog models or explicitly confirmed user-supplied GGUF models.');
     expect(html).toContain('assistant itself does not gain internet access');
     for (const excluded of ['API key', 'Account', 'Cloud', 'Telemetry']) {
       expect(html).not.toContain(excluded);

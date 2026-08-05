@@ -118,6 +118,32 @@ describe('p0b-r5-approval-contract', () => {
     expect(protectedCall?.args?.token).toBe(sharedFixture.token);
     expect(protectedCall?.args?.approvalId).toBe(sharedFixture.approvalId);
     expect(protectedCall?.args?.callId).toBe(sharedFixture.callId);
+    expect(protectedCall?.args).not.toHaveProperty('customUrl');
+  });
+
+  it('p0b_r5_custom_download_binds_exact_url_to_approval_and_execution', async () => {
+    const { startArbitraryHuggingFaceDownload } = await import('../src/lib/bridge/modelGateway');
+    const customUrl = 'https://huggingface.co/owner/repo/resolve/main/model.gguf';
+    approvalResponse = validEnvelope('artifact.download');
+    protectedResponse = {
+      job_id: 'd'.repeat(64), artifact_id: 'custom-owner-repo-model-1234567890ab', lifecycle: 'awaiting_confirmation',
+      expected_bytes: 1000, received_bytes: 0, percent: 0, started_utc_ms: 1, updated_utc_ms: 1, error_code: null
+    };
+
+    await startArbitraryHuggingFaceDownload(customUrl);
+
+    expect(invokeCalls).toEqual([
+      { command: 'request_approval', args: { tool: 'artifact.download', input: { custom_url: customUrl } } },
+      {
+        command: 'start_approved_artifact_download',
+        args: {
+          customUrl,
+          token: sharedFixture.token,
+          approvalId: sharedFixture.approvalId,
+          callId: sharedFixture.callId
+        }
+      }
+    ]);
   });
 
   it('p0b_r5_remove_passes_all_three_identifiers', async () => {
@@ -143,6 +169,35 @@ describe('p0b-r5-approval-contract', () => {
     expect(protectedCall?.args?.token).toBe(sharedFixture.token);
     expect(protectedCall?.args?.approvalId).toBe(sharedFixture.approvalId);
     expect(protectedCall?.args?.callId).toBe(sharedFixture.callId);
+    expect(protectedCall?.args).not.toHaveProperty('customSha256');
+    expect((invokeCalls.find((c) => c.command === 'request_approval')?.args?.input as Record<string, unknown>)).not.toHaveProperty('custom_sha256');
+  });
+
+  it('p0b_r5_custom_runtime_start_binds_digest_to_approval_and_execution', async () => {
+    const { startManagedRuntime } = await import('../src/lib/bridge/modelGateway');
+    const modelId = 'custom-owner-repo-model-1234567890ab';
+    const customSha256 = 'e'.repeat(64);
+    approvalResponse = validEnvelope('runtime.start');
+    protectedResponse = {
+      state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
+      model_id: modelId, model_display_name: 'Custom model', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+    };
+
+    await startManagedRuntime(modelId, customSha256);
+
+    expect(invokeCalls).toEqual([
+      { command: 'request_approval', args: { tool: 'runtime.start', input: { model_id: modelId, custom_sha256: customSha256 } } },
+      {
+        command: 'managed_runtime_start',
+        args: {
+          modelId,
+          customSha256,
+          token: sharedFixture.token,
+          approvalId: sharedFixture.approvalId,
+          callId: sharedFixture.callId
+        }
+      }
+    ]);
   });
 
   it('p0b_r5_runtime_start_refuses_stale_selection_after_approval', async () => {

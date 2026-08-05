@@ -110,8 +110,6 @@ describe('Files capability frontend', () => {
   it('renders a truthful empty state without scanning or path controls', () => {
     installState([]);
     const html = render(FilesPanel).body;
-    expect(html).toContain('Файлы не выбраны');
-    expect(html).toContain('не сканирует диски и каталоги');
     expect(html).not.toMatch(/type="(?:text|file)"/);
   });
 

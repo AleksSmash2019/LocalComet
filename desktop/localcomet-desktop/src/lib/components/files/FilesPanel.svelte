@@ -54,31 +54,24 @@
   }
 </script>
 
-<section class="files-panel card-surface" aria-labelledby="files-panel-title" aria-busy={$filesStore.selecting}>
-  <header>
-    <div>
-      <h2 id="files-panel-title">{$t('files.title')}</h2>
-      <p>{$t('files.read_only')}</p>
-    </div>
-    <button
-      type="button"
-      class="add-files"
-      disabled={!$filesCapabilityAvailable || $filesStore.selecting}
-      aria-label={$t('files.add')}
-      onclick={() => void addFiles()}
-    >
-      <Icon name="attach" size={16} />
-      <span>{$filesStore.selecting ? $t('files.selecting') : $t('files.add')}</span>
-    </button>
-  </header>
+{#if $filesStore.files.length > 0 || $filesStore.selecting || $filesStore.lastError}
+  <section class="files-panel card-surface" aria-labelledby="files-panel-title" aria-busy={$filesStore.selecting}>
+    <header>
+      <div>
+        <h2 id="files-panel-title">{$t('files.title')}</h2>
+      </div>
+      <button
+        type="button"
+        class="add-files"
+        disabled={!$filesCapabilityAvailable || $filesStore.selecting}
+        aria-label={$t('files.add')}
+        title={$t('files.add')}
+        onclick={() => void addFiles()}
+      >
+        <Icon name="attach" size={16} />
+      </button>
+    </header>
 
-  {#if !$filesStore.initialized}
-    <p class="empty" role="status">{$t('files.loading')}</p>
-  {:else if !$filesCapabilityAvailable}
-    <p class="empty" role="status">{$t('files.unavailable')}</p>
-  {:else if $filesStore.files.length === 0}
-    <p class="empty">{$t('files.empty')}</p>
-  {:else}
     <ul class="file-list" aria-label={$t('files.selected_list')}>
       {#each $filesStore.files as file (file.file_id)}
         {@const inclusion = $filesStore.lastContextReport?.files.find((entry) => entry.file_id === file.file_id)}
@@ -134,25 +127,24 @@
         </li>
       {/each}
     </ul>
-  {/if}
 
-  {#if $filesCapabilityAvailable}
-    <footer aria-live="polite">
-      <span>{$t('files.context_total')}</span>
-      <strong>{$includedFilesTotals.count} · {$includedFilesTotals.bytes.toLocaleString()} {$t('files.bytes')} · {$includedFilesTotals.characters.toLocaleString()} {$t('files.characters')}</strong>
-      <small>{$t('files.context_excerpt_notice')}</small>
-    </footer>
-  {/if}
+    {#if $filesCapabilityAvailable}
+      <footer aria-live="polite">
+        <span>{$t('files.context_total')}</span>
+        <strong>{$includedFilesTotals.count} · {$includedFilesTotals.bytes.toLocaleString()} {$t('files.bytes')} · {$includedFilesTotals.characters.toLocaleString()} {$t('files.characters')}</strong>
+      </footer>
+    {/if}
 
-  {#if $filesStore.lastError}
-    <div class="file-error" role="alert">
-      <span>{$t(errorKey($filesStore.lastError.code))}</span>
-      <button type="button" aria-label={$t('files.dismiss_error')} onclick={clearFilesError}>
-        <Icon name="cancel" size={14} />
-      </button>
-    </div>
-  {/if}
-</section>
+    {#if $filesStore.lastError}
+      <div class="file-error" role="alert">
+        <span>{$t(errorKey($filesStore.lastError.code))}</span>
+        <button type="button" aria-label={$t('files.dismiss_error')} onclick={clearFilesError}>
+          <Icon name="cancel" size={14} />
+        </button>
+      </div>
+    {/if}
+  </section>
+{/if}
 
 {#if $filesStore.preview}
   <FilePreviewDialog preview={$filesStore.preview} triggerElement={previewTrigger} onClose={closeFilePreview} />

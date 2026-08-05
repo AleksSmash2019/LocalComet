@@ -45,7 +45,7 @@ describe('bounded chat layout', () => {
 
     expect(messages).toMatch(/\.bubble\s*\{[^}]*max-width:\s*80%;[^}]*border-radius:\s*var\(--lc-radius-lg\);/s);
     expect(messages).toMatch(/\.user \.bubble\s*\{[^}]*background:\s*var\(--lc-accent\);/s);
-    expect(composer).toMatch(/\.composer\s*\{[^}]*border-radius:\s*var\(--lc-radius-lg\);[^}]*box-shadow:\s*var\(--lc-shadow-e1\);/s);
+    expect(composer).toMatch(/\.composer\s*\{[^}]*border-radius:\s*(?:var\(--lc-radius-lg\)|26px);[^}]*box-shadow:\s*var\(--lc-shadow-e1\);/s);
   });
 
   it.each([

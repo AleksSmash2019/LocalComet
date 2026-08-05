@@ -6,13 +6,14 @@
   import Diagnostics from '$lib/components/agent/Diagnostics.svelte';
   import ChatHeader from './ChatHeader.svelte';
   import ConversationSidebar from './ConversationSidebar.svelte';
-  import NavigationRail from './NavigationRail.svelte';
   import SettingsPanel from './SettingsPanel.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import ModelSetupDrawer from '$lib/components/model/ModelSetupDrawer.svelte';
   import ReviewCenterWorkspace from '$lib/components/review/ReviewCenterWorkspace.svelte';
   import OnboardingScreen from '$lib/components/onboarding/OnboardingScreen.svelte';
+  import HuggingFaceBrowser from '$lib/components/model/HuggingFaceBrowser.svelte';
+  import { exposeInvokeForModelFit } from '$lib/bridge/modelfit';
   import {
     activeWorkspace,
     chatMessages,
@@ -42,6 +43,9 @@
   let transcriptViewport: HTMLDivElement;
   let followTranscript = true;
   let transcriptRevision = 0;
+  
+  let controlPlaneLabel: string = '';
+  let controlPlaneTone: 'ready' | 'info' | 'danger' | 'disabled' | 'unknown' = 'unknown';
 
   $: document.documentElement.lang = $locale;
 
@@ -98,6 +102,8 @@
   }
 
   onMount(() => {
+    exposeInvokeForModelFit();
+
     const media = window.matchMedia?.('(prefers-color-scheme: dark)');
     if (media) {
       systemDark = media.matches;
@@ -191,13 +197,7 @@
   >
     {$activeWorkspace === 'review' ? $t('review.skip_link') : $activeWorkspace === 'setup' ? $t('onboarding.skip_link') : $t('common.skip_link')}
   </a>
-  <NavigationRail />
-  <header class="title-bar" aria-label={$t('app.title_bar')}>
-    <div class="palette-hint" aria-hidden="true">
-      <kbd>Ctrl</kbd><kbd>K</kbd><span>{$t('commandPalette.search')}</span>
-    </div>
-    <StatusBadge label={controlPlaneLabel} tone={controlPlaneTone} />
-  </header>
+  <ConversationSidebar {controlPlaneLabel} {controlPlaneTone} />
 
   <div
     class:focused-mode={$activeWorkspace !== 'chat'}
@@ -205,7 +205,6 @@
     class="shell-body"
   >
     {#if $activeWorkspace === 'chat'}
-      <ConversationSidebar />
       <main id="chat-workspace" class="main-workspace" aria-label="LocalComet chat workspace">
         <ChatHeader />
         <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions (the transcript viewport must receive native scroll keys) -->
@@ -230,6 +229,10 @@
       {/if}
     {:else if $activeWorkspace === 'review'}
       <ReviewCenterWorkspace />
+    {:else if $activeWorkspace === 'modelfit'}
+      <iframe src="/modelfit.html" title="ModelFit AI" class="modelfit-frame"></iframe>
+    {:else if $activeWorkspace === 'hf_browser'}
+      <HuggingFaceBrowser />
     {:else}
       <OnboardingScreen />
     {/if}
@@ -271,11 +274,19 @@
     scrollbar-gutter: stable;
   }
 
+  .modelfit-frame {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+  }
+
   .content-column {
     min-width: 0;
   }
 
   .shell-body.focused-mode {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
   }
 </style>

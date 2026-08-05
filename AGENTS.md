@@ -116,7 +116,7 @@ real-sidecar тесты в ExitedBeforeReady вместо ReadinessTimeout).
   Поле requires_approval - источник для requiresApproval().
 - Инварианты: invariants.toml
 - Non-authorities: non_authorities.toml
-- Artifact catalog: embedded, hash-pinned, canonical (INV-CATALOG-001)
+- Artifact catalog: embedded, hash-pinned, canonical (INV-CATALOG-001). User-initiated custom Hugging Face models bypass embedded catalog approval only; canonical URL and managed path validation, bounded transfer, local SHA-256 and GGUF verification, launch-time TOCTOU revalidation, and scoped approval remain mandatory.
 
 Перед работой с рисками, инвариантами или каталогом читать
 соответствующий файл, а не полагаться на память или донорский код.

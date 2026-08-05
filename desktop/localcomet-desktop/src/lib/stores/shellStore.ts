@@ -9,8 +9,8 @@ import { conversationStore, getActiveConversationId, resetConversationStore, sel
 export const MAX_DRAFT_LENGTH = 12000;
 export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 
-export type WorkspaceMode = 'chat' | 'review' | 'setup';
-export type SettingsSection = 'interface' | 'models' | 'observability' | 'about';
+export type WorkspaceMode = 'chat' | 'review' | 'setup' | 'modelfit' | 'hf_browser';
+export type SettingsSection = 'interface' | 'models' | 'huggingface' | 'observability' | 'about';
 
 let messageCounter = 0;
 const initialUiPreferences = loadUiPreferences();

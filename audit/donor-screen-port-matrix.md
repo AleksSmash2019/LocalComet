@@ -60,4 +60,4 @@ ADAPT surfaces below were completed.
 | Browser SpeechRecognition | REJECT | It has no typed desktop permission or local-STT boundary and may use cloud processing. |
 | Client-generated evidence and diagnostic bundle | REJECT | Frontend rows and an unimplemented export action are not authoritative evidence. |
 | RAM slider and browser hardware recommendation | REJECT | User assertions and browser guesses cannot establish runtime compatibility. |
-| Arbitrary Hugging Face installation | REJECT | It bypasses the embedded, hash-pinned approved artifact catalog. |
+| Arbitrary Hugging Face installation | ADAPT | User initiation may bypass embedded catalog approval only. Custom records remain non-approved nominations in separate inventory; canonical Hugging Face URL/path checks, bounded manual-redirect download, local SHA-256 and GGUF validation, digest-bound approval, and launch-time TOCTOU revalidation remain mandatory. |

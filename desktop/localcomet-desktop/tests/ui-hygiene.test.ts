@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import Diagnostics from '../src/lib/components/agent/Diagnostics.svelte';
 import KnowledgeToggle from '../src/lib/components/knowledge/KnowledgeToggle.svelte';
 import ConversationSidebar from '../src/lib/components/shell/ConversationSidebar.svelte';
-import NavigationRail from '../src/lib/components/shell/NavigationRail.svelte';
+
 import SettingsPanel from '../src/lib/components/shell/SettingsPanel.svelte';
 import MessageComposer from '../src/lib/components/chat/MessageComposer.svelte';
 import { setLocale } from '../src/lib/i18n';
@@ -33,7 +33,7 @@ beforeEach(() => {
 describe('UP02-WP01-HF2 visible production controls', () => {
   it('uses a recognizable local gear while preserving settings semantics', () => {
     const icon = source('../src/lib/components/common/Icon.svelte');
-    const rail = render(NavigationRail).body;
+    const rail = render(ConversationSidebar).body;
     expect(icon).toContain('M12.22 2h-.44');
     expect(icon).toContain('<circle cx="12" cy="12" r="3"/>');
     expect(rail).toContain('aria-label="Настройки"');
@@ -72,8 +72,6 @@ describe('UP02-WP01-HF2 visible production controls', () => {
     const ru = render(KnowledgeToggle).body;
     const composer = source('../src/lib/components/chat/MessageComposer.svelte');
     expect(ru).toContain('Контекст проекта пока недоступен');
-    expect(ru).toContain('Данные проекта не отправляются');
-    expect(ru).toContain('Это не долговременная память');
     expect(ru).not.toContain('<button');
     expect(composer).not.toContain('prepareProjectKnowledge');
     expect(composer).not.toContain('createPendingKnowledgeTurn');
@@ -85,8 +83,6 @@ describe('UP02-WP01-HF2 visible production controls', () => {
     setLocale('en');
     const html = render(KnowledgeToggle).body;
     expect(html).toContain('Project context is currently unavailable');
-    expect(html).toContain('No project data is being sent');
-    expect(html).toContain('This is not long-term memory');
   });
 
   it('removes normal-chat debug and unavailable placeholder buttons', () => {
@@ -110,7 +106,6 @@ describe('UP02-WP01-HF2 visible production controls', () => {
 
   it('gives every remaining production button in affected surfaces a real handler', () => {
     const files = [
-      '../src/lib/components/shell/NavigationRail.svelte',
       '../src/lib/components/shell/ConversationSidebar.svelte',
       '../src/lib/components/shell/ChatHeader.svelte',
       '../src/lib/components/chat/MessageComposer.svelte',

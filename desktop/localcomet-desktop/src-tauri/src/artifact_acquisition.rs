@@ -1,7 +1,8 @@
 use crate::artifact_trust::{
-    source_controlled_runtime_license_bytes, ApprovedDownloadArtifact, ApprovedModelArtifact,
-    ApprovedRuntimeArtifact, ArtifactKind, ArtifactTrustService, InstallationStatus,
-    RuntimeArchiveMemberDisposition,
+    source_controlled_runtime_license_bytes, validate_custom_huggingface_url,
+    ApprovedDownloadArtifact, ApprovedModelArtifact, ApprovedRuntimeArtifact, ArtifactKind,
+    ArtifactTrustService, InstallationStatus, ModelTrustKind, RuntimeArchiveMemberDisposition,
+    ValidatedCustomModelSource, MAX_MODEL_BYTES,
 };
 use crate::control_plane::{BridgeError, ControlPlaneBridge};
 use crate::managed_runtime::{ManagedRuntimeState, ManagedRuntimeSupervisor};
@@ -29,6 +30,14 @@ use std::os::windows::ffi::OsStrExt;
 use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 
 const MAX_REDIRECTS: usize = 5;
+const CUSTOM_REDIRECT_HOSTS: &[&str] = &[
+    "cas-bridge.xethub.hf.co",
+    "cdn-lfs-us-1.hf.co",
+    "cdn-lfs.hf.co",
+    "huggingface.co",
+    "transfer.xethub.hf.co",
+    "us.aws.cdn.hf.co",
+];
 const DOWNLOAD_BUFFER_BYTES: usize = 64 * 1024;
 const PROGRESS_UPDATE_BYTES: u64 = 512 * 1024;
 const DISK_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
@@ -107,6 +116,7 @@ pub struct ArtifactDownloadState {
 pub struct ApprovedDownloadableArtifact {
     pub artifact_id: String,
     pub kind: ArtifactKind,
+    pub trust_kind: ModelTrustKind,
     pub display_name: String,
     pub source_identity: String,
     pub expected_bytes: u64,
@@ -197,6 +207,7 @@ impl ArtifactAcquisitionManager {
             approved.push(ApprovedDownloadableArtifact {
                 artifact_id: runtime.runtime_id,
                 kind: ArtifactKind::Runtime,
+                trust_kind: ModelTrustKind::ApprovedCatalog,
                 display_name: format!("llama.cpp {}", runtime.release_tag),
                 source_identity: runtime.upstream_repository,
                 expected_bytes: runtime.asset_bytes,
@@ -211,6 +222,7 @@ impl ArtifactAcquisitionManager {
             approved.push(ApprovedDownloadableArtifact {
                 artifact_id: model.model_id,
                 kind: ArtifactKind::Model,
+                trust_kind: ModelTrustKind::ApprovedCatalog,
                 display_name: model.display_name,
                 source_identity: model.upstream_repository,
                 expected_bytes: model.asset_bytes,
@@ -311,6 +323,141 @@ impl ArtifactAcquisitionManager {
         Ok(state)
     }
 
+    pub fn start_custom(
+        &self,
+        source: ValidatedCustomModelSource,
+    ) -> Result<ArtifactDownloadState, BridgeError> {
+        let revalidated =
+            validate_custom_huggingface_url(&source.source_url).map_err(BridgeError::from)?;
+        if revalidated != source {
+            return Err(BridgeError::new(
+                "invalid_custom_url",
+                "custom model source identity changed",
+            ));
+        }
+        if let Some(existing) = self
+            .artifacts
+            .custom_model(&source.model_id)
+            .map_err(BridgeError::from)?
+        {
+            if existing.source_url != source.source_url {
+                return Err(BridgeError::new(
+                    "custom_model_conflict",
+                    "custom model identity conflicts with durable state",
+                ));
+            }
+            let validation = self
+                .artifacts
+                .validate_custom_model_artifact(&existing, false);
+            if validation.installation_status != InstallationStatus::Valid {
+                return Err(BridgeError::new(
+                    "conflicting_installed_artifact",
+                    "registered custom model is not valid",
+                ));
+            }
+            let mut completed = self.new_state(
+                &existing.model_id,
+                existing.asset_bytes,
+                ArtifactDownloadLifecycle::Completed,
+            );
+            completed.received_bytes = existing.asset_bytes;
+            completed.percent = percent(existing.asset_bytes, existing.asset_bytes);
+            self.jobs
+                .lock()
+                .expect("download registry poisoned")
+                .jobs
+                .insert(
+                    completed.job_id.clone(),
+                    DownloadJob {
+                        state: completed.clone(),
+                        cancel_requested: Arc::new(AtomicBool::new(false)),
+                    },
+                );
+            return Ok(completed);
+        }
+        self.artifacts
+            .ensure_custom_model_capacity(&source.model_id)
+            .map_err(BridgeError::from)?;
+        let existing_job = {
+            self.jobs
+                .lock()
+                .expect("download registry poisoned")
+                .active_by_artifact
+                .get(&source.model_id)
+                .cloned()
+        };
+        if let Some(existing) = existing_job {
+            return self.get(&existing);
+        }
+        let destination = self
+            .artifacts
+            .custom_download_destination(&source)
+            .map_err(BridgeError::from)?;
+        if destination.exists() {
+            return Err(BridgeError::new(
+                "conflicting_installed_artifact",
+                "custom model destination already exists",
+            ));
+        }
+        let response = open_custom_response(&source.source_url)
+            .map_err(|error| BridgeError::new(error.code, "custom model download failed"))?;
+        let expected_bytes = custom_content_length(&response)
+            .map_err(|error| BridgeError::new(error.code, "custom model size rejected"))?;
+        let acquisition_root = self
+            .artifacts
+            .acquisition_root()
+            .map_err(BridgeError::from)?;
+        let required_space = expected_bytes
+            .checked_add(DISK_RESERVE_BYTES)
+            .ok_or_else(|| {
+                BridgeError::new("disk_requirement_overflow", "disk requirement overflow")
+            })?;
+        if available_space(&acquisition_root)
+            .map_err(|error| BridgeError::new(error.code, "disk space unavailable"))?
+            < required_space
+        {
+            return Err(BridgeError::new(
+                "insufficient_disk_space",
+                "insufficient disk space for custom model",
+            ));
+        }
+        let mut state = self.new_state(
+            &source.model_id,
+            expected_bytes,
+            ArtifactDownloadLifecycle::AwaitingConfirmation,
+        );
+        state.updated_utc_ms = now_utc_ms();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        {
+            let mut registry = self.jobs.lock().expect("download registry poisoned");
+            if let Some(existing_id) = registry.active_by_artifact.get(&source.model_id) {
+                return registry
+                    .jobs
+                    .get(existing_id)
+                    .map(|job| job.state.clone())
+                    .ok_or_else(|| {
+                        BridgeError::new("download_conflict", "active download unavailable")
+                    });
+            }
+            registry
+                .active_by_artifact
+                .insert(source.model_id.clone(), state.job_id.clone());
+            registry.jobs.insert(
+                state.job_id.clone(),
+                DownloadJob {
+                    state: state.clone(),
+                    cancel_requested: Arc::clone(&cancel_requested),
+                },
+            );
+        }
+        let manager = self.clone();
+        let job_id = state.job_id.clone();
+        thread::spawn(move || {
+            manager.run_custom_job(job_id, source, expected_bytes, response, cancel_requested)
+        });
+        Ok(state)
+    }
+
     pub fn get(&self, job_id: &str) -> Result<ArtifactDownloadState, BridgeError> {
         validate_job_id(job_id)?;
         self.jobs
@@ -349,16 +496,29 @@ impl ArtifactAcquisitionManager {
                 "managed model removal requires confirmation",
             ));
         }
-        let artifact = self
-            .artifacts
-            .approved_download_artifact(model_id)
-            .map_err(BridgeError::from)?;
-        let ApprovedDownloadArtifact::Model(_) = artifact else {
+        let approved = self.artifacts.approved_download_artifact(model_id).ok();
+        let custom = if approved.is_none() {
+            self.artifacts
+                .custom_model(model_id)
+                .map_err(BridgeError::from)?
+        } else {
+            None
+        };
+        if approved.is_none() && custom.is_none() {
+            return Err(BridgeError::new(
+                "unknown_artifact",
+                "unknown managed model id",
+            ));
+        }
+        if approved
+            .as_ref()
+            .is_some_and(|artifact| !matches!(artifact, ApprovedDownloadArtifact::Model(_)))
+        {
             return Err(BridgeError::new(
                 "invalid_artifact_kind",
                 "managed artifact is not a model",
             ));
-        };
+        }
         let status = runtime.status(bridge);
         if status.model_id.as_deref() == Some(model_id)
             || matches!(
@@ -374,26 +534,42 @@ impl ArtifactAcquisitionManager {
                 "disconnect the managed model before removal",
             ));
         }
-        let validation = self
-            .artifacts
-            .artifact_validation_status(model_id)
-            .map_err(BridgeError::from)?;
-        if validation.installation_status != InstallationStatus::Valid {
-            return Err(BridgeError::new(
-                "model_not_installed",
-                "managed model is not valid",
-            ));
+        if let Some(artifact) = approved {
+            let validation = self
+                .artifacts
+                .artifact_validation_status(model_id)
+                .map_err(BridgeError::from)?;
+            if validation.installation_status != InstallationStatus::Valid {
+                return Err(BridgeError::new(
+                    "model_not_installed",
+                    "managed model is not valid",
+                ));
+            }
+            let destination = self
+                .artifacts
+                .download_destination(&artifact)
+                .map_err(BridgeError::from)?;
+            fs::remove_file(&destination).map_err(|_| {
+                BridgeError::new("model_removal_failed", "managed model removal failed")
+            })?;
+            self.artifacts
+                .invalidate_validation_cache_for_artifact(model_id);
+            self.prune_empty_model_parents(&destination);
+        } else if let Some(model) = custom {
+            let destination = self
+                .artifacts
+                .custom_model_destination(&model)
+                .map_err(BridgeError::from)?;
+            self.artifacts
+                .remove_custom_model_file_if_present(&model)
+                .map_err(BridgeError::from)?;
+            self.artifacts
+                .invalidate_validation_cache_for_artifact(model_id);
+            self.artifacts
+                .unregister_custom_model(model_id)
+                .map_err(BridgeError::from)?;
+            self.prune_empty_model_parents(&destination);
         }
-        let destination = self
-            .artifacts
-            .download_destination(&artifact)
-            .map_err(BridgeError::from)?;
-        fs::remove_file(&destination).map_err(|_| {
-            BridgeError::new("model_removal_failed", "managed model removal failed")
-        })?;
-        self.artifacts
-            .invalidate_validation_cache_for_artifact(model_id);
-        self.prune_empty_model_parents(&destination);
         Ok(ManagedModelRemovalResult {
             model_id: model_id.to_string(),
             removed: true,
@@ -421,6 +597,166 @@ impl ArtifactAcquisitionManager {
                 self.complete(&job_id, ArtifactDownloadLifecycle::Failed, Some(error.code));
             }
         }
+    }
+
+    fn run_custom_job(
+        &self,
+        job_id: String,
+        source: ValidatedCustomModelSource,
+        expected_bytes: u64,
+        response: Response,
+        cancel_requested: Arc<AtomicBool>,
+    ) {
+        let result = self.download_and_install_custom(
+            &job_id,
+            source,
+            expected_bytes,
+            response,
+            &cancel_requested,
+        );
+        match result {
+            Ok(()) => {
+                self.cleanup_job_temporary_resources(&job_id);
+                self.complete(&job_id, ArtifactDownloadLifecycle::Completed, None);
+            }
+            Err(error) if error.code == "cancelled" => {
+                self.cleanup_job_temporary_resources(&job_id);
+                self.complete(&job_id, ArtifactDownloadLifecycle::Cancelled, None);
+            }
+            Err(error) => {
+                self.cleanup_job_temporary_resources(&job_id);
+                self.complete(&job_id, ArtifactDownloadLifecycle::Failed, Some(error.code));
+            }
+        }
+    }
+
+    fn download_and_install_custom(
+        &self,
+        job_id: &str,
+        source: ValidatedCustomModelSource,
+        expected_bytes: u64,
+        response: Response,
+        cancel_requested: &AtomicBool,
+    ) -> Result<(), AcquisitionError> {
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::CheckingDisk, None);
+        self.require_not_cancelled(cancel_requested)?;
+        let destination = self
+            .artifacts
+            .custom_download_destination(&source)
+            .map_err(|_| AcquisitionError::new("invalid_destination"))?;
+        if destination.exists() {
+            return Err(AcquisitionError::new("conflicting_installed_artifact"));
+        }
+        let acquisition_root = self
+            .artifacts
+            .acquisition_root()
+            .map_err(|_| AcquisitionError::new("acquisition_storage_unavailable"))?;
+        let partial = acquisition_root.join(format!("{job_id}.partial"));
+        if partial.exists() {
+            return Err(AcquisitionError::new("partial_name_conflict"));
+        }
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Downloading, None);
+        self.download_custom_to_partial(
+            job_id,
+            response,
+            &partial,
+            expected_bytes,
+            cancel_requested,
+        )?;
+        self.require_not_cancelled(cancel_requested)?;
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingSize, None);
+        let actual = fs::metadata(&partial)
+            .map_err(|_| AcquisitionError::new("partial_unavailable"))?
+            .len();
+        if actual != expected_bytes {
+            return Err(AcquisitionError::new("size_mismatch"));
+        }
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingHash, None);
+        let local_sha256 = sha256_file(&partial, Some(cancel_requested))?;
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::ValidatingArtifact, None);
+        validate_gguf_partial(&partial)?;
+        self.require_not_cancelled(cancel_requested)?;
+        let model = source.into_artifact(expected_bytes, local_sha256);
+        self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Installing, None);
+        install_model(&partial, &destination)?;
+        self.artifacts
+            .invalidate_validation_cache_for_artifact(&model.model_id);
+        if let Err(error) = self.require_not_cancelled(cancel_requested) {
+            let _ = fs::remove_file(&destination);
+            self.artifacts
+                .invalidate_validation_cache_for_artifact(&model.model_id);
+            return Err(error);
+        }
+        let validation = self.artifacts.validate_custom_model_artifact(&model, true);
+        if validation.installation_status != InstallationStatus::Valid {
+            let _ = fs::remove_file(&destination);
+            self.artifacts
+                .invalidate_validation_cache_for_artifact(&model.model_id);
+            return Err(AcquisitionError::new("post_install_validation_failed"));
+        }
+        if let Err(error) = self.require_not_cancelled(cancel_requested) {
+            let _ = fs::remove_file(&destination);
+            self.artifacts
+                .invalidate_validation_cache_for_artifact(&model.model_id);
+            return Err(error);
+        }
+        if let Err(error) = self.artifacts.register_custom_model(model.clone()) {
+            let _ = fs::remove_file(&destination);
+            self.artifacts
+                .invalidate_validation_cache_for_artifact(&model.model_id);
+            return Err(AcquisitionError::new(error.code()));
+        }
+        remove_owned_file(&partial);
+        Ok(())
+    }
+
+    fn download_custom_to_partial(
+        &self,
+        job_id: &str,
+        mut response: Response,
+        partial: &Path,
+        expected_bytes: u64,
+        cancel_requested: &AtomicBool,
+    ) -> Result<(), AcquisitionError> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(partial)
+            .map_err(|_| AcquisitionError::new("partial_create_failed"))?;
+        let mut received = 0_u64;
+        let mut last_reported = 0_u64;
+        let mut buffer = [0_u8; DOWNLOAD_BUFFER_BYTES];
+        loop {
+            self.require_not_cancelled(cancel_requested)?;
+            let read = response
+                .read(&mut buffer)
+                .map_err(|_| AcquisitionError::new("download_failed"))?;
+            if read == 0 {
+                break;
+            }
+            received = received
+                .checked_add(read as u64)
+                .ok_or_else(|| AcquisitionError::new("size_mismatch"))?;
+            if received > expected_bytes || received > MAX_MODEL_BYTES {
+                return Err(AcquisitionError::new("size_mismatch"));
+            }
+            file.write_all(&buffer[..read])
+                .map_err(|_| AcquisitionError::new("partial_write_failed"))?;
+            if received.saturating_sub(last_reported) >= PROGRESS_UPDATE_BYTES
+                || received == expected_bytes
+            {
+                self.set_progress(job_id, received);
+                last_reported = received;
+            }
+        }
+        file.flush()
+            .and_then(|_| file.sync_all())
+            .map_err(|_| AcquisitionError::new("partial_write_failed"))?;
+        self.set_progress(job_id, received);
+        if received != expected_bytes {
+            return Err(AcquisitionError::new("size_mismatch"));
+        }
+        Ok(())
     }
 
     fn download_and_install(
@@ -817,23 +1153,43 @@ pub fn list_approved_downloadable_artifacts(
 pub fn start_approved_artifact_download(
     state: State<'_, Arc<ArtifactAcquisitionManager>>,
     approval: State<'_, crate::approval_commands::ApprovalState>,
-    artifact_id: String,
-    confirmed: bool,
+    artifact_id: Option<String>,
+    custom_url: Option<String>,
     token: String,
     approval_id: String,
     call_id: String,
 ) -> Result<ArtifactDownloadState, BridgeError> {
-    let _ = confirmed;
-    let input = serde_json::json!({ "artifact_id": artifact_id });
-    crate::approval_commands::validate_approval_token(
-        &approval,
-        "artifact.download",
-        &input,
-        &token,
-        &approval_id,
-        &call_id,
-    )?;
-    state.start(&artifact_id, true)
+    match (artifact_id, custom_url) {
+        (Some(artifact_id), None) => {
+            let input = serde_json::json!({ "artifact_id": artifact_id });
+            crate::approval_commands::validate_approval_token(
+                &approval,
+                "artifact.download",
+                &input,
+                &token,
+                &approval_id,
+                &call_id,
+            )?;
+            state.start(&artifact_id, true)
+        }
+        (None, Some(custom_url)) => {
+            let source = validate_custom_huggingface_url(&custom_url).map_err(BridgeError::from)?;
+            let input = serde_json::json!({ "custom_url": source.source_url.clone() });
+            crate::approval_commands::validate_approval_token(
+                &approval,
+                "artifact.download",
+                &input,
+                &token,
+                &approval_id,
+                &call_id,
+            )?;
+            state.start_custom(source)
+        }
+        _ => Err(BridgeError::new(
+            "invalid_payload",
+            "exactly one artifact download input is required",
+        )),
+    }
 }
 
 #[tauri::command]
@@ -914,6 +1270,86 @@ fn required_disk_space(artifact: &ApprovedDownloadArtifact) -> Result<u64, Acqui
         .checked_add(install_reserve)
         .and_then(|value| value.checked_add(DISK_RESERVE_BYTES))
         .ok_or_else(|| AcquisitionError::new("disk_requirement_overflow"))
+}
+
+fn open_custom_response(source_url: &str) -> Result<Response, AcquisitionError> {
+    validate_custom_huggingface_url(source_url)
+        .map_err(|_| AcquisitionError::new("invalid_custom_url"))?;
+    let client = Client::builder()
+        .redirect(Policy::none())
+        .no_proxy()
+        .connect_timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|_| AcquisitionError::new("download_client_unavailable"))?;
+    let mut current =
+        Url::parse(source_url).map_err(|_| AcquisitionError::new("invalid_custom_url"))?;
+    for _ in 0..=MAX_REDIRECTS {
+        validate_custom_redirect_url(&current)?;
+        let response = client
+            .get(current.clone())
+            .send()
+            .map_err(|_| AcquisitionError::new("download_failed"))?;
+        if response.status().is_redirection() {
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|header| header.to_str().ok())
+                .filter(|value| value.len() <= 2_048)
+                .ok_or_else(|| AcquisitionError::new("redirect_rejected"))?;
+            let next = current
+                .join(location)
+                .map_err(|_| AcquisitionError::new("redirect_rejected"))?;
+            validate_custom_redirect_url(&next)?;
+            current = next;
+            continue;
+        }
+        if response.status() != reqwest::StatusCode::OK {
+            return Err(AcquisitionError::new("download_failed"));
+        }
+        return Ok(response);
+    }
+    Err(AcquisitionError::new("redirect_limit_exceeded"))
+}
+
+fn validate_custom_redirect_url(url: &Url) -> Result<(), AcquisitionError> {
+    let Some(host) = url.host_str() else {
+        return Err(AcquisitionError::new("redirect_rejected"));
+    };
+    if url.scheme() != "https"
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || !CUSTOM_REDIRECT_HOSTS.contains(&host)
+    {
+        return Err(AcquisitionError::new("redirect_rejected"));
+    }
+    Ok(())
+}
+
+fn custom_content_length(response: &Response) -> Result<u64, AcquisitionError> {
+    let mut values = response
+        .headers()
+        .get_all(reqwest::header::CONTENT_LENGTH)
+        .iter();
+    let value = values
+        .next()
+        .and_then(|header| header.to_str().ok())
+        .ok_or_else(|| AcquisitionError::new("content_length_required"))?;
+    if values.next().is_some()
+        || value.is_empty()
+        || value.bytes().any(|byte| !byte.is_ascii_digit())
+    {
+        return Err(AcquisitionError::new("content_length_rejected"));
+    }
+    let bytes = value
+        .parse::<u64>()
+        .map_err(|_| AcquisitionError::new("content_length_rejected"))?;
+    if bytes == 0 || bytes > MAX_MODEL_BYTES {
+        return Err(AcquisitionError::new("content_length_rejected"));
+    }
+    Ok(bytes)
 }
 
 fn open_approved_response(
@@ -1011,6 +1447,10 @@ fn validate_model_partial(
     {
         return Err(AcquisitionError::new("invalid_model_format"));
     }
+    validate_gguf_partial(path)
+}
+
+fn validate_gguf_partial(path: &Path) -> Result<(), AcquisitionError> {
     let mut magic = [0_u8; 4];
     File::open(path)
         .and_then(|mut file| file.read_exact(&mut magic))
@@ -1643,6 +2083,48 @@ mod tests {
                 validate_redirect_url(&Url::parse(value).expect("valid URL"), &allowed).is_err()
             );
         }
+    }
+
+    #[test]
+    fn custom_redirects_use_only_the_evidenced_allowlist_without_query_secrets() {
+        for host in CUSTOM_REDIRECT_HOSTS {
+            assert!(validate_custom_redirect_url(
+                &Url::parse(&format!("https://{host}/download")).expect("valid custom redirect")
+            )
+            .is_ok());
+        }
+        for value in [
+            "http://huggingface.co/download",
+            "https://cdn-lfs.hf.co.attacker.example/download",
+            "https://cdn-lfs.huggingface.co/download",
+            "https://huggingface.co:8443/download",
+            "https://user@huggingface.co/download",
+            "https://huggingface.co/download?token=secret",
+            "https://huggingface.co/download#fragment",
+        ] {
+            assert!(validate_custom_redirect_url(&Url::parse(value).expect("valid URL")).is_err());
+        }
+    }
+
+    #[test]
+    fn downloadable_inventory_remains_approved_only() {
+        let (_workspace, manager, trust) = test_manager();
+        let custom_source = validate_custom_huggingface_url(
+            "https://huggingface.co/localcomet/test/resolve/main/custom.gguf",
+        )
+        .expect("valid custom source");
+        assert!(trust
+            .custom_model(&custom_source.model_id)
+            .unwrap()
+            .is_none());
+        let approved = manager.approved_artifacts();
+        assert_eq!(approved.len(), 2);
+        assert!(approved
+            .iter()
+            .all(|artifact| artifact.trust_kind == ModelTrustKind::ApprovedCatalog));
+        assert!(approved
+            .iter()
+            .all(|artifact| artifact.artifact_id != custom_source.model_id));
     }
 
     #[test]

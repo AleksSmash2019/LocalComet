@@ -31,44 +31,42 @@
 </script>
 
 <header class="chat-header">
-  <button
-    type="button"
-    class="icon-button sidebar-toggle"
-    aria-label={$t('sidebar.toggle')}
-    title={$t('sidebar.toggle')}
-    aria-expanded={$sidebarExpanded}
-    onclick={() => sidebarExpanded.update((value) => !value)}
-  >
-    <Icon name="menu" />
-  </button>
-
-  <div class="title-block">
-    <h1>{title}</h1>
+  <div class="header-left">
+    <button
+      type="button"
+      class="icon-button sidebar-toggle"
+      aria-label={$t('sidebar.toggle')}
+      title={$t('sidebar.toggle')}
+      aria-expanded={$sidebarExpanded}
+      onclick={() => sidebarExpanded.update((value) => !value)}
+    >
+      <Icon name="menu" size={16} />
+    </button>
+    
+    <div class="model-status-block">
+      <!-- Removed as per user request -->
+    </div>
   </div>
 
-  <div class="connection-summary" aria-label={$t('conn.status')}>
-    <StatusBadge label={connectionSummary.label} tone={connectionSummary.tone} />
-  </div>
-
-  <div class="header-actions">
+  <div class="header-right">
     {#if !$managedModelReady}
       <button
         type="button"
-        class="primary-button"
+        class="primary-button outline compact"
         onclick={() => $approvedManagedModelInstalled ? void connectManagedModel() : openSettings('models')}
         disabled={$managedConnectionBusy}
         aria-expanded={$modelSetupDrawerOpen}
         aria-controls="model-setup-drawer"
       >
-        <Icon name="link" size={16} />
+        <Icon name="download" size={14} />
         <span>{$t($managedConnectionBusy ? 'chat.model_connecting' : $approvedManagedModelInstalled ? 'chat.connect_model' : 'chat.setup_local_ai')}</span>
       </button>
-    {:else}
-      <div class="ready-details" title={safeModelIdentity}>
-        <StatusBadge label={$t('conn.runtime_ready')} tone="ready" />
-        <span>{safeModelIdentity}</span>
-      </div>
     {/if}
+
+    <button type="button" class="think-button compact" onclick={() => {}}>
+      <Icon name="chat" size={14} />
+      <span>Think</span>
+    </button>
 
     <button
       type="button"
@@ -76,144 +74,88 @@
       aria-label={$t('diag.toggle')}
       title={$t('diag.toggle')}
       aria-expanded={$inspectorVisible || $inspectorDrawerOpen}
-      onclick={() => {
-        const next = !($inspectorVisible || $inspectorDrawerOpen);
-        setDiagnosticsPanelOpen(next);
-      }}
+      onclick={() => setDiagnosticsPanelOpen(!($inspectorVisible || $inspectorDrawerOpen))}
     >
-      <Icon name="inspector" />
+      <Icon name="inspector" size={16} />
     </button>
   </div>
 </header>
 
 <style>
   .chat-header {
-    min-height: 48px;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
     align-items: center;
-    gap: 8px;
-    border-bottom: var(--border-thin);
-    background: color-mix(in srgb, var(--lc-bg-elevated) 64%, transparent);
-    padding: 8px 16px;
-    backdrop-filter: blur(12px);
-  }
-
-  .icon-button {
-    width: 32px;
-    height: 32px;
-    min-height: 32px;
-    display: grid;
-    place-items: center;
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
     background: transparent;
-    color: var(--lc-muted);
+    padding: 12px 24px;
+    height: 56px;
   }
 
-  .icon-button:hover {
-    background: var(--lc-panel-soft);
-    border-color: var(--lc-line);
-    color: var(--lc-text);
+  .header-left,
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .sidebar-toggle {
     display: none;
   }
 
-  .title-block {
-    min-width: 0;
-  }
-
-  h1 {
-    margin: 0;
-    overflow: hidden;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--lc-text);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .connection-summary {
-    display: flex;
-    align-items: center;
-  }
-
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--lc-space-2);
-  }
-
-  .ready-details {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--lc-space-2);
-  }
-
-  .ready-details > span {
-    max-width: 150px;
-    overflow: hidden;
-    color: var(--lc-muted);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .primary-button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--lc-space-2);
-    min-height: 32px;
-    padding: 0 12px;
-    border: none;
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-accent);
-    color: var(--lc-logo-cut);
-    font-weight: 650;
-    font-size: 13px;
-    cursor: pointer;
-  }
-
-  .primary-button:hover {
-    background: var(--lc-accent-strong);
-  }
-
-  .primary-button:disabled {
-    cursor: wait;
-    opacity: 0.7;
-  }
-
-  .primary-button:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring);
-  }
-
-  @media (max-width: 680px) {
-    .chat-header {
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      min-height: 48px;
-      padding-inline: 12px;
-    }
-
-    .primary-button span {
-      display: none;
-    }
-
-    .primary-button {
-      padding: 0 var(--lc-space-2);
-    }
-
-    .ready-details > span {
-      display: none;
-    }
-  }
-
   @media (max-width: 920px) {
     .sidebar-toggle {
       display: grid;
     }
+    .chat-header {
+      padding-left: 16px;
+    }
+  }
+
+  .primary-button.outline {
+    background: transparent;
+    border: 1px solid var(--lc-accent);
+    color: var(--lc-accent);
+  }
+
+  .primary-button.outline.compact,
+  .think-button.compact {
+    height: 28px;
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .think-button.compact {
+    background: var(--lc-panel-soft);
+    border: 1px solid var(--lc-line);
+    color: var(--lc-text);
+  }
+
+  .think-button.compact:hover {
+    background: var(--lc-panel);
+  }
+  
+  .icon-button {
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: none;
+    color: var(--lc-muted);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .icon-button:hover {
+    background: var(--lc-panel-soft);
+    color: var(--lc-text);
   }
 </style>

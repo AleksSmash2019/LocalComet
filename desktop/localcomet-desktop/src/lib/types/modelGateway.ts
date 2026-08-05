@@ -251,6 +251,25 @@ export interface ApprovedModelSummary {
   readonly status: CatalogStatus;
 }
 
+export interface CustomModelSummary {
+  readonly model_id: string;
+  readonly display_name: string;
+  readonly format: 'GGUF';
+  readonly source_url: string;
+  readonly source_repository: string;
+  readonly source_revision: string;
+  readonly asset_filename: string;
+  readonly asset_bytes: number;
+  readonly asset_sha256: string;
+  readonly license_id: null;
+  readonly compatible_runtime_ids: readonly string[];
+  readonly trust_kind: 'user_supplied';
+}
+
+export type ManagedModelSummary =
+  | (ApprovedModelSummary & { readonly trust_kind: 'approved_catalog' })
+  | CustomModelSummary;
+
 export interface ManagedRuntimeCatalog extends ManagedCatalogIdentity {
   readonly runtimes: readonly ApprovedRuntimeSummary[];
 }
@@ -260,6 +279,8 @@ export interface ManagedModelCatalog extends ManagedCatalogIdentity {
   readonly model_root: '<MANAGED_MODEL_ROOT>';
   readonly models: readonly ApprovedModelSummary[];
   readonly maximum_models: 32;
+  readonly custom_models: readonly CustomModelSummary[];
+  readonly maximum_custom_models: 32;
 }
 
 export interface ArtifactValidationSummary extends ManagedCatalogIdentity {
@@ -275,13 +296,30 @@ export interface ArtifactValidationSummary extends ManagedCatalogIdentity {
   readonly verified_unix_ms: number;
 }
 
+export interface CustomArtifactValidationSummary {
+  readonly artifact_id: string;
+  readonly kind: 'model';
+  readonly trust_kind: 'user_supplied';
+  readonly installation_status: ArtifactInstallationStatus;
+  readonly expected_bytes: number;
+  readonly expected_sha256: string;
+  readonly observed_bytes: number | null;
+  readonly observed_sha256: string | null;
+  readonly validation_code: string;
+  readonly verified_unix_ms: number;
+}
+
+export type ManagedArtifactValidationSummary = ArtifactValidationSummary | CustomArtifactValidationSummary;
+
 export interface ManagedInstalledArtifacts extends ManagedCatalogIdentity {
   readonly artifacts: readonly ArtifactValidationSummary[];
+  readonly custom_artifacts: readonly CustomArtifactValidationSummary[];
 }
 
 export interface ApprovedDownloadableArtifact {
   readonly artifact_id: string;
   readonly kind: ArtifactKind;
+  readonly trust_kind: 'approved_catalog';
   readonly display_name: string;
   readonly source_identity: string;
   readonly expected_bytes: number;
@@ -291,6 +329,23 @@ export interface ApprovedDownloadableArtifact {
   readonly user_confirmation_required: true;
   readonly automatic_download: false;
 }
+
+export interface CustomDownloadableArtifact {
+  readonly artifact_id: string;
+  readonly kind: 'model';
+  readonly trust_kind: 'user_supplied';
+  readonly display_name: string;
+  readonly source_identity: string;
+  readonly expected_bytes: number;
+  readonly expected_sha256: string;
+  readonly license_id: null;
+  readonly format: 'GGUF';
+  readonly quantization: null;
+  readonly user_confirmation_required: true;
+  readonly automatic_download: false;
+}
+
+export type ManagedDownloadableArtifact = ApprovedDownloadableArtifact | CustomDownloadableArtifact;
 
 export interface ArtifactDownloadState {
   readonly job_id: string;
@@ -311,6 +366,7 @@ export interface ManagedModelRemovalResult {
 
 export interface ModelReadinessSummary extends ManagedCatalogIdentity {
   readonly model_id: string;
+  readonly model_trust_kind: 'approved_catalog' | 'user_supplied';
   readonly model_status: ArtifactInstallationStatus;
   readonly compatible_runtime_ids: readonly string[];
   readonly selected_runtime_id: string | null;

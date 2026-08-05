@@ -333,6 +333,16 @@ impl ManagedRuntimeSupervisor {
         }
     }
 
+    pub(crate) fn runtime_start_approval_input(
+        &self,
+        model_id: &str,
+        custom_sha256: Option<&str>,
+    ) -> Result<Value, BridgeError> {
+        self.artifacts
+            .runtime_start_approval_input(model_id, custom_sha256)
+            .map_err(BridgeError::from)
+    }
+
     pub(crate) fn ensure_model_ready(&self, model_id: &str) -> Result<(), BridgeError> {
         let _transition = self
             .transition
@@ -380,6 +390,7 @@ impl ManagedRuntimeSupervisor {
     pub fn start(
         &self,
         model_id: &str,
+        custom_sha256: Option<&str>,
         bridge: &ControlPlaneBridge,
     ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
         self.record_connection_event("request", "begin", "LC_MODEL_CONNECT_000", "requested");
@@ -391,12 +402,13 @@ impl ManagedRuntimeSupervisor {
             }
         };
         let model_load_deadline = Instant::now() + MODEL_LOAD_TIMEOUT;
-        let response = match self.start_inner(model_id, model_load_deadline, &attempt) {
-            Ok(response) => response,
-            Err(error) => {
-                return Err(self.settle_start_failure(&attempt, error, bridge, false));
-            }
-        };
+        let response =
+            match self.start_inner(model_id, custom_sha256, model_load_deadline, &attempt) {
+                Ok(response) => response,
+                Err(error) => {
+                    return Err(self.settle_start_failure(&attempt, error, bridge, false));
+                }
+            };
         let attach = match self.attach_payload_for_attempt(&attempt) {
             Ok(attach) => attach,
             Err(error) => {
@@ -527,12 +539,15 @@ impl ManagedRuntimeSupervisor {
     fn start_inner(
         &self,
         model_id: &str,
+        custom_sha256: Option<&str>,
         model_load_deadline: Instant,
         attempt: &StartupAttempt,
     ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
         let roots = self.artifacts.roots();
         self.record_connection_event("validation", "begin", "LC_MODEL_CONNECT_001", "artifacts");
-        let launch = self.artifacts.resolve_launch(model_id)?;
+        let launch = self
+            .artifacts
+            .resolve_launch_for_start(model_id, custom_sha256)?;
         let validation_detail = safe_log_token(artifact_validation_detail(
             launch.artifact_validation_source,
         ));
@@ -1991,11 +2006,13 @@ pub async fn managed_runtime_status(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn managed_runtime_start(
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     bridge: State<'_, Arc<ControlPlaneBridge>>,
     approval: State<'_, crate::approval_commands::ApprovalState>,
     model_id: String,
+    custom_sha256: Option<String>,
     token: String,
     approval_id: String,
     call_id: String,
@@ -2003,7 +2020,7 @@ pub async fn managed_runtime_start(
     if model_id.is_empty() || model_id.len() > 96 || model_id.chars().any(char::is_whitespace) {
         return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
     }
-    let input = json!({ "model_id": model_id });
+    let input = runtime.runtime_start_approval_input(&model_id, custom_sha256.as_deref())?;
     crate::approval_commands::validate_approval_token(
         &approval,
         "runtime.start",
@@ -2014,11 +2031,11 @@ pub async fn managed_runtime_start(
     )?;
     let runtime = Arc::clone(&runtime);
     let bridge = Arc::clone(&bridge);
-    tauri::async_runtime::spawn_blocking(move || runtime.start(&model_id, &bridge))
-        .await
-        .map_err(|_| {
-            BridgeError::new("runtime_unavailable", "managed runtime start worker failed")
-        })?
+    tauri::async_runtime::spawn_blocking(move || {
+        runtime.start(&model_id, custom_sha256.as_deref(), &bridge)
+    })
+    .await
+    .map_err(|_| BridgeError::new("runtime_unavailable", "managed runtime start worker failed"))?
 }
 
 #[tauri::command]

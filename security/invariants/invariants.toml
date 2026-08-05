@@ -84,7 +84,7 @@ status = "active"
 [[invariants]]
 id = "INV-CATALOG-002"
 title = "LLM, filename, and app-data are not catalog approval authority"
-statement = "Model/runtime approval requires embedded catalog record with SHA-256. No LLM output, filename pattern, or database record can substitute for catalog verification."
+statement = "Approved model/runtime status requires an embedded catalog record with SHA-256. User-supplied custom model records are non-approved nominations: they never enter approved inventory and cannot substitute for catalog verification; their separate path requires canonical URL/path checks, bounded transfer, local SHA-256 and GGUF verification, TOCTOU revalidation, and scoped approval."
 severity = "critical"
 owner = "artifact_trust.rs"
 implementation = [
@@ -97,7 +97,7 @@ status = "active"
 [[invariants]]
 id = "INV-MODEL-001"
 title = "Model cannot be installed or launched without verified digest"
-statement = "Model validation requires: correct size, GGUF magic bytes, SHA-256 match against catalog. Launch requires re-validation after opening file handles (TOCTOU mitigation)."
+statement = "Approved model validation requires correct size, GGUF magic bytes, and SHA-256 match against the embedded catalog. User-supplied custom model validation requires correct size, GGUF magic bytes, and a locally computed SHA-256 durably recorded only after installation; runtime.start approval must bind that custom digest. Launch requires full re-validation after opening file handles (TOCTOU mitigation)."
 severity = "critical"
 owner = "artifact_trust.rs"
 implementation = [

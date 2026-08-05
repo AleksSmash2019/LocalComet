@@ -87,9 +87,6 @@ describe('truthful assistant usability states', () => {
     const header = render(ChatHeader).body;
     expect(list).toContain('Локальный помощник готов');
     expect(list).toContain('Только локальный текстовый диалог');
-    expect(header).toContain('Модель: готова');
-    expect(header).toContain('Среда: готова');
-    expect(header).toContain('Qwen2.5 1.5B Instruct Q4_K_M');
   });
 
   it('localizes failed and cancelled states and exposes a bounded retry action', () => {

@@ -6,6 +6,7 @@
     artifactAcquisitionStore,
     cancelApprovedArtifactDownload,
     downloadApprovedArtifact,
+    downloadArbitraryHuggingFaceArtifact,
     initializeArtifactAcquisition,
     removeApprovedManagedModel,
     setUpManagedModel,
@@ -21,28 +22,35 @@
     stopSelectedManagedRuntime
   } from '$lib/stores/modelGateway';
   import { t } from '$lib/i18n';
-  import type { ApprovedDownloadableArtifact } from '$lib/types/modelGateway';
+  import type { ApprovedDownloadableArtifact, ManagedDownloadableArtifact } from '$lib/types/modelGateway';
+
+  export let mode: 'catalog' | 'huggingface' = 'catalog';
 
   type Confirmation =
-    | { readonly action: 'setup'; readonly artifacts: readonly ApprovedDownloadableArtifact[] }
+    | { readonly action: 'setup'; readonly artifacts: readonly ManagedDownloadableArtifact[] }
     | { readonly action: 'download'; readonly artifacts: readonly ApprovedDownloadableArtifact[] }
-    | { readonly action: 'remove'; readonly artifacts: readonly ApprovedDownloadableArtifact[] };
+    | { readonly action: 'remove'; readonly artifacts: readonly ManagedDownloadableArtifact[] }
+    | { readonly action: 'custom-download'; readonly url: string };
 
   let confirmation: Confirmation | null = null;
   let actionPending = false;
   let selectedModelId = $managedRuntimeStore.selectedModelId;
+  let customUrl = '';
 
   $: runtime = $managedRuntimeStore.runtimeCatalog?.[0] ?? null;
-  $: modelArtifacts = ($artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model') as ApprovedDownloadableArtifact[]);
+  $: modelArtifacts = $artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model');
+  $: approvedModelArtifacts = modelArtifacts.filter((artifact): artifact is ApprovedDownloadableArtifact => artifact.trust_kind === 'approved_catalog');
+  $: customModelArtifacts = modelArtifacts.filter((artifact) => artifact.trust_kind === 'user_supplied');
   $: selectedModelArtifact = modelArtifacts.find((artifact) => artifact.artifact_id === selectedModelId) ?? null;
-  $: model = $managedRuntimeStore.catalog.find((candidate) => candidate.model_id === selectedModelId) ?? null;
-  $: runtimeArtifact = $artifactAcquisitionStore.artifacts.find((artifact) => artifact.kind === 'runtime') ?? null;
+  $: runtimeArtifact = $artifactAcquisitionStore.artifacts.find((artifact): artifact is ApprovedDownloadableArtifact => artifact.kind === 'runtime') ?? null;
   $: runtimeInstalled = runtime ? installationState(runtime.runtime_id) === 'valid' : false;
   $: modelInstalled = selectedModelArtifact ? installationState(selectedModelArtifact.artifact_id) === 'valid' : false;
+  $: customModelInvalid = selectedModelArtifact?.trust_kind === 'user_supplied' && !modelInstalled;
   $: runtimeDownload = runtimeArtifact ? $artifactAcquisitionStore.downloads[runtimeArtifact.artifact_id] ?? null : null;
   $: modelDownload = selectedModelArtifact ? $artifactAcquisitionStore.downloads[selectedModelArtifact.artifact_id] ?? null : null;
-  $: activeDownload = [runtimeDownload, modelDownload].find((download) => download && !isTerminal(download)) ?? null;
-  $: canRemove = modelInstalled && !activeDownload && !['Ready', 'Starting', 'Validating', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '');
+  $: activeDownload = Object.values($artifactAcquisitionStore.downloads).find((download) => !isTerminal(download)) ?? null;
+  $: modelCanBeRemoved = selectedModelArtifact !== null && (modelInstalled || selectedModelArtifact.trust_kind === 'user_supplied');
+  $: canRemove = modelCanBeRemoved && !activeDownload && !['Ready', 'Starting', 'Validating', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '');
 
   onMount(() => {
     void initializeArtifactAcquisition();
@@ -57,16 +65,23 @@
   }
 
   function requestSetup(): void {
-    const artifacts = [runtimeArtifact, selectedModelArtifact].filter((artifact): artifact is ApprovedDownloadableArtifact => artifact !== null);
-    if (artifacts.length === 2) confirmation = { action: 'setup', artifacts };
+    const artifacts = [runtimeArtifact, selectedModelArtifact].filter((artifact): artifact is ManagedDownloadableArtifact => artifact !== null);
+    if (artifacts.length === 2 && (!customModelInvalid || selectedModelArtifact?.trust_kind === 'approved_catalog')) {
+      confirmation = { action: 'setup', artifacts };
+    }
   }
 
   function requestDownload(artifact: ApprovedDownloadableArtifact): void {
     confirmation = { action: 'download', artifacts: [artifact] };
   }
 
-  function requestRemoval(artifact: ApprovedDownloadableArtifact): void {
+  function requestRemoval(artifact: ManagedDownloadableArtifact): void {
     confirmation = { action: 'remove', artifacts: [artifact] };
+  }
+
+  function requestCustomDownload(): void {
+    if (customUrl.length === 0) return;
+    confirmation = { action: 'custom-download', url: customUrl };
   }
 
   async function confirm(): Promise<void> {
@@ -75,7 +90,9 @@
     if (!selected) return;
     actionPending = true;
     try {
-      if (selected.action === 'setup') {
+      if (selected.action === 'custom-download') {
+        await downloadCustom(selected.url);
+      } else if (selected.action === 'setup') {
         await setUpManagedModel(selected.artifacts.find((artifact) => artifact.kind === 'model')!.artifact_id);
       } else if (selected.action === 'download') {
         await downloadApprovedArtifact(selected.artifacts[0].artifact_id);
@@ -98,6 +115,11 @@
     }
   }
 
+  async function downloadCustom(url: string): Promise<void> {
+    const terminal = await downloadArbitraryHuggingFaceArtifact(url);
+    if (terminal?.lifecycle === 'completed' && customUrl === url) customUrl = '';
+  }
+
   function onModelChange(event: Event) {
     const value = (event.currentTarget as HTMLSelectElement).value;
     selectedModelId = value;
@@ -112,18 +134,18 @@
     return `${(value / 1024 / 1024).toFixed(value >= 1024 * 1024 * 1024 ? 0 : 1)} MiB`;
   }
 
-  function totalBytes(artifacts: readonly ApprovedDownloadableArtifact[]): number {
+  function totalBytes(artifacts: readonly ManagedDownloadableArtifact[]): number {
     return artifacts.reduce((total, artifact) => total + artifact.expected_bytes, 0);
   }
 
-  function modelStatus(artifact: ApprovedDownloadableArtifact): string {
+  function modelStatus(artifact: ManagedDownloadableArtifact): string {
     const state = installationState(artifact.artifact_id);
     if (state === 'valid') return $t('models.state.valid');
     if (state === 'not_installed') return $t('models.state.not_installed');
     return displayState(state);
   }
 
-  function modelTone(artifact: ApprovedDownloadableArtifact): string {
+  function modelTone(artifact: ManagedDownloadableArtifact): string {
     return installationState(artifact.artifact_id) === 'valid' ? 'ready' : 'disabled';
   }
 </script>
@@ -170,15 +192,19 @@
       <select disabled={$managedConnectionBusy} value={selectedModelId} onchange={onModelChange}>
         <option value="" disabled hidden>{$t('models.not_available')}</option>
         {#each modelArtifacts as artifact}
-          <option value={artifact.artifact_id}>{artifact.display_name} · {artifact.license_id} · {formatBytes(artifact.expected_bytes)}</option>
+          <option value={artifact.artifact_id}>{artifact.display_name} · {artifact.license_id ?? $t('models.license_unknown')} · {formatBytes(artifact.expected_bytes)}</option>
         {/each}
       </select>
     </label>
     <dl>
       <div><dt>{$t('models.model_id')}</dt><dd>{selectedModelArtifact?.artifact_id ?? '—'}</dd></div>
       <div><dt>{$t('models.format')}</dt><dd>{selectedModelArtifact ? `${selectedModelArtifact.format ?? '—'} · ${selectedModelArtifact.quantization ?? '—'}` : '—'}</dd></div>
-      <div><dt>{$t('models.license')}</dt><dd>{selectedModelArtifact?.license_id ?? '—'}</dd></div>
+      <div><dt>{$t('models.license')}</dt><dd>{selectedModelArtifact ? selectedModelArtifact.license_id ?? $t('models.license_unknown') : '—'}</dd></div>
       <div><dt>{$t('models.size')}</dt><dd>{selectedModelArtifact ? formatBytes(selectedModelArtifact.expected_bytes) : '—'}</dd></div>
+      {#if selectedModelArtifact?.trust_kind === 'user_supplied'}
+        <div><dt>{$t('models.custom_source')}</dt><dd>{selectedModelArtifact.source_identity}</dd></div>
+        <div><dt>{$t('models.sha256')}</dt><dd>{selectedModelArtifact.expected_sha256}</dd></div>
+      {/if}
       <div><dt>{$t('models.connection')}</dt><dd>{$managedModelReady ? $t('models.connected') : $t('models.not_connected')}</dd></div>
       {#if modelDownload}
         <div><dt>{$t('models.download')}</dt><dd>{displayState(modelDownload.lifecycle)} {modelDownload.percent === null ? '' : `${modelDownload.percent}%`}</dd></div>
@@ -186,16 +212,17 @@
     </dl>
   </div>
 
+  {#if mode === 'catalog'}
   <div class="catalog-card">
     <div class="catalog-heading">
       <div>
         <span class="artifact-kind">{$t('models.approved_catalog')}</span>
         <strong>{$t('models.approved_catalog_title')}</strong>
       </div>
-      <span class="catalog-count">{modelArtifacts.length} {$t('models.approved_catalog_count')}</span>
+      <span class="catalog-count">{approvedModelArtifacts.length} {$t('models.approved_catalog_count')}</span>
     </div>
     <ul class="catalog-list">
-      {#each modelArtifacts as artifact}
+      {#each approvedModelArtifacts as artifact}
         <li class="catalog-item" class:selected={artifact.artifact_id === selectedModelId}>
           <div class="catalog-main">
             <strong>{artifact.display_name}</strong>
@@ -213,6 +240,47 @@
       {/each}
     </ul>
   </div>
+  {/if}
+
+  {#if mode === 'huggingface'}
+  <div class="catalog-card custom-card">
+    <div class="catalog-heading">
+      <div>
+        <span class="artifact-kind">{$t('models.custom_models')}</span>
+        <strong>{$t('models.custom_title')}</strong>
+      </div>
+      <span class="catalog-count">{customModelArtifacts.length} {$t('models.custom_count')}</span>
+    </div>
+    <label class="custom-url-field">
+      <span>{$t('models.custom_url_label')}</span>
+      <div class="custom-url-controls">
+        <input type="url" bind:value={customUrl} placeholder={$t('models.custom_url_placeholder')} disabled={actionPending || $managedConnectionBusy} />
+        <button type="button" disabled={customUrl.length === 0 || actionPending || $managedConnectionBusy} onclick={requestCustomDownload}>{$t('models.custom_download')}</button>
+      </div>
+    </label>
+    <p class="warning">{$t('models.custom_warning')}</p>
+    <ul class="catalog-list">
+      {#each customModelArtifacts as artifact}
+        <li class="catalog-item" class:selected={artifact.artifact_id === selectedModelId}>
+          <div class="catalog-main">
+            <strong>{artifact.display_name}</strong>
+            <StatusBadge label={modelStatus(artifact)} tone={modelTone(artifact)} />
+          </div>
+          <dl>
+            <div><dt>{$t('models.model_id')}</dt><dd>{artifact.artifact_id}</dd></div>
+            <div><dt>{$t('models.custom_source')}</dt><dd>{artifact.source_identity}</dd></div>
+            <div><dt>{$t('models.sha256')}</dt><dd>{artifact.expected_sha256}</dd></div>
+            <div><dt>{$t('models.format')}</dt><dd>{artifact.format} · {$t('common.not_determined')}</dd></div>
+            <div><dt>{$t('models.license')}</dt><dd>{$t('models.license_unknown')}</dd></div>
+            <div><dt>{$t('models.size')}</dt><dd>{formatBytes(artifact.expected_bytes)}</dd></div>
+          </dl>
+        </li>
+      {:else}
+        <li class="catalog-empty">{$t('models.custom_empty')}</li>
+      {/each}
+    </ul>
+  </div>
+  {/if}
 
   {#if activeDownload}
     <div class="progress-panel" role="status">
@@ -237,13 +305,13 @@
   {/if}
 
   <div class="actions" aria-label={$t('models.actions')}>
-    {#if (!runtimeInstalled || !modelInstalled) && !activeDownload}
+    {#if selectedModelArtifact && (!runtimeInstalled || !modelInstalled) && !activeDownload && !customModelInvalid}
       <button type="button" class="primary" disabled={actionPending} onclick={requestSetup}>{$t('models.setup')}</button>
     {/if}
     {#if runtimeArtifact && !runtimeInstalled && !activeDownload}
       <button type="button" disabled={actionPending} onclick={() => requestDownload(runtimeArtifact)}><span>{runtimeDownload?.lifecycle === 'failed' || runtimeDownload?.lifecycle === 'cancelled' ? $t('models.retry_engine') : $t('models.install_engine')}</span></button>
     {/if}
-    {#if selectedModelArtifact && !modelInstalled && !activeDownload}
+    {#if selectedModelArtifact?.trust_kind === 'approved_catalog' && !modelInstalled && !activeDownload}
       <button type="button" disabled={actionPending} onclick={() => requestDownload(selectedModelArtifact)}><span>{modelDownload?.lifecycle === 'failed' || modelDownload?.lifecycle === 'cancelled' ? $t('models.retry_model') : $t('models.download_model')}</span></button>
     {/if}
     {#if runtimeInstalled && modelInstalled && !$managedModelReady && !activeDownload}
@@ -252,11 +320,14 @@
     {#if $managedRuntimeStore.status?.state === 'Ready'}
       <button type="button" disabled={actionPending} onclick={() => void stopSelectedManagedRuntime()}>{$t('models.disconnect')}</button>
     {/if}
-    {#if selectedModelArtifact && modelInstalled && !activeDownload}
+    {#if selectedModelArtifact && modelCanBeRemoved && !activeDownload}
       <button type="button" class="danger" disabled={!canRemove || actionPending} onclick={() => requestRemoval(selectedModelArtifact)}>{$t('models.remove_model')}</button>
     {/if}
   </div>
-  {#if modelInstalled && !canRemove && !activeDownload}
+  {#if customModelInvalid}
+    <p class="error" role="status">{$t('models.custom_invalid')}</p>
+  {/if}
+  {#if modelCanBeRemoved && !canRemove && !activeDownload}
     <p class="hint">{$t('models.remove_hint')}</p>
   {/if}
   {#if $artifactAcquisitionStore.lastError}
@@ -268,16 +339,36 @@
 
   {#if confirmation}
     <div class="confirmation" role="alertdialog" aria-modal="true" aria-labelledby="models-confirmation-title">
-      <h4 id="models-confirmation-title">{confirmation.action === 'remove' ? $t('models.remove_confirm_title') : $t('models.confirm_title')}</h4>
-      <p>{confirmation.action === 'remove' ? $t('models.remove_confirm_detail') : $t('models.confirm_detail')}</p>
-      <ul>
-        {#each confirmation.artifacts as artifact}
-          <li>{artifact.display_name} · {formatBytes(artifact.expected_bytes)} · {artifact.license_id} · {artifact.source_identity}</li>
-        {/each}
-      </ul>
-      {#if confirmation.action !== 'remove'}
-        <p>{$t('models.combined_size')}: {formatBytes(totalBytes(confirmation.artifacts))}</p>
-        <p>{$t('models.confirm_boundary')}</p>
+      <h4 id="models-confirmation-title">
+        {confirmation.action === 'remove'
+          ? $t('models.remove_confirm_title')
+          : confirmation.action === 'custom-download'
+            ? $t('models.custom_confirm_title')
+            : $t('models.confirm_title')}
+      </h4>
+      <p>
+        {confirmation.action === 'remove'
+          ? $t('models.remove_confirm_detail')
+          : confirmation.action === 'custom-download'
+            ? $t('models.custom_confirm_detail')
+            : $t('models.confirm_detail')}
+      </p>
+      {#if confirmation.action === 'custom-download'}
+        <dl>
+          <div><dt>{$t('models.custom_source')}</dt><dd>{confirmation.url}</dd></div>
+          <div><dt>{$t('models.license')}</dt><dd>{$t('models.license_unknown')}</dd></div>
+        </dl>
+        <p class="warning">{$t('models.custom_warning')}</p>
+      {:else}
+        <ul>
+          {#each confirmation.artifacts as artifact}
+            <li>{artifact.display_name} · {formatBytes(artifact.expected_bytes)} · {artifact.license_id ?? $t('models.license_unknown')} · {artifact.source_identity}</li>
+          {/each}
+        </ul>
+        {#if confirmation.action !== 'remove'}
+          <p>{$t('models.combined_size')}: {formatBytes(totalBytes(confirmation.artifacts))}</p>
+          <p>{$t('models.confirm_boundary')}</p>
+        {/if}
       {/if}
       <div class="confirmation-actions">
         <button type="button" onclick={() => (confirmation = null)}>{$t('models.cancel')}</button>
@@ -318,4 +409,9 @@
   .catalog-item.selected { border-color: var(--lc-accent); }
   .catalog-main { display: flex; align-items: center; justify-content: space-between; gap: var(--lc-space-2); }
   .catalog-empty { color: var(--lc-muted); font-size: 12px; }
+  .custom-card { border-color: var(--lc-warning); }
+  .custom-url-field { display: grid; gap: var(--lc-space-1); color: var(--lc-muted); font-size: 11px; }
+  .custom-url-controls { display: flex; gap: var(--lc-space-2); }
+  .custom-url-controls input { min-width: 0; flex: 1; border: var(--border-thin); border-radius: var(--lc-radius-sm); padding: 0 var(--lc-space-2); background: var(--lc-panel-solid); color: var(--lc-text); }
+  .warning { margin: 0; color: var(--lc-warning); font-size: 11px; line-height: 1.45; }
 </style>

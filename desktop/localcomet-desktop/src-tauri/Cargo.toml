@@ -34,3 +34,5 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Controls_Dialogs",
 ] }
+sysinfo = "0.31"
+raw-cpuid = "11.6.0"

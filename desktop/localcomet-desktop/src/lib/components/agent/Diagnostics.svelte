@@ -246,7 +246,7 @@
       right: 0;
       z-index: 40;
       display: block;
-      width: min(var(--inspector-width), calc(100vw - var(--rail-width)));
+      width: min(var(--inspector-width), calc(100vw - var(--sidebar-width)));
       min-width: 0;
       max-width: 100vw;
       height: calc(100vh - var(--shell-header-height));

@@ -1,5 +1,6 @@
 use crate::artifact_validation_cache::{ArtifactValidationCache, ValidationSource};
 use crate::control_plane::BridgeError;
+use reqwest::Url;
 use serde::de::{MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -8,9 +9,10 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
@@ -26,8 +28,9 @@ use windows_sys::Win32::Foundation::{GENERIC_READ, INVALID_HANDLE_VALUE};
 
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileW, MoveFileExW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    OPEN_EXISTING,
 };
 
 const CATALOG_BYTES: &[u8] = include_bytes!("../resources/localcomet/approved-artifacts.v1.json");
@@ -39,8 +42,14 @@ const MAX_ARTIFACTS: usize = 32;
 const MAX_REQUIRED_FILES: usize = 128;
 const MAX_RUNTIME_ARCHIVE_MEMBERS: usize = 128;
 const MAX_RUNTIME_ARCHIVE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
-const MAX_MODEL_BYTES: u64 = 128 * 1024 * 1024 * 1024;
+pub(crate) const MAX_MODEL_BYTES: u64 = 128 * 1024 * 1024 * 1024;
+pub(crate) const MAX_CUSTOM_MODELS: usize = 32;
+const MAX_CUSTOM_MANIFEST_BYTES: u64 = 1024 * 1024;
+const CUSTOM_MANIFEST_FILENAME: &str = "custom-models.v1.json";
+const CUSTOM_MODEL_RUNTIME_ID: &str = "llama-cpp-windows-x86-64-cpu-bootstrap";
+const CUSTOM_MODEL_ID_PREFIX: &str = "custom-hf-";
 const MODEL_ROOT_SENTINEL: &str = "<MANAGED_MODEL_ROOT>";
+static CUSTOM_MANIFEST_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const INTERNAL_BOOTSTRAP_PURPOSE: &str = "INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION";
 const LLAMA_CPP_LICENSE_SOURCE_PATH: &str = "third_party/llama.cpp/LICENSE-MIT.txt";
 const LLAMA_CPP_LICENSE_BYTES: &[u8] =
@@ -177,6 +186,70 @@ pub struct ApprovedArtifactCatalog {
     pub models: Vec<ApprovedModelArtifact>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CustomModelManifest {
+    pub schema_version: u32,
+    pub models: Vec<CustomModelArtifact>,
+}
+
+impl Default for CustomModelManifest {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            models: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CustomModelArtifact {
+    pub model_id: String,
+    pub display_name: String,
+    pub source_url: String,
+    pub source_repository: String,
+    pub source_revision: String,
+    pub asset_filename: String,
+    pub asset_bytes: u64,
+    pub asset_sha256: String,
+    pub compatible_runtime_ids: Vec<String>,
+    pub managed_relative_path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ValidatedCustomModelSource {
+    pub model_id: String,
+    pub display_name: String,
+    pub source_url: String,
+    pub source_repository: String,
+    pub source_revision: String,
+    pub asset_filename: String,
+    pub compatible_runtime_ids: Vec<String>,
+    pub managed_relative_path: String,
+}
+
+impl ValidatedCustomModelSource {
+    pub(crate) fn into_artifact(
+        self,
+        asset_bytes: u64,
+        asset_sha256: String,
+    ) -> CustomModelArtifact {
+        CustomModelArtifact {
+            model_id: self.model_id,
+            display_name: self.display_name,
+            source_url: self.source_url,
+            source_repository: self.source_repository,
+            source_revision: self.source_revision,
+            asset_filename: self.asset_filename,
+            asset_bytes,
+            asset_sha256,
+            compatible_runtime_ids: self.compatible_runtime_ids,
+            managed_relative_path: self.managed_relative_path,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ManagedArtifactRoots {
     pub app_data_root: PathBuf,
@@ -215,6 +288,10 @@ impl ArtifactTrustError {
             message: safe,
         }
     }
+
+    pub(crate) fn code(&self) -> &'static str {
+        self.code
+    }
 }
 
 pub(crate) fn source_controlled_runtime_license_bytes(
@@ -246,6 +323,13 @@ impl From<ArtifactTrustError> for BridgeError {
 pub enum ArtifactKind {
     Runtime,
     Model,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelTrustKind {
+    ApprovedCatalog,
+    UserSupplied,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -323,6 +407,42 @@ pub struct ApprovedModelSummary {
     pub status: CatalogStatus,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomModelSummary {
+    pub model_id: String,
+    pub display_name: String,
+    pub format: String,
+    pub source_url: String,
+    pub source_repository: String,
+    pub source_revision: String,
+    pub asset_filename: String,
+    pub asset_bytes: u64,
+    pub asset_sha256: String,
+    pub license_id: Option<String>,
+    pub compatible_runtime_ids: Vec<String>,
+    pub trust_kind: ModelTrustKind,
+}
+
+impl From<&CustomModelArtifact> for CustomModelSummary {
+    fn from(model: &CustomModelArtifact) -> Self {
+        Self {
+            model_id: model.model_id.clone(),
+            display_name: model.display_name.clone(),
+            format: "GGUF".into(),
+            source_url: model.source_url.clone(),
+            source_repository: model.source_repository.clone(),
+            source_revision: model.source_revision.clone(),
+            asset_filename: model.asset_filename.clone(),
+            asset_bytes: model.asset_bytes,
+            asset_sha256: model.asset_sha256.clone(),
+            license_id: None,
+            compatible_runtime_ids: model.compatible_runtime_ids.clone(),
+            trust_kind: ModelTrustKind::UserSupplied,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ManagedRuntimeCatalog {
     pub schema_version: u32,
@@ -342,6 +462,8 @@ pub struct ManagedModelCatalog {
     pub model_root: &'static str,
     pub models: Vec<ApprovedModelSummary>,
     pub maximum_models: usize,
+    pub custom_models: Vec<CustomModelSummary>,
+    pub maximum_custom_models: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -363,12 +485,27 @@ pub struct ArtifactValidationSummary {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct CustomArtifactValidationSummary {
+    pub artifact_id: String,
+    pub kind: ArtifactKind,
+    pub trust_kind: ModelTrustKind,
+    pub installation_status: InstallationStatus,
+    pub expected_bytes: u64,
+    pub expected_sha256: String,
+    pub observed_bytes: Option<u64>,
+    pub observed_sha256: Option<String>,
+    pub validation_code: String,
+    pub verified_unix_ms: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct ManagedInstalledArtifacts {
     pub schema_version: u32,
     pub catalog_id: String,
     pub catalog_version: String,
     pub catalog_digest: String,
     pub artifacts: Vec<ArtifactValidationSummary>,
+    pub custom_artifacts: Vec<CustomArtifactValidationSummary>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -378,6 +515,7 @@ pub struct ModelReadinessSummary {
     pub catalog_version: String,
     pub catalog_digest: String,
     pub model_id: String,
+    pub model_trust_kind: ModelTrustKind,
     pub model_status: InstallationStatus,
     pub compatible_runtime_ids: Vec<String>,
     pub selected_runtime_id: Option<String>,
@@ -433,8 +571,59 @@ pub(crate) enum ApprovedDownloadArtifact {
     Model(ApprovedModelArtifact),
 }
 
+#[derive(Clone, Debug)]
+enum ManagedModelArtifact {
+    Approved(Box<ApprovedModelArtifact>),
+    Custom(Box<CustomModelArtifact>),
+}
+
+impl ManagedModelArtifact {
+    fn model_id(&self) -> &str {
+        match self {
+            Self::Approved(model) => &model.model_id,
+            Self::Custom(model) => &model.model_id,
+        }
+    }
+
+    fn display_name(&self) -> &str {
+        match self {
+            Self::Approved(model) => &model.display_name,
+            Self::Custom(model) => &model.display_name,
+        }
+    }
+
+    fn compatible_runtime_ids(&self) -> &[String] {
+        match self {
+            Self::Approved(model) => &model.compatible_runtime_ids,
+            Self::Custom(model) => &model.compatible_runtime_ids,
+        }
+    }
+
+    fn managed_relative_path(&self) -> &str {
+        match self {
+            Self::Approved(model) => &model.managed_relative_path,
+            Self::Custom(model) => &model.managed_relative_path,
+        }
+    }
+
+    fn trust_kind(&self) -> ModelTrustKind {
+        match self {
+            Self::Approved(_) => ModelTrustKind::ApprovedCatalog,
+            Self::Custom(_) => ModelTrustKind::UserSupplied,
+        }
+    }
+
+    fn custom_sha256(&self) -> Option<&str> {
+        match self {
+            Self::Approved(_) => None,
+            Self::Custom(model) => Some(&model.asset_sha256),
+        }
+    }
+}
+
 pub struct ArtifactTrustService {
     catalog: ApprovedArtifactCatalog,
+    custom_models: RwLock<CustomModelManifest>,
     catalog_digest: String,
     roots: ManagedArtifactRoots,
     validation_cache: ArtifactValidationCache,
@@ -458,8 +647,11 @@ impl ArtifactTrustService {
         validate_canonical_catalog_bytes(bytes, &catalog)?;
         let catalog_digest = sha256_bytes(bytes);
         let validation_cache = ArtifactValidationCache::new(&roots.app_data_root, &catalog_digest);
+        let custom_models = load_custom_manifest(&roots, &catalog).unwrap_or_default();
+
         Ok(Self {
             catalog,
+            custom_models: RwLock::new(custom_models),
             catalog_digest,
             roots,
             validation_cache,
@@ -470,6 +662,124 @@ impl ArtifactTrustService {
         &self.roots
     }
 
+    pub(crate) fn custom_models_snapshot(&self) -> Vec<CustomModelArtifact> {
+        self.custom_models
+            .read()
+            .map(|manifest| manifest.models.clone())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn custom_model(
+        &self,
+        model_id: &str,
+    ) -> Result<Option<CustomModelArtifact>, ArtifactTrustError> {
+        validate_artifact_id(model_id)?;
+        let manifest = self.custom_models.read().map_err(|_| {
+            ArtifactTrustError::new(
+                "custom_manifest_unavailable",
+                "custom model state unavailable",
+            )
+        })?;
+        Ok(manifest
+            .models
+            .iter()
+            .find(|model| model.model_id == model_id)
+            .cloned())
+    }
+
+    pub(crate) fn ensure_custom_model_capacity(
+        &self,
+        model_id: &str,
+    ) -> Result<(), ArtifactTrustError> {
+        let manifest = self.custom_models.read().map_err(|_| {
+            ArtifactTrustError::new(
+                "custom_manifest_unavailable",
+                "custom model state unavailable",
+            )
+        })?;
+        if manifest
+            .models
+            .iter()
+            .any(|model| model.model_id == model_id)
+        {
+            return Ok(());
+        }
+        if manifest.models.len() >= MAX_CUSTOM_MODELS {
+            return Err(ArtifactTrustError::new(
+                "custom_model_limit",
+                "custom model limit reached",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn register_custom_model(
+        &self,
+        model: CustomModelArtifact,
+    ) -> Result<(), ArtifactTrustError> {
+        if self
+            .validate_custom_model_artifact(&model, true)
+            .installation_status
+            != InstallationStatus::Valid
+        {
+            return Err(ArtifactTrustError::new(
+                "custom_model_not_valid",
+                "custom model must pass full validation before registration",
+            ));
+        }
+        let mut manifest = self.custom_models.write().map_err(|_| {
+            ArtifactTrustError::new(
+                "custom_manifest_unavailable",
+                "custom model state unavailable",
+            )
+        })?;
+        if manifest
+            .models
+            .iter()
+            .any(|existing| existing.model_id == model.model_id)
+        {
+            return Err(ArtifactTrustError::new(
+                "custom_model_conflict",
+                "custom model is already registered",
+            ));
+        }
+        let mut candidate = manifest.clone();
+        candidate.models.push(model);
+        candidate
+            .models
+            .sort_by(|left, right| left.model_id.cmp(&right.model_id));
+        validate_custom_manifest(&candidate, &self.catalog)?;
+        persist_custom_manifest(&self.roots, &candidate)?;
+        *manifest = candidate;
+        Ok(())
+    }
+
+    pub(crate) fn unregister_custom_model(&self, model_id: &str) -> Result<(), ArtifactTrustError> {
+        validate_artifact_id(model_id)?;
+        let mut manifest = self.custom_models.write().map_err(|_| {
+            ArtifactTrustError::new(
+                "custom_manifest_unavailable",
+                "custom model state unavailable",
+            )
+        })?;
+        if !manifest
+            .models
+            .iter()
+            .any(|model| model.model_id == model_id)
+        {
+            return Err(ArtifactTrustError::new(
+                "unknown_artifact",
+                "unknown custom model id",
+            ));
+        }
+        let mut candidate = manifest.clone();
+        candidate.models.retain(|model| model.model_id != model_id);
+        validate_custom_manifest(&candidate, &self.catalog)?;
+        persist_custom_manifest(&self.roots, &candidate)?;
+        *manifest = candidate;
+        Ok(())
+    }
+
     pub(crate) fn invalidate_validation_cache_for_artifact(&self, artifact_id: &str) {
         if let Some(model) = self
             .catalog
@@ -477,6 +787,14 @@ impl ArtifactTrustService {
             .iter()
             .find(|model| model.model_id == artifact_id)
         {
+            if let Ok(path) =
+                resolve_contained(&self.roots.model_root, &model.managed_relative_path)
+            {
+                self.validation_cache.invalidate_path(&path);
+            }
+            return;
+        }
+        if let Ok(Some(model)) = self.custom_model(artifact_id) {
             if let Ok(path) =
                 resolve_contained(&self.roots.model_root, &model.managed_relative_path)
             {
@@ -568,6 +886,64 @@ impl ArtifactTrustService {
         Ok(destination)
     }
 
+    pub(crate) fn custom_download_destination(
+        &self,
+        source: &ValidatedCustomModelSource,
+    ) -> Result<PathBuf, ArtifactTrustError> {
+        let destination = resolve_contained(&self.roots.model_root, &source.managed_relative_path)?;
+        let parent = destination.parent().ok_or_else(|| {
+            ArtifactTrustError::new("invalid_path", "custom model parent unavailable")
+        })?;
+        let _guards = open_directory_guard_chain(&self.roots.app_data_root, parent, true)?;
+        Ok(destination)
+    }
+
+    pub(crate) fn custom_model_destination(
+        &self,
+        model: &CustomModelArtifact,
+    ) -> Result<PathBuf, ArtifactTrustError> {
+        resolve_contained(&self.roots.model_root, &model.managed_relative_path)
+    }
+
+    pub(crate) fn remove_custom_model_file_if_present(
+        &self,
+        model: &CustomModelArtifact,
+    ) -> Result<bool, ArtifactTrustError> {
+        let path = self.custom_model_destination(model)?;
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(_) => {
+                return Err(ArtifactTrustError::new(
+                    "model_removal_failed",
+                    "custom model metadata unavailable",
+                ))
+            }
+        };
+        let parent = path.parent().ok_or_else(|| {
+            ArtifactTrustError::new("invalid_path", "custom model parent unavailable")
+        })?;
+        let _guards = open_directory_guard_chain(&self.roots.app_data_root, parent, false)?;
+        if !metadata.is_file()
+            || ensure_existing_safe_path(
+                &self.roots.app_data_root,
+                &self.roots.model_root,
+                &path,
+                false,
+            )
+            .is_err()
+        {
+            return Err(ArtifactTrustError::new(
+                "invalid_path",
+                "custom model removal path rejected",
+            ));
+        }
+        fs::remove_file(&path).map_err(|_| {
+            ArtifactTrustError::new("model_removal_failed", "custom model removal failed")
+        })?;
+        Ok(true)
+    }
+
     pub fn runtime_catalog(&self) -> ManagedRuntimeCatalog {
         ManagedRuntimeCatalog {
             schema_version: self.catalog.schema_version,
@@ -634,6 +1010,12 @@ impl ArtifactTrustService {
                 })
                 .collect(),
             maximum_models: MAX_ARTIFACTS,
+            custom_models: self
+                .custom_models_snapshot()
+                .iter()
+                .map(CustomModelSummary::from)
+                .collect(),
+            maximum_custom_models: MAX_CUSTOM_MODELS,
         }
     }
 
@@ -645,12 +1027,18 @@ impl ArtifactTrustService {
         for model in &self.catalog.models {
             artifacts.push(self.model_validation_summary(model));
         }
+        let custom_artifacts = self
+            .custom_models_snapshot()
+            .iter()
+            .map(|model| self.custom_model_validation_summary(model))
+            .collect();
         ManagedInstalledArtifacts {
             schema_version: self.catalog.schema_version,
             catalog_id: self.catalog.catalog_id.clone(),
             catalog_version: self.catalog.catalog_version.clone(),
             catalog_digest: self.catalog_digest.clone(),
             artifacts,
+            custom_artifacts,
         }
     }
 
@@ -681,32 +1069,79 @@ impl ArtifactTrustService {
         ))
     }
 
-    pub fn model_readiness(
+    fn managed_model_artifact(
         &self,
         model_id: &str,
-    ) -> Result<ModelReadinessSummary, ArtifactTrustError> {
-        self.model_readiness_with_source(model_id)
-            .map(|(summary, _)| summary)
-    }
-
-    fn model_readiness_with_source(
-        &self,
-        model_id: &str,
-    ) -> Result<(ModelReadinessSummary, ValidationSource), ArtifactTrustError> {
+    ) -> Result<ManagedModelArtifact, ArtifactTrustError> {
         validate_artifact_id(model_id)?;
-        let model = self
+        if let Some(model) = self
             .catalog
             .models
             .iter()
             .find(|model| model.model_id == model_id)
-            .ok_or_else(|| ArtifactTrustError::new("unknown_artifact", "unknown model id"))?;
-        let model_validation = self.validate_model(model);
+        {
+            return Ok(ManagedModelArtifact::Approved(Box::new(model.clone())));
+        }
+        self.custom_model(model_id)?
+            .map(|model| ManagedModelArtifact::Custom(Box::new(model)))
+            .ok_or_else(|| ArtifactTrustError::new("unknown_artifact", "unknown model id"))
+    }
+
+    pub(crate) fn runtime_start_approval_input(
+        &self,
+        model_id: &str,
+        custom_sha256: Option<&str>,
+    ) -> Result<Value, ArtifactTrustError> {
+        let model = self.managed_model_artifact(model_id)?;
+        match model {
+            ManagedModelArtifact::Approved(_) if custom_sha256.is_some() => {
+                Err(ArtifactTrustError::new(
+                    "custom_sha256_rejected",
+                    "approved model does not accept a custom digest",
+                ))
+            }
+            ManagedModelArtifact::Approved(_) => Ok(serde_json::json!({ "model_id": model_id })),
+            ManagedModelArtifact::Custom(model) => {
+                let supplied = custom_sha256.ok_or_else(|| {
+                    ArtifactTrustError::new(
+                        "custom_sha256_required",
+                        "custom model start requires its local digest",
+                    )
+                })?;
+                validate_sha256(supplied)?;
+                if supplied != model.asset_sha256 {
+                    return Err(ArtifactTrustError::new(
+                        "custom_sha256_mismatch",
+                        "custom model digest does not match durable state",
+                    ));
+                }
+                Ok(serde_json::json!({
+                    "model_id": model_id,
+                    "custom_sha256": supplied,
+                }))
+            }
+        }
+    }
+
+    pub fn model_readiness(
+        &self,
+        model_id: &str,
+    ) -> Result<ModelReadinessSummary, ArtifactTrustError> {
+        let model = self.managed_model_artifact(model_id)?;
+        self.model_readiness_for(&model).map(|(summary, _)| summary)
+    }
+
+    fn model_readiness_for(
+        &self,
+        model: &ManagedModelArtifact,
+    ) -> Result<(ModelReadinessSummary, ValidationSource), ArtifactTrustError> {
+        let model_validation = self.validate_managed_model(model, force_full_validation());
         let mut validation_source = model_validation.source;
         let model_outcome = model_validation.outcome;
         let mut selected_runtime_id = None;
         let mut selected_runtime_status = None;
         let mut saw_invalid_runtime = false;
-        for runtime_id in &model.compatible_runtime_ids {
+        for runtime_id in model.compatible_runtime_ids() {
             let runtime = self
                 .catalog
                 .runtimes
@@ -736,7 +1171,7 @@ impl ArtifactTrustService {
         let incompatible_runtime_installed = selected_runtime_id.is_none()
             && self.catalog.runtimes.iter().any(|runtime| {
                 !model
-                    .compatible_runtime_ids
+                    .compatible_runtime_ids()
                     .iter()
                     .any(|runtime_id| runtime_id == &runtime.runtime_id)
                     && self.validate_runtime(runtime).outcome.status == InstallationStatus::Valid
@@ -768,9 +1203,10 @@ impl ArtifactTrustService {
                 catalog_id: self.catalog.catalog_id.clone(),
                 catalog_version: self.catalog.catalog_version.clone(),
                 catalog_digest: self.catalog_digest.clone(),
-                model_id: model.model_id.clone(),
+                model_id: model.model_id().to_string(),
+                model_trust_kind: model.trust_kind(),
                 model_status: model_outcome.status,
-                compatible_runtime_ids: model.compatible_runtime_ids.clone(),
+                compatible_runtime_ids: model.compatible_runtime_ids().to_vec(),
                 selected_runtime_id,
                 runtime_status: selected_runtime_status,
                 compatibility,
@@ -785,19 +1221,59 @@ impl ArtifactTrustService {
         &self,
         model_id: &str,
     ) -> Result<ValidatedRuntimeModel, ArtifactTrustError> {
-        let (readiness, mut validation_source) = self.model_readiness_with_source(model_id)?;
+        self.resolve_launch_inner(model_id, None, false)
+    }
+
+    pub(crate) fn resolve_launch_for_start(
+        &self,
+        model_id: &str,
+        custom_sha256: Option<&str>,
+    ) -> Result<ValidatedRuntimeModel, ArtifactTrustError> {
+        let model = self.managed_model_artifact(model_id)?;
+        if matches!(model, ManagedModelArtifact::Approved(_)) && custom_sha256.is_none() {
+            return self.resolve_launch(model_id);
+        }
+        self.resolve_launch_inner(model_id, custom_sha256, true)
+    }
+
+    fn resolve_launch_inner(
+        &self,
+        model_id: &str,
+        custom_sha256: Option<&str>,
+        require_approval_binding: bool,
+    ) -> Result<ValidatedRuntimeModel, ArtifactTrustError> {
+        let model = self.managed_model_artifact(model_id)?;
+        if require_approval_binding {
+            match (model.custom_sha256(), custom_sha256) {
+                (None, None) => {}
+                (None, Some(_)) => {
+                    return Err(ArtifactTrustError::new(
+                        "custom_sha256_rejected",
+                        "approved model does not accept a custom digest",
+                    ))
+                }
+                (Some(_), None) => {
+                    return Err(ArtifactTrustError::new(
+                        "custom_sha256_required",
+                        "custom model start requires its local digest",
+                    ))
+                }
+                (Some(expected), Some(supplied)) if expected == supplied => {}
+                (Some(_), Some(_)) => {
+                    return Err(ArtifactTrustError::new(
+                        "custom_sha256_mismatch",
+                        "custom model digest changed after approval",
+                    ))
+                }
+            }
+        }
+        let (readiness, mut validation_source) = self.model_readiness_for(&model)?;
         if !readiness.launchable {
             return Err(ArtifactTrustError::new(
                 "artifact_not_ready",
-                "approved runtime/model pair is not ready",
+                "managed runtime/model pair is not ready",
             ));
         }
-        let model = self
-            .catalog
-            .models
-            .iter()
-            .find(|model| model.model_id == model_id)
-            .ok_or_else(|| ArtifactTrustError::new("unknown_artifact", "unknown model id"))?;
         let runtime_id = readiness
             .selected_runtime_id
             .ok_or_else(|| ArtifactTrustError::new("artifact_not_ready", "runtime unavailable"))?;
@@ -810,7 +1286,7 @@ impl ArtifactTrustService {
         let package_dir =
             resolve_contained(&self.roots.runtime_root, &runtime.managed_relative_path)?;
         let executable = resolve_contained(&package_dir, &runtime.executable_relative_path)?;
-        let model_path = resolve_contained(&self.roots.model_root, &model.managed_relative_path)?;
+        let model_path = resolve_contained(&self.roots.model_root, model.managed_relative_path())?;
         let model_parent = model_path
             .parent()
             .ok_or_else(|| ArtifactTrustError::new("invalid_path", "model parent unavailable"))?;
@@ -838,7 +1314,7 @@ impl ArtifactTrustService {
             let path = resolve_contained(&package_dir, &required.relative_path)?;
             runtime_handles.push(open_runtime_guard(&path)?);
         }
-        let model_recheck = self.validate_model(model);
+        let model_recheck = self.validate_managed_model(&model, true);
         validation_source = validation_source.combine(model_recheck.source);
         if model_recheck.outcome.status != InstallationStatus::Valid {
             return Err(ArtifactTrustError::new(
@@ -859,8 +1335,8 @@ impl ArtifactTrustService {
             runtime_release_tag: runtime.release_tag.clone(),
             package_dir,
             executable,
-            model_id: model.model_id.clone(),
-            model_display_name: model.display_name.clone(),
+            model_id: model.model_id().to_string(),
+            model_display_name: model.display_name().to_string(),
             model_path,
             model_handle,
             runtime_handles,
@@ -900,6 +1376,47 @@ impl ArtifactTrustService {
             &model.asset_sha256,
             outcome,
         )
+    }
+
+    fn custom_model_validation_summary(
+        &self,
+        model: &CustomModelArtifact,
+    ) -> CustomArtifactValidationSummary {
+        let outcome = self
+            .validate_custom_model(model, force_full_validation())
+            .outcome;
+        CustomArtifactValidationSummary {
+            artifact_id: model.model_id.clone(),
+            kind: ArtifactKind::Model,
+            trust_kind: ModelTrustKind::UserSupplied,
+            installation_status: outcome.status,
+            expected_bytes: model.asset_bytes,
+            expected_sha256: model.asset_sha256.clone(),
+            observed_bytes: outcome.observed_bytes,
+            observed_sha256: outcome.observed_sha256,
+            validation_code: outcome.code.into(),
+            verified_unix_ms: now_unix_ms(),
+        }
+    }
+
+    pub(crate) fn validate_custom_model_artifact(
+        &self,
+        model: &CustomModelArtifact,
+        force_full: bool,
+    ) -> CustomArtifactValidationSummary {
+        let outcome = self.validate_custom_model(model, force_full).outcome;
+        CustomArtifactValidationSummary {
+            artifact_id: model.model_id.clone(),
+            kind: ArtifactKind::Model,
+            trust_kind: ModelTrustKind::UserSupplied,
+            installation_status: outcome.status,
+            expected_bytes: model.asset_bytes,
+            expected_sha256: model.asset_sha256.clone(),
+            observed_bytes: outcome.observed_bytes,
+            observed_sha256: outcome.observed_sha256,
+            validation_code: outcome.code.into(),
+            verified_unix_ms: now_unix_ms(),
+        }
     }
 
     fn validation_summary(
@@ -1150,6 +1667,19 @@ impl ArtifactTrustService {
         }
     }
 
+    fn validate_managed_model(
+        &self,
+        model: &ManagedModelArtifact,
+        force_full: bool,
+    ) -> SourcedValidationOutcome {
+        match model {
+            ManagedModelArtifact::Approved(model) => {
+                self.validate_model_with_force(model, force_full)
+            }
+            ManagedModelArtifact::Custom(model) => self.validate_custom_model(model, force_full),
+        }
+    }
+
     fn validate_model(&self, model: &ApprovedModelArtifact) -> SourcedValidationOutcome {
         self.validate_model_with_force(model, force_full_validation())
     }
@@ -1159,10 +1689,37 @@ impl ArtifactTrustService {
         model: &ApprovedModelArtifact,
         force_full: bool,
     ) -> SourcedValidationOutcome {
+        self.validate_model_file(
+            &model.managed_relative_path,
+            model.asset_bytes,
+            &model.asset_sha256,
+            force_full,
+        )
+    }
+
+    fn validate_custom_model(
+        &self,
+        model: &CustomModelArtifact,
+        force_full: bool,
+    ) -> SourcedValidationOutcome {
+        self.validate_model_file(
+            &model.managed_relative_path,
+            model.asset_bytes,
+            &model.asset_sha256,
+            force_full,
+        )
+    }
+
+    fn validate_model_file(
+        &self,
+        managed_relative_path: &str,
+        expected_bytes: u64,
+        expected_sha256: &str,
+        force_full: bool,
+    ) -> SourcedValidationOutcome {
         let mut source = ValidationSource::Hashed;
         let outcome = (|| {
-            let path = match resolve_contained(&self.roots.model_root, &model.managed_relative_path)
-            {
+            let path = match resolve_contained(&self.roots.model_root, managed_relative_path) {
                 Ok(path) => path,
                 Err(_) => {
                     return ValidationOutcome {
@@ -1202,7 +1759,7 @@ impl ArtifactTrustService {
                     }
                 }
             };
-            if metadata.len() != model.asset_bytes {
+            if metadata.len() != expected_bytes {
                 return ValidationOutcome {
                     status: InstallationStatus::BytesMismatch,
                     observed_bytes: Some(metadata.len()),
@@ -1224,12 +1781,12 @@ impl ArtifactTrustService {
             }
             match self.validation_cache.hash_or_reuse(
                 &path,
-                &model.asset_sha256,
+                expected_sha256,
                 &self.catalog_digest,
                 force_full,
                 sha256_file,
             ) {
-                Ok(validated) if validated.observed_sha256 == model.asset_sha256 => {
+                Ok(validated) if validated.observed_sha256 == expected_sha256 => {
                     source = validated.source;
                     ValidationOutcome {
                         status: InstallationStatus::Valid,
@@ -1369,6 +1926,349 @@ pub async fn managed_model_readiness(
     })
     .await
     .map_err(|_| BridgeError::new("runtime_unavailable", "model readiness worker failed"))?
+}
+
+pub(crate) fn validate_custom_huggingface_url(
+    value: &str,
+) -> Result<ValidatedCustomModelSource, ArtifactTrustError> {
+    if value.is_empty()
+        || value.len() > 2_048
+        || !value.is_ascii()
+        || value.bytes().any(|byte| byte.is_ascii_control())
+        || value.contains(['%', '\\'])
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_url",
+            "custom Hugging Face URL rejected",
+        ));
+    }
+    let url = Url::parse(value).map_err(|_| {
+        ArtifactTrustError::new("invalid_custom_url", "custom Hugging Face URL rejected")
+    })?;
+    if url.as_str() != value
+        || url.scheme() != "https"
+        || url.host_str() != Some("huggingface.co")
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_url",
+            "custom Hugging Face URL rejected",
+        ));
+    }
+    let segments: Vec<&str> = url.path_segments().map(Iterator::collect).ok_or_else(|| {
+        ArtifactTrustError::new("invalid_custom_url", "custom Hugging Face path rejected")
+    })?;
+    if segments.len() < 5 || segments[2] != "resolve" {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_url",
+            "custom Hugging Face resolve path required",
+        ));
+    }
+    for segment in &segments {
+        validate_custom_url_segment(segment)?;
+    }
+    let owner = segments[0];
+    let repository = segments[1];
+    let revision = segments[3];
+    let filename = *segments.last().ok_or_else(|| {
+        ArtifactTrustError::new("invalid_custom_url", "custom model filename missing")
+    })?;
+    if owner.len() > 96
+        || repository.len() > 96
+        || revision.len() > 128
+        || filename.len() > 128
+        || !filename.ends_with(".gguf")
+        || validate_filename(filename).is_err()
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_url",
+            "custom model URL fields rejected",
+        ));
+    }
+    let source_repository = format!("{owner}/{repository}");
+    let model_id = format!("{CUSTOM_MODEL_ID_PREFIX}{}", sha256_bytes(value.as_bytes()));
+    validate_artifact_id(&model_id)?;
+    let managed_relative_path = format!("custom/{model_id}/{filename}");
+    validate_relative_windows_path(&managed_relative_path)?;
+    Ok(ValidatedCustomModelSource {
+        model_id,
+        display_name: filename.to_string(),
+        source_url: value.to_string(),
+        source_repository,
+        source_revision: revision.to_string(),
+        asset_filename: filename.to_string(),
+        compatible_runtime_ids: vec![CUSTOM_MODEL_RUNTIME_ID.to_string()],
+        managed_relative_path,
+    })
+}
+
+fn validate_custom_url_segment(segment: &str) -> Result<(), ArtifactTrustError> {
+    if segment.is_empty()
+        || segment.len() > 128
+        || segment == "."
+        || segment == ".."
+        || !segment
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        || segment.bytes().any(|byte| {
+            !(byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-'))
+        })
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_url",
+            "custom Hugging Face path segment rejected",
+        ));
+    }
+    Ok(())
+}
+
+fn custom_manifest_path(roots: &ManagedArtifactRoots) -> Result<PathBuf, ArtifactTrustError> {
+    resolve_contained(&roots.state_root, CUSTOM_MANIFEST_FILENAME)
+}
+
+fn load_custom_manifest(
+    roots: &ManagedArtifactRoots,
+    catalog: &ApprovedArtifactCatalog,
+) -> Result<CustomModelManifest, ArtifactTrustError> {
+    let path = custom_manifest_path(roots)?;
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CustomModelManifest::default())
+        }
+        Err(_) => {
+            return Err(ArtifactTrustError::new(
+                "invalid_custom_manifest",
+                "custom model manifest metadata unavailable",
+            ))
+        }
+    };
+    let _guards = open_directory_guard_chain(&roots.app_data_root, &roots.state_root, false)?;
+    if !metadata.is_file()
+        || metadata.len() > MAX_CUSTOM_MANIFEST_BYTES
+        || ensure_existing_safe_path(&roots.app_data_root, &roots.state_root, &path, false).is_err()
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_manifest",
+            "custom model manifest rejected",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    File::open(&path)
+        .map_err(|_| {
+            ArtifactTrustError::new(
+                "invalid_custom_manifest",
+                "custom model manifest unavailable",
+            )
+        })?
+        .take(MAX_CUSTOM_MANIFEST_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| {
+            ArtifactTrustError::new(
+                "invalid_custom_manifest",
+                "custom model manifest unreadable",
+            )
+        })?;
+    if bytes.len() as u64 > MAX_CUSTOM_MANIFEST_BYTES {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_manifest",
+            "custom model manifest exceeds size limit",
+        ));
+    }
+    let manifest = parse_custom_manifest(&bytes)?;
+    validate_custom_manifest(&manifest, catalog)?;
+    Ok(manifest)
+}
+
+fn parse_custom_manifest(bytes: &[u8]) -> Result<CustomModelManifest, ArtifactTrustError> {
+    if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_manifest",
+            "custom model manifest BOM rejected",
+        ));
+    }
+    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+    let unique = UniqueValue::deserialize(&mut deserializer).map_err(|_| {
+        ArtifactTrustError::new(
+            "invalid_custom_manifest",
+            "custom model manifest JSON rejected",
+        )
+    })?;
+    deserializer.end().map_err(|_| {
+        ArtifactTrustError::new(
+            "invalid_custom_manifest",
+            "custom model manifest trailing data rejected",
+        )
+    })?;
+    serde_json::from_value(unique.0).map_err(|_| {
+        ArtifactTrustError::new(
+            "invalid_custom_manifest",
+            "custom model manifest schema rejected",
+        )
+    })
+}
+
+fn validate_custom_manifest(
+    manifest: &CustomModelManifest,
+    catalog: &ApprovedArtifactCatalog,
+) -> Result<(), ArtifactTrustError> {
+    if manifest.schema_version != SCHEMA_VERSION || manifest.models.len() > MAX_CUSTOM_MODELS {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_manifest",
+            "custom model manifest header rejected",
+        ));
+    }
+    let mut previous_id = None::<&str>;
+    let mut ids = BTreeSet::new();
+    let mut paths = BTreeSet::new();
+    let mut sources = BTreeSet::new();
+    for model in &manifest.models {
+        validate_artifact_id(&model.model_id)?;
+        if previous_id.is_some_and(|previous| previous >= model.model_id.as_str())
+            || !ids.insert(model.model_id.as_str())
+            || catalog
+                .models
+                .iter()
+                .any(|approved| approved.model_id == model.model_id)
+            || catalog
+                .runtimes
+                .iter()
+                .any(|approved| approved.runtime_id == model.model_id)
+        {
+            return Err(ArtifactTrustError::new(
+                "invalid_custom_manifest",
+                "custom model ids are not unique and sorted",
+            ));
+        }
+        previous_id = Some(&model.model_id);
+        let source = validate_custom_huggingface_url(&model.source_url)?;
+        if source.model_id != model.model_id
+            || source.display_name != model.display_name
+            || source.source_repository != model.source_repository
+            || source.source_revision != model.source_revision
+            || source.asset_filename != model.asset_filename
+            || source.compatible_runtime_ids != model.compatible_runtime_ids
+            || source.managed_relative_path != model.managed_relative_path
+            || model.asset_bytes == 0
+            || model.asset_bytes > MAX_MODEL_BYTES
+            || validate_sha256(&model.asset_sha256).is_err()
+            || !paths.insert(model.managed_relative_path.to_ascii_lowercase())
+            || !sources.insert(model.source_url.as_str())
+        {
+            return Err(ArtifactTrustError::new(
+                "invalid_custom_manifest",
+                "custom model record rejected",
+            ));
+        }
+        ensure_sorted_unique(
+            model
+                .compatible_runtime_ids
+                .iter()
+                .map(|runtime_id| runtime_id.as_str()),
+        )?;
+        for runtime_id in &model.compatible_runtime_ids {
+            if !catalog
+                .runtimes
+                .iter()
+                .any(|runtime| &runtime.runtime_id == runtime_id)
+            {
+                return Err(ArtifactTrustError::new(
+                    "invalid_custom_manifest",
+                    "custom model runtime is not approved",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn persist_custom_manifest(
+    roots: &ManagedArtifactRoots,
+    manifest: &CustomModelManifest,
+) -> Result<(), ArtifactTrustError> {
+    let mut bytes = serde_json::to_vec_pretty(manifest).map_err(|_| {
+        ArtifactTrustError::new(
+            "custom_manifest_persist_failed",
+            "custom model manifest serialization failed",
+        )
+    })?;
+    bytes.push(b'\n');
+    if bytes.len() as u64 > MAX_CUSTOM_MANIFEST_BYTES {
+        return Err(ArtifactTrustError::new(
+            "custom_manifest_persist_failed",
+            "custom model manifest exceeds size limit",
+        ));
+    }
+    let _guards = open_directory_guard_chain(&roots.app_data_root, &roots.state_root, true)?;
+    let destination = custom_manifest_path(roots)?;
+    if destination.exists()
+        && ensure_existing_safe_path(&roots.app_data_root, &roots.state_root, &destination, false)
+            .is_err()
+    {
+        return Err(ArtifactTrustError::new(
+            "custom_manifest_persist_failed",
+            "custom model manifest destination rejected",
+        ));
+    }
+    let sequence = CUSTOM_MANIFEST_TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let temporary_name = format!("custom-models.v1.{}.{}.tmp", std::process::id(), sequence);
+    let temporary = resolve_contained(&roots.state_root, &temporary_name)?;
+    let write_result = (|| -> std::io::Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        atomic_replace_file(&temporary, &destination)
+    })();
+    if write_result.is_err() {
+        let _ = fs::remove_file(&temporary);
+        return Err(ArtifactTrustError::new(
+            "custom_manifest_persist_failed",
+            "custom model manifest durable replace failed",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn atomic_replace_file(temporary: &Path, destination: &Path) -> std::io::Result<()> {
+    if !destination.exists() {
+        return fs::rename(temporary, destination);
+    }
+    let replacement: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let temporary: Vec<u16> = temporary
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let result = unsafe {
+        MoveFileExW(
+            temporary.as_ptr(),
+            replacement.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn atomic_replace_file(temporary: &Path, destination: &Path) -> std::io::Result<()> {
+    fs::rename(temporary, destination)
 }
 
 fn parse_catalog(bytes: &[u8]) -> Result<ApprovedArtifactCatalog, ArtifactTrustError> {
@@ -2695,6 +3595,252 @@ mod tests {
         fs::create_dir_all(path.parent().expect("model parent")).expect("create model directory");
         fs::write(&path, bytes).expect("write model fixture");
         path
+    }
+
+    fn custom_test_catalog() -> ApprovedArtifactCatalog {
+        ApprovedArtifactCatalog {
+            schema_version: SCHEMA_VERSION,
+            catalog_id: CATALOG_ID.into(),
+            catalog_version: "1.0.0-custom-test".into(),
+            runtimes: vec![test_runtime(
+                CUSTOM_MODEL_RUNTIME_ID,
+                CUSTOM_MODEL_RUNTIME_ID,
+            )],
+            models: vec![test_model(vec![CUSTOM_MODEL_RUNTIME_ID.into()])],
+        }
+    }
+
+    fn custom_test_source() -> ValidatedCustomModelSource {
+        validate_custom_huggingface_url(
+            "https://huggingface.co/localcomet/test-model/resolve/main/models/custom.gguf",
+        )
+        .expect("valid custom Hugging Face URL")
+    }
+
+    fn custom_test_artifact(bytes: &[u8]) -> CustomModelArtifact {
+        custom_test_source().into_artifact(bytes.len() as u64, sha256_bytes(bytes))
+    }
+
+    fn install_custom_model(
+        workspace: &TestWorkspace,
+        model: &CustomModelArtifact,
+        bytes: &[u8],
+    ) -> PathBuf {
+        let path = workspace
+            .roots()
+            .model_root
+            .join(model.managed_relative_path.split('/').collect::<PathBuf>());
+        fs::create_dir_all(path.parent().expect("custom model parent"))
+            .expect("create custom model directory");
+        fs::write(&path, bytes).expect("write custom model fixture");
+        path
+    }
+
+    #[test]
+    fn custom_huggingface_url_is_canonical_stable_and_bounded() {
+        let url = "https://huggingface.co/localcomet/test-model/resolve/main/models/custom.gguf";
+        let source = validate_custom_huggingface_url(url).expect("canonical URL accepted");
+        assert_eq!(
+            source.model_id,
+            format!("{CUSTOM_MODEL_ID_PREFIX}{}", sha256_bytes(url.as_bytes()))
+        );
+        assert_eq!(source.source_repository, "localcomet/test-model");
+        assert_eq!(source.source_revision, "main");
+        assert_eq!(source.asset_filename, "custom.gguf");
+        assert_eq!(
+            source.managed_relative_path,
+            format!("custom/{}/custom.gguf", source.model_id)
+        );
+        assert_eq!(
+            source.compatible_runtime_ids,
+            vec![CUSTOM_MODEL_RUNTIME_ID.to_string()]
+        );
+
+        for rejected in [
+            "http://huggingface.co/owner/repo/resolve/main/model.gguf",
+            "https://huggingface.co.evil.test/owner/repo/resolve/main/model.gguf",
+            "https://evil.test/huggingface.co/owner/repo/resolve/main/model.gguf",
+            "https://user@huggingface.co/owner/repo/resolve/main/model.gguf",
+            "https://huggingface.co:443/owner/repo/resolve/main/model.gguf",
+            "https://HUGGINGFACE.CO/owner/repo/resolve/main/model.gguf",
+            "https://huggingface.co/owner/repo/blob/main/model.gguf",
+            "https://huggingface.co/owner/repo/resolve/main/model.gguf?token=secret",
+            "https://huggingface.co/owner/repo/resolve/main/model.gguf#fragment",
+            "https://huggingface.co/owner/repo/resolve/main/../model.gguf",
+            "https://huggingface.co/owner/repo/resolve/main/%2e%2e/model.gguf",
+            "https://huggingface.co/owner/repo/resolve/main/model.bin",
+            "https://huggingface.co/owner/repo/resolve/main/CON.gguf",
+        ] {
+            assert!(
+                validate_custom_huggingface_url(rejected).is_err(),
+                "must reject {rejected}"
+            );
+        }
+    }
+
+    #[test]
+    fn custom_manifest_roundtrips_without_entering_approved_inventory() {
+        let workspace = TestWorkspace::new();
+        let catalog = custom_test_catalog();
+        let service = service_for(&catalog, &workspace);
+        let model = custom_test_artifact(TEST_MODEL_BYTES);
+        install_custom_model(&workspace, &model, TEST_MODEL_BYTES);
+        service
+            .register_custom_model(model.clone())
+            .expect("durably register validated custom model");
+
+        let model_catalog = service.model_catalog();
+        assert_eq!(model_catalog.models.len(), catalog.models.len());
+        assert_eq!(model_catalog.custom_models.len(), 1);
+        assert_eq!(
+            model_catalog.custom_models[0].trust_kind,
+            ModelTrustKind::UserSupplied
+        );
+        assert!(service.approved_download_artifact(&model.model_id).is_err());
+        assert!(service.artifact_validation_status(&model.model_id).is_err());
+        let installed = service.installed_artifacts();
+        assert_eq!(
+            installed.artifacts.len(),
+            catalog.runtimes.len() + catalog.models.len()
+        );
+        assert_eq!(installed.custom_artifacts.len(), 1);
+        assert_eq!(
+            installed.custom_artifacts[0].installation_status,
+            InstallationStatus::Valid
+        );
+
+        drop(service);
+        let reloaded = service_for(&catalog, &workspace);
+        assert_eq!(reloaded.custom_model(&model.model_id).unwrap(), Some(model));
+    }
+
+    #[test]
+    fn malformed_oversize_and_legacy_custom_manifests_fail_closed() {
+        for bytes in [
+            b"{not-json".to_vec(),
+            br#"{"schema_version":1,"models":[],"unexpected":true}"#.to_vec(),
+            br#"{"schema_version":1,"schema_version":1,"models":[]}"#.to_vec(),
+            vec![b' '; MAX_CUSTOM_MANIFEST_BYTES as usize + 1],
+        ] {
+            let workspace = TestWorkspace::new();
+            let roots = workspace.roots();
+            fs::create_dir_all(&roots.state_root).expect("create state root");
+            fs::write(roots.state_root.join(CUSTOM_MANIFEST_FILENAME), bytes)
+                .expect("write rejected custom manifest");
+            let service = service_for(&custom_test_catalog(), &workspace);
+            assert!(service.custom_models_snapshot().is_empty());
+            assert_eq!(service.model_catalog().models.len(), 1);
+        }
+
+        let workspace = TestWorkspace::new();
+        fs::write(
+            workspace.root.join("custom_models.json"),
+            serde_json::to_vec(&vec![test_model(vec![CUSTOM_MODEL_RUNTIME_ID.into()])])
+                .expect("serialize legacy fixture"),
+        )
+        .expect("write legacy custom file");
+        let service = service_for(&custom_test_catalog(), &workspace);
+        assert!(service.custom_models_snapshot().is_empty());
+    }
+
+    #[test]
+    fn custom_registration_requires_full_validation_and_readiness_marks_trust() {
+        let workspace = TestWorkspace::new();
+        let catalog = custom_test_catalog();
+        let service = service_for(&catalog, &workspace);
+        let model = custom_test_artifact(TEST_MODEL_BYTES);
+        let error = service
+            .register_custom_model(model.clone())
+            .expect_err("missing bytes cannot become durable nomination");
+        assert_eq!(error.code(), "custom_model_not_valid");
+        assert!(!workspace
+            .roots()
+            .state_root
+            .join(CUSTOM_MANIFEST_FILENAME)
+            .exists());
+
+        install_runtime(&workspace, &catalog.runtimes[0], TEST_RUNTIME_BYTES);
+        let path = install_custom_model(&workspace, &model, TEST_MODEL_BYTES);
+        service
+            .register_custom_model(model.clone())
+            .expect("validated custom model registers");
+        let readiness = service
+            .model_readiness(&model.model_id)
+            .expect("custom readiness");
+        assert_eq!(readiness.model_trust_kind, ModelTrustKind::UserSupplied);
+        assert_eq!(readiness.readiness, ModelReadiness::Ready);
+        assert!(readiness.launchable);
+
+        let mut changed = TEST_MODEL_BYTES.to_vec();
+        changed[5] ^= 1;
+        fs::write(path, changed).expect("tamper custom model");
+        assert_eq!(
+            service
+                .validate_custom_model_artifact(&model, true)
+                .installation_status,
+            InstallationStatus::HashMismatch
+        );
+    }
+
+    #[test]
+    fn custom_remove_handles_missing_file_and_durably_unregisters() {
+        let workspace = TestWorkspace::new();
+        let catalog = custom_test_catalog();
+        let service = service_for(&catalog, &workspace);
+        let model = custom_test_artifact(TEST_MODEL_BYTES);
+        let path = install_custom_model(&workspace, &model, TEST_MODEL_BYTES);
+        service
+            .register_custom_model(model.clone())
+            .expect("register custom model");
+        fs::remove_file(&path).expect("simulate missing custom model");
+        assert!(!service
+            .remove_custom_model_file_if_present(&model)
+            .expect("missing custom model is removable"));
+        service
+            .unregister_custom_model(&model.model_id)
+            .expect("durably unregister custom model");
+        assert!(service.custom_models_snapshot().is_empty());
+        drop(service);
+        assert!(service_for(&catalog, &workspace)
+            .custom_models_snapshot()
+            .is_empty());
+    }
+
+    #[test]
+    fn runtime_start_approval_binds_custom_digest_only() {
+        let workspace = TestWorkspace::new();
+        let catalog = custom_test_catalog();
+        let service = service_for(&catalog, &workspace);
+        assert_eq!(
+            service
+                .runtime_start_approval_input("test-model", None)
+                .expect("approved input"),
+            serde_json::json!({ "model_id": "test-model" })
+        );
+        assert!(service
+            .runtime_start_approval_input("test-model", Some(&"0".repeat(64)))
+            .is_err());
+
+        let model = custom_test_artifact(TEST_MODEL_BYTES);
+        install_custom_model(&workspace, &model, TEST_MODEL_BYTES);
+        service
+            .register_custom_model(model.clone())
+            .expect("register custom model");
+        assert!(service
+            .runtime_start_approval_input(&model.model_id, None)
+            .is_err());
+        assert!(service
+            .runtime_start_approval_input(&model.model_id, Some(&"0".repeat(64)))
+            .is_err());
+        assert_eq!(
+            service
+                .runtime_start_approval_input(&model.model_id, Some(&model.asset_sha256))
+                .expect("digest-bound custom input"),
+            serde_json::json!({
+                "model_id": model.model_id,
+                "custom_sha256": model.asset_sha256,
+            })
+        );
     }
 
     #[test]

@@ -6,6 +6,7 @@ mod artifact_trust;
 mod artifact_validation_cache;
 mod control_plane;
 mod files;
+mod hardware;
 mod ipc;
 mod knowledge;
 mod managed_runtime;
@@ -38,6 +39,7 @@ use files::{
     files_capability_status, forget_selected_file, list_selected_files, preview_selected_file,
     select_files, SelectedFilesManager,
 };
+use hardware::scan_hardware;
 use knowledge::{knowledge_turn_decide, knowledge_turn_preview};
 use managed_runtime::{
     managed_runtime_logs, managed_runtime_start, managed_runtime_status, managed_runtime_stop,
@@ -254,6 +256,7 @@ pub fn run() {
             request_approval,
             execute_approved,
             run_tool_call,
+            scan_hardware,
             set_workspace
         ])
         .run(tauri::generate_context!());

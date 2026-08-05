@@ -36,8 +36,7 @@
   --lc-transition-normal: 220ms ease;
   --lc-mono: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   --shell-header-height: 48px;
-  --rail-width: 224px;
-  --sidebar-width: 208px;
+  --sidebar-width: 260px;
   --inspector-width: 312px;
   --content-width: 768px;
   --border-thin: 1px solid var(--lc-line);
@@ -170,8 +169,8 @@ a:focus-visible {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--rail-width) minmax(0, 1fr);
-  grid-template-rows: var(--shell-header-height) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   background: var(--lc-bg);
   color: var(--lc-text);
@@ -221,15 +220,15 @@ kbd {
 
 .shell-body {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
 }
 
 .shell-body.diagnostics-open {
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--inspector-width);
+  grid-template-columns: minmax(0, 1fr) var(--inspector-width);
 }
 
 .rail,
@@ -397,7 +396,7 @@ button:disabled {
 
 @media (max-width: 1279px) {
   .app-shell {
-    --rail-width: 52px;
+    --sidebar-width: 52px;
   }
 
   .shell-body,
@@ -415,7 +414,7 @@ button:disabled {
     right: 0;
     z-index: 40;
     display: block;
-    width: min(var(--inspector-width), calc(100vw - var(--rail-width)));
+    width: min(var(--inspector-width), calc(100vw - var(--sidebar-width)));
     height: calc(100vh - var(--shell-header-height));
     border-left: var(--border-thin);
     box-shadow: var(--lc-shadow);
@@ -435,10 +434,10 @@ button:disabled {
   .sidebar.sidebar-open {
     position: fixed;
     top: var(--shell-header-height);
-    left: var(--rail-width);
+    left: var(--sidebar-width);
     z-index: 35;
     display: block;
-    width: min(var(--sidebar-width), calc(100vw - var(--rail-width)));
+    width: calc(100vw - var(--sidebar-width));
     height: calc(100vh - var(--shell-header-height));
     box-shadow: var(--lc-shadow);
   }
@@ -450,7 +449,7 @@ button:disabled {
 
 @media (max-width: 680px) {
   .app-shell {
-    --rail-width: 48px;
+    --sidebar-width: 48px;
   }
 
   .chat-scroll {

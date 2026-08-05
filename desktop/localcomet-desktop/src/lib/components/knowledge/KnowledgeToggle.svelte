@@ -2,11 +2,10 @@
   import { t } from '$lib/i18n';
 </script>
 
-<div class="knowledge-availability" role="status" aria-label={$t('knowledge.unavailable')}>
+<div class="knowledge-availability" style="display: none;" role="status" aria-label={$t('knowledge.unavailable')}>
   <div>
     <strong>{$t('knowledge.title')}</strong>
     <span>{$t('knowledge.unavailable')}</span>
-    <p>{$t('knowledge.unavailable_detail')}</p>
   </div>
 </div>
 

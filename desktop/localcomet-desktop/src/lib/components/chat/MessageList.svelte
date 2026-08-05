@@ -32,14 +32,37 @@
 
 <section class="message-list" aria-label={$t('chat.message_history')}>
   {#if showEmptyState}
-    <EmptyState
-      title={$t(emptyTitleKey)}
-      detail={$t(emptyDetailKey)}
-      busy={modelLoading}
-      statusLabel={modelLoading ? $t('chat.model_loading_status') : $managedModelReady ? $t('chat.local_only_status') : undefined}
-      actionLabel={!$managedModelReady && !modelLoading ? $t('chat.setup_local_ai') : undefined}
-      onAction={!$managedModelReady && !modelLoading ? () => openSettings('models') : undefined}
-    />
+      <EmptyState
+        title={$t(emptyTitleKey)}
+        detail={$t(emptyDetailKey)}
+        busy={modelLoading}
+        statusLabel={modelLoading ? $t('chat.model_loading_status') : $managedModelReady ? $t('chat.local_only_status') : undefined}
+        actionLabel={!$managedModelReady && !modelLoading ? $t('chat.setup_local_ai') : undefined}
+        onAction={!$managedModelReady && !modelLoading ? () => openSettings('models') : undefined}
+      />
+      {#if $managedModelReady}
+        <div class="prompt-cards-section">
+          <h3>{$t('chat.how_can_i_help') ?? 'Чем помочь?'}</h3>
+          <div class="cards-grid">
+            <button type="button" class="prompt-card" onclick={() => {}}>
+              <span>Создать компонент</span>
+              <span class="prompt-sub">React с Tailwind</span>
+            </button>
+            <button type="button" class="prompt-card" onclick={() => {}}>
+              <span>Объяснить ошибку</span>
+              <span class="prompt-sub">в консоли сервера</span>
+            </button>
+            <button type="button" class="prompt-card" onclick={() => {}}>
+              <span>Написать тесты</span>
+              <span class="prompt-sub">для API эндпоинта</span>
+            </button>
+            <button type="button" class="prompt-card" onclick={() => {}}>
+              <span>Оптимизировать</span>
+              <span class="prompt-sub">SQL запрос</span>
+            </button>
+          </div>
+        </div>
+      {/if}
   {:else}
     {#each visibleMessages as message}
       <article class="message {message.role}" aria-label={message.role === 'user' ? $t('chat.user_message') : $t('chat.model_response')}>
@@ -77,8 +100,61 @@
   .message-list {
     min-width: 0;
     max-width: 100%;
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 12px;
+  }
+
+  .prompt-cards-section {
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .prompt-cards-section h3 {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--lc-text);
+    margin: 0;
+  }
+
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    max-width: 600px;
+    width: 100%;
+  }
+
+  .prompt-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px;
+    background: var(--lc-panel);
+    border: 1px solid var(--lc-line);
+    border-radius: var(--radius-3);
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .prompt-card:hover {
+    background: var(--lc-panel-soft);
+    border-color: var(--lc-accent);
+  }
+
+  .prompt-card span {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--lc-text);
+  }
+
+  .prompt-card .prompt-sub {
+    font-size: 13px;
+    color: var(--lc-muted);
   }
 
   .message {

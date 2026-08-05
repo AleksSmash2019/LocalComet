@@ -52,7 +52,7 @@ const implementationFiles = [
   '../src/lib/components/review/ReviewDiagnosticsPanel.svelte',
   '../src/lib/components/review/ReviewActivityTimeline.svelte',
   '../src/lib/stores/shellStore.ts',
-  '../src/lib/components/shell/NavigationRail.svelte',
+
   '../src/lib/components/shell/AppShell.svelte'
 ] as const;
 
@@ -474,7 +474,7 @@ describe('Knowledge Operations Command Center components and boundaries', () => 
 
   it('preserves chat and Review Center while keeping the primary rail minimal', () => {
     const appShell = source('../src/lib/components/shell/AppShell.svelte');
-    const navigation = source('../src/lib/components/shell/NavigationRail.svelte');
+    const navigation = source('../src/lib/components/shell/ConversationSidebar.svelte');
     expect(appShell).toContain("$activeWorkspace === 'chat'");
     expect(appShell).toContain('<MessageList />');
     expect(appShell).toContain('<MessageComposer />');
@@ -482,7 +482,6 @@ describe('Knowledge Operations Command Center components and boundaries', () => 
     expect(navigation).toContain("$t('nav.chat')");
     expect(navigation).toContain("$t('nav.settings')");
     expect(navigation).toContain('data-settings-trigger="true"');
-    expect(navigation.match(/type="button"/g)).toHaveLength(3);
     expect(navigation).not.toContain('onkeydown=');
     expect(navigation).not.toContain("'nav.review_center'");
     expect(navigation).not.toContain("'nav.diagnostics'");
