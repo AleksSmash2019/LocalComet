@@ -256,7 +256,9 @@ def _computer_use(
         "key",
         "hotkey",
         "scroll",
+        "drag",
         "wait",
+        "screenshot",
     }
     if action not in ALLOWED_ACTIONS:
         raise ToolExecutionError("invalid_payload", f"unsupported computer_use action: {action}")
@@ -277,7 +279,9 @@ def _computer_use(
         "key": "press_key",
         "hotkey": "hotkey",
         "scroll": "scroll",
+        "drag": "drag",
         "wait": "wait_for_window",
+        "screenshot": "screenshot",
     }
     kind = kind_map[action]
 

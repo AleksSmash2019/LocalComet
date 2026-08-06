@@ -1122,7 +1122,7 @@ def build_system_instruction(context: AssistantContext) -> str:
                 )
             if has_computer_use:
                 available_parts.append(
-                    "Computer Use (разрешённые действия: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait; требует подтверждения пользователя; shell при этом НЕ доступен)"
+                    "Computer Use (разрешённые действия: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, drag, wait, screenshot; координаты 0-1000 нормализованы, screenshot возвращает base64; требует подтверждения пользователя; shell при этом НЕ доступен)"
                 )
             if has_web:
                 available_parts.append(
@@ -1187,7 +1187,7 @@ def build_system_instruction(context: AssistantContext) -> str:
             )
         if has_computer_use:
             available_parts_en.append(
-                "Computer Use (allowlisted actions: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait; requires user approval; shell is NOT available)"
+                "Computer Use (allowlisted actions: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, drag, wait, screenshot; 0-1000 normalized coordinates, screenshot returns base64; requires user approval; shell is NOT available)"
             )
         if not available_parts_en:
             available_parts_en.append("no additional tools enabled")
@@ -2183,7 +2183,7 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "shell": "Execute a shell command. Registered but not executable in this Desktop build; tool calls will be rejected at the handler (requires explicit allowlisted subprocess path).",
     "web.search": "Web search (guarded). Required: query (<=200 chars). Returns up to 5 results {url,title,snippet}. Rate-limited, cached 10m. Use for fresh news/facts when local knowledge is stale.",
     "web.fetch": "Web fetch (guarded). Required: url (https:// or http://, <=2000 chars). Fetches and strips HTML to ~8k text, cached 10m. Use to read a page found via web.search.",
-    "computer_use": "Desktop Computer Use. Actions are allowlisted only. Valid action values: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait. Use text for type/paste/key/hotkey payload and optional coordinate [x,y] as advisory hint. Dangerous: user approval is required before execution. Delegated to the local allowlisted executor; free-form OS commands are rejected.",
+    "computer_use": "Desktop Computer Use. Actions are allowlisted only. Valid action values: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait, drag. Use text for type/paste/key/hotkey payload and optional coordinate [x,y] as advisory hint (0-1000 normalized or pixel advisory; for small targets zoom/enable_zoom and retry with precise targeting). Dangerous: user approval is required before execution. Delegated to the local allowlisted executor; free-form OS commands are rejected. After each computer_use step, call screenshot, evaluate outcome, retry if not achieved (Anthropic best-practice self-correction loop).",
 }
 
 

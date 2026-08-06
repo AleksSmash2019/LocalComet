@@ -31,6 +31,10 @@ ALLOWED_APPS = {
     "calc": {"command": "calc.exe", "aliases": ["calc", "calculator", "калькулятор"]},
     "mspaint": {"command": "mspaint.exe", "aliases": ["paint", "mspaint", "рисование", "пейнт"]},
     "explorer": {"command": "explorer.exe", "aliases": ["explorer", "проводник", "файлы"]},
+    "chrome": {"command": "chrome.exe", "aliases": ["chrome", "google chrome", "хром", "браузер", "browser"]},
+    "msedge": {"command": "msedge.exe", "aliases": ["edge", "msedge", "microsoft edge", "еdge"]},
+    "firefox": {"command": "firefox.exe", "aliases": ["firefox", "фаерфокс", "мозилла", "mozilla"]},
+    "vscode": {"command": "Code.exe", "aliases": ["vscode", "code", "visual studio code", "вс код", "код"]},
 }
 
 FOLDER_ALIASES = {
@@ -685,6 +689,228 @@ def wait_for_window(seconds: float = 0.6, simulate: bool = False) -> Dict[str, A
     return {"ok": True, "status": "simulated" if simulate else "executed", "mode": "computer_use_real_wait", "seconds": seconds}
 
 
+def drag(
+    from_x: int | None = None,
+    from_y: int | None = None,
+    to_x: int | None = None,
+    to_y: int | None = None,
+    *,
+    simulate: bool = False,
+    coordinate: list | None = None,
+) -> Dict[str, Any]:
+    """Drag from (x,y) to (x2,y2) — coordinates 0-1000 normalized or pixels.
+
+    If coordinate=[x0,y0,x1,y1] (4 numbers) use that; else use from_* / to_*.
+    Falls back gracefully if coordinates missing — returns error, no shell.
+    """
+    coords: list[int] | None = None
+    if isinstance(coordinate, list) and len(coordinate) == 4:
+        try:
+            coords = [int(c) for c in coordinate]
+        except Exception:
+            coords = None
+    elif from_x is not None and to_x is not None:
+        try:
+            coords = [int(from_x), int(from_y or 0), int(to_x), int(to_y or 0)]
+        except Exception:
+            coords = None
+    if coords is None:
+        return {"ok": False, "status": "error", "reason": "drag requires coordinate=[x0,y0,x1,y1] or from/to", "mode": "computer_use_real_drag"}
+    if simulate:
+        return {"ok": True, "status": "simulated", "mode": "computer_use_real_drag", "coordinate": coords}
+    if os.name != "nt":
+        return {"ok": False, "status": "unsupported", "reason": "real drag supports Windows in this build", "mode": "computer_use_real_drag"}
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        # Normalize 0-1000 to pixels if values look normalized (all <= 1000)
+        def _px(v: int, total: int) -> int:
+            if 0 <= v <= 1000 and max(coords or []) <= 1000:
+                return int(round(v / 1000.0 * total))
+            return int(v)
+
+        sx = int(user32.GetSystemMetrics(0))
+        sy = int(user32.GetSystemMetrics(1))
+        x0, y0, x1, y1 = coords
+        px0, py0 = _px(x0, sx), _px(y0, sy)
+        px1, py1 = _px(x1, sx), _px(y1, sy)
+        MOUSEEVENTF_LEFTDOWN = 0x0002
+        MOUSEEVENTF_LEFTUP = 0x0004
+        user32.SetCursorPos(px0, py0)
+        time.sleep(0.04)
+        user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+        time.sleep(0.04)
+        # Interpolate 6 steps for smooth drag
+        for step in range(1, 7):
+            t = step / 6.0
+            ix = int(round(px0 + (px1 - px0) * t))
+            iy = int(round(py0 + (py1 - py0) * t))
+            user32.SetCursorPos(ix, iy)
+            time.sleep(0.02)
+        user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+        return {"ok": True, "status": "executed", "mode": "computer_use_real_drag", "from": [px0, py0], "to": [px1, py1]}
+    except Exception as exc:
+        return {"ok": False, "status": "error", "reason": str(exc), "mode": "computer_use_real_drag"}
+
+
+def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
+    """Capture desktop screenshot, downscale, return base64 PNG.
+
+    Gated by simulate flag: when True no OS capture is performed.
+    Primary path uses PIL ImageGrab; fallback uses ctypes BitBlt (Windows GDI).
+    Downscale preserves aspect: max 1024x768 and Anthropic pattern
+    long_edge 1568 / 1.15M pixels (whichever is stricter).
+    No raw shell is invoked.
+    """
+    if simulate:
+        return {
+            "ok": True,
+            "status": "simulated",
+            "mode": "computer_use_real_screenshot",
+            "screenshot": "",
+            "width": 1024,
+            "height": 768,
+            "scale": 1.0,
+        }
+    # --- capture ---
+    image = None
+    orig_w = orig_h = 0
+    try:
+        try:
+            from PIL import ImageGrab  # type: ignore
+
+            image = ImageGrab.grab(all_screens=True)
+        except Exception:
+            image = None
+        if image is None:
+            if os.name != "nt":
+                return {"ok": False, "status": "unsupported", "reason": "screenshot requires Windows or PIL ImageGrab", "mode": "computer_use_real_screenshot"}
+            # Fallback: ctypes BitBlt -> PIL Image
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            gdi32 = ctypes.windll.gdi32
+            # Ensure DPI awareness so GetSystemMetrics returns physical pixels
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+            width = int(user32.GetSystemMetrics(0))
+            height = int(user32.GetSystemMetrics(1))
+            if width <= 0 or height <= 0:
+                return {"ok": False, "status": "error", "reason": "invalid screen dimensions", "mode": "computer_use_real_screenshot"}
+            hdc_screen = user32.GetDC(0)
+            hdc_mem = gdi32.CreateCompatibleDC(hdc_screen)
+            hbmp = gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
+            if not hbmp:
+                gdi32.DeleteDC(hdc_mem)
+                user32.ReleaseDC(0, hdc_screen)
+                return {"ok": False, "status": "error", "reason": "CreateCompatibleBitmap failed", "mode": "computer_use_real_screenshot"}
+            prev = gdi32.SelectObject(hdc_mem, hbmp)
+            SRCCOPY = 0x00CC0020
+            ok_blt = gdi32.BitBlt(hdc_mem, 0, 0, width, height, hdc_screen, 0, 0, SRCCOPY)
+            if not ok_blt:
+                gdi32.SelectObject(hdc_mem, prev)
+                gdi32.DeleteObject(hbmp)
+                gdi32.DeleteDC(hdc_mem)
+                user32.ReleaseDC(0, hdc_screen)
+                return {"ok": False, "status": "error", "reason": "BitBlt failed", "mode": "computer_use_real_screenshot"}
+            # Extract bitmap bits via GetDIBits
+            from PIL import Image  # type: ignore
+
+            bmi_header_size = 40
+            class BITMAPINFOHEADER(ctypes.Structure):
+                _fields_ = [
+                    ("biSize", wintypes.DWORD),
+                    ("biWidth", wintypes.LONG),
+                    ("biHeight", wintypes.LONG),
+                    ("biPlanes", wintypes.WORD),
+                    ("biBitCount", wintypes.WORD),
+                    ("biCompression", wintypes.DWORD),
+                    ("biSizeImage", wintypes.DWORD),
+                    ("biXPelsPerMeter", wintypes.LONG),
+                    ("biYPelsPerMeter", wintypes.LONG),
+                    ("biClrUsed", wintypes.DWORD),
+                    ("biClrImportant", wintypes.DWORD),
+                ]
+
+            class BITMAPINFO(ctypes.Structure):
+                _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", wintypes.DWORD * 3)]
+
+            bmi = BITMAPINFO()
+            bmi.bmiHeader.biSize = bmi_header_size
+            bmi.bmiHeader.biWidth = width
+            bmi.bmiHeader.biHeight = -height  # top-down
+            bmi.bmiHeader.biPlanes = 1
+            bmi.bmiHeader.biBitCount = 32
+            bmi.bmiHeader.biCompression = 0  # BI_RGB
+            buffer_len = width * height * 4
+            buffer = ctypes.create_string_buffer(buffer_len)
+            ret = gdi32.GetDIBits(hdc_mem, hbmp, 0, height, buffer, ctypes.byref(bmi), 0)
+            gdi32.SelectObject(hdc_mem, prev)
+            gdi32.DeleteObject(hbmp)
+            gdi32.DeleteDC(hdc_mem)
+            user32.ReleaseDC(0, hdc_screen)
+            if not ret:
+                return {"ok": False, "status": "error", "reason": "GetDIBits failed", "mode": "computer_use_real_screenshot"}
+            image = Image.frombuffer("RGBA", (width, height), buffer, "raw", "BGRA", 0, 1).convert("RGB")
+        # --- downscale preserving aspect ---
+        import base64
+        import io
+
+        orig_w, orig_h = int(image.size[0]), int(image.size[1])
+        if orig_w <= 0 or orig_h <= 0:
+            return {"ok": False, "status": "error", "reason": "invalid image dimensions", "mode": "computer_use_real_screenshot"}
+        scale = 1.0
+        # Anthropic pattern constraints
+        long_edge = max(orig_w, orig_h)
+        if long_edge > 1568:
+            scale = min(scale, 1568.0 / float(long_edge))
+        pixels = float(orig_w) * float(orig_h)
+        if pixels > 1_150_000:
+            scale = min(scale, (1_150_000 / pixels) ** 0.5)
+        # Target max 1024x768
+        if orig_w > 1024 or orig_h > 768:
+            scale = min(scale, min(1024.0 / float(orig_w), 768.0 / float(orig_h)))
+        if scale < 1.0:
+            new_w = max(1, int(round(orig_w * scale)))
+            new_h = max(1, int(round(orig_h * scale)))
+            try:
+                # Pillow >= 9.1 uses Resampling
+                resample = getattr(getattr(image, "Resampling", image), "LANCZOS", 1)
+                image = image.resize((new_w, new_h), resample)
+            except Exception:
+                image = image.resize((new_w, new_h))
+        else:
+            new_w, new_h = orig_w, orig_h
+            scale = 1.0
+        # Recompute actual scale from realized dimensions (round-trip safe)
+        actual_scale = float(new_w) / float(orig_w) if orig_w else 1.0
+        # Encode PNG base64
+        buf = io.BytesIO()
+        image.save(buf, format="PNG", optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return {
+            "ok": True,
+            "status": "executed",
+            "mode": "computer_use_real_screenshot",
+            "screenshot": b64,
+            "width": int(new_w),
+            "height": int(new_h),
+            "scale": float(actual_scale),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "error",
+            "reason": str(exc),
+            "traceback": traceback.format_exc(),
+            "mode": "computer_use_real_screenshot",
+        }
+
+
 def execute_real_action(action: Dict[str, Any], simulate: bool = False, mission_goal: str = "") -> Dict[str, Any]:
     kind = str(action.get("kind") or "").strip()
     try:
@@ -708,6 +934,20 @@ def execute_real_action(action: Dict[str, Any], simulate: bool = False, mission_
             return press_key(str(action.get("key") or action.get("target") or ""), simulate=simulate)
         if kind == "scroll":
             return scroll(str(action.get("direction") or "down"), int(action.get("clicks") or 4), simulate=simulate)
+        if kind == "drag":
+            coord = action.get("coordinate")
+            if isinstance(coord, list) and len(coord) == 4:
+                return drag(coordinate=coord, simulate=simulate)
+            return drag(
+                from_x=action.get("from_x"),
+                from_y=action.get("from_y"),
+                to_x=action.get("to_x"),
+                to_y=action.get("to_y"),
+                coordinate=coord if isinstance(coord, list) else None,
+                simulate=simulate,
+            )
+        if kind == "screenshot":
+            return capture_screenshot(simulate=simulate)
         if kind == "delegate_multistep":
             from modules.computer_use_multistep_loop_ru import run_loop
             result = run_loop(str(action.get("goal") or mission_goal), simulate=simulate, max_steps=1, max_failures=1)
@@ -733,7 +973,9 @@ def get_real_action_capabilities() -> Dict[str, Any]:
             "hotkey",
             "press_key",
             "scroll",
+            "drag",
             "wait_for_window",
+            "screenshot",
             "delegate_multistep",
         ],
         "app_allowlist": sorted(ALLOWED_APPS.keys()),
