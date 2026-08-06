@@ -1122,7 +1122,7 @@ def build_system_instruction(context: AssistantContext) -> str:
                 )
             if has_computer_use:
                 available_parts.append(
-                    "Computer Use (разрешённые действия: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, drag, wait, screenshot; координаты 0-1000 нормализованы, screenshot возвращает base64; требует подтверждения пользователя; shell при этом НЕ доступен. После каждого шага делай screenshot и оцени результат — если шаг не достигнут, повтори; только после подтверждения переходи дальше)"
+                    "Computer Use (разрешённые действия: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, drag, wait, screenshot; координаты 0-1000 нормализованы, screenshot возвращает base64; требует подтверждения пользователя; shell при этом НЕ доступен. После каждого шага делай screenshot и оцени результат — если шаг не достигнут, повтори; только после подтверждения переходи дальше. Для мелких целей — клик ближе к центру, при промахе скорректируй по screenshot)"
                 )
             if has_web:
                 available_parts.append(
@@ -1187,7 +1187,7 @@ def build_system_instruction(context: AssistantContext) -> str:
             )
         if has_computer_use:
             available_parts_en.append(
-                "Computer Use (allowlisted actions: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, drag, wait, screenshot; 0-1000 normalized coordinates, screenshot returns base64; requires user approval; shell is NOT available. After each step take a screenshot and evaluate — if not achieved retry; only after confirmation proceed)"
+                "Computer Use (allowlisted actions: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, drag, wait, screenshot; 0-1000 normalized coordinates, screenshot returns base64; requires user approval; shell is NOT available. After each step take a screenshot and evaluate — if not achieved retry; only after confirmation proceed. For small targets click near center and correct from screenshot if missed)"
             )
         if not available_parts_en:
             available_parts_en.append("no additional tools enabled")
