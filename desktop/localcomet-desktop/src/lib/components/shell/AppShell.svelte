@@ -231,6 +231,8 @@
       {:catch error}
         <p class="hf-lazy-error">{error?.message ?? 'Failed to load'}</p>
       {/await}
+    {:else if $activeWorkspace === 'modelfit'}
+      <iframe src="/modelfit.html" title="Подобрать модель" class="modelfit-frame"></iframe>
     {:else}
       <OnboardingScreen />
     {/if}
@@ -285,5 +287,12 @@
     padding: var(--lc-space-4);
     color: var(--lc-danger);
     font-size: 12px;
+  }
+
+  .modelfit-frame {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
   }
 </style>

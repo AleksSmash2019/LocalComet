@@ -52,6 +52,17 @@
         <span class="nav-dot"></span>
         {$t('nav.hf_browser')}
       </button>
+      <button
+        type="button"
+        class="nav-button"
+        aria-label="Подобрать модель"
+        title="Подобрать модель"
+        class:active={$activeWorkspace === 'modelfit' && !$settingsPanelOpen}
+        onclick={() => setActiveWorkspace('modelfit')}
+      >
+        <Icon name="hardware" size={16} />
+        Подобрать модель
+      </button>
     </div>
 
     <button
