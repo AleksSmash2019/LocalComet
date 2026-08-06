@@ -21,8 +21,11 @@ ALLOWLIST = {
     "src/lib/stores/shellStore.ts": "fallback constants (modeOptions, inspectorSections)",
     "src/lib/components/chat/CodeBlock.svelte": "type-only import",
     "src/lib/components/chat/ToolCallCard.svelte": "type-only import",
-    "src/lib/components/chat/VerificationCard.svelte": "type-only import",
-    "src/lib/components/common/ThemeToggle.svelte": "type-only import",
+    # VerificationCard.svelte and ThemeToggle.svelte were deleted on 2026-08-06
+    # as unreachable components (no importer anywhere in src/, tests/ or
+    # static/). Their entries are removed rather than kept "just in case":
+    # the gate treats an entry with no matching importer as INERT_ALLOWLIST and
+    # fails, so a stale entry cannot silently pre-approve a future file.
     "src/lib/components/shell/AppShell.svelte": "type-only import",
     "src/lib/components/shell/SettingsPanel.svelte": "type-only import",
 }
