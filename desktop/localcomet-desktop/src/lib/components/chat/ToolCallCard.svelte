@@ -2,16 +2,25 @@
   import type { ToolCallMock } from '$lib/data/mockData';
 
   export let tool: ToolCallMock;
+
+  $: isWebTool = tool.operation === 'web.search' || tool.operation === 'web.fetch';
+  $: isError = tool.status === 'WAITING' && tool.result?.includes('error');
 </script>
 
-<article class="tool-card tool-surface" aria-label="Tools disabled">
+<article class="tool-card tool-surface" aria-label={isWebTool ? `Web ${tool.status}` : 'Tools disabled'}>
   <div class="tool-head">
     <div>
-      <span class="eyebrow">Tool Runtime</span>
+      <span class="eyebrow">{isWebTool ? `WEB ${tool.operation === 'web.search' ? 'SEARCH' : 'FETCH'}` : 'Tool Runtime'}</span>
       <h2>{tool.operation}</h2>
     </div>
-    <span class="status-pill"><span class="status-dot disabled"></span>{tool.status}</span>
+    <span class="status-pill"><span class="status-dot" class:disabled={tool.status === 'SKIPPED'}></span>{tool.status}</span>
   </div>
+  {#if isWebTool}
+    <div class="web-meta">
+      <dt>Source</dt>
+      <dd class="mono">{tool.target}</dd>
+    </div>
+  {:else}
   <dl>
     <div>
       <dt>Target</dt>
@@ -22,10 +31,20 @@
       <dd>{tool.elapsed}</dd>
     </div>
   </dl>
+  {/if}
   <details>
-    <summary>Details</summary>
+    <summary>{isWebTool ? 'View result' : 'Details'}</summary>
     <p>{tool.detail}</p>
+    {#if isWebTool && tool.result}
+      <div class="web-result">
+        <pre>{tool.result.slice(0, 4000)}</pre>
+        {#if tool.result.length > 4000}
+          <span class="truncated-note">Truncated — full result available in context</span>
+        {/if}
+      </div>
+    {:else}
     <pre>{tool.result}</pre>
+    {/if}
   </details>
 </article>
 
@@ -83,5 +102,35 @@
     color: var(--color-text);
     padding: var(--lc-space-3);
     font-family: var(--font-mono);
+  }
+
+  .web-meta {
+    margin: var(--lc-space-3) 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+    color: var(--lc-text);
+  }
+
+  .web-result pre {
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  .truncated-note {
+    display: block;
+    margin-top: 6px;
+    color: var(--lc-muted);
+    font-size: 11px;
+  }
+
+  .status-dot.disabled {
+    background: var(--lc-muted);
   }
 </style>

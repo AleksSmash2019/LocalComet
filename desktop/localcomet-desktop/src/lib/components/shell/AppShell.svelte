@@ -12,7 +12,6 @@
   import ModelSetupDrawer from '$lib/components/model/ModelSetupDrawer.svelte';
   import ReviewCenterWorkspace from '$lib/components/review/ReviewCenterWorkspace.svelte';
   import OnboardingScreen from '$lib/components/onboarding/OnboardingScreen.svelte';
-  import HuggingFaceBrowser from '$lib/components/model/HuggingFaceBrowser.svelte';
   import {
     activeWorkspace,
     chatMessages,
@@ -227,7 +226,11 @@
     {:else if $activeWorkspace === 'review'}
       <ReviewCenterWorkspace />
     {:else if $activeWorkspace === 'hf_browser'}
-      <HuggingFaceBrowser />
+      {#await import('$lib/components/model/HuggingFaceBrowser.svelte') then mod}
+        <svelte:component this={mod.default} />
+      {:catch error}
+        <p class="hf-lazy-error">{error?.message ?? 'Failed to load'}</p>
+      {/await}
     {:else}
       <OnboardingScreen />
     {/if}
@@ -276,5 +279,11 @@
   .shell-body.focused-mode {
     display: flex;
     flex-direction: column;
+  }
+
+  .hf-lazy-error {
+    padding: var(--lc-space-4);
+    color: var(--lc-danger);
+    font-size: 12px;
   }
 </style>
