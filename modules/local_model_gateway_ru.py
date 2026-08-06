@@ -216,6 +216,7 @@ def _expected_assistant_context(
     has_files = any(t.startswith("files.") for t in tools)
     has_shell = "shell" in tools
     has_computer_use = "computer_use" in tools
+    has_web = any(t.startswith("web.") for t in tools)
     return AssistantContext(
         application_name="LocalComet",
         application_mode="local_offline_desktop_assistant",
@@ -227,7 +228,7 @@ def _expected_assistant_context(
         local_model_inference=True,
         internet=False,
         email=False,
-        browser=False,
+        browser=has_web,
         filesystem=has_files,
         vault=False,
         computer_use=has_computer_use,
@@ -1111,6 +1112,7 @@ def build_system_instruction(context: AssistantContext) -> str:
     has_files_tools = any(t.startswith("files.") for t in context.tools)
     has_computer_use = "computer_use" in context.tools
     has_shell = "shell" in context.tools
+    has_web = any(t.startswith("web.") for t in context.tools)
     if context.locale == "ru":
         if tools_available:
             available_parts: list[str] = []
@@ -1122,14 +1124,18 @@ def build_system_instruction(context: AssistantContext) -> str:
                 available_parts.append(
                     "Computer Use (разрешённые действия: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait; требует подтверждения пользователя; shell при этом НЕ доступен)"
                 )
+            if has_web:
+                available_parts.append(
+                    "интернет: web.search (поиск, ≤200 символов запроса, ≤5 результатов) и web.fetch (чтение страницы по URL) — guarded, лимит 10kB, кэш 10м"
+                )
             if not available_parts:
                 available_parts.append("инструменты не включены")
-            unavailable_parts: list[str] = [
-                "интернет и новости",
-                "email",
-                "браузер",
-                "Obsidian Vault",
-            ]
+            unavailable_parts: list[str] = []
+            if not has_web:
+                unavailable_parts.append("интернет и новости")
+            unavailable_parts.extend(["email", "Obsidian Vault"])
+            if not has_web:
+                unavailable_parts.append("браузер")
             if not has_shell:
                 unavailable_parts.append("PowerShell/shell (зарегистрирован, но не исполняется в этой сборке Desktop — все вызовы отклоняются)")
             elif has_shell:
@@ -1185,11 +1191,18 @@ def build_system_instruction(context: AssistantContext) -> str:
             )
         if not available_parts_en:
             available_parts_en.append("no additional tools enabled")
-        unavailable_parts_en: list[str] = ["Internet or current news", "email", "browser", "Obsidian Vault"]
+        unavailable_parts_en: list[str] = []
+        if not has_web:
+            unavailable_parts_en.append("Internet or current news")
+        unavailable_parts_en.extend(["email", "Obsidian Vault"])
+        if not has_web:
+            unavailable_parts_en.append("browser")
         if not has_shell:
             unavailable_parts_en.append("PowerShell/shell (registered but not executable in this Desktop build — all calls are rejected)")
         elif has_shell:
             available_parts_en.append("shell (registered but rejected — explicit path not implemented)")
+        if has_web:
+            available_parts_en.append("internet: web.search (search, ≤200 query, ≤5 results) and web.fetch (fetch page by URL) — guarded, 10kB limit, cached 10m")
         if not has_computer_use:
             unavailable_parts_en.append("computer or button control / Computer Use")
         capabilities_sentence = (
@@ -2157,6 +2170,8 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "files.delete": {"required": ("path",), "properties": {"path": str}},
     "shell": {"required": ("command",), "properties": {"command": str}},
     "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str}},
+    "web.search": {"required": ("query",), "properties": {"query": str}},
+    "web.fetch": {"required": ("url",), "properties": {"url": str}},
 }
 
 _TOOL_DESCRIPTIONS: dict[str, str] = {
@@ -2166,6 +2181,8 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "files.create_folder": "Create a folder inside the confirmed workspace.",
     "files.delete": "Delete a file or folder inside the confirmed workspace.",
     "shell": "Execute a shell command. Registered but not executable in this Desktop build; tool calls will be rejected at the handler (requires explicit allowlisted subprocess path).",
+    "web.search": "Web search (guarded). Required: query (<=200 chars). Returns up to 5 results {url,title,snippet}. Rate-limited, cached 10m. Use for fresh news/facts when local knowledge is stale.",
+    "web.fetch": "Web fetch (guarded). Required: url (https:// or http://, <=2000 chars). Fetches and strips HTML to ~8k text, cached 10m. Use to read a page found via web.search.",
     "computer_use": "Desktop Computer Use. Actions are allowlisted only. Valid action values: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait. Use text for type/paste/key/hotkey payload and optional coordinate [x,y] as advisory hint. Dangerous: user approval is required before execution. Delegated to the local allowlisted executor; free-form OS commands are rejected.",
 }
 

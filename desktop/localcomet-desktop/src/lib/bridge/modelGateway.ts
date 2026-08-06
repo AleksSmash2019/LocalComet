@@ -268,7 +268,7 @@ export async function startModelTurn(args: {
   fileIds?: readonly string[];
   locale: AssistantLocale;
   bindingFingerprint: string;
-  agentPermissions: { files: boolean; shell: boolean; computerUse: boolean; tools: boolean };
+  agentPermissions: { files: boolean; shell: boolean; computerUse: boolean; tools: boolean; internet: boolean };
   messages?: readonly unknown[];
 }): Promise<ModelTurnStartResponse> {
   const requestId = validateTurnId(args.requestId);

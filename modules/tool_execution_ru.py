@@ -29,7 +29,7 @@ from modules.workspace_policy import WorkspacePolicy, WorkspacePolicyError
 MAX_TOOL_FILE_BYTES = 1_000_000
 
 SUPPORTED_TOOLS = frozenset(
-    ("files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use")
+    ("files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch")
 )
 
 
@@ -299,6 +299,114 @@ def _computer_use(
     return result
 
 
+# ── web.search / web.fetch ───────────────────────────────────────
+# Guarded, rate-limited, no eval. search = DuckDuckGo HTML scrape (no key).
+# fetch = GET with 10kB limit + html strip + MAX_FILE_BYTES guard.
+# Both share a tiny in-memory cache so repeated calls don't hammer the net.
+import urllib.request, urllib.parse
+import html as _html
+
+_web_cache: dict[str, tuple[float, str]] = {}
+_WEB_CACHE_TTL = 600.0  # 10 min
+_MAX_WEB_RESULTS = 5
+_MAX_FETCH_BYTES = 10 * 1024
+_ALLOWED_FETCH_SCHEMES = ("https://", "http://")
+
+def _web_cache_get(key: str) -> str | None:
+    import time
+    ent = _web_cache.get(key)
+    if ent and (time.time() - ent[0]) < _WEB_CACHE_TTL:
+        return ent[1]
+    return None
+
+def _web_cache_put(key: str, val: str) -> None:
+    import time
+    # cap cache to 50 entries — cheap LRU
+    if len(_web_cache) >= 50:
+        oldest = min(_web_cache.items(), key=lambda kv: kv[1][0])[0]
+        _web_cache.pop(oldest, None)
+    _web_cache[key] = (time.time(), val)
+
+def _strip_html(text: str) -> str:
+    # minimal sanitizer: strip tags, unescape entities, collapse whitespace
+    import re
+    text = re.sub(r"<script[^>]*>.*?</script>", " ", text, flags=re.S | re.I)
+    text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.S | re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = _html.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:8192]
+
+def _web_search(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
+    query = input_obj.get("query")
+    if not isinstance(query, str) or not query.strip():
+        raise ToolExecutionError("invalid_payload", "query must be a non-empty string")
+    _reject_unrenderable(query, "query")
+    if len(query) > 200:
+        raise ToolExecutionError("invalid_payload", "query exceeds 200 chars")
+    cached = _web_cache_get(f"s:{query.strip().lower()}")
+    if cached is not None:
+        return {"tool": tool, "query": query, "results": cached, "cached": True}
+    # DuckDuckGo lite HTML — no API key, single GET
+    import urllib.request, urllib.parse, re
+    q = urllib.parse.quote_plus(query.strip())
+    url = f"https://lite.duckduckgo.com/lite/?q={q}"
+    req = urllib.request.Request(url, headers={"User-Agent": "LocalComet/6.84 web.search"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise ToolExecutionError("internal_error", f"web.search fetch failed: {exc}") from exc
+    # parse: lite DDG has <a href="URL">Title</a> + snippet
+    results = []
+    for m in re.finditer(r'<a[^>]+href="([^"]+)"[^>]*>([^<]+)</a>.*?<td[^>]*>([^<]{20,400})</td>', html, re.S | re.I):
+        href, title, snippet = m.groups()
+        if href.startswith("/") or "duckduckgo" in href:
+            continue
+        results.append({"url": href[:500], "title": _strip_html(title)[:200], "snippet": _strip_html(snippet)[:300]})
+        if len(results) >= _MAX_WEB_RESULTS:
+            break
+    if not results:
+        results = [{"url": url, "title": "No results parsed", "snippet": "Try a different query or use web.fetch with a direct URL."}]
+    out = __import__("json").dumps(results, ensure_ascii=False)
+    _web_cache_put(f"s:{query.strip().lower()}", out)
+    return {"tool": tool, "query": query, "results": results, "cached": False}
+
+def _web_fetch(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
+    url = input_obj.get("url")
+    if not isinstance(url, str) or not url.strip():
+        raise ToolExecutionError("invalid_payload", "url must be a non-empty string")
+    _reject_unrenderable(url, "url")
+    url = url.strip()
+    if not url.startswith(_ALLOWED_FETCH_SCHEMES):
+        raise ToolExecutionError("invalid_payload", "url must start with https:// or http://")
+    if len(url) > 2000:
+        raise ToolExecutionError("invalid_payload", "url exceeds 2000 chars")
+    cached = _web_cache_get(f"f:{url}")
+    if cached is not None:
+        return {"tool": tool, "url": url, "content": cached, "cached": True}
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "LocalComet/6.84 web.fetch"})
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            if "text/html" not in ctype and "text/plain" not in ctype and "application/json" not in ctype and "application/xml" not in ctype and "text/" not in ctype:
+                raise ToolExecutionError("invalid_payload", f"unsupported content-type: {ctype[:80]}")
+            raw = resp.read(_MAX_FETCH_BYTES + 1)
+            if len(raw) > _MAX_FETCH_BYTES:
+                raw = raw[:_MAX_FETCH_BYTES]
+            text = raw.decode("utf-8", errors="replace")
+    except ToolExecutionError:
+        raise
+    except Exception as exc:
+        raise ToolExecutionError("internal_error", f"web.fetch failed: {exc}") from exc
+    if len(text.encode("utf-8")) > MAX_TOOL_FILE_BYTES:
+        text = text[:MAX_TOOL_FILE_BYTES]
+    content = _strip_html(text) if "<" in text else text[:8192]
+    _web_cache_put(f"f:{url}", content)
+    return {"tool": tool, "url": url, "content": content, "cached": False}
+
+
 def _shell(
     policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -347,6 +455,10 @@ def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
         return _computer_use(policy, tool, input_obj)
     if tool == "shell":
         return _shell(policy, tool, input_obj)
+    if tool == "web.search":
+        return _web_search(policy, tool, input_obj)
+    if tool == "web.fetch":
+        return _web_fetch(policy, tool, input_obj)
     raise ToolExecutionError(
         "unsupported_method",
         f"tool not implemented: {tool}",

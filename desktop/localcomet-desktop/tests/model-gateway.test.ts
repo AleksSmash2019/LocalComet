@@ -143,7 +143,7 @@ describe('Local Model Gateway frontend', () => {
     await probeModelGateway(1234);
     await listModelGatewayModels(1234);
     await setModelBinding({ providerId: 'openai-compatible-local', harnessId: 'minimal', port: 1234, modelId: 'local-model' });
-    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false } });
+    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false } });
     expect(invokeCalls.map((call) => call.command)).toEqual([
       'model_gateway_catalog',
       'model_gateway_probe',
@@ -168,7 +168,7 @@ describe('Local Model Gateway frontend', () => {
       fileIds: [],
       locale: 'ru',
       bindingFingerprint: FINGERPRINT,
-      agentPermissions: { files: false, shell: false, computerUse: false, tools: false },
+      agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false },
       messages: []
     });
     expect(Object.keys(invokeCalls.at(-1)?.args ?? {}).sort()).toEqual([
@@ -188,10 +188,10 @@ describe('Local Model Gateway frontend', () => {
 
   it('passes only validated opaque file identities to the model command', async () => {
     const fileId = 'd'.repeat(64);
-    const response = await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: [fileId], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false } });
+    const response = await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: [fileId], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false } });
     expect(invokeCalls.at(-1)?.args?.fileIds).toEqual([fileId]);
     expect(response.file_context).toMatchObject({ included_bytes: 5, truncated: true });
-    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: ['C:\\temp\\notes.md'], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false } })).rejects.toMatchObject({ code: 'invalid_payload' });
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: ['C:\\temp\\notes.md'], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false } })).rejects.toMatchObject({ code: 'invalid_payload' });
     expect(invokeCalls).toHaveLength(1);
   });
 
@@ -203,7 +203,7 @@ describe('Local Model Gateway frontend', () => {
   });
 
   it('rejects an unsupported assistant locale before invoking Tauri', async () => {
-    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false } })).rejects.toMatchObject({ code: 'invalid_payload' });
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false } })).rejects.toMatchObject({ code: 'invalid_payload' });
     expect(invokeCalls).toHaveLength(0);
   });
 

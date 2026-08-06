@@ -49,7 +49,7 @@ describe('UI preferences', () => {
       theme: 'dark',
       locale: 'en',
       diagnosticsPanel: 'open',
-      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
 
@@ -63,7 +63,7 @@ describe('UI preferences', () => {
       theme: 'system',
       locale: 'en',
       diagnosticsPanel: 'closed',
-      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
 
@@ -80,7 +80,7 @@ describe('UI preferences', () => {
       theme: 'system',
       locale: 'en',
       diagnosticsPanel: 'closed',
-      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(localStorage.getItem(UI_PREFERENCES_KEY)).toBeNull();
     expect(localStorage.getItem(LEGACY_LANGUAGE_KEY)).toBe('en');
@@ -99,13 +99,13 @@ describe('UI preferences', () => {
       theme: 'dark',
       locale: 'en',
       diagnosticsPanel: 'open',
-      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
       theme: 'dark',
       locale: 'en',
       diagnosticsPanel: 'open',
-      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
 
@@ -127,7 +127,7 @@ describe('UI preferences', () => {
       theme: 'light',
       locale: 'ru',
       diagnosticsPanel: 'open',
-      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(Object.keys(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}'))).toEqual([
       'theme',

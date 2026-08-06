@@ -211,6 +211,8 @@ export const ru: TranslationMap = {
   'permissions.shell': 'Выполнение команд',
   'permissions.shell_desc': 'Разрешить выполнение консольных команд и скриптов.',
   'permissions.tools': 'Внешние инструменты',
+  'permissions.internet': 'Интернет (поиск и чтение страниц)',
+  'permissions.internet_desc': 'Поиск web.search и чтение web.fetch. Кэш 10м, лимит 10kB. Требует подтверждения.',
   'permissions.tools_desc': 'Разрешить использование внешних утилит и сайдкар-приложений.',
 
   // Diagnostics

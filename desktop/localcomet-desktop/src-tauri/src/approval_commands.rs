@@ -124,6 +124,8 @@ pub(crate) fn risk_level_for_tool(tool: &str) -> Result<RiskLevel, BridgeError> 
         | "files.create_folder"
         | "files.rollback"
         | "files.rollback_undo"
+        | "web.search"
+        | "web.fetch"
         | "artifact.download"
         | "runtime.start"
         | "runtime.stop"

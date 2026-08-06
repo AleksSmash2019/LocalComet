@@ -62,9 +62,11 @@ pub(crate) const REGISTERED_MODEL_TOOLS: &[&str] = &[
     "files.delete",
     "shell",
     "computer_use",
+    "web.search",
+    "web.fetch",
 ];
 
-const _: () = assert!(REGISTERED_MODEL_TOOLS.len() == 7);
+const _: () = assert!(REGISTERED_MODEL_TOOLS.len() == 9);
 
 #[derive(Clone, Copy)]
 struct ModelToolArgumentSchema {
@@ -96,6 +98,16 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_string_fields: &["action"],
             optional_string_fields: &["text"],
             optional_array_fields: &["coordinate"],
+        }),
+        "web.search" => Some(ModelToolArgumentSchema {
+            required_string_fields: &["query"],
+            optional_string_fields: &[],
+            optional_array_fields: &[],
+        }),
+        "web.fetch" => Some(ModelToolArgumentSchema {
+            required_string_fields: &["url"],
+            optional_string_fields: &[],
+            optional_array_fields: &[],
         }),
         _ => None,
     }
@@ -361,6 +373,8 @@ pub struct AgentPermissions {
     pub tools: bool,
     #[serde(rename = "computerUse")]
     pub computer_use: bool,
+    #[serde(default)]
+    pub internet: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -398,9 +412,9 @@ impl AssistantContext {
             capabilities: AssistantCapabilities {
                 local_chat: true,
                 local_model_inference: true,
-                internet: false,
+                internet: permissions.map(|p| p.internet).unwrap_or(false),
                 email: false,
-                browser: false,
+                browser: permissions.map(|p| p.internet).unwrap_or(false),
                 filesystem: permissions.map(|p| p.files).unwrap_or(false),
                 vault: false,
                 computer_use: permissions.map(|p| p.computer_use).unwrap_or(false),
@@ -419,6 +433,10 @@ impl AssistantContext {
                     }
                     if permissions.map(|p| p.computer_use).unwrap_or(false) {
                         t.push("computer_use".into());
+                    }
+                    if permissions.map(|p| p.internet).unwrap_or(false) {
+                        t.push("web.search".into());
+                        t.push("web.fetch".into());
                     }
                     if permissions.map(|p| p.tools).unwrap_or(false) {
                         // In future, sidecar tools could be added here
@@ -5257,6 +5275,32 @@ mod tests {
         assert!(!russian.capabilities.internet);
         assert!(!russian.capabilities.email);
         assert!(!russian.capabilities.browser);
+        // internet toggle is opt-in — when granted, both internet and browser reflect it
+        let with_internet = AssistantContext::trusted(
+            "ru",
+            false,
+            Some(&AgentPermissions {
+                files: false,
+                shell: false,
+                tools: false,
+                computer_use: false,
+                internet: true,
+            }),
+            vec![],
+        )
+        .unwrap();
+        assert!(with_internet.capabilities.internet);
+        assert!(with_internet.capabilities.browser);
+        assert!(with_internet
+            .capabilities
+            .tools
+            .iter()
+            .any(|t| t == "web.search"));
+        assert!(with_internet
+            .capabilities
+            .tools
+            .iter()
+            .any(|t| t == "web.fetch"));
         assert!(!russian.capabilities.filesystem);
         assert!(!russian.capabilities.vault);
         assert!(!russian.capabilities.computer_use);

@@ -101,3 +101,14 @@ name = "computer_use"
 risk_level = "dangerous"
 requires_approval = true
 implementation = "modules/tool_execution_ru.py::_computer_use -> modules/computer_use_real_actions_ru.py::execute_real_action"
+[[tools]]
+name = "web.search"
+risk_level = "guarded"
+requires_approval = true
+implementation = "modules/tool_execution_ru.py::_web_search (DuckDuckGo lite, cached 10m, guarded)"
+
+[[tools]]
+name = "web.fetch"
+risk_level = "guarded"
+requires_approval = true
+implementation = "modules/tool_execution_ru.py::_web_fetch (http GET + html strip 8k, cached 10m, guarded)"

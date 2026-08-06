@@ -19,6 +19,7 @@ export interface AgentPermissions {
   shell: boolean;
   tools: boolean;
   computerUse: boolean;
+  internet: boolean;
 }
 
 export interface UiPreferences {
@@ -36,7 +37,8 @@ export const DEFAULT_UI_PREFERENCES: Readonly<UiPreferences> = Object.freeze({
     files: true,
     shell: false,
     tools: true,
-    computerUse: false
+    computerUse: false,
+    internet: false
   }
 });
 
@@ -65,7 +67,8 @@ function isAgentPermissions(value: unknown): value is Partial<AgentPermissions> 
   return typeof value.files === 'boolean' || 
          typeof value.shell === 'boolean' || 
          typeof value.tools === 'boolean' ||
-         typeof value.computerUse === 'boolean';
+         typeof value.computerUse === 'boolean' ||
+         typeof (value as Record<string, unknown>).internet === 'boolean';
 }
 
 function normalizePreferences(value: unknown): UiPreferences {

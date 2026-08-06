@@ -75,7 +75,7 @@ describe('shell stores', () => {
       theme: 'light',
       locale: 'ru',
       diagnosticsPanel: 'closed',
-      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
 

@@ -18,6 +18,10 @@
   function toggleTools() {
     setAgentPermissions({ tools: !$agentPermissions.tools });
   }
+
+  function toggleInternet() {
+    setAgentPermissions({ internet: !$agentPermissions.internet });
+  }
 </script>
 
 <section aria-labelledby="settings-permissions" class="permissions-section">
@@ -91,6 +95,29 @@
         onclick={toggleComputerUse}
         aria-pressed={$agentPermissions.computerUse}
         title={$t('permissions.computer_use')}
+      >
+        <span class="knob"></span>
+      </button>
+    </div>
+
+    <!-- Internet Permission -->
+    <div class="permission-item">
+      <div class="info">
+        <div class="icon-wrap" class:active={$agentPermissions.internet}>
+          <Icon name="globe" size={24} />
+        </div>
+        <div>
+          <h4>{$t("permissions.internet")}</h4>
+          <p>{$t("permissions.internet_desc")}</p>
+        </div>
+      </div>
+      <button 
+        type="button" 
+        class="toggle-switch" 
+        class:on={$agentPermissions.internet} 
+        onclick={toggleInternet}
+        aria-pressed={$agentPermissions.internet}
+        title={$t("permissions.internet")}
       >
         <span class="knob"></span>
       </button>
