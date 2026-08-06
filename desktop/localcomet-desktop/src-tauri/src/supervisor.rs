@@ -1929,11 +1929,11 @@ mod tests {
     }
 
     #[test]
-    fn p0c_tool_activation_remains_false() {
+    fn p0c_tool_activation_is_true() {
         let source = include_str!("approval_commands.rs");
         assert!(
-            source.contains("const TOOL_EXECUTION_ACTIVATION_ENABLED: bool = false;"),
-            "TOOL_EXECUTION_ACTIVATION_ENABLED must remain false"
+            source.contains("const TOOL_EXECUTION_ACTIVATION_ENABLED: bool = true;"),
+            "TOOL_EXECUTION_ACTIVATION_ENABLED must be true since MVP-P0-C-A2 passed"
         );
     }
 
@@ -2358,7 +2358,11 @@ mod tests {
         ] {
             assert!(!caps.contains(forbidden));
         }
-        assert!(include_str!("approval_commands.rs")
-            .contains("const TOOL_EXECUTION_ACTIVATION_ENABLED: bool = false;"));
+        // p0c_r1 capability boundary is about the renderer capability surface,
+        // not shell activation. The latter flipped to true at MVP-P0-C-A2
+        // (see p0c_tool_activation_is_true and approval_commands.rs).
+        // Keep this assert focused on capabilities and drop the stale
+        // TOOL_EXECUTION_ACTIVATION_ENABLED==false leaf — the frozen-contract
+        // addendum already documents the supersession.
     }
 }

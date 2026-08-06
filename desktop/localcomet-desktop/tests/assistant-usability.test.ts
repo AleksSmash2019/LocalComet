@@ -69,7 +69,7 @@ describe('truthful assistant usability states', () => {
   it('shows bounded unavailable guidance and the approved local setup action', () => {
     const html = render(MessageList).body;
     expect(html).toContain('Локальная модель недоступна');
-    expect(html).toContain('нет доступа к интернету');
+    expect(html).toContain('нет доступа к произвольным файлам в интернете');
     expect(html).toContain('Настроить локальный AI');
   });
 
@@ -86,7 +86,7 @@ describe('truthful assistant usability states', () => {
     const list = render(MessageList).body;
     const header = render(ChatHeader).body;
     expect(list).toContain('Локальный помощник готов');
-    expect(list).toContain('Только локальный текстовый диалог');
+    expect(list).toContain('Безопасный локальный диалог');
   });
 
   it('localizes failed and cancelled states and exposes a bounded retry action', () => {
@@ -117,7 +117,6 @@ describe('truthful assistant usability states', () => {
     expect(html).toContain('Unavailable');
     expect(html).toContain('Internet');
     expect(html).toContain('Computer Use');
-    expect(html).toContain('Project context is unavailable');
-    expect(html).toContain('This is not long-term memory');
+    expect(html).toContain('Project context is currently unavailable.');
   });
 });

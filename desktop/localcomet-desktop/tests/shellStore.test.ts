@@ -74,7 +74,8 @@ describe('shell stores', () => {
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
       theme: 'light',
       locale: 'ru',
-      diagnosticsPanel: 'closed'
+      diagnosticsPanel: 'closed',
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
     });
   });
 

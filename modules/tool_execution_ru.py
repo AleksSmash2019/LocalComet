@@ -29,7 +29,7 @@ from modules.workspace_policy import WorkspacePolicy, WorkspacePolicyError
 MAX_TOOL_FILE_BYTES = 1_000_000
 
 SUPPORTED_TOOLS = frozenset(
-    ("files.read", "files.list", "files.write", "files.create_folder", "files.delete")
+    ("files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use")
 )
 
 
@@ -210,6 +210,115 @@ def _files_delete(policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, An
     return {"tool": tool, "path": str(target)}
 
 
+def _computer_use(
+    policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Real computer_use dispatch (delegation).
+
+    The local model calls `computer_use` with a high-level `action` string.
+    We delegate to the already-hardened `computer_use_real_actions_ru` module
+    (allowlisted apps, blocked goals, clipboard/keyboard guards). The action
+    field carries a normalized action key; optional `text`/`target` carry the
+    payload. We intentionally do NOT accept raw OS shell commands here.
+
+    This keeps Desktop Control Plane as the sole approval boundary (INV-APPROVAL-001)
+    and WorkspacePolicy as the confinement boundary — computer_use is dangerous
+    and must still go through approval, but does not escape the sidecar process
+    lifetime.
+    """
+    # Normalize inputs — reuse _reject_unrenderable for text safety.
+    action_raw = input_obj.get("action", "")
+    if not isinstance(action_raw, str) or not action_raw.strip():
+        raise ToolExecutionError("invalid_payload", "action must be a non-empty string")
+    _reject_unrenderable(action_raw, "action")
+    action = action_raw.strip().lower()
+
+    # Optional fields
+    text_val = input_obj.get("text", "")
+    if text_val is not None and not isinstance(text_val, str):
+        raise ToolExecutionError("invalid_payload", "text must be a string")
+    if isinstance(text_val, str) and text_val:
+        _reject_unrenderable(text_val, "text")
+
+    coordinate = input_obj.get("coordinate")
+    if coordinate is not None and not isinstance(coordinate, list):
+        raise ToolExecutionError("invalid_payload", "coordinate must be an array")
+
+    # Explicit allowlist of delegated actions — no open-ended dispatch.
+    # Anything outside this is a deterministic error, not a side effect.
+    ALLOWED_ACTIONS = {
+        "open_app",
+        "open_folder",
+        "click",
+        "double_click",
+        "type",
+        "paste",
+        "key",
+        "hotkey",
+        "scroll",
+        "wait",
+    }
+    if action not in ALLOWED_ACTIONS:
+        raise ToolExecutionError("invalid_payload", f"unsupported computer_use action: {action}")
+
+    try:
+        from modules.computer_use_real_actions_ru import execute_real_action
+    except Exception as exc:
+        raise ToolExecutionError("internal_error", f"computer_use backend unavailable: {exc}") from exc
+
+    # Map normalized action to the real_actions module's action kinds.
+    kind_map = {
+        "open_app": "open_app",
+        "open_folder": "open_folder",
+        "click": "click_element",
+        "double_click": "double_click_element",
+        "type": "paste_text",
+        "paste": "paste_text",
+        "key": "press_key",
+        "hotkey": "hotkey",
+        "scroll": "scroll",
+        "wait": "wait_for_window",
+    }
+    kind = kind_map[action]
+
+    dispatched: dict[str, Any] = {"kind": kind, "target": input_obj.get("target", "")}
+    if text_val:
+        dispatched["text"] = text_val
+    if action in ("key", "hotkey") and text_val:
+        dispatched["key"] = text_val
+        dispatched["keys"] = [k.strip() for k in text_val.split("+") if k.strip()]
+    if coordinate is not None:
+        dispatched["coordinate"] = coordinate
+    # Caller-provided coordinate is treated as advisory — real click planning
+    # is delegated to computer_use_click_planner_ru via the backend.
+
+    result = execute_real_action(dispatched, simulate=False)
+    # Normalize sidecar response shape — always include tool identity.
+    result.setdefault("tool", tool)
+    result.setdefault("action", action)
+    return result
+
+
+def _shell(
+    policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Stub for shell — intentionally not executable in Desktop sidecar.
+
+    Shell execution would require a separate allowlisted subprocess path with
+    explicit approval + workspace confinement + no-sandbox-escape guarantees.
+    Until that is designed and tested, Desktop returns a deterministic error
+    rather than executing anything.
+
+    The tool remains registered so the model can discover it, but invocation
+    is rejected at the handler — distinct from the dispatcher-level
+    \"not implemented\" gate.
+    """
+    raise ToolExecutionError(
+        "unsupported_method",
+        "shell is registered but not executable in this build (requires explicit allowlisted subprocess path)",
+    )
+
+
 def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
     tool = _require_str(payload, "tool")
     workspace = _require_str(payload, "workspace")
@@ -232,4 +341,13 @@ def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
         return _files_write(policy, tool, input_obj)
     if tool == "files.create_folder":
         return _files_create_folder(policy, tool, input_obj)
-    return _files_delete(policy, tool, input_obj)
+    if tool == "files.delete":
+        return _files_delete(policy, tool, input_obj)
+    if tool == "computer_use":
+        return _computer_use(policy, tool, input_obj)
+    if tool == "shell":
+        return _shell(policy, tool, input_obj)
+    raise ToolExecutionError(
+        "unsupported_method",
+        f"tool not implemented: {tool}",
+    )

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
   import ModelManagerSection from '$lib/components/model/ModelManagerSection.svelte';
+  import PermissionsSection from '$lib/components/shell/PermissionsSection.svelte';
   import ObservabilityRoom from '$lib/components/logs/ObservabilityRoom.svelte';
   import { controlPlaneStore } from '$lib/stores/controlPlane';
   import {
@@ -28,6 +29,7 @@
   const sections = [
     { id: 'interface', labelKey: 'settings.tab_interface' },
     { id: 'models', labelKey: 'settings.tab_models' },
+    { id: 'permissions', labelKey: 'settings.tab_permissions' },
     { id: 'observability', labelKey: 'settings.tab_observability' },
     { id: 'about', labelKey: 'settings.tab_about' }
   ] as const;
@@ -162,6 +164,9 @@
 
     <div class:panel-hidden={$settingsSection !== 'models'} aria-hidden={$settingsSection !== 'models'}>
       <ModelManagerSection />
+    </div>
+    <div class:panel-hidden={$settingsSection !== 'permissions'} aria-hidden={$settingsSection !== 'permissions'}>
+      <PermissionsSection />
     </div>
     <div class:panel-hidden={$settingsSection !== 'observability'} aria-hidden={$settingsSection !== 'observability'}>
       <ObservabilityRoom />

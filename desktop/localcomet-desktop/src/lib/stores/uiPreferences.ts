@@ -14,16 +14,30 @@ export type UiTheme = 'system' | 'light' | 'dark';
 export type UiLocale = Language;
 export type DiagnosticsPanelPreference = 'open' | 'closed';
 
+export interface AgentPermissions {
+  files: boolean;
+  shell: boolean;
+  tools: boolean;
+  computerUse: boolean;
+}
+
 export interface UiPreferences {
   theme: UiTheme;
   locale: UiLocale;
   diagnosticsPanel: DiagnosticsPanelPreference;
+  agentPermissions: AgentPermissions;
 }
 
 export const DEFAULT_UI_PREFERENCES: Readonly<UiPreferences> = Object.freeze({
   theme: 'system',
   locale: 'ru',
-  diagnosticsPanel: 'closed'
+  diagnosticsPanel: 'closed',
+  agentPermissions: {
+    files: true,
+    shell: false,
+    tools: true,
+    computerUse: false
+  }
 });
 
 function defaultPreferences(): UiPreferences {
@@ -46,6 +60,14 @@ function isDiagnosticsPanel(value: unknown): value is DiagnosticsPanelPreference
   return value === 'open' || value === 'closed';
 }
 
+function isAgentPermissions(value: unknown): value is Partial<AgentPermissions> {
+  if (!isRecord(value)) return false;
+  return typeof value.files === 'boolean' || 
+         typeof value.shell === 'boolean' || 
+         typeof value.tools === 'boolean' ||
+         typeof value.computerUse === 'boolean';
+}
+
 function normalizePreferences(value: unknown): UiPreferences {
   const preferences = defaultPreferences();
   if (!isRecord(value)) return preferences;
@@ -54,6 +76,9 @@ function normalizePreferences(value: unknown): UiPreferences {
   if (isLocale(value.locale)) preferences.locale = value.locale;
   if (isDiagnosticsPanel(value.diagnosticsPanel)) {
     preferences.diagnosticsPanel = value.diagnosticsPanel;
+  }
+  if (isAgentPermissions(value.agentPermissions)) {
+    preferences.agentPermissions = { ...preferences.agentPermissions, ...value.agentPermissions } as AgentPermissions;
   }
   return preferences;
 }

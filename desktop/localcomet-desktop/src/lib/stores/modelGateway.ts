@@ -41,8 +41,11 @@ import type {
   SanitizedGatewayError
 } from '$lib/types/modelGateway';
 import {
+  activeWorkspace,
+  agentPermissions,
   appendAcceptedChatTurn,
   appendAssistantChunk,
+  setAssistantToolCalls,
   chatMessages,
   finalizeAssistantMessage,
   setModelConnected
@@ -230,7 +233,7 @@ async function ensureModelEventSubscription(): Promise<void> {
   if (unsubscribeEvents) return;
   if (eventSubscriptionPromise) return eventSubscriptionPromise;
   const generation = subscriptionGeneration;
-  const pendingSubscription = subscribeModelGatewayEvents(applyModelGatewayEvent, handleModelProtocolError).then((cleanup) => {
+  const pendingSubscription = subscribeModelGatewayEvents(applyModelGatewayEvent, handleModelProtocolError, { toolsEnabled: true }).then((cleanup) => {
     if (generation !== subscriptionGeneration) {
       cleanup();
       return;
@@ -825,6 +828,16 @@ async function startClaimedLocalModelTurn(
   scheduleInferenceTimeout('acceptance', INFERENCE_TIMEOUTS_MS.acceptance, requestId);
 
   try {
+    const messages = get(chatMessages);
+    const serializedMessages = messages.map((message) => ({
+      role: message.role,
+      body: message.body,
+      requestId: message.requestId,
+      conversationId: message.conversationId,
+      state: message.state,
+      error: message.error,
+      toolCalls: message.toolCalls
+    }));
     const acceptance = await startModelTurn({
       requestId,
       chatSessionId,
@@ -836,8 +849,12 @@ async function startClaimedLocalModelTurn(
       // Interface chrome may be in any registered language, but the backend
       // only accepts ru | en for a turn, so map before sending.
       locale: assistantLocaleFor(get(locale)),
-      bindingFingerprint: binding.binding_fingerprint
+      bindingFingerprint: binding.binding_fingerprint,
+      agentPermissions: get(agentPermissions),
+      messages: serializedMessages
     });
+
+    if (acceptance.request_id !== requestId) throw new Error('Request ID mismatch');
     reportFilesContextInclusion(acceptance.file_context);
     const current = get(inferenceRequestStore);
     if (
@@ -1033,6 +1050,30 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
     inferenceRequestStore.update((state) => ({ ...state, rejectedEventCount: state.rejectedEventCount + 1 }));
     return;
   }
+
+  if (event.method === 'model.tool.request' || event.method === 'model.turn.tool_calls') {
+    if (current.lifecycle === 'cancelling') return;
+    if (event.tool_calls) {
+      const toolCalls = event.tool_calls.map(tc => ({
+        operation: tc.name,
+        target: JSON.stringify(tc.arguments),
+        status: event.method === 'model.tool.request' ? 'WAITING' as const : 'PASS' as const,
+        elapsed: '-',
+        detail: 'Tool execution requested',
+        result: ''
+      }));
+      setAssistantToolCalls(event.request_id, toolCalls);
+      inferenceRequestStore.update((state) => ({
+        ...state,
+        lifecycle: 'streaming',
+        receivedContent: true
+      }));
+    }
+    if (event.method === 'model.tool.request') {
+      return; // Await real orchestration to continue
+    }
+  }
+
   if (event.method === 'model.turn.completed') {
     if (!latest.receivedContent) {
       terminalizeCurrentRequest('failed', 'model.turn.failed', {

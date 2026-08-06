@@ -15,6 +15,7 @@ export interface MockMessage {
   state?: ChatMessageState;
   error?: string;
   demo?: boolean;
+  toolCalls?: ToolCallMock[];
 }
 
 export interface ToolCallMock {

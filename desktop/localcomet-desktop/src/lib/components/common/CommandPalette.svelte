@@ -13,6 +13,7 @@
   type PaletteCommand = {
     id: string;
     label: string;
+    hint?: string;
     run: () => void;
   };
 
@@ -27,26 +28,31 @@
     {
       id: 'chat',
       label: $t('commandPalette.command.chat'),
+      hint: 'Ctrl+K → Chat',
       run: () => setActiveWorkspace('chat')
     },
     {
       id: 'settings',
       label: $t('commandPalette.command.settings'),
+      hint: 'Ctrl+,',
       run: openSettings
     },
     {
       id: 'setup',
       label: $t('commandPalette.command.setup'),
+      hint: '',
       run: () => setActiveWorkspace('setup')
     },
     {
       id: 'models',
       label: $t('commandPalette.command.models'),
+      hint: 'Models',
       run: () => openSettings('models')
     },
     {
       id: 'observability',
       label: $t('commandPalette.command.observability'),
+      hint: 'Logs',
       run: () => openSettings('observability')
     },
     {
@@ -54,6 +60,7 @@
       label: $inspectorVisible
         ? $t('commandPalette.command.hideDiagnostics')
         : $t('commandPalette.command.showDiagnostics'),
+      hint: 'Ctrl+Shift+D',
       run: () => {
         setActiveWorkspace('chat');
         setDiagnosticsPanelOpen(!$inspectorVisible);
@@ -181,7 +188,10 @@
             onmouseenter={() => (activeIndex = index)}
             onclick={() => execute(command)}
           >
-            {command.label}
+            <span class="cmd-label">{command.label}</span>
+            {#if command.hint}
+              <span class="cmd-hint">{command.hint}</span>
+            {/if}
           </button>
         {:else}
           <p class="empty">{$t('commandPalette.empty')}</p>
@@ -249,6 +259,10 @@
   }
 
   button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--lc-space-2);
     min-height: 44px;
     border: 1px solid transparent;
     border-radius: var(--lc-radius-md);
@@ -257,6 +271,13 @@
     padding: 0 var(--lc-space-3);
     text-align: left;
     cursor: pointer;
+  }
+
+  .cmd-hint {
+    color: var(--lc-muted);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
   }
 
   button.active {

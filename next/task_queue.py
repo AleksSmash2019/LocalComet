@@ -11,13 +11,18 @@ class TaskQueue:
         for task in tasks:
             self.add(task)
 
-    def next(self):
+    def get_next(self):
         if not self.tasks:
             return None
 
         task = self.tasks.pop(0)
         self.done.append(task)
         return task
+
+    # Keep .next as an alias — external callers may still use the legacy name.
+    # next() shadows the iterator protocol, so keep both.
+    def next(self):  # type: ignore[override]
+        return self.get_next()
 
     def has_tasks(self):
         return len(self.tasks) > 0

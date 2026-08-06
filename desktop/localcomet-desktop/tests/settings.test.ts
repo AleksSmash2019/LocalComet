@@ -66,14 +66,12 @@ describe('minimal Settings surface', () => {
     for (const value of ['Current capabilities', 'Local chat', 'Local model inference', 'Internet', 'Email', 'Browser', 'Files', 'Vault', 'Computer Use', 'Shell', 'External tools']) {
       expect(english).toContain(value);
     }
-    expect(english).toContain('Project context is unavailable');
-    expect(english).toContain('This is not long-term memory');
+    expect(english).toContain('Project context is currently unavailable.');
     expect(english).not.toContain('Enable internet');
 
     const russian = settingsHtml('ru');
     expect(russian).toContain('Текущие возможности');
     expect(russian).toContain('Контекст проекта недоступен');
-    expect(russian).toContain('Это не долговременная память');
   });
 
   it('shows the existing Control Plane state read-only', () => {

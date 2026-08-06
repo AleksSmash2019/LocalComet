@@ -28,3 +28,9 @@ This document records the frozen contract as implemented.
 - p0b_: 88 pass
 - Rust workspace: 344 pass, 6 ignored
 - Frontend: 334 pass in 22 files
+
+## Addendum: MVP-P0-C-A2 PASS (2026-08-06)
+
+Following the successful independent security audit (MVP-P0-C-A2), invariant #7 has been superseded:
+- Activation true (`TOOL_EXECUTION_ACTIVATION_ENABLED = true`)
+- Block 3 orchestration unblocked.

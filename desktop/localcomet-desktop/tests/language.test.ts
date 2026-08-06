@@ -116,7 +116,8 @@ describe('language store', () => {
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
       theme: 'system',
       locale: 'en',
-      diagnosticsPanel: 'closed'
+      diagnosticsPanel: 'closed',
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
     });
     expect(localStorage.getItem(LEGACY_LANGUAGE_KEY)).toBeNull();
     setLocale('ru');

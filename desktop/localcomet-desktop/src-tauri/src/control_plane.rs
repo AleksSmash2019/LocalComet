@@ -60,24 +60,45 @@ pub(crate) const REGISTERED_MODEL_TOOLS: &[&str] = &[
     "files.write",
     "files.create_folder",
     "files.delete",
+    "shell",
+    "computer_use",
 ];
 
-const _: () = assert!(REGISTERED_MODEL_TOOLS.len() == 5);
+const _: () = assert!(REGISTERED_MODEL_TOOLS.len() == 7);
 
 #[derive(Clone, Copy)]
 struct ModelToolArgumentSchema {
     required_string_fields: &'static [&'static str],
+    optional_string_fields: &'static [&'static str],
+    optional_array_fields: &'static [&'static str],
 }
 
 fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
-    let required_string_fields: &'static [&'static str] = match name {
-        "files.read" | "files.list" | "files.create_folder" | "files.delete" => &["path"],
-        "files.write" => &["path", "content"],
-        _ => return None,
-    };
-    Some(ModelToolArgumentSchema {
-        required_string_fields,
-    })
+    match name {
+        "files.read" | "files.list" | "files.create_folder" | "files.delete" => {
+            Some(ModelToolArgumentSchema {
+                required_string_fields: &["path"],
+                optional_string_fields: &[],
+                optional_array_fields: &[],
+            })
+        }
+        "files.write" => Some(ModelToolArgumentSchema {
+            required_string_fields: &["path", "content"],
+            optional_string_fields: &[],
+            optional_array_fields: &[],
+        }),
+        "shell" => Some(ModelToolArgumentSchema {
+            required_string_fields: &["command"],
+            optional_string_fields: &[],
+            optional_array_fields: &[],
+        }),
+        "computer_use" => Some(ModelToolArgumentSchema {
+            required_string_fields: &["action"],
+            optional_string_fields: &["text"],
+            optional_array_fields: &["coordinate"],
+        }),
+        _ => None,
+    }
 }
 
 fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), BridgeError> {
@@ -87,7 +108,10 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
         BridgeError::new("protocol_mismatch", "tool call arguments must be an object")
     })?;
     for key in object.keys() {
-        if !schema.required_string_fields.contains(&key.as_str()) {
+        if !schema.required_string_fields.contains(&key.as_str())
+            && !schema.optional_string_fields.contains(&key.as_str())
+            && !schema.optional_array_fields.contains(&key.as_str())
+        {
             let message = format!("tool {name} has unknown argument field {key}");
             return Err(BridgeError::new("protocol_mismatch", &message));
         }
@@ -101,6 +125,22 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
             Some(Value::String(_)) => {}
             Some(_) => {
                 let message = format!("tool {name} argument field {field} must be a string");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            }
+        }
+    }
+    for field in schema.optional_string_fields {
+        if let Some(val) = object.get(*field) {
+            if !val.is_string() {
+                let message = format!("tool {name} argument field {field} must be a string");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            }
+        }
+    }
+    for field in schema.optional_array_fields {
+        if let Some(val) = object.get(*field) {
+            if !val.is_array() {
+                let message = format!("tool {name} argument field {field} must be an array");
                 return Err(BridgeError::new("protocol_mismatch", &message));
             }
         }
@@ -296,6 +336,7 @@ struct AssistantConversationContext {
     locale: String,
     project_context_available: bool,
     selected_files_context_available: bool,
+    messages: Vec<Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -312,6 +353,16 @@ struct AssistantCapabilities {
     tools: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentPermissions {
+    pub files: bool,
+    pub shell: bool,
+    pub tools: bool,
+    #[serde(rename = "computerUse")]
+    pub computer_use: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct AssistantContext {
     application: AssistantApplicationContext,
@@ -320,7 +371,12 @@ struct AssistantContext {
 }
 
 impl AssistantContext {
-    fn trusted(locale: &str, selected_files_context_available: bool) -> Result<Self, BridgeError> {
+    fn trusted(
+        locale: &str,
+        selected_files_context_available: bool,
+        permissions: Option<&AgentPermissions>,
+        messages: Vec<Value>,
+    ) -> Result<Self, BridgeError> {
         if !matches!(locale, "ru" | "en") {
             return Err(BridgeError::new(
                 "invalid_payload",
@@ -337,6 +393,7 @@ impl AssistantContext {
                 locale: locale.to_owned(),
                 project_context_available: false,
                 selected_files_context_available,
+                messages,
             },
             capabilities: AssistantCapabilities {
                 local_chat: true,
@@ -344,11 +401,30 @@ impl AssistantContext {
                 internet: false,
                 email: false,
                 browser: false,
-                filesystem: false,
+                filesystem: permissions.map(|p| p.files).unwrap_or(false),
                 vault: false,
-                computer_use: false,
-                shell: false,
-                tools: Vec::new(),
+                computer_use: permissions.map(|p| p.computer_use).unwrap_or(false),
+                shell: permissions.map(|p| p.shell).unwrap_or(false),
+                tools: {
+                    let mut t = Vec::new();
+                    if permissions.map(|p| p.files).unwrap_or(false) {
+                        t.push("files.read".into());
+                        t.push("files.list".into());
+                        t.push("files.write".into());
+                        t.push("files.create_folder".into());
+                        t.push("files.delete".into());
+                    }
+                    if permissions.map(|p| p.shell).unwrap_or(false) {
+                        t.push("shell".into());
+                    }
+                    if permissions.map(|p| p.computer_use).unwrap_or(false) {
+                        t.push("computer_use".into());
+                    }
+                    if permissions.map(|p| p.tools).unwrap_or(false) {
+                        // In future, sidecar tools could be added here
+                    }
+                    t
+                },
             },
         })
     }
@@ -2215,6 +2291,8 @@ pub async fn model_turn_start(
     file_ids: Vec<String>,
     locale: String,
     binding_fingerprint: String,
+    agent_permissions: AgentPermissions,
+    messages: Vec<Value>,
 ) -> Result<Value, BridgeError> {
     ensure_request_id(&request_id)?;
     ensure_chat_session_id(&chat_session_id)?;
@@ -2268,7 +2346,12 @@ pub async fn model_turn_start(
         )
     };
     ensure_model_prompt(&prompt)?;
-    let assistant_context = AssistantContext::trusted(&locale, file_context_report.is_some())?;
+    let assistant_context = AssistantContext::trusted(
+        &locale,
+        file_context_report.is_some(),
+        Some(&agent_permissions),
+        messages,
+    )?;
     ensure_fingerprint(&binding_fingerprint)?;
     let identity = ModelRequestIdentity {
         request_id,
@@ -3112,11 +3195,15 @@ fn validate_and_record_model_event(
                         "tool call arguments exceed maximum node count",
                     ));
                 }
-                validate_model_tool_arguments(name, arguments)?;
+                if let Err(e) = validate_model_tool_arguments(name, arguments) {
+                    eprintln!("validate_model_tool_arguments failed: {}", e.message);
+                    return Err(e);
+                }
             }
             if method == "model.tool.request"
                 && telemetry.tools_executed != entry.intermediate_tool_calls.len() as u64 + 1
             {
+                eprintln!("model.tool.request tools_executed is not cumulative");
                 return Err(BridgeError::new(
                     "protocol_mismatch",
                     "model.tool.request tools_executed is not cumulative",
@@ -3125,6 +3212,7 @@ fn validate_and_record_model_event(
             if method == "model.turn.tool_calls"
                 && tool_calls.as_slice() != entry.intermediate_tool_calls.as_slice()
             {
+                eprintln!("tool call provenance mismatch");
                 return Err(BridgeError::new(
                     "protocol_mismatch",
                     "tool call provenance mismatch",
@@ -3134,12 +3222,14 @@ fn validate_and_record_model_event(
                 && (telemetry.tools_executed != tool_calls.len() as u64
                     || telemetry.tools_executed != entry.intermediate_tool_calls.len() as u64)
             {
+                eprintln!("model.turn.tool_calls tools_executed mismatch");
                 return Err(BridgeError::new(
                     "protocol_mismatch",
                     "model.turn.tool_calls tools_executed mismatch",
                 ));
             }
             if entry.event_count + 1 > MAX_MODEL_EVENTS_PER_REQUEST {
+                eprintln!("model event limit reached");
                 return Err(BridgeError::new(
                     "budget_exceeded",
                     "model event limit reached",
@@ -4846,7 +4936,8 @@ mod tests {
     #[test]
     fn model_turn_wire_digest_covers_assistant_context() {
         let identity = model_identity();
-        let neutral = AssistantContext::trusted("ru", false).expect("trusted context");
+        let neutral =
+            AssistantContext::trusted("ru", false, None, vec![]).expect("trusted context");
         let baseline =
             model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &neutral));
         assert_eq!(
@@ -4894,7 +4985,8 @@ mod tests {
     fn model_turn_dispatch_requires_the_reserved_wire_digest() {
         let identity = model_identity();
         let request_id = identity.request_id.clone();
-        let neutral = AssistantContext::trusted("ru", false).expect("trusted context");
+        let neutral =
+            AssistantContext::trusted("ru", false, None, vec![]).expect("trusted context");
         let reserved =
             model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &neutral));
         let registry = Mutex::new(ModelRequestRegistry::default());
@@ -5027,7 +5119,7 @@ mod tests {
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
             "prompt": "hello",
-            "assistant_context": AssistantContext::trusted("ru", false).unwrap(),
+            "assistant_context": AssistantContext::trusted("ru", false, None, vec![]).unwrap(),
             "binding_fingerprint": identity.binding_fingerprint,
         });
         assert!(validate_payload_for_method(ControlPlaneMethod::ModelTurnStart, &payload).is_ok());
@@ -5148,9 +5240,9 @@ mod tests {
 
     #[test]
     fn assistant_context_is_trusted_typed_and_fail_closed() {
-        let russian = AssistantContext::trusted("ru", false).unwrap();
-        let english = AssistantContext::trusted("en", false).unwrap();
-        let with_files = AssistantContext::trusted("ru", true).unwrap();
+        let russian = AssistantContext::trusted("ru", false, None, vec![]).unwrap();
+        let english = AssistantContext::trusted("en", false, None, vec![]).unwrap();
+        let with_files = AssistantContext::trusted("ru", true, None, vec![]).unwrap();
         assert_eq!(russian.application.name, "LocalComet");
         assert_eq!(russian.application.mode, "local_offline_desktop_assistant");
         assert_eq!(russian.application.version, DESKTOP_STATUS_BRIDGE_VERSION);
@@ -5170,7 +5262,7 @@ mod tests {
         assert!(!russian.capabilities.computer_use);
         assert!(!russian.capabilities.shell);
         assert!(russian.capabilities.tools.is_empty());
-        assert!(AssistantContext::trusted("fr", false).is_err());
+        assert!(AssistantContext::trusted("fr", false, None, vec![]).is_err());
 
         let serialized = serde_json::to_string(&russian).unwrap();
         assert!(!serialized.contains("C:\\"));

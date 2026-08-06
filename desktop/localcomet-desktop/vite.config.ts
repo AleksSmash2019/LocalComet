@@ -4,6 +4,18 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [sveltekit()],
   clearScreen: false,
+  build: {
+    // Split vendor chunks so HF browser / model panels lazy-load separately.
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules/svelte')) return 'svelte-vendor';
+          if (id.includes('HuggingFaceBrowser') || id.includes('ModelManager')) return 'model-ui';
+          return undefined;
+        }
+      }
+    }
+  },
   server: {
     host: '127.0.0.1',
     port: 1420,

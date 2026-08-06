@@ -9,6 +9,8 @@
   } from '$lib/stores/modelGateway';
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
   import { t } from '$lib/i18n';
+  import ToolCallCard from './ToolCallCard.svelte';
+  import ApprovalCard from './ApprovalCard.svelte';
 
   /**
    * Prefill the composer from a prompt card.
@@ -88,6 +90,13 @@
             {/if}
           </div>
           <p>{message.body}</p>
+          {#if message.toolCalls}
+            <div class="tool-calls-container">
+              {#each message.toolCalls as tool}
+                <ToolCallCard {tool} />
+              {/each}
+            </div>
+          {/if}
           {#if message.role === 'assistant' && message.state && message.state !== 'completed'}
             <div class="request-result">
               <span class="request-state" data-state={message.state}>{$t(stateKey(message.state))}</span>
@@ -107,6 +116,8 @@
       </article>
     {/each}
   {/if}
+  
+  <ApprovalCard />
 </section>
 
 <style>

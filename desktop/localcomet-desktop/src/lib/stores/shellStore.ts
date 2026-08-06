@@ -1,6 +1,7 @@
 import { derived, get, writable } from 'svelte/store';
 import { inspectorSections, modeOptions, modelOptions } from '$lib/data/mockData';
 import type { ChatMessageState, InspectorSection, MockMessage, ModeOption, ModelOption, ThemeMode } from '$lib/data/mockData';
+import type { AgentPermissions } from './uiPreferences';
 import { loadUiPreferences, updateUiPreferences } from './uiPreferences';
 import { conversationStore, getActiveConversationId, resetConversationStore, selectConversation as selectConversationInStore } from './conversationStore';
 
@@ -10,7 +11,7 @@ export const MAX_DRAFT_LENGTH = 12000;
 export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 
 export type WorkspaceMode = 'chat' | 'review' | 'setup' | 'hf_browser';
-export type SettingsSection = 'interface' | 'models' | 'observability' | 'about';
+export type SettingsSection = 'interface' | 'models' | 'permissions' | 'observability' | 'about';
 
 let messageCounter = 0;
 const initialUiPreferences = loadUiPreferences();
@@ -20,6 +21,7 @@ function cloneMessages(): MockMessage[] {
 }
 
 export const themeMode = writable<ThemeMode>(initialUiPreferences.theme);
+export const agentPermissions = writable<AgentPermissions>(initialUiPreferences.agentPermissions);
 export const activeWorkspace = writable<WorkspaceMode>('chat');
 export const sidebarExpanded = writable(true);
 export const inspectorVisible = writable(initialUiPreferences.diagnosticsPanel === 'open');
@@ -53,6 +55,14 @@ export function setThemeMode(mode: ThemeMode): void {
   if (mode !== 'system' && mode !== 'light' && mode !== 'dark') return;
   themeMode.set(mode);
   updateUiPreferences({ theme: mode });
+}
+
+export function setAgentPermissions(permissions: Partial<import('./uiPreferences').AgentPermissions>): void {
+  agentPermissions.update((prev) => {
+    const next = { ...prev, ...permissions };
+    updateUiPreferences({ agentPermissions: next });
+    return next;
+  });
 }
 
 export function openSettings(sectionOrEvent: SettingsSection | Event = 'interface'): void {
@@ -165,6 +175,21 @@ export function appendAssistantChunk(requestId: string, chunk: string): boolean 
     };
   }));
   return appended;
+}
+
+export function setAssistantToolCalls(requestId: string, toolCalls: import('$lib/data/mockData').ToolCallMock[]): boolean {
+  if (!/^[0-9a-f]{24}$/.test(requestId)) return false;
+  let updated = false;
+  chatMessages.update((messages) => messages.map((message) => {
+    if (message.role !== 'assistant' || message.requestId !== requestId) return message;
+    updated = true;
+    return {
+      ...message,
+      toolCalls,
+      state: 'streaming'
+    };
+  }));
+  return updated;
 }
 
 export function finalizeAssistantMessage(

@@ -34,7 +34,7 @@ describe('UI preferences', () => {
   it('uses a versioned key and complete safe defaults', () => {
     expect(UI_PREFERENCES_KEY).toBe('localcomet.ui.preferences.v1');
     expect(loadUiPreferences()).toEqual(DEFAULT_UI_PREFERENCES);
-    expect(Object.keys(loadUiPreferences())).toEqual(['theme', 'locale', 'diagnosticsPanel']);
+    expect(Object.keys(loadUiPreferences())).toEqual(['theme', 'locale', 'diagnosticsPanel', 'agentPermissions']);
   });
 
   it('loads only valid fields and ignores unknown fields', () => {
@@ -48,7 +48,8 @@ describe('UI preferences', () => {
     expect(loadUiPreferences()).toEqual({
       theme: 'dark',
       locale: 'en',
-      diagnosticsPanel: 'open'
+      diagnosticsPanel: 'open',
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
     });
   });
 
@@ -61,7 +62,8 @@ describe('UI preferences', () => {
     expect(loadUiPreferences()).toEqual({
       theme: 'system',
       locale: 'en',
-      diagnosticsPanel: 'closed'
+      diagnosticsPanel: 'closed',
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
     });
   });
 
@@ -77,7 +79,8 @@ describe('UI preferences', () => {
     expect(loadUiPreferences()).toEqual({
       theme: 'system',
       locale: 'en',
-      diagnosticsPanel: 'closed'
+      diagnosticsPanel: 'closed',
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
     });
     expect(localStorage.getItem(UI_PREFERENCES_KEY)).toBeNull();
     expect(localStorage.getItem(LEGACY_LANGUAGE_KEY)).toBe('en');
@@ -95,12 +98,14 @@ describe('UI preferences', () => {
     expect(updateUiPreferences({ diagnosticsPanel: 'open' })).toEqual({
       theme: 'dark',
       locale: 'en',
-      diagnosticsPanel: 'open'
+      diagnosticsPanel: 'open',
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
     });
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
       theme: 'dark',
       locale: 'en',
-      diagnosticsPanel: 'open'
+      diagnosticsPanel: 'open',
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
     });
   });
 
@@ -121,12 +126,14 @@ describe('UI preferences', () => {
     expect(updateUiPreferences(unsafePatch)).toEqual({
       theme: 'light',
       locale: 'ru',
-      diagnosticsPanel: 'open'
+      diagnosticsPanel: 'open',
+      agentPermissions: { files: true, shell: false, tools: true, computerUse: false }
     });
     expect(Object.keys(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}'))).toEqual([
       'theme',
       'locale',
-      'diagnosticsPanel'
+      'diagnosticsPanel',
+      'agentPermissions'
     ]);
   });
 

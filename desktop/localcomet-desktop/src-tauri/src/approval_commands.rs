@@ -9,7 +9,11 @@ use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
-const TOOL_EXECUTION_ACTIVATION_ENABLED: bool = false;
+/// GLOBAL TOOL EXECUTION LOCK
+///
+/// This constant gates all tool calls. It is set to true after the successful
+/// MVP-P0-C-A2 security audit.
+const TOOL_EXECUTION_ACTIVATION_ENABLED: bool = true;
 
 const NON_WORKSPACE_SENTINEL: &str = crate::approval::NON_WORKSPACE_APPROVAL_SCOPE;
 
@@ -118,11 +122,13 @@ pub(crate) fn risk_level_for_tool(tool: &str) -> Result<RiskLevel, BridgeError> 
         "files.read" | "files.list" => Ok(RiskLevel::ReadOnly),
         "files.write"
         | "files.create_folder"
+        | "files.rollback"
+        | "files.rollback_undo"
         | "artifact.download"
         | "runtime.start"
         | "runtime.stop"
         | "model.binding.set" => Ok(RiskLevel::Guarded),
-        "files.delete" | "artifact.remove" => Ok(RiskLevel::Dangerous),
+        "files.delete" | "artifact.remove" | "shell" | "computer_use" => Ok(RiskLevel::Dangerous),
         _ => Err(BridgeError::new(
             "unknown_tool",
             "unknown tool is not registered in the risk policy",

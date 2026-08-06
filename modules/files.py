@@ -9,6 +9,34 @@ from modules.project_paths import projects_dir
 BASE_DIR = projects_dir()
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 
+MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB guard — fail early on huge payloads
+MAX_LIST_ENTRIES = 500
+
+def _reject_symlink(target: Path) -> None:
+    # Defense-in-depth: only check inside Projects/ — don't walk up to C:\.
+    base = BASE_DIR.resolve()
+    try:
+        resolved = target.resolve()
+        # Check target itself + parents down to BASE_DIR only
+        cur = resolved
+        while True:
+            if cur.is_symlink():
+                raise ValueError("Символические ссылки запрещены.")
+            if cur == base or cur.parent == cur:
+                break
+            cur = cur.parent
+            # stop once we're outside base's ancestry
+            try:
+                cur.relative_to(base)
+            except ValueError:
+                if cur != base:
+                    # cur is now outside Projects/ — no need to check higher
+                    # (safe_path already rejected escapes; this just avoids C:\ walk)
+                    break
+    except ValueError:
+        raise
+    except OSError:
+        raise ValueError("Символические ссылки запрещены.")
 
 def safe_path(path: str) -> Path:
     target = (BASE_DIR / path).resolve()
@@ -29,7 +57,10 @@ def create_folder(path: str):
 
 
 def write_file(path: str, content: str):
+    if len(content.encode("utf-8")) > MAX_FILE_BYTES:
+        return f"Отклонено: файл превышает лимит {MAX_FILE_BYTES} байт"
     target = safe_path(path)
+    _reject_symlink(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return f"Файл создан: {target}"
@@ -41,6 +72,9 @@ def read_file(path: str):
     if not target.exists():
         return f"Файл не найден: {target}"
 
+    if target.stat().st_size > MAX_FILE_BYTES:
+        return f"Отклонено: файл превышает лимит {MAX_FILE_BYTES} байт — используйте предпросмотр"
+
     return target.read_text(encoding="utf-8")
 
 
@@ -50,10 +84,14 @@ def list_files(path: str = ""):
     if not target.exists():
         return f"Папка не найдена: {target}"
 
-    items = []
-    for item in target.iterdir():
-        kind = "DIR " if item.is_dir() else "FILE"
-        items.append(f"{kind}: {item.name}")
+    entries = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    if len(entries) > MAX_LIST_ENTRIES:
+        shown = entries[:MAX_LIST_ENTRIES]
+        hidden = len(entries) - MAX_LIST_ENTRIES
+        items = [f"{'DIR ' if p.is_dir() else 'FILE'}: {p.name}" for p in shown]
+        items.append(f"... ещё {hidden} элементов скрыто (лимит {MAX_LIST_ENTRIES})")
+        return "\n".join(items)
+    items = [f"{'DIR ' if p.is_dir() else 'FILE'}: {p.name}" for p in entries]
 
     return "\n".join(items) if items else "Папка пустая."
 
@@ -64,6 +102,7 @@ def delete_path(path: str):
     if not target.exists():
         return f"Не найдено: {target}"
 
+    _reject_symlink(target)
     if target.is_dir():
         shutil.rmtree(target)
     else:

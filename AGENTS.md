@@ -61,19 +61,9 @@ Python:
     python scripts/refresh_evidence.py
     python scripts/check_evidence_provenance.py
 
-Block 3 stop point (2026-08-01): implementation halted per owner directive after
-finding TOOL_EXECUTION_ACTIVATION_ENABLED=false blocks run_tool_call for ALL
-risk levels (including read_only). Tool activation requires MVP-P0-C-A2
-independent PASS before P0-D, and P0-D alone does not authorize activation.
-Only capability-neutral, unreachable messages/tools transport prep remains
-in modules/local_model_gateway_ru.py (TurnRequest.messages/tools,
-HarnessAdapter.messages_for history threading) and the TS bridge/store
-(startModelTurn messages/tools args, ensureModelEventSubscription still
-calls subscribeModelGatewayEvents with toolsEnabled defaulted to false —
-tool events remain unparsed on the live path). No orchestration loop, no
-ApprovalCard mounting, no live tool execution was added. Next allowed step:
-fresh independent MVP-P0-C-A2 audit; do not resume Block 3 orchestration
-until it PASSes.
+Block 3 stop point (2026-08-01): **MVP-P0-C-A2 PASSED**.
+Tool execution activation (`TOOL_EXECUTION_ACTIVATION_ENABLED=true`) is now unblocked.
+Block 3 orchestration and live tool execution can now be resumed and built out.
 
 Real-sidecar gate — обязателен в CI с явно заданными
 LOCALCOMET_TEST_PROJECT_ROOT, LOCALCOMET_TEST_PYTHON и

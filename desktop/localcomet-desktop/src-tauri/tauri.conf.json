@@ -28,7 +28,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: https: http:; connect-src 'self' ipc: http://ipc.localhost https: http: ws: wss:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self' 'unsafe-inline' data: blob: asset: https:; connect-src 'self' ipc: http://ipc.localhost https: http: ws: wss:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {

@@ -1988,7 +1988,7 @@ def run_goal(user_goal: str, max_steps: int = 10, save_as_real_goal: bool = True
 
     while queue.has_tasks() and step < max_steps:
         step += 1
-        task = queue.next()
+        task = queue.get_next()
 
         if not task or not task.strip():
             print("Пропущена пустая задача.")

@@ -89,3 +89,15 @@ name = "files.rollback_undo"
 risk_level = "guarded"
 requires_approval = true
 implementation = "modules/files.py::rollback_undo"
+
+[[tools]]
+name = "shell"
+risk_level = "dangerous"
+requires_approval = true
+implementation = "modules/tool_execution_ru.py::_shell (stub, deterministically rejected until allowlisted subprocess path)"
+
+[[tools]]
+name = "computer_use"
+risk_level = "dangerous"
+requires_approval = true
+implementation = "modules/tool_execution_ru.py::_computer_use -> modules/computer_use_real_actions_ru.py::execute_real_action"
