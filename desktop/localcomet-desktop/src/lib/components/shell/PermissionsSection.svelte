@@ -54,24 +54,24 @@
       </button>
     </div>
 
-    <!-- Shell Permission -->
+    <!-- Tools Permission -->
     <div class="permission-item">
       <div class="info">
-        <div class="icon-wrap" class:active={$agentPermissions.shell}>
-          <Icon name="terminal" size={24} />
+        <div class="icon-wrap" class:active={$agentPermissions.tools}>
+          <Icon name="plug" size={24} />
         </div>
         <div>
-          <h4>{$t('permissions.shell')}</h4>
-          <p>{$t('permissions.shell_desc')}</p>
+          <h4>{$t('permissions.tools')}</h4>
+          <p>{$t('permissions.tools_desc')}</p>
         </div>
       </div>
       <button 
         type="button" 
         class="toggle-switch" 
-        class:on={$agentPermissions.shell} 
-        onclick={toggleShell}
-        aria-pressed={$agentPermissions.shell}
-        title={$t('permissions.shell')}
+        class:on={$agentPermissions.tools} 
+        onclick={toggleTools}
+        aria-pressed={$agentPermissions.tools}
+        title={$t('permissions.tools')}
       >
         <span class="knob"></span>
       </button>
@@ -123,24 +123,24 @@
       </button>
     </div>
 
-    <!-- External Tools Permission -->
+    <!-- Shell Permission -->
     <div class="permission-item">
       <div class="info">
-        <div class="icon-wrap" class:active={$agentPermissions.tools}>
-          <Icon name="plug" size={24} />
+        <div class="icon-wrap" class:active={$agentPermissions.shell}>
+          <Icon name="terminal" size={24} />
         </div>
         <div>
-          <h4>{$t('permissions.tools')}</h4>
-          <p>{$t('permissions.tools_desc')}</p>
+          <h4>{$t('permissions.shell')}</h4>
+          <p>{$t('permissions.shell_desc')}</p>
         </div>
       </div>
       <button 
         type="button" 
         class="toggle-switch" 
-        class:on={$agentPermissions.tools} 
-        onclick={toggleTools}
-        aria-pressed={$agentPermissions.tools}
-        title={$t('permissions.tools')}
+        class:on={$agentPermissions.shell} 
+        onclick={toggleShell}
+        aria-pressed={$agentPermissions.shell}
+        title={$t('permissions.shell')}
       >
         <span class="knob"></span>
       </button>

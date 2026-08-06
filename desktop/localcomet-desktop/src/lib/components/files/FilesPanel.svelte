@@ -168,21 +168,9 @@
     gap: var(--lc-space-3);
   }
 
-  h2,
-  header p,
-  .empty {
-    margin: 0;
-  }
-
   h2 {
+    margin: 0;
     font-size: 13px;
-  }
-
-  header p,
-  .empty {
-    margin-top: 2px;
-    color: var(--lc-muted);
-    font-size: 11px;
   }
 
   button,
@@ -354,12 +342,6 @@
 
   footer strong {
     color: var(--lc-text);
-  }
-
-  footer small {
-    flex-basis: 100%;
-    color: var(--lc-faint);
-    font-size: 9px;
   }
 
   .file-error {

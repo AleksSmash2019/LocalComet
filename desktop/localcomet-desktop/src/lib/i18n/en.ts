@@ -323,6 +323,8 @@ export const en: TranslationMap = {
   'permissions.internet': 'Internet (search and fetch)',
   'permissions.internet_desc': 'web.search and web.fetch. Cached 10m, 10kB limit. Requires approval.',
   'permissions.tools_desc': 'Allow using external utilities and sidecar applications.',
+  'permissions.computer_use': 'Computer Use',
+  'permissions.computer_use_desc': 'Allow the model to control windows, clicks and typing. Requires approval.',
   'capability.local_chat': 'Local chat',
   'capability.local_model_inference': 'Local model inference',
   'capability.approved_model_setup': 'Approved local model setup',

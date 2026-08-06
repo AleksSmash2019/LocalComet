@@ -14,5 +14,4 @@
   .knowledge-availability div { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--lc-space-2); min-width: 0; }
   strong { color: var(--lc-text); font-size: .82rem; }
   span { color: var(--lc-muted); font-size: .72rem; font-weight: 720; }
-  p { flex-basis: 100%; margin: 0; color: var(--lc-faint); font-size: .7rem; line-height: 1.4; }
 </style>

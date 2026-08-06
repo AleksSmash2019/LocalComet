@@ -185,10 +185,6 @@
     border-radius: 50%;
     margin-bottom: 2px;
   }
-  
-  .send-button.pill-send span {
-    display: none;
-  }
 
   textarea {
     flex: 1;

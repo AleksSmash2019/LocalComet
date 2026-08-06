@@ -214,6 +214,8 @@ export const ru: TranslationMap = {
   'permissions.internet': 'Интернет (поиск и чтение страниц)',
   'permissions.internet_desc': 'Поиск web.search и чтение web.fetch. Кэш 10м, лимит 10kB. Требует подтверждения.',
   'permissions.tools_desc': 'Разрешить использование внешних утилит и сайдкар-приложений.',
+  'permissions.computer_use': 'Управление компьютером',
+  'permissions.computer_use_desc': 'Разрешить модели управлять окнами, кликами и вводом. Требует подтверждения.',
 
   // Diagnostics
   'diag.title': 'Диагностика',
