@@ -24,6 +24,19 @@ describe('component smoke tests', () => {
     expect(() => render(ConversationSidebar)).not.toThrow();
   });
 
+  it('surfaces the live control plane status instead of discarding it', () => {
+    // AppShell derives these from controlPlaneStore and passes them in; before
+    // this they were unused exports, so the user never saw the bridge state.
+    const down = render(ConversationSidebar, {
+      props: { controlPlaneLabel: 'Control Plane: Unavailable', controlPlaneTone: 'disabled' }
+    }).body;
+    expect(down).toContain('Control Plane: Unavailable');
+    expect(down).toContain('tone-disabled');
+
+    // A failing bridge must not be able to render as connected.
+    expect(down).not.toContain('tone-ready');
+  });
+
   it('renders functional sessions without placeholder or preference clutter', () => {
     const html = render(ConversationSidebar).body;
     expect(html).not.toContain('Зарезервировано');

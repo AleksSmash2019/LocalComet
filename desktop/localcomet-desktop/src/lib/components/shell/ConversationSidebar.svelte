@@ -111,6 +111,17 @@
       <Icon name="settings" size={16} />
       {$t('nav.settings')}
     </button>
+
+    <!--
+      AppShell already derived this label and tone from the live bridge state and
+      passed them in, but nothing rendered them: svelte-check reported both as
+      unused exports. The value is truthful (it comes from controlPlaneStore, not
+      a placeholder), so it is shown rather than deleted. Collapsed sidebar keeps
+      only the dot, which StatusDot labels for screen readers.
+    -->
+    <div class="control-plane-status" class:collapsed={!$sidebarExpanded}>
+      <StatusBadge label={controlPlaneLabel} tone={controlPlaneTone} />
+    </div>
   </div>
 </aside>
 
@@ -259,6 +270,17 @@
     flex-direction: column;
     padding: 16px;
     gap: 12px;
+  }
+
+  .control-plane-status {
+    display: flex;
+    min-width: 0;
+    font-size: 11px;
+  }
+
+  /* Collapsed rail: keep the coloured dot, drop the text so it cannot clip. */
+  .control-plane-status.collapsed :global(.status-badge span) {
+    display: none;
   }
 
   @media (max-width: 920px) {
