@@ -8,32 +8,16 @@ export const zhCN: TranslationMap = {
   'nav.chat': '对话',
   'nav.tasks': '任务',
   'nav.diagnostics': '诊断',
-  'nav.audit': '审计',
   'nav.settings': '设置',
-  'nav.setup': '设置向导',
-  'nav.main': '主导航',
-  'nav.later': '稍后',
   'nav.hf_browser': 'HF 模型',
-  'app.title_bar': 'LocalComet 应用栏',
 
   // Sidebar
   'sidebar.label': '会话侧栏',
-  'sidebar.new_thread': '新建会话线程',
   'sidebar.collapse': '折叠或展开侧栏',
   'sidebar.toggle': '显示或隐藏对话侧栏',
   'sidebar.new_conversation': '新建对话',
-  'sidebar.pinned': '已固定',
-  'sidebar.project_labels': '项目标签',
   'conversation.empty': '暂无对话',
   'group.local_chats': '本地对话',
-  'group.reserved': '已保留',
-  'group.disabled': '已停用',
-  'item.new_chat': '新建对话',
-  'item.audit': '审计',
-  'item.documents': '文档',
-  'item.model_not_connected': '模型未连接',
-  'item.model_required': '需要模型',
-  'item.later': '稍后',
 
   // Command palette
   'commandPalette.label': '命令面板',
@@ -51,9 +35,6 @@ export const zhCN: TranslationMap = {
 
   // Theme and language
   'theme.manage': '主题设置',
-  'theme.system': '使用系统主题',
-  'theme.light': '使用浅色主题',
-  'theme.dark': '使用深色主题',
   'lang.select': '选择语言',
 
   // Settings
@@ -94,13 +75,10 @@ export const zhCN: TranslationMap = {
   'chat.connect_model_first': '请先连接模型',
   'chat.send': '发送',
   'chat.stop': '停止',
-  'chat.model_not_connected': '模型未连接',
   'chat.retry': '重试',
   'chat.connect_model': '连接模型',
-  'chat.open_models': '打开模型',
 
   // Model picker and prompt cards
-  'chat.search': '搜索',
   'chat.how_can_i_help': '需要什么帮助？',
   'prompt.create_component': '创建组件',
   'prompt.create_component_sub': 'React 与 Tailwind',

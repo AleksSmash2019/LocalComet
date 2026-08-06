@@ -8,32 +8,16 @@ export const ko: TranslationMap = {
   'nav.chat': '채팅',
   'nav.tasks': '작업',
   'nav.diagnostics': '진단',
-  'nav.audit': '감사',
   'nav.settings': '설정',
-  'nav.setup': '설치',
-  'nav.main': '기본 탐색',
-  'nav.later': '나중에',
   'nav.hf_browser': 'HF 모델',
-  'app.title_bar': 'LocalComet 애플리케이션 바',
 
   // Sidebar
   'sidebar.label': '세션 사이드바',
-  'sidebar.new_thread': '새 스레드',
   'sidebar.collapse': '사이드바 접기 또는 펼치기',
   'sidebar.toggle': '채팅 사이드바 표시 전환',
   'sidebar.new_conversation': '새 채팅',
-  'sidebar.pinned': '고정됨',
-  'sidebar.project_labels': '프로젝트 라벨',
   'conversation.empty': '대화 없음',
   'group.local_chats': '로컬 채팅',
-  'group.reserved': '예약됨',
-  'group.disabled': '비활성화됨',
-  'item.new_chat': '새 채팅',
-  'item.audit': '감사',
-  'item.documents': '문서',
-  'item.model_not_connected': '모델이 연결되지 않음',
-  'item.model_required': '모델 필요',
-  'item.later': '나중에',
 
   // Command palette
   'commandPalette.label': '명령 팔레트',
@@ -51,9 +35,6 @@ export const ko: TranslationMap = {
 
   // Theme and language
   'theme.manage': '테마 설정',
-  'theme.system': '시스템 테마 사용',
-  'theme.light': '라이트 테마 사용',
-  'theme.dark': '다크 테마 사용',
   'lang.select': '언어 선택',
 
   // Settings
@@ -94,13 +75,10 @@ export const ko: TranslationMap = {
   'chat.connect_model_first': '먼저 모델을 연결하세요',
   'chat.send': '보내기',
   'chat.stop': '중지',
-  'chat.model_not_connected': '모델이 연결되지 않음',
   'chat.retry': '다시 시도',
   'chat.connect_model': '모델 연결',
-  'chat.open_models': '모델 열기',
 
   // Model picker and prompt cards
-  'chat.search': '검색',
   'chat.how_can_i_help': '무엇을 도와드릴까요?',
   'prompt.create_component': '컴포넌트 만들기',
   'prompt.create_component_sub': 'React 및 Tailwind',

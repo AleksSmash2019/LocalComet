@@ -6725,44 +6725,6 @@ mod tests {
     }
 
     #[test]
-    fn b5_valid_nonempty_object_is_recorded() {
-        let identity = model_identity();
-        let mut entry = b5_entry(&identity);
-        let event = raw_tool_event(
-            &identity,
-            "model.turn.tool_calls",
-            json!([{"id":"call_001","name":"files.read","arguments":{"path":"a.txt"}}]),
-        );
-        let calls = event.metadata["tool_calls"].as_array().unwrap().clone();
-        for (sequence, call) in calls.iter().enumerate() {
-            let mut request =
-                raw_tool_event(&identity, "model.tool.request", json!([call.clone()]));
-            request.sequence = sequence as u64;
-            request.metadata["tools_executed"] = json!(sequence + 1);
-            validate_and_record_model_event(
-                &mut entry,
-                &request,
-                "model.tool.request",
-                sequence as u64,
-            )
-            .expect("matching intermediate request must be recorded");
-        }
-        let mut terminal = event;
-        terminal.sequence = calls.len() as u64;
-        validate_and_record_model_event(
-            &mut entry,
-            &terminal,
-            "model.turn.tool_calls",
-            calls.len() as u64,
-        )
-        .expect("matching terminal must be recorded");
-        assert!(entry.terminal_seen);
-        assert_eq!(entry.next_sequence, (calls.len() + 1) as u64);
-        assert_eq!(entry.event_count, calls.len() + 1);
-        assert_eq!(entry.intermediate_tool_calls, calls);
-    }
-
-    #[test]
     fn b5_valid_batch_is_recorded() {
         let identity = model_identity();
         let mut entry = b5_entry(&identity);
@@ -7184,44 +7146,6 @@ mod tests {
     // ---- B5L RED tests ----
 
     #[test]
-    fn b5l_small_arguments_are_recorded() {
-        let identity = model_identity();
-        let mut entry = b5_entry(&identity);
-        let event = raw_tool_event(
-            &identity,
-            "model.turn.tool_calls",
-            json!([{"id":"call_001","name":"files.read","arguments":{"path":"a.txt"}}]),
-        );
-        let calls = event.metadata["tool_calls"].as_array().unwrap().clone();
-        for (sequence, call) in calls.iter().enumerate() {
-            let mut request =
-                raw_tool_event(&identity, "model.tool.request", json!([call.clone()]));
-            request.sequence = sequence as u64;
-            request.metadata["tools_executed"] = json!(sequence + 1);
-            validate_and_record_model_event(
-                &mut entry,
-                &request,
-                "model.tool.request",
-                sequence as u64,
-            )
-            .expect("matching intermediate request must be recorded");
-        }
-        let mut terminal = event;
-        terminal.sequence = calls.len() as u64;
-        validate_and_record_model_event(
-            &mut entry,
-            &terminal,
-            "model.turn.tool_calls",
-            calls.len() as u64,
-        )
-        .expect("matching terminal must be recorded");
-        assert!(entry.terminal_seen);
-        assert_eq!(entry.next_sequence, (calls.len() + 1) as u64);
-        assert_eq!(entry.event_count, calls.len() + 1);
-        assert_eq!(entry.intermediate_tool_calls, calls);
-    }
-
-    #[test]
     fn b5l_exact_byte_limit_reaches_schema_validation() {
         let identity = model_identity();
         let mut entry = b5_entry(&identity);
@@ -7364,89 +7288,6 @@ mod tests {
         assert_eq!(entry.next_sequence, 0);
         assert_eq!(entry.event_count, 0);
         assert!(!entry.terminal_seen);
-    }
-
-    #[test]
-    fn b5l_valid_batch_is_recorded() {
-        let identity = model_identity();
-        let mut entry = b5_entry(&identity);
-        let event = raw_tool_event(
-            &identity,
-            "model.turn.tool_calls",
-            json!([
-                {"id":"call_001","name":"files.read","arguments":{"path":"a.txt"}},
-                {"id":"call_002","name":"files.read","arguments":{"path":"b.txt"}}
-            ]),
-        );
-        let calls = event.metadata["tool_calls"].as_array().unwrap().clone();
-        for (sequence, call) in calls.iter().enumerate() {
-            let mut request =
-                raw_tool_event(&identity, "model.tool.request", json!([call.clone()]));
-            request.sequence = sequence as u64;
-            request.metadata["tools_executed"] = json!(sequence + 1);
-            validate_and_record_model_event(
-                &mut entry,
-                &request,
-                "model.tool.request",
-                sequence as u64,
-            )
-            .expect("matching intermediate request must be recorded");
-        }
-        let mut terminal = event;
-        terminal.sequence = calls.len() as u64;
-        validate_and_record_model_event(
-            &mut entry,
-            &terminal,
-            "model.turn.tool_calls",
-            calls.len() as u64,
-        )
-        .expect("matching terminal must be recorded");
-        assert!(entry.terminal_seen);
-        assert_eq!(entry.next_sequence, (calls.len() + 1) as u64);
-        assert_eq!(entry.event_count, calls.len() + 1);
-        assert_eq!(entry.intermediate_tool_calls, calls);
-    }
-
-    #[test]
-    fn b5l_adjacent_events_are_independent() {
-        let identity_a = model_identity();
-        let identity_b = ModelRequestIdentity {
-            request_id: "fedcba9876543210fedcba98".into(),
-            chat_session_id: "chat_session_2".into(),
-            model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
-            submitted_at_unix_ms: 1_750_000_000_001,
-            max_tokens: 128,
-            binding_fingerprint: "b".repeat(64),
-        };
-        let mut entry_a = b5_entry(&identity_a);
-        let mut entry_b = b5_entry(&identity_b);
-        let event_a = raw_tool_event(
-            &identity_a,
-            "model.turn.tool_calls",
-            json!([{"id":"call_001","name":"files.read","arguments":{"path":"a.txt"}}]),
-        );
-        let event_b = raw_tool_event(
-            &identity_b,
-            "model.turn.tool_calls",
-            json!([{"id":"call_001","name":"files.read","arguments":{"path":"b.txt"}}]),
-        );
-        for (entry, event) in [(&mut entry_a, event_a), (&mut entry_b, event_b)] {
-            let calls = event.metadata["tool_calls"].as_array().unwrap().clone();
-            let request = raw_tool_event(
-                &entry.identity,
-                "model.tool.request",
-                json!([calls[0].clone()]),
-            );
-            validate_and_record_model_event(entry, &request, "model.tool.request", 0)
-                .expect("adjacent request prefix must be recorded independently");
-            let mut terminal = event;
-            terminal.sequence = 1;
-            validate_and_record_model_event(entry, &terminal, "model.turn.tool_calls", 1)
-                .expect("adjacent terminal must match only its own prefix");
-            assert!(entry.terminal_seen);
-            assert_eq!(entry.next_sequence, 2);
-            assert_eq!(entry.intermediate_tool_calls, calls);
-        }
     }
 
     #[test]

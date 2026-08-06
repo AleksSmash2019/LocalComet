@@ -5,38 +5,17 @@ export const en: TranslationMap = {
   'nav.chat': 'Chat',
   'nav.tasks': 'Tasks',
   'nav.diagnostics': 'Diagnostics',
-  'nav.audit': 'Audit',
   'nav.settings': 'Settings',
-  'nav.setup': 'Setup',
-  'nav.main': 'Main navigation',
-  'app.title_bar': 'LocalComet application bar',
-  'nav.later': 'later',
 
   // Sidebar
   'sidebar.label': 'Session sidebar',
-  'sidebar.new_thread': 'New thread',
-  'sidebar.new_thread_title': 'Thread creation happens when Control Plane demo starts',
   'sidebar.collapse': 'Collapse/expand sidebar',
   'sidebar.toggle': 'Show or hide the chat sidebar',
   'sidebar.new_conversation': 'New chat',
   'conversation.empty': 'No conversations',
-  'sidebar.pinned_label': 'Pinned Control Plane',
-  'sidebar.pinned': 'Pinned',
-  'sidebar.project_labels': 'Project labels',
 
   // Sidebar groups
   'group.local_chats': 'Local chats',
-  'group.reserved': 'Reserved',
-  'group.disabled': 'Disabled',
-
-  // Sidebar items
-  'item.new_chat': 'New chat',
-  'item.cancellation_demo': 'Cancellation demo',
-  'item.audit': 'Audit',
-  'item.documents': 'Documents',
-  'item.model_not_connected': 'Model not connected',
-  'item.model_required': 'Model required',
-  'item.later': 'Later',
 
   // Chat
   'chat.type_message': 'Type a message…',
@@ -44,9 +23,6 @@ export const en: TranslationMap = {
   'chat.send': 'Send',
   'chat.stop': 'Stop',
   'chat.model_responding': 'Model is responding…',
-  'chat.tools_unavailable': 'Tools (not yet available)',
-  'chat.model_not_connected': 'Model not connected',
-  'chat.model_not_connected_detail': 'Connect a local model to start a secure conversation.',
   'chat.model_unavailable': 'Local model unavailable',
   'chat.model_unavailable_detail': 'LocalComet uses a local model. Only explicitly included file text is available; there is no arbitrary file, internet, email, Vault, shell, Computer Use, or external-tool access. Connect the approved local model to begin.',
   'chat.model_loading': 'Preparing the local model',
@@ -65,7 +41,6 @@ export const en: TranslationMap = {
   'chat.request_timed_out_detail': 'The local response timed out. The model remains safe to retry when ready.',
   'chat.connect_model': 'Connect model',
   'chat.setup_local_ai': 'Set up local AI',
-  'chat.open_models': 'Open models',
   'chat.model_installing': 'Setting up local AI…',
   'chat.model_connecting': 'Connecting model…',
   'chat.user_message': 'User message',
@@ -76,12 +51,9 @@ export const en: TranslationMap = {
   'chat.message_history': 'Message history',
 
   // Approval
-  'approval.disabled': 'Disabled',
   'approval.section_aria': 'Action approval',
   'approval.confirm': 'Confirm',
   'approval.reject': 'Reject',
-  'approval.confirm_aria': 'Confirm disabled, because desktop bridge is not connected',
-  'approval.reject_aria': 'Reject disabled, because desktop bridge is not connected',
   'approval.pending': 'Pending approval',
   'approval.requesting': 'Requesting approval…',
   'approval.executing': 'Executing…',
@@ -113,12 +85,8 @@ export const en: TranslationMap = {
 
   // Files
   'files.title': 'Files',
-  'files.read_only': 'Explicitly selected local text files only · read-only',
   'files.add': 'Add files',
-  'files.selecting': 'Picker open…',
   'files.loading': 'Checking safe file selection availability…',
-  'files.unavailable': 'Safe file selection is unavailable in this environment.',
-  'files.empty': 'No files selected. LocalComet does not scan drives or directories.',
   'files.selected_list': 'Selected files',
   'files.size': 'Size',
   'files.bytes': 'bytes',
@@ -131,7 +99,6 @@ export const en: TranslationMap = {
   'files.forget': 'Remove & forget',
   'files.forgetting': 'Forgetting…',
   'files.context_total': 'Next-request context:',
-  'files.context_excerpt_notice': 'If text exceeds the model-request limit, a deterministic bounded excerpt is included with exact counts.',
   'files.inclusion.full': 'Full file included in the last request',
   'files.inclusion.excerpt': 'Bounded excerpt included in the last request',
   'files.preview_eyebrow': 'Safe preview',
@@ -161,10 +128,6 @@ export const en: TranslationMap = {
   // Project Knowledge
   'knowledge.title': 'Project Knowledge',
   'knowledge.unavailable': 'Project context is currently unavailable',
-  'knowledge.unavailable_detail': 'No project data is being sent. This is not long-term memory.',
-  'knowledge.enabled': 'On for this session',
-  'knowledge.disabled': 'Off',
-  'knowledge.toggle_label': 'Enable Project Knowledge for the next turn',
   'knowledge.approval_label': 'Project Knowledge approval preview',
   'knowledge.sources': 'sources',
   'knowledge.characters': 'characters',
@@ -192,19 +155,12 @@ export const en: TranslationMap = {
 
   // Connection states
   'conn.not_connected': 'Not connected',
-  'conn.status': 'Connection status',
-  'conn.model_connected': 'Model: Connected',
-  'conn.connecting': 'Connecting',
-  'conn.ready': 'Ready',
-  'conn.generating': 'Generating',
-  'conn.error': 'Error',
   'conn.request_generating': 'Request: Generating',
   'conn.request_error': 'Request: Error',
   'conn.model_ready': 'Model: Ready',
   'conn.model_loading': 'Model: Loading',
   'conn.model_unavailable': 'Model: Unavailable',
   'conn.model_error': 'Model: Error',
-  'conn.runtime_ready': 'Runtime: Ready',
 
   // Model Setup
   'setup.title': 'Connect model',
@@ -246,8 +202,6 @@ export const en: TranslationMap = {
   'setup.start_runtime': 'Start runtime',
   'setup.stop_runtime': 'Stop runtime',
   'setup.select_local_model': 'Select a local model',
-  'setup.external_mode': 'External local server',
-  'setup.managed_mode': 'Managed local model',
 
   // Diagnostics
   'diag.title': 'Diagnostics',
@@ -255,12 +209,8 @@ export const en: TranslationMap = {
   'diag.runtime': 'Runtime',
   'diag.runtime_state': 'Runtime State',
   'diag.close': 'Close',
-  'diag.tab_Обзор': 'Overview',
   'diag.tab_Телеметрия': 'Telemetry',
   'diag.tab_События': 'Events',
-  'diag.tab_Политика': 'Policy',
-  'diag.tab_Проверка': 'Verification',
-  'diag.sections_label': 'Diagnostics sections',
   'diag.summary': 'Overview',
   'diag.session': 'Session',
   'diag.thread': 'Thread',
@@ -275,16 +225,9 @@ export const en: TranslationMap = {
   'diag.persistence': 'Persistence',
   'diag.provider': 'Provider',
   'diag.response_mode': 'Response mode',
-  'diag.autonomous': 'Autonomous actions',
-  'diag.confirmation': 'Confirmation',
-  'diag.result_check': 'Result check',
-  'diag.status': 'Status',
   'diag.event_stream': 'EVENT STREAM',
   'diag.event_stream_label': 'Validated event stream',
   'diag.no_validated_events': 'No validated events received.',
-  'diag.policy_decision': 'POLICY DECISION',
-  'diag.policy_decision_label': 'Policy decision',
-  'diag.not_evaluated': 'Not evaluated',
   'diag.unknown': 'Unknown',
   'diag.not_configured': 'Not configured',
   'diag.probing': 'Probing',
@@ -297,9 +240,7 @@ export const en: TranslationMap = {
   'diag.cancelling': 'Cancelling',
   'diag.failed': 'Failed',
   'diag.off': 'Off',
-  'diag.disabled': 'Disabled',
   'diag.not_run': 'Not run',
-  'diag.result_not_run': 'Not run',
   'diag.yes': 'Yes',
   'diag.no': 'No',
   'diag.running': 'Running',
@@ -307,17 +248,11 @@ export const en: TranslationMap = {
   'diag.cancelled': 'Cancelled',
   'diag.error': 'Error',
   'diag.not_started': 'Not started',
-  'diag.demo_controls': 'Demo controls',
-  'diag.start_demo': 'Start cancellation demo',
-  'diag.cancel_demo': 'Cancel current demo turn',
-  'diag.about_versions': 'About versions',
-  'diag.desktop_shell': 'Desktop shell',
   'diag.control_plane_connected': 'Control Plane: Connected',
   'diag.control_plane_starting': 'Control Plane: Starting',
   'diag.control_plane_unavailable': 'Control Plane: Unavailable',
   'diag.control_plane_error': 'Control Plane: Error',
   'diag.control_plane_unknown': 'Control Plane: Unknown',
-  'diag.control_plane_not_connected': 'Control Plane must be connected',
   'diag.sidecar_ready': 'Sidecar: Ready',
   'diag.sidecar_unknown': 'Sidecar: Unknown',
 
@@ -340,9 +275,6 @@ export const en: TranslationMap = {
 
   // Theme
   'theme.manage': 'Theme settings',
-  'theme.system': 'Use system theme',
-  'theme.light': 'Use light theme',
-  'theme.dark': 'Use dark theme',
 
   // Demo messages
   'demo.start_dialog': 'Start dialog.',
@@ -350,8 +282,6 @@ export const en: TranslationMap = {
 
   // Language
   'lang.select': 'Select language',
-  'lang.russian': 'Русский',
-  'lang.english': 'English',
 
   // Settings
   'settings.title': 'Settings',
@@ -476,12 +406,7 @@ export const en: TranslationMap = {
   'models.custom_models': 'User-supplied models',
   'models.custom_title': 'Downloaded models',
   'models.custom_count': 'models',
-  'models.custom_url_label': 'File URL',
-  'models.custom_url_placeholder': 'https://huggingface.co/owner/repo/resolve/revision/model.gguf',
   'models.custom_warning': 'Warning: Models are uncertified. Always verify SHA-256.',
-  'models.custom_download': 'Download',
-  'models.custom_confirm_title': 'Confirm user-supplied model download',
-  'models.custom_confirm_detail': 'LocalComet will download this exact canonical Hugging Face URL into managed storage and validate the GGUF bytes.',
   'models.custom_source': 'Source URL',
   'models.sha256': 'SHA-256',
   'models.license_unknown': 'Not determined',
@@ -529,10 +454,6 @@ export const en: TranslationMap = {
 
   // Project
   'project.detail': 'Local chat with model',
-
-  // Project labels
-  'project.label_frontend': 'Frontend',
-  'project.label_russian_ux': 'Russian UX',
 
   // Risk
   'risk.read_only': 'Read-only',
@@ -754,7 +675,6 @@ export const en: TranslationMap = {
   "review.connection.ERROR": "ERROR",
 
   // Model picker and prompt cards
-  'chat.search': 'Search',
   'chat.how_can_i_help': 'How can I help?',
   'prompt.create_component': 'Create a component',
   'prompt.create_component_sub': 'React with Tailwind',

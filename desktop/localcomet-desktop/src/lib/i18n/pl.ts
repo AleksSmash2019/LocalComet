@@ -8,32 +8,16 @@ export const pl: TranslationMap = {
   'nav.chat': 'Czat',
   'nav.tasks': 'Zadania',
   'nav.diagnostics': 'Diagnostyka',
-  'nav.audit': 'Audyt',
   'nav.settings': 'Ustawienia',
-  'nav.setup': 'Konfiguracja',
-  'nav.main': 'Nawigacja główna',
-  'nav.later': 'później',
   'nav.hf_browser': 'Modele HF',
-  'app.title_bar': 'Pasek aplikacji LocalComet',
 
   // Sidebar
   'sidebar.label': 'Panel boczny sesji',
-  'sidebar.new_thread': 'Nowy wątek',
   'sidebar.collapse': 'Zwiń lub rozwiń panel boczny',
   'sidebar.toggle': 'Pokaż lub ukryj panel boczny czatu',
   'sidebar.new_conversation': 'Nowy czat',
-  'sidebar.pinned': 'Przypięte',
-  'sidebar.project_labels': 'Etykiety projektu',
   'conversation.empty': 'Brak rozmów',
   'group.local_chats': 'Czaty lokalne',
-  'group.reserved': 'Zarezerwowane',
-  'group.disabled': 'Wyłączone',
-  'item.new_chat': 'Nowy czat',
-  'item.audit': 'Audyt',
-  'item.documents': 'Dokumenty',
-  'item.model_not_connected': 'Model nie jest połączony',
-  'item.model_required': 'Wymagany model',
-  'item.later': 'Później',
 
   // Command palette
   'commandPalette.label': 'Paleta poleceń',
@@ -51,9 +35,6 @@ export const pl: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'Ustawienia motywu',
-  'theme.system': 'Użyj motywu systemowego',
-  'theme.light': 'Użyj jasnego motywu',
-  'theme.dark': 'Użyj ciemnego motywu',
   'lang.select': 'Wybierz język',
 
   // Settings
@@ -94,13 +75,10 @@ export const pl: TranslationMap = {
   'chat.connect_model_first': 'Najpierw połącz model',
   'chat.send': 'Wyślij',
   'chat.stop': 'Zatrzymaj',
-  'chat.model_not_connected': 'Model nie jest połączony',
   'chat.retry': 'Ponów',
   'chat.connect_model': 'Połącz model',
-  'chat.open_models': 'Otwórz modele',
 
   // Model picker and prompt cards
-  'chat.search': 'Szukaj',
   'chat.how_can_i_help': 'W czym mogę pomóc?',
   'prompt.create_component': 'Utwórz komponent',
   'prompt.create_component_sub': 'React z Tailwind',

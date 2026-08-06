@@ -8,32 +8,16 @@ export const tr: TranslationMap = {
   'nav.chat': 'Sohbet',
   'nav.tasks': 'Görevler',
   'nav.diagnostics': 'Tanılama',
-  'nav.audit': 'Denetim',
   'nav.settings': 'Ayarlar',
-  'nav.setup': 'Kurulum',
-  'nav.main': 'Ana gezinme',
-  'nav.later': 'daha sonra',
   'nav.hf_browser': 'HF Modelleri',
-  'app.title_bar': 'LocalComet uygulama çubuğu',
 
   // Sidebar
   'sidebar.label': 'Oturum kenar çubuğu',
-  'sidebar.new_thread': 'Yeni konu',
   'sidebar.collapse': 'Kenar çubuğunu daralt veya genişlet',
   'sidebar.toggle': 'Sohbet kenar çubuğunu göster veya gizle',
   'sidebar.new_conversation': 'Yeni sohbet',
-  'sidebar.pinned': 'Sabitlendi',
-  'sidebar.project_labels': 'Proje etiketleri',
   'conversation.empty': 'Sohbet yok',
   'group.local_chats': 'Yerel sohbetler',
-  'group.reserved': 'Ayrılmış',
-  'group.disabled': 'Devre dışı',
-  'item.new_chat': 'Yeni sohbet',
-  'item.audit': 'Denetim',
-  'item.documents': 'Belgeler',
-  'item.model_not_connected': 'Model bağlı değil',
-  'item.model_required': 'Model gerekli',
-  'item.later': 'Daha sonra',
 
   // Command palette
   'commandPalette.label': 'Komut paleti',
@@ -51,9 +35,6 @@ export const tr: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'Tema ayarları',
-  'theme.system': 'Sistem temasını kullan',
-  'theme.light': 'Açık temayı kullan',
-  'theme.dark': 'Koyu temayı kullan',
   'lang.select': 'Dil seçin',
 
   // Settings
@@ -94,13 +75,10 @@ export const tr: TranslationMap = {
   'chat.connect_model_first': 'Önce bir model bağlayın',
   'chat.send': 'Gönder',
   'chat.stop': 'Durdur',
-  'chat.model_not_connected': 'Model bağlı değil',
   'chat.retry': 'Yeniden dene',
   'chat.connect_model': 'Modeli bağla',
-  'chat.open_models': 'Modelleri aç',
 
   // Model picker and prompt cards
-  'chat.search': 'Ara',
   'chat.how_can_i_help': 'Nasıl yardımcı olabilirim?',
   'prompt.create_component': 'Bileşen oluştur',
   'prompt.create_component_sub': 'Tailwind ile React',

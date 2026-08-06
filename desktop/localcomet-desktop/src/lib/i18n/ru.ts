@@ -5,38 +5,17 @@ export const ru: TranslationMap = {
   'nav.chat': 'Чат',
   'nav.tasks': 'Задачи',
   'nav.diagnostics': 'Диагностика',
-  'nav.audit': 'Аудит',
   'nav.settings': 'Настройки',
-  'nav.setup': 'Настройка',
-  'nav.main': 'Основная навигация',
-  'app.title_bar': 'Панель приложения LocalComet',
-  'nav.later': 'позже',
 
   // Sidebar
   'sidebar.label': 'Боковая панель сессий',
-  'sidebar.new_thread': 'Новый тред',
-  'sidebar.new_thread_title': 'Создание треда происходит при старте демо Control Plane',
   'sidebar.collapse': 'Свернуть/развернуть боковую панель',
   'sidebar.toggle': 'Показать или скрыть боковую панель чатов',
   'sidebar.new_conversation': 'Новый чат',
   'conversation.empty': 'Нет разговоров',
-  'sidebar.pinned_label': 'Закреплённый Control Plane',
-  'sidebar.pinned': 'Закреплено',
-  'sidebar.project_labels': 'Метки проекта',
 
   // Sidebar groups
   'group.local_chats': 'Локальные чаты',
-  'group.reserved': 'Зарезервировано',
-  'group.disabled': 'Отключено',
-
-  // Sidebar items
-  'item.new_chat': 'Новый чат',
-  'item.cancellation_demo': 'Демо отмены',
-  'item.audit': 'Аудит',
-  'item.documents': 'Документы',
-  'item.model_not_connected': 'Модель не подключена',
-  'item.model_required': 'Требуется модель',
-  'item.later': 'Позже',
 
   // Chat
   'chat.type_message': 'Введите сообщение…',
@@ -44,9 +23,6 @@ export const ru: TranslationMap = {
   'chat.send': 'Отправить',
   'chat.stop': 'Остановить',
   'chat.model_responding': 'Модель отвечает…',
-  'chat.tools_unavailable': 'Инструменты (пока недоступны)',
-  'chat.model_not_connected': 'Модель не подключена',
-  'chat.model_not_connected_detail': 'Подключите локальную модель, чтобы начать безопасный диалог.',
   'chat.model_unavailable': 'Локальная модель недоступна',
   'chat.model_unavailable_detail': 'LocalComet использует локальную модель. Доступен только текст явно включённых файлов; у помощника нет доступа к интернету, произвольным файлам, почте, Vault, shell, Computer Use и внешним инструментам. Подключите одобренную локальную модель, чтобы начать.',
   'chat.model_loading': 'Подготовка локальной модели',
@@ -65,7 +41,6 @@ export const ru: TranslationMap = {
   'chat.request_timed_out_detail': 'Время локального ответа истекло. Когда модель готова, запрос можно безопасно повторить.',
   'chat.connect_model': 'Подключить модель',
   'chat.setup_local_ai': 'Настроить локальный AI',
-  'chat.open_models': 'Открыть модели',
   'chat.model_installing': 'Настраивается локальный AI…',
   'chat.model_connecting': 'Подключение модели…',
   'chat.user_message': 'Сообщение пользователя',
@@ -76,12 +51,9 @@ export const ru: TranslationMap = {
   'chat.message_history': 'История сообщений',
 
   // Approval
-  'approval.disabled': 'Отключено',
   'approval.section_aria': 'Подтверждение действия',
   'approval.confirm': 'Подтвердить',
   'approval.reject': 'Отклонить',
-  'approval.confirm_aria': 'Подтвердить отключено, так как desktop bridge не подключен',
-  'approval.reject_aria': 'Отклонить отключено, так как desktop bridge не подключен',
   'approval.pending': 'Ожидает подтверждения',
   'approval.requesting': 'Запрашивается разрешение…',
   'approval.executing': 'Выполняется…',
@@ -113,12 +85,8 @@ export const ru: TranslationMap = {
 
   // Files
   'files.title': 'Файлы',
-  'files.read_only': 'Только явно выбранные локальные текстовые файлы · только чтение',
   'files.add': 'Добавить файлы',
-  'files.selecting': 'Открыт выбор…',
   'files.loading': 'Проверяем доступность безопасного выбора файлов…',
-  'files.unavailable': 'Безопасный выбор файлов недоступен в этой среде.',
-  'files.empty': 'Файлы не выбраны. LocalComet не сканирует диски и каталоги.',
   'files.selected_list': 'Выбранные файлы',
   'files.size': 'Размер',
   'files.bytes': 'байт',
@@ -131,7 +99,6 @@ export const ru: TranslationMap = {
   'files.forget': 'Удалить и забыть',
   'files.forgetting': 'Забываем…',
   'files.context_total': 'Контекст следующего запроса:',
-  'files.context_excerpt_notice': 'Если текст не помещается в лимит запроса модели, будет включён детерминированный ограниченный фрагмент с точными счётчиками.',
   'files.inclusion.full': 'В последний запрос включён полный файл',
   'files.inclusion.excerpt': 'В последний запрос включён ограниченный фрагмент',
   'files.preview_eyebrow': 'Безопасный предпросмотр',
@@ -161,10 +128,6 @@ export const ru: TranslationMap = {
   // Project Knowledge
   'knowledge.title': 'Знания проекта',
   'knowledge.unavailable': 'Контекст проекта пока недоступен',
-  'knowledge.unavailable_detail': 'Данные проекта не отправляются. Это не долговременная память.',
-  'knowledge.enabled': 'Включено для этой сессии',
-  'knowledge.disabled': 'Отключено',
-  'knowledge.toggle_label': 'Включить знания проекта для следующего запроса',
   'knowledge.approval_label': 'Предпросмотр знаний проекта для подтверждения',
   'knowledge.sources': 'источников',
   'knowledge.characters': 'символов',
@@ -192,19 +155,12 @@ export const ru: TranslationMap = {
 
   // Connection states
   'conn.not_connected': 'Не подключено',
-  'conn.status': 'Состояние подключения',
-  'conn.model_connected': 'Модель: Подключена',
-  'conn.connecting': 'Подключение',
-  'conn.ready': 'Готово',
-  'conn.generating': 'Генерация',
-  'conn.error': 'Ошибка',
   'conn.request_generating': 'Запрос: генерация',
   'conn.request_error': 'Запрос: ошибка',
   'conn.model_ready': 'Модель: готова',
   'conn.model_loading': 'Модель: загрузка',
   'conn.model_unavailable': 'Модель: недоступна',
   'conn.model_error': 'Модель: ошибка',
-  'conn.runtime_ready': 'Среда: готова',
 
   // Model Setup
   'setup.title': 'Подключить модель',
@@ -246,8 +202,6 @@ export const ru: TranslationMap = {
   'setup.start_runtime': 'Запустить runtime',
   'setup.stop_runtime': 'Остановить runtime',
   'setup.select_local_model': 'Выберите локальную модель',
-  'setup.external_mode': 'Внешний локальный сервер',
-  'setup.managed_mode': 'Управляемая локальная модель',
 
   // Diagnostics
   'diag.title': 'Диагностика',
@@ -255,12 +209,8 @@ export const ru: TranslationMap = {
   'diag.runtime': 'Среда выполнения',
   'diag.runtime_state': 'Состояние системы',
   'diag.close': 'Закрыть',
-  'diag.tab_Обзор': 'Обзор',
   'diag.tab_Телеметрия': 'Телеметрия',
   'diag.tab_События': 'События',
-  'diag.tab_Политика': 'Политика',
-  'diag.tab_Проверка': 'Проверка',
-  'diag.sections_label': 'Разделы диагностики',
   'diag.summary': 'Обзор',
   'diag.session': 'Сессия',
   'diag.thread': 'Диалог',
@@ -275,16 +225,9 @@ export const ru: TranslationMap = {
   'diag.persistence': 'Хранение данных',
   'diag.provider': 'Провайдер',
   'diag.response_mode': 'Режим ответа',
-  'diag.autonomous': 'Автономные действия',
-  'diag.confirmation': 'Подтверждение',
-  'diag.result_check': 'Проверка результата',
-  'diag.status': 'Статус',
   'diag.event_stream': 'ПОТОК СОБЫТИЙ',
   'diag.event_stream_label': 'Поток проверенных событий',
   'diag.no_validated_events': 'Проверенные события пока не получены.',
-  'diag.policy_decision': 'РЕШЕНИЕ ПОЛИТИКИ',
-  'diag.policy_decision_label': 'Решение политики',
-  'diag.not_evaluated': 'Не оценивалось',
   'diag.unknown': 'Неизвестно',
   'diag.not_configured': 'Не настроено',
   'diag.probing': 'Проверка подключения',
@@ -297,9 +240,7 @@ export const ru: TranslationMap = {
   'diag.cancelling': 'Отмена',
   'diag.failed': 'Ошибка',
   'diag.off': 'Отключено',
-  'diag.disabled': 'Отключено',
   'diag.not_run': 'Не запускалось',
-  'diag.result_not_run': 'Не запускалась',
   'diag.yes': 'Да',
   'diag.no': 'Нет',
   'diag.running': 'Выполняется',
@@ -307,17 +248,11 @@ export const ru: TranslationMap = {
   'diag.cancelled': 'Отменено',
   'diag.error': 'Ошибка',
   'diag.not_started': 'Не запускалось',
-  'diag.demo_controls': 'Демо-контролы',
-  'diag.start_demo': 'Запустить демо отмены',
-  'diag.cancel_demo': 'Отменить текущий демо-шот',
-  'diag.about_versions': 'О версиях',
-  'diag.desktop_shell': 'Оболочка приложения',
   'diag.control_plane_connected': 'Контур управления: Подключено',
   'diag.control_plane_starting': 'Контур управления: Запуск',
   'diag.control_plane_unavailable': 'Контур управления: Недоступно',
   'diag.control_plane_error': 'Контур управления: Ошибка',
   'diag.control_plane_unknown': 'Контур управления: Неизвестно',
-  'diag.control_plane_not_connected': 'Контур управления должен быть подключен',
   'diag.sidecar_ready': 'Служебный процесс: Готово',
   'diag.sidecar_unknown': 'Служебный процесс: Неизвестно',
 
@@ -340,9 +275,6 @@ export const ru: TranslationMap = {
 
   // Theme
   'theme.manage': 'Управление темой',
-  'theme.system': 'Использовать системную тему',
-  'theme.light': 'Использовать светлую тему',
-  'theme.dark': 'Использовать тёмную тему',
 
   // Demo messages
   'demo.start_dialog': 'Начать диалог.',
@@ -350,8 +282,6 @@ export const ru: TranslationMap = {
 
   // Language
   'lang.select': 'Выбрать язык',
-  'lang.russian': 'Русский',
-  'lang.english': 'English',
 
   // Settings
   'settings.title': 'Настройки',
@@ -476,12 +406,7 @@ export const ru: TranslationMap = {
   'models.custom_models': 'Пользовательские модели',
   'models.custom_title': 'Скачанные модели',
   'models.custom_count': 'моделей',
-  'models.custom_url_label': 'URL файла',
-  'models.custom_url_placeholder': 'https://huggingface.co/owner/repo/resolve/revision/model.gguf',
   'models.custom_warning': 'Внимание: модели скачиваются без гарантий. Всегда сверяйте SHA-256.',
-  'models.custom_download': 'Скачать',
-  'models.custom_confirm_title': 'Подтвердите загрузку пользовательской модели',
-  'models.custom_confirm_detail': 'LocalComet загрузит точный канонический URL Hugging Face в управляемое хранилище и проверит байты GGUF.',
   'models.custom_source': 'URL источника',
   'models.sha256': 'SHA-256',
   'models.license_unknown': 'Не определена',
@@ -529,10 +454,6 @@ export const ru: TranslationMap = {
 
   // Project
   'project.detail': 'Локальный чат с моделью',
-
-  // Project labels
-  'project.label_frontend': 'Frontend',
-  'project.label_russian_ux': 'Русский UX',
 
   // Risk
   'risk.read_only': 'Только чтение',
@@ -754,7 +675,6 @@ export const ru: TranslationMap = {
   "review.connection.ERROR": "ОШИБКА",
 
   // Model picker and prompt cards
-  'chat.search': 'Искать',
   'chat.how_can_i_help': 'Чем помочь?',
   'prompt.create_component': 'Создать компонент',
   'prompt.create_component_sub': 'React с Tailwind',

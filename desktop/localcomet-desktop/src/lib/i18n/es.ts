@@ -8,32 +8,16 @@ export const es: TranslationMap = {
   'nav.chat': 'Chat',
   'nav.tasks': 'Tareas',
   'nav.diagnostics': 'Diagnóstico',
-  'nav.audit': 'Auditoría',
   'nav.settings': 'Ajustes',
-  'nav.setup': 'Configuración',
-  'nav.main': 'Navegación principal',
-  'nav.later': 'más tarde',
   'nav.hf_browser': 'Modelos HF',
-  'app.title_bar': 'Barra de la aplicación LocalComet',
 
   // Sidebar
   'sidebar.label': 'Barra lateral de sesión',
-  'sidebar.new_thread': 'Nuevo hilo',
   'sidebar.collapse': 'Contraer o expandir la barra lateral',
   'sidebar.toggle': 'Mostrar u ocultar la barra lateral del chat',
   'sidebar.new_conversation': 'Chat nuevo',
-  'sidebar.pinned': 'Fijado',
-  'sidebar.project_labels': 'Etiquetas del proyecto',
   'conversation.empty': 'Sin conversaciones',
   'group.local_chats': 'Chats locales',
-  'group.reserved': 'Reservado',
-  'group.disabled': 'Desactivado',
-  'item.new_chat': 'Chat nuevo',
-  'item.audit': 'Auditoría',
-  'item.documents': 'Documentos',
-  'item.model_not_connected': 'Modelo no conectado',
-  'item.model_required': 'Modelo requerido',
-  'item.later': 'Más tarde',
 
   // Command palette
   'commandPalette.label': 'Paleta de comandos',
@@ -51,9 +35,6 @@ export const es: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'Ajustes de tema',
-  'theme.system': 'Usar el tema del sistema',
-  'theme.light': 'Usar el tema claro',
-  'theme.dark': 'Usar el tema oscuro',
   'lang.select': 'Seleccionar idioma',
 
   // Settings
@@ -94,13 +75,10 @@ export const es: TranslationMap = {
   'chat.connect_model_first': 'Conecta primero un modelo',
   'chat.send': 'Enviar',
   'chat.stop': 'Detener',
-  'chat.model_not_connected': 'Modelo no conectado',
   'chat.retry': 'Reintentar',
   'chat.connect_model': 'Conectar el modelo',
-  'chat.open_models': 'Abrir los modelos',
 
   // Model picker and prompt cards
-  'chat.search': 'Buscar',
   'chat.how_can_i_help': '¿En qué puedo ayudarte?',
   'prompt.create_component': 'Crear un componente',
   'prompt.create_component_sub': 'React con Tailwind',

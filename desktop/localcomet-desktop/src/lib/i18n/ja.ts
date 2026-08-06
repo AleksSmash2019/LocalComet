@@ -8,32 +8,16 @@ export const ja: TranslationMap = {
   'nav.chat': 'チャット',
   'nav.tasks': 'タスク',
   'nav.diagnostics': '診断',
-  'nav.audit': '監査',
   'nav.settings': '設定',
-  'nav.setup': 'セットアップ',
-  'nav.main': 'メインナビゲーション',
-  'nav.later': 'あとで',
   'nav.hf_browser': 'HF モデル',
-  'app.title_bar': 'LocalComet アプリケーションバー',
 
   // Sidebar
   'sidebar.label': 'セッションサイドバー',
-  'sidebar.new_thread': '新しいスレッド',
   'sidebar.collapse': 'サイドバーを折りたたむ / 展開する',
   'sidebar.toggle': 'チャットサイドバーの表示を切り替える',
   'sidebar.new_conversation': '新しいチャット',
-  'sidebar.pinned': 'ピン留め済み',
-  'sidebar.project_labels': 'プロジェクトラベル',
   'conversation.empty': '会話がありません',
   'group.local_chats': 'ローカルチャット',
-  'group.reserved': '予約済み',
-  'group.disabled': '無効',
-  'item.new_chat': '新しいチャット',
-  'item.audit': '監査',
-  'item.documents': 'ドキュメント',
-  'item.model_not_connected': 'モデルが未接続です',
-  'item.model_required': 'モデルが必要です',
-  'item.later': 'あとで',
 
   // Command palette
   'commandPalette.label': 'コマンドパレット',
@@ -51,9 +35,6 @@ export const ja: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'テーマ設定',
-  'theme.system': 'システムのテーマを使用',
-  'theme.light': 'ライトテーマを使用',
-  'theme.dark': 'ダークテーマを使用',
   'lang.select': '言語を選択',
 
   // Settings
@@ -94,13 +75,10 @@ export const ja: TranslationMap = {
   'chat.connect_model_first': '先にモデルを接続してください',
   'chat.send': '送信',
   'chat.stop': '停止',
-  'chat.model_not_connected': 'モデルが未接続です',
   'chat.retry': '再試行',
   'chat.connect_model': 'モデルを接続',
-  'chat.open_models': 'モデルを開く',
 
   // Model picker and prompt cards
-  'chat.search': '検索',
   'chat.how_can_i_help': '何をお手伝いしましょうか？',
   'prompt.create_component': 'コンポーネントを作成',
   'prompt.create_component_sub': 'React と Tailwind',

@@ -8,32 +8,16 @@ export const de: TranslationMap = {
   'nav.chat': 'Chat',
   'nav.tasks': 'Aufgaben',
   'nav.diagnostics': 'Diagnose',
-  'nav.audit': 'Audit',
   'nav.settings': 'Einstellungen',
-  'nav.setup': 'Einrichtung',
-  'nav.main': 'Hauptnavigation',
-  'nav.later': 'später',
   'nav.hf_browser': 'HF-Modelle',
-  'app.title_bar': 'LocalComet-Anwendungsleiste',
 
   // Sidebar
   'sidebar.label': 'Sitzungsleiste',
-  'sidebar.new_thread': 'Neuer Thread',
   'sidebar.collapse': 'Seitenleiste ein- oder ausklappen',
   'sidebar.toggle': 'Chat-Seitenleiste ein- oder ausblenden',
   'sidebar.new_conversation': 'Neuer Chat',
-  'sidebar.pinned': 'Angeheftet',
-  'sidebar.project_labels': 'Projektbezeichnungen',
   'conversation.empty': 'Keine Unterhaltungen',
   'group.local_chats': 'Lokale Chats',
-  'group.reserved': 'Reserviert',
-  'group.disabled': 'Deaktiviert',
-  'item.new_chat': 'Neuer Chat',
-  'item.audit': 'Audit',
-  'item.documents': 'Dokumente',
-  'item.model_not_connected': 'Modell nicht verbunden',
-  'item.model_required': 'Modell erforderlich',
-  'item.later': 'Später',
 
   // Command palette
   'commandPalette.label': 'Befehlspalette',
@@ -51,9 +35,6 @@ export const de: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'Design-Einstellungen',
-  'theme.system': 'Systemdesign verwenden',
-  'theme.light': 'Helles Design verwenden',
-  'theme.dark': 'Dunkles Design verwenden',
   'lang.select': 'Sprache auswählen',
 
   // Settings
@@ -94,13 +75,10 @@ export const de: TranslationMap = {
   'chat.connect_model_first': 'Zuerst ein Modell verbinden',
   'chat.send': 'Senden',
   'chat.stop': 'Stoppen',
-  'chat.model_not_connected': 'Modell nicht verbunden',
   'chat.retry': 'Erneut versuchen',
   'chat.connect_model': 'Modell verbinden',
-  'chat.open_models': 'Modelle öffnen',
 
   // Model picker and prompt cards
-  'chat.search': 'Suchen',
   'chat.how_can_i_help': 'Wie kann ich helfen?',
   'prompt.create_component': 'Komponente erstellen',
   'prompt.create_component_sub': 'React mit Tailwind',

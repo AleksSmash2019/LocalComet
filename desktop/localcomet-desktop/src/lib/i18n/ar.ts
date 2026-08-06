@@ -9,32 +9,16 @@ export const ar: TranslationMap = {
   'nav.chat': 'المحادثة',
   'nav.tasks': 'المهام',
   'nav.diagnostics': 'التشخيص',
-  'nav.audit': 'التدقيق',
   'nav.settings': 'الإعدادات',
-  'nav.setup': 'الإعداد',
-  'nav.main': 'التنقل الرئيسي',
-  'nav.later': 'لاحقًا',
   'nav.hf_browser': 'نماذج HF',
-  'app.title_bar': 'شريط تطبيق LocalComet',
 
   // Sidebar
   'sidebar.label': 'الشريط الجانبي للجلسة',
-  'sidebar.new_thread': 'موضوع جديد',
   'sidebar.collapse': 'طي الشريط الجانبي أو توسيعه',
   'sidebar.toggle': 'إظهار الشريط الجانبي للمحادثة أو إخفاؤه',
   'sidebar.new_conversation': 'محادثة جديدة',
-  'sidebar.pinned': 'مثبّت',
-  'sidebar.project_labels': 'تسميات المشروع',
   'conversation.empty': 'لا توجد محادثات',
   'group.local_chats': 'المحادثات المحلية',
-  'group.reserved': 'محجوز',
-  'group.disabled': 'معطّل',
-  'item.new_chat': 'محادثة جديدة',
-  'item.audit': 'التدقيق',
-  'item.documents': 'المستندات',
-  'item.model_not_connected': 'النموذج غير متصل',
-  'item.model_required': 'النموذج مطلوب',
-  'item.later': 'لاحقًا',
 
   // Command palette
   'commandPalette.label': 'لوحة الأوامر',
@@ -52,9 +36,6 @@ export const ar: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'إعدادات المظهر',
-  'theme.system': 'استخدام مظهر النظام',
-  'theme.light': 'استخدام المظهر الفاتح',
-  'theme.dark': 'استخدام المظهر الداكن',
   'lang.select': 'اختيار اللغة',
 
   // Settings
@@ -95,13 +76,10 @@ export const ar: TranslationMap = {
   'chat.connect_model_first': 'قم بتوصيل نموذج أولاً',
   'chat.send': 'إرسال',
   'chat.stop': 'إيقاف',
-  'chat.model_not_connected': 'النموذج غير متصل',
   'chat.retry': 'إعادة المحاولة',
   'chat.connect_model': 'توصيل النموذج',
-  'chat.open_models': 'فتح النماذج',
 
   // Model picker and prompt cards
-  'chat.search': 'بحث',
   'chat.how_can_i_help': 'كيف يمكنني المساعدة؟',
   'prompt.create_component': 'إنشاء مكوّن',
   'prompt.create_component_sub': 'React مع Tailwind',

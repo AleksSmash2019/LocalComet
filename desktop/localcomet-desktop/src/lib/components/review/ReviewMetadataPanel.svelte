@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/i18n';
+  import ReviewPanel from './ReviewPanel.svelte';
   import {
     PROPOSED_CONTENT_FIELDS,
     type MetadataChange,
@@ -26,16 +27,14 @@
   }
 </script>
 
-<section class="review-panel" aria-labelledby="review-metadata-heading">
-  <header class="panel-header">
-    <div>
-      <p class="panel-eyebrow">{$t('review.metadata.eyebrow')}</p>
-      <h2 id="review-metadata-heading">{$t('review.metadata.title')}</h2>
-    </div>
-    <span class="field-count">
-      {PROPOSED_CONTENT_FIELDS.length} {$t('review.metadata.fields')}
-    </span>
-  </header>
+<ReviewPanel
+  headingId="review-metadata-heading"
+  eyebrowKey="review.metadata.eyebrow"
+  titleKey="review.metadata.title"
+>
+  <span slot="header-aside" class="field-count">
+    {PROPOSED_CONTENT_FIELDS.length} {$t('review.metadata.fields')}
+  </span>
 
   <p class="metadata-note">{$t('review.metadata.projection_note')}</p>
 
@@ -65,39 +64,10 @@
       </div>
     {/each}
   </dl>
-</section>
+</ReviewPanel>
 
 <style>
-  .review-panel {
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-lg);
-    background: var(--lc-panel);
-    padding: var(--lc-space-4);
-  }
-
-  .panel-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--lc-space-3);
-    margin-bottom: var(--lc-space-3);
-  }
-
-  .panel-eyebrow {
-    margin: 0 0 4px;
-    color: var(--lc-accent);
-    font-family: var(--lc-mono);
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.11em;
-    text-transform: uppercase;
-  }
-
-  h2 {
-    margin: 0;
-    font-size: 16px;
-  }
-
+  /* Panel frame styles live in ReviewPanel.svelte. */
   .field-count {
     color: var(--lc-muted);
     font-family: var(--lc-mono);
@@ -216,10 +186,6 @@
 
     .change-detail {
       grid-template-columns: 1fr;
-    }
-
-    .panel-header {
-      flex-direction: column;
     }
   }
 </style>

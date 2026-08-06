@@ -8,32 +8,16 @@ export const ptBR: TranslationMap = {
   'nav.chat': 'Chat',
   'nav.tasks': 'Tarefas',
   'nav.diagnostics': 'Diagnóstico',
-  'nav.audit': 'Auditoria',
   'nav.settings': 'Configurações',
-  'nav.setup': 'Configuração',
-  'nav.main': 'Navegação principal',
-  'nav.later': 'mais tarde',
   'nav.hf_browser': 'Modelos HF',
-  'app.title_bar': 'Barra do aplicativo LocalComet',
 
   // Sidebar
   'sidebar.label': 'Barra lateral da sessão',
-  'sidebar.new_thread': 'Novo tópico',
   'sidebar.collapse': 'Recolher ou expandir a barra lateral',
   'sidebar.toggle': 'Mostrar ou ocultar a barra lateral do chat',
   'sidebar.new_conversation': 'Novo chat',
-  'sidebar.pinned': 'Fixado',
-  'sidebar.project_labels': 'Rótulos do projeto',
   'conversation.empty': 'Nenhuma conversa',
   'group.local_chats': 'Chats locais',
-  'group.reserved': 'Reservado',
-  'group.disabled': 'Desativado',
-  'item.new_chat': 'Novo chat',
-  'item.audit': 'Auditoria',
-  'item.documents': 'Documentos',
-  'item.model_not_connected': 'Modelo não conectado',
-  'item.model_required': 'Modelo necessário',
-  'item.later': 'Mais tarde',
 
   // Command palette
   'commandPalette.label': 'Paleta de comandos',
@@ -51,9 +35,6 @@ export const ptBR: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'Configurações de tema',
-  'theme.system': 'Usar o tema do sistema',
-  'theme.light': 'Usar o tema claro',
-  'theme.dark': 'Usar o tema escuro',
   'lang.select': 'Selecionar idioma',
 
   // Settings
@@ -94,13 +75,10 @@ export const ptBR: TranslationMap = {
   'chat.connect_model_first': 'Conecte um modelo primeiro',
   'chat.send': 'Enviar',
   'chat.stop': 'Parar',
-  'chat.model_not_connected': 'Modelo não conectado',
   'chat.retry': 'Tentar novamente',
   'chat.connect_model': 'Conectar o modelo',
-  'chat.open_models': 'Abrir os modelos',
 
   // Model picker and prompt cards
-  'chat.search': 'Pesquisar',
   'chat.how_can_i_help': 'Como posso ajudar?',
   'prompt.create_component': 'Criar um componente',
   'prompt.create_component_sub': 'React com Tailwind',

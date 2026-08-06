@@ -8,32 +8,16 @@ export const it: TranslationMap = {
   'nav.chat': 'Chat',
   'nav.tasks': 'Attività',
   'nav.diagnostics': 'Diagnostica',
-  'nav.audit': 'Audit',
   'nav.settings': 'Impostazioni',
-  'nav.setup': 'Configurazione',
-  'nav.main': 'Navigazione principale',
-  'nav.later': 'più tardi',
   'nav.hf_browser': 'Modelli HF',
-  'app.title_bar': "Barra dell'applicazione LocalComet",
 
   // Sidebar
   'sidebar.label': 'Barra laterale della sessione',
-  'sidebar.new_thread': 'Nuovo thread',
   'sidebar.collapse': 'Comprimi o espandi la barra laterale',
   'sidebar.toggle': 'Mostra o nascondi la barra laterale della chat',
   'sidebar.new_conversation': 'Nuova chat',
-  'sidebar.pinned': 'Fissato',
-  'sidebar.project_labels': 'Etichette del progetto',
   'conversation.empty': 'Nessuna conversazione',
   'group.local_chats': 'Chat locali',
-  'group.reserved': 'Riservato',
-  'group.disabled': 'Disattivato',
-  'item.new_chat': 'Nuova chat',
-  'item.audit': 'Audit',
-  'item.documents': 'Documenti',
-  'item.model_not_connected': 'Modello non connesso',
-  'item.model_required': 'Modello richiesto',
-  'item.later': 'Più tardi',
 
   // Command palette
   'commandPalette.label': 'Palette dei comandi',
@@ -51,9 +35,6 @@ export const it: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'Impostazioni del tema',
-  'theme.system': 'Usa il tema di sistema',
-  'theme.light': 'Usa il tema chiaro',
-  'theme.dark': 'Usa il tema scuro',
   'lang.select': 'Seleziona la lingua',
 
   // Settings
@@ -94,13 +75,10 @@ export const it: TranslationMap = {
   'chat.connect_model_first': 'Collega prima un modello',
   'chat.send': 'Invia',
   'chat.stop': 'Interrompi',
-  'chat.model_not_connected': 'Modello non connesso',
   'chat.retry': 'Riprova',
   'chat.connect_model': 'Collega il modello',
-  'chat.open_models': 'Apri i modelli',
 
   // Model picker and prompt cards
-  'chat.search': 'Cerca',
   'chat.how_can_i_help': 'Come posso aiutarti?',
   'prompt.create_component': 'Crea un componente',
   'prompt.create_component_sub': 'React con Tailwind',

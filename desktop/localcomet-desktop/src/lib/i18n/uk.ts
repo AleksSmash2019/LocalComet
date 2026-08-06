@@ -8,32 +8,16 @@ export const uk: TranslationMap = {
   'nav.chat': 'Чат',
   'nav.tasks': 'Завдання',
   'nav.diagnostics': 'Діагностика',
-  'nav.audit': 'Аудит',
   'nav.settings': 'Налаштування',
-  'nav.setup': 'Налаштування',
-  'nav.main': 'Основна навігація',
-  'nav.later': 'пізніше',
   'nav.hf_browser': 'Моделі HF',
-  'app.title_bar': 'Панель застосунку LocalComet',
 
   // Sidebar
   'sidebar.label': 'Бічна панель сеансу',
-  'sidebar.new_thread': 'Нова гілка',
   'sidebar.collapse': 'Згорнути або розгорнути бічну панель',
   'sidebar.toggle': 'Показати або приховати бічну панель чату',
   'sidebar.new_conversation': 'Новий чат',
-  'sidebar.pinned': 'Закріплено',
-  'sidebar.project_labels': 'Мітки проєкту',
   'conversation.empty': 'Немає розмов',
   'group.local_chats': 'Локальні чати',
-  'group.reserved': 'Зарезервовано',
-  'group.disabled': 'Вимкнено',
-  'item.new_chat': 'Новий чат',
-  'item.audit': 'Аудит',
-  'item.documents': 'Документи',
-  'item.model_not_connected': 'Модель не підключено',
-  'item.model_required': 'Потрібна модель',
-  'item.later': 'Пізніше',
 
   // Command palette
   'commandPalette.label': 'Палітра команд',
@@ -51,9 +35,6 @@ export const uk: TranslationMap = {
 
   // Theme and language
   'theme.manage': 'Налаштування теми',
-  'theme.system': 'Використовувати системну тему',
-  'theme.light': 'Використовувати світлу тему',
-  'theme.dark': 'Використовувати темну тему',
   'lang.select': 'Вибрати мову',
 
   // Settings
@@ -94,13 +75,10 @@ export const uk: TranslationMap = {
   'chat.connect_model_first': 'Спершу підключіть модель',
   'chat.send': 'Надіслати',
   'chat.stop': 'Зупинити',
-  'chat.model_not_connected': 'Модель не підключено',
   'chat.retry': 'Повторити',
   'chat.connect_model': 'Підключити модель',
-  'chat.open_models': 'Відкрити моделі',
 
   // Model picker and prompt cards
-  'chat.search': 'Шукати',
   'chat.how_can_i_help': 'Чим допомогти?',
   'prompt.create_component': 'Створити компонент',
   'prompt.create_component_sub': 'React із Tailwind',
