@@ -32,6 +32,7 @@
   import { initializeModelGateway, shutdownModelGateway } from '$lib/stores/modelGateway';
   import { initializeArtifactAcquisition, resetArtifactAcquisitionStore } from '$lib/stores/artifactAcquisition';
   import { initializeKnowledgePreviewEvents, shutdownKnowledgePreviewEvents } from '$lib/stores/knowledgePreview';
+  import { exposeInvokeForModelFit } from '$lib/bridge/modelfit';
   import { locale, t } from '$lib/i18n';
   import type { ResolvedTheme } from '$lib/data/mockData';
   import { followTranscriptToEnd, isTranscriptNearBottom } from '$lib/components/chat/transcriptScroll';
@@ -151,6 +152,7 @@
   });
 
   onMount(() => {
+    exposeInvokeForModelFit();
     void initializeControlPlaneBridge();
     void initializeModelGateway();
     void initializeArtifactAcquisition();

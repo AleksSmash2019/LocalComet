@@ -6,6 +6,7 @@ mod artifact_trust;
 mod artifact_validation_cache;
 mod control_plane;
 mod files;
+mod hardware;
 mod hf_catalog;
 mod ipc;
 mod knowledge;
@@ -39,6 +40,7 @@ use files::{
     files_capability_status, forget_selected_file, list_selected_files, preview_selected_file,
     select_files, SelectedFilesManager,
 };
+use hardware::scan_hardware;
 use hf_catalog::{hf_list_repo_files, hf_search_models};
 use knowledge::{knowledge_turn_decide, knowledge_turn_preview};
 use managed_runtime::{
@@ -256,6 +258,7 @@ pub fn run() {
             request_approval,
             execute_approved,
             run_tool_call,
+            scan_hardware,
             hf_search_models,
             hf_list_repo_files,
             set_workspace
