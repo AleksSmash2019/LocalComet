@@ -437,11 +437,21 @@ def test_tauri_resources_are_synchronized_from_external_stage() -> None:
             (source / "localcomet_runtime_manifest.json").read_text(encoding="utf-8"),
         )
         identity = launcher.trusted_resource_stage_identity(staged)
-        check(identity.runtime_resource_count == 52, "trusted stage has exactly 52 identities")
+        check(
+            identity.runtime_resource_count == launcher.EXPECTED_TAURI_RESOURCE_IDENTITIES,
+            "trusted stage has the expected identity count",
+        )
         binary_relative = "desktop/localcomet-desktop/src-tauri/binaries/runtime-manifest.tsv"
         summary, resources = launcher.synchronize_tauri_resources(staged, paths, {}, identity)
-        check(summary.copied == 54, "all generated manifests and Tauri resources are copied")
-        check(len(resources) == 54, "the exact trusted staged file set is synchronized")
+        expected_staged_files = launcher.EXPECTED_TAURI_RESOURCE_IDENTITIES + 2
+        check(
+            summary.copied == expected_staged_files,
+            "all generated manifests and Tauri resources are copied",
+        )
+        check(
+            len(resources) == expected_staged_files,
+            "the exact trusted staged file set is synchronized",
+        )
         check(
             (paths.workspace / binary_relative).is_file(),
             "Tauri resource is present only in the external workspace",
@@ -465,7 +475,10 @@ def test_tauri_resource_cache_identity_validation() -> None:
         trusted_stage = base / "trusted"
         resource_paths = make_resource_stage(trusted_stage)
         trusted = launcher.trusted_resource_stage_identity(trusted_stage)
-        check(trusted.runtime_resource_count == 52, "trusted identity pins all 52 resources")
+        check(
+            trusted.runtime_resource_count == launcher.EXPECTED_TAURI_RESOURCE_IDENTITIES,
+            "trusted identity pins all expected resources",
+        )
 
         def cache_copy(name: str) -> Path:
             target = base / name
