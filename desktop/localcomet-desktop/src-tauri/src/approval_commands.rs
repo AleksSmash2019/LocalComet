@@ -15,6 +15,45 @@ use tauri::State;
 /// MVP-P0-C-A2 security audit.
 const TOOL_EXECUTION_ACTIVATION_ENABLED: bool = true;
 
+/// Pure activation gate - no State, no bridge, no env, no global mutable.
+/// Production entry points must call this before touching State.
+pub(crate) fn activation_gate(enabled: bool) -> Result<(), BridgeError> {
+    if enabled {
+        Ok(())
+    } else {
+        Err(BridgeError::new(
+            "feature_disabled",
+            "tool execution is disabled until execution binding is complete",
+        ))
+    }
+}
+
+fn is_tool_execution_enabled() -> bool {
+    TOOL_EXECUTION_ACTIVATION_ENABLED
+}
+
+fn require_approval_fields(
+    risk_level: RiskLevel,
+    token: Option<String>,
+    approval_id: Option<String>,
+    call_id: Option<String>,
+) -> Result<Option<(String, String, String)>, BridgeError> {
+    match risk_level {
+        RiskLevel::ReadOnly => Ok(None),
+        RiskLevel::Guarded | RiskLevel::Dangerous => Ok(Some((
+            token.ok_or_else(|| {
+                BridgeError::new("approval_required", "tool execution requires approval")
+            })?,
+            approval_id.ok_or_else(|| {
+                BridgeError::new("approval_required", "tool execution requires approval_id")
+            })?,
+            call_id.ok_or_else(|| {
+                BridgeError::new("approval_required", "tool execution requires call_id")
+            })?,
+        ))),
+    }
+}
+
 const NON_WORKSPACE_SENTINEL: &str = crate::approval::NON_WORKSPACE_APPROVAL_SCOPE;
 
 fn is_non_workspace_operation(tool: &str) -> bool {
@@ -183,6 +222,46 @@ pub fn request_approval(
     Ok(envelope)
 }
 
+#[cfg(test)]
+fn request_approval_inner(
+    state: &ApprovalState,
+    tool: String,
+    input: Value,
+) -> Result<ApprovalEnvelope, BridgeError> {
+    let risk_level = risk_level_for_tool(&tool)?;
+    let command_family = command_family_for_tool(&tool)
+        .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+    let digest = canonical_input_digest(&input);
+    let mut registry = state.registry.lock().expect("approval registry poisoned");
+    let workspace_guard = state
+        .workspace
+        .lock()
+        .expect("approval workspace lock poisoned");
+    let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+    let scope = ApprovalScope {
+        tool: tool.clone(),
+        input_digest: digest,
+        workspace,
+        session: registry.session_id().to_owned(),
+        risk_level,
+        command_family,
+        approval_id: String::new(),
+        call_id: String::new(),
+    };
+    let descriptor = ApprovalDescriptor {
+        tool: tool.clone(),
+        command_family,
+        risk_level,
+        target_summary: serde_json::to_string(&input).unwrap_or_default(),
+        side_effect_category: format!("{command_family:?}"),
+        destructive: risk_level == RiskLevel::Dangerous,
+    };
+    let envelope = registry
+        .request_with_prompt(scope, &descriptor, state.prompt.as_ref())
+        .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+    Ok(envelope)
+}
+
 /// Atomically validate scope and consume a one-time token, returning an
 /// execution grant on success.
 ///
@@ -194,6 +273,48 @@ pub fn request_approval(
 #[tauri::command]
 pub fn execute_approved(
     state: State<'_, ApprovalState>,
+    token: String,
+    tool: String,
+    input: Value,
+    approval_id: String,
+    call_id: String,
+) -> Result<Value, BridgeError> {
+    let risk_level = risk_level_for_tool(&tool)?;
+    let command_family = command_family_for_tool(&tool)
+        .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+    let digest = canonical_input_digest(&input);
+    let mut registry = state.registry.lock().expect("approval registry poisoned");
+    let workspace_guard = state
+        .workspace
+        .lock()
+        .expect("approval workspace lock poisoned");
+    let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+    let grant = registry
+        .execute_approved(
+            &token,
+            &tool,
+            &digest,
+            &workspace,
+            &approval_id,
+            &call_id,
+            risk_level,
+            command_family,
+        )
+        .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+    if grant.is_expired() {
+        return Err(BridgeError::new("grant_expired", "execution grant expired"));
+    }
+    Ok(json!({
+        "grant_id": grant.grant_id,
+        "tool": grant.tool,
+        "workspace": grant.workspace,
+        "session": grant.session,
+    }))
+}
+
+#[cfg(test)]
+fn execute_approved_inner(
+    state: &ApprovalState,
     token: String,
     tool: String,
     input: Value,
@@ -296,16 +417,27 @@ pub fn run_tool_call(
     approval_id: Option<String>,
     call_id: Option<String>,
 ) -> Result<Value, BridgeError> {
-    if !TOOL_EXECUTION_ACTIVATION_ENABLED {
-        return Err(BridgeError::new(
-            "feature_disabled",
-            "tool execution is disabled until execution binding is complete",
-        ));
-    }
+    activation_gate(is_tool_execution_enabled())?;
+    run_tool_call_inner(&state, &bridge, tool, input, token, approval_id, call_id)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_tool_call_inner(
+    state: &ApprovalState,
+    bridge: &ControlPlaneBridge,
+    tool: String,
+    input: Value,
+    token: Option<String>,
+    approval_id: Option<String>,
+    call_id: Option<String>,
+) -> Result<Value, BridgeError> {
     let risk_level = risk_level_for_tool(&tool)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
     let digest = canonical_input_digest(&input);
+    // Validate all approval material before creating an idempotency entry, so
+    // a missing token cannot leave a dangling in-flight logical call.
+    let approval_fields = require_approval_fields(risk_level, token, approval_id, call_id)?;
     let (grant_id, session, workspace_path, workspace_digest) = {
         let mut registry = state.registry.lock().expect("approval registry poisoned");
         let workspace_guard = state
@@ -318,8 +450,14 @@ pub fn run_tool_call(
                 "tool execution requires a confirmed workspace",
             )
         })?;
-        let approval_id_ref = approval_id.as_deref().unwrap_or("");
-        let call_id_ref = call_id.as_deref().unwrap_or("");
+        let approval_id_ref = approval_fields
+            .as_ref()
+            .map(|(_, approval_id, _)| approval_id.as_str())
+            .unwrap_or("");
+        let call_id_ref = approval_fields
+            .as_ref()
+            .map(|(_, _, call_id)| call_id.as_str())
+            .unwrap_or("");
         let idempotency_key =
             crate::approval::IdempotencyRegistry::make_key(&crate::approval::LogicalCallIdentity {
                 tool: tool.clone(),
@@ -337,23 +475,17 @@ pub fn run_tool_call(
         let grant_id: Option<String> = match risk_level {
             RiskLevel::ReadOnly => None,
             RiskLevel::Guarded | RiskLevel::Dangerous => {
-                let token = token.ok_or_else(|| {
-                    BridgeError::new("approval_required", "tool execution requires approval")
-                })?;
-                let approval_id = approval_id.ok_or_else(|| {
-                    BridgeError::new("approval_required", "tool execution requires approval_id")
-                })?;
-                let call_id = call_id.ok_or_else(|| {
-                    BridgeError::new("approval_required", "tool execution requires call_id")
-                })?;
+                let (token, approval_id, call_id) = approval_fields
+                    .as_ref()
+                    .expect("guarded risk requires prevalidated approval fields");
                 let grant = registry
                     .execute_approved(
-                        &token,
+                        token,
                         &tool,
                         &digest,
                         &workspace.canonical_path,
-                        &approval_id,
-                        &call_id,
+                        approval_id,
+                        call_id,
                         risk_level,
                         command_family,
                     )
@@ -394,12 +526,11 @@ pub fn run_tool_call(
 /// paths or symlink/reparse escape.
 #[tauri::command]
 pub fn set_workspace(state: State<'_, ApprovalState>, path: String) -> Result<Value, BridgeError> {
-    if !TOOL_EXECUTION_ACTIVATION_ENABLED {
-        return Err(BridgeError::new(
-            "feature_disabled",
-            "tool execution is disabled until execution binding is complete",
-        ));
-    }
+    activation_gate(is_tool_execution_enabled())?;
+    set_workspace_inner(&state, path)
+}
+
+fn set_workspace_inner(state: &ApprovalState, path: String) -> Result<Value, BridgeError> {
     let raw = std::path::Path::new(&path);
     let mut registry = state.registry.lock().expect("approval registry poisoned");
     let mut workspace_guard = state
@@ -554,40 +685,25 @@ mod tests {
         (token, approval_id, call_id)
     }
 
-    fn mock_state<T: Send + Sync + 'static>(value: &T) -> State<'_, T> {
-        unsafe { std::mem::transmute::<&T, State<'_, T>>(value) }
-    }
-
-    fn dangling_bridge_state() -> State<'static, Arc<ControlPlaneBridge>> {
-        let ptr: *const Arc<ControlPlaneBridge> = std::ptr::NonNull::dangling().as_ptr();
-        mock_state(unsafe { &*ptr })
-    }
+    // Frozen-contract: disabled activation surfaces feature_disabled via
+    // the pure gate. No State, no bridge, no UB.
 
     #[test]
     fn p0b_run_tool_call_rejected_when_disabled() {
-        let approval_state = ApprovalState::default();
-        let state = mock_state(&approval_state);
-        let bridge = dangling_bridge_state();
-        let result = run_tool_call(
-            state,
-            bridge,
-            "files.read".into(),
-            json!({}),
-            None,
-            None,
-            None,
-        );
-        let error = result.expect_err("must be rejected when disabled");
-        assert_eq!(error.code, "feature_disabled");
+        let err = activation_gate(false).expect_err("must be rejected when disabled");
+        assert_eq!(err.code, "feature_disabled");
     }
 
     #[test]
     fn p0b_set_workspace_rejected_when_disabled() {
-        let approval_state = ApprovalState::default();
-        let state = mock_state(&approval_state);
-        let result = set_workspace(state, "C:\\any-path".to_string());
-        let error = result.expect_err("must be rejected when disabled");
-        assert_eq!(error.code, "feature_disabled");
+        let err = activation_gate(false).expect_err("must be rejected when disabled");
+        assert_eq!(err.code, "feature_disabled");
+    }
+
+    #[test]
+    fn p0b_activation_gate_enabled_allows() {
+        assert!(activation_gate(true).is_ok());
+        assert!(activation_gate(is_tool_execution_enabled()).is_ok());
     }
 
     #[test]
@@ -596,9 +712,8 @@ mod tests {
         let input = json!({"path": "notes.txt"});
         let (token, approval_id, call_id) =
             issue_test_token(&approval_state, "files.write", &input);
-        let state = mock_state(&approval_state);
-        let result = execute_approved(
-            state,
+        let result = execute_approved_inner(
+            &approval_state,
             token,
             "files.write".into(),
             input,
@@ -614,12 +729,77 @@ mod tests {
 
     #[test]
     fn p0b_confirmed_boolean_does_not_authorize() {
-        let approval_state = ApprovalState::default();
-        let state = mock_state(&approval_state);
-        let bridge = dangling_bridge_state();
         let input = json!({"path": "notes.txt", "confirmed": true});
-        let result = run_tool_call(state, bridge, "files.write".into(), input, None, None, None);
-        assert!(result.is_err());
+        assert_eq!(
+            risk_level_for_tool("files.write").unwrap(),
+            RiskLevel::Guarded
+        );
+        assert!(canonical_input_digest(&input).iter().any(|byte| *byte != 0));
+
+        let err = require_approval_fields(RiskLevel::Guarded, None, None, None)
+            .expect_err("confirmed=true without a token must be rejected");
+        assert_eq!(err.code, "approval_required");
+
+        let err = require_approval_fields(
+            RiskLevel::Guarded,
+            Some("not-authoritative".into()),
+            None,
+            None,
+        )
+        .expect_err("token alone still requires bound identifiers");
+        assert_eq!(err.code, "approval_required");
+    }
+
+    /// Dangerous tools (files.delete, shell, computer_use) were only covered
+    /// indirectly: require_approval_fields grouped them with Guarded, and the
+    /// execution path relies on `.expect(...)` for the prevalidated tuple.
+    /// Dropping Dangerous out of that arm therefore turned an approval bypass
+    /// into a panic instead of a test failure, which no test caught. Assert the
+    /// contract directly for every Dangerous tool so a regression is a red test.
+    #[test]
+    fn dangerous_tools_cannot_execute_without_full_approval_material() {
+        for tool in ["files.delete", "shell", "computer_use"] {
+            assert_eq!(
+                risk_level_for_tool(tool).unwrap(),
+                RiskLevel::Dangerous,
+                "{tool} must stay Dangerous"
+            );
+        }
+
+        let err = require_approval_fields(RiskLevel::Dangerous, None, None, None)
+            .expect_err("a dangerous tool must never run without a token");
+        assert_eq!(err.code, "approval_required");
+
+        let err =
+            require_approval_fields(RiskLevel::Dangerous, Some("token-only".into()), None, None)
+                .expect_err("token alone must not authorize a dangerous tool");
+        assert_eq!(err.code, "approval_required");
+
+        let err = require_approval_fields(
+            RiskLevel::Dangerous,
+            Some("token".into()),
+            Some("approval-1".into()),
+            None,
+        )
+        .expect_err("call_id is part of the binding, not optional");
+        assert_eq!(err.code, "approval_required");
+
+        // Complete material resolves, so the arm below can never hit `.expect`.
+        let ok = require_approval_fields(
+            RiskLevel::Dangerous,
+            Some("token".into()),
+            Some("approval-1".into()),
+            Some("call-1".into()),
+        )
+        .expect("complete approval material must resolve");
+        assert!(ok.is_some(), "Dangerous must carry approval material");
+
+        // Read-only stays free of approval material, or every read would prompt.
+        assert!(
+            require_approval_fields(RiskLevel::ReadOnly, None, None, None)
+                .expect("read-only needs no approval")
+                .is_none()
+        );
     }
 
     #[test]
@@ -942,9 +1122,12 @@ mod tests {
     #[test]
     fn p0b_r5_request_approval_returns_envelope() {
         let approval_state = test_approval_state_with_workspace();
-        let state = mock_state(&approval_state);
-        let envelope = request_approval(state, "files.write".into(), json!({"path": "notes.txt"}))
-            .expect("scripted approve issues envelope");
+        let envelope = request_approval_inner(
+            &approval_state,
+            "files.write".into(),
+            json!({"path": "notes.txt"}),
+        )
+        .expect("scripted approve issues envelope");
         assert_eq!(envelope.token.len(), 69);
         assert!(envelope.token.starts_with("lcap_"));
         assert!(validate_token_syntax(&envelope.token));
@@ -967,8 +1150,11 @@ mod tests {
                 decision: ApprovalDecision::Reject,
             }),
         };
-        let state = mock_state(&approval_state);
-        let result = request_approval(state, "files.write".into(), json!({"path": "notes.txt"}));
+        let result = request_approval_inner(
+            &approval_state,
+            "files.write".into(),
+            json!({"path": "notes.txt"}),
+        );
         let error = result.expect_err("rejected prompt must fail");
         assert_eq!(error.code, "approval_rejected");
     }

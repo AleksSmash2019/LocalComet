@@ -6132,7 +6132,7 @@ mod tests {
 
     #[test]
     fn b3f_registered_model_tools_is_closed_deterministic_and_bounded() {
-        assert_eq!(REGISTERED_MODEL_TOOLS.len(), 5);
+        assert_eq!(REGISTERED_MODEL_TOOLS.len(), 9);
         assert_eq!(
             REGISTERED_MODEL_TOOLS,
             &[
@@ -6141,10 +6141,14 @@ mod tests {
                 "files.write",
                 "files.create_folder",
                 "files.delete",
+                "shell",
+                "computer_use",
+                "web.search",
+                "web.fetch",
             ]
         );
         let as_set: std::collections::HashSet<&&str> = REGISTERED_MODEL_TOOLS.iter().collect();
-        assert_eq!(as_set.len(), 5, "no duplicates");
+        assert_eq!(as_set.len(), 9, "no duplicates");
     }
 
     fn tool_event_with_name(
