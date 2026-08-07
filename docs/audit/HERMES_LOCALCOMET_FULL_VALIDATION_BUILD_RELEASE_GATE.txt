@@ -1,0 +1,659 @@
+LOCALCOMET — ПОЛНАЯ ПРОВЕРКА, ЧИСТАЯ СБОРКА И RELEASE-GATE
+
+PROJECT=LocalComet
+MVP_TIER=M2_SAFE_LOCAL_MVP
+ACCEPTED_HEAD=3cc1f9a8ebe6a8522b9e95e59868223d38c6d48f
+ACCEPTED_BRANCH=audit/mvp-p0c-acceptance
+ACCEPTED_DIGEST=7111c3dba67e7cba6156d5e1c704f0b80cff54aed402e05937603216d6294d91
+ACCEPTED_SOURCE_COUNT=359
+P0_ALL_ACCEPTED=true
+P1_ALL_ACCEPTED=true
+P2_ALL_ACCEPTED=true
+P3_P4_DEFERRED=true
+PUSHED=false
+
+Известная оговорка:
+REAL_WEBVIEW_SMOKE=ENVIRONMENT_LIMITATION_DOCUMENTED
+
+Цель: независимо доказать, что exact accepted HEAD корректен, воспроизводимо
+собирается, запускается как реальное Windows-приложение, проходит настоящий
+WebView smoke, не нарушает security boundaries и готов к release packaging.
+
+Не считать старый LocalComet.exe достаточным доказательством.
+Не считать зелёные unit tests достаточными.
+Не объявлять release-ready без реально выполненного WebView smoke.
+
+==================================================
+1. РЕЖИМ РАБОТЫ
+==================================================
+
+MAX_CONCURRENT_SESSIONS=2
+
+Session 1:
+- validation/build owner;
+- единственный процесс, создающий build artifacts;
+- не меняет source code во время первичной проверки.
+
+Session 2:
+- independent read-only judge;
+- проверяет exact frozen HEAD;
+- не чинит и не коммитит;
+- повторяет ключевые gates независимо.
+
+Запрещено:
+- push, rebase, reset --hard, history rewrite;
+- изменение accepted branch;
+- два writer;
+- чтение или печать `LocalComet MCP Bearer Token.py`;
+- вывод токенов, grants, nonces, credentials;
+- ослабление tests/contracts ради PASS;
+- включение tool execution без explicit authority;
+- destructive tests на пользовательских данных;
+- использование stale build outputs как доказательства.
+
+
+==================================================
+2. PREFLIGHT И EXACT STATE
+==================================================
+
+Прочитай:
+- root/nested AGENTS.md;
+- roadmap/master plan;
+- MVP_DONE authority;
+- P0/P1/P2 frozen contracts;
+- final audit report;
+- P2G WebView environment document;
+- build/package/CI configuration;
+- актуальные known findings;
+- vault Status/Timeline/Blockers.
+
+Проверь:
+
+git rev-parse HEAD
+git rev-parse --verify 3cc1f9a8ebe6a8522b9e95e59868223d38c6d48f
+git branch --show-current
+git status --porcelain=v1 --untracked-files=all
+git worktree list
+git log --oneline --decorate -20
+git show --stat --summary 3cc1f9a8ebe6a8522b9e95e59868223d38c6d48f
+
+Зафиксируй:
+- exact HEAD и branch;
+- clean/dirty state;
+- active worktrees;
+- repository path;
+- free disk;
+- Windows/architecture;
+- Rust/Cargo;
+- Node/npm;
+- Python;
+- Tauri;
+- Edge/WebView2;
+- WebDriver availability.
+
+Перед full build:
+FREE_DISK_GB >= 15
+
+Если меньше:
+- не начинай heavy build;
+- очищай только завершённые temporary worktrees, внешние archives/logs,
+  неиспользуемые restorable build artifacts;
+- не удаляй source, .git, branches, accepted commits, contracts, evidence, vault.
+
+Если HEAD неверный:
+VERDICT=BLOCKED_WRONG_HEAD
+
+Если tree dirty:
+- не стирай изменения;
+- перечисли файлы;
+- используй отдельный clean worktree или git archive exact accepted HEAD.
+
+
+==================================================
+3. ИЗОЛИРОВАННАЯ ЧИСТАЯ СРЕДА
+==================================================
+
+Создай release-validation среду от exact accepted HEAD:
+
+1. `git archive` accepted HEAD;
+2. распаковка во внешний новый каталог;
+3. отдельный Cargo target/cache;
+4. отдельный npm cache;
+5. отдельный temp;
+6. никакой зависимости от dirty checkout и старых build outputs.
+
+Зафиксируй:
+- archive command;
+- archive SHA-256;
+- extraction path;
+- accepted HEAD;
+- source count;
+- selected-source digest;
+- toolchain versions;
+- start time.
+
+Сверь:
+
+EXPECTED_DIGEST=7111c3dba67e7cba6156d5e1c704f0b80cff54aed402e05937603216d6294d91
+EXPECTED_SOURCE_COUNT=359
+
+Если repository-defined digest/count не совпадают:
+VERDICT=FAIL_SOURCE_PROVENANCE_MISMATCH
+
+
+==================================================
+4. STATIC, AUTHORITY И SECURITY CHECKS
+==================================================
+
+Проверь:
+- P0/P1/P2 accepted state согласован с authority;
+- P3/P4 действительно deferred;
+- frozen contracts соответствуют production code;
+- no hidden tool activation;
+- Block 3 state соответствует authority;
+- command registration/invocation parity;
+- tool risk registry completeness;
+- frontend exact event validation;
+- bundle/source parity;
+- evidence freshness;
+- historical evidence integrity;
+- no debug privileged command in production;
+- no test helper as production authority;
+- no fake approval, connected, progress, completion or success state;
+- no secrets in source, fixtures, logs, snapshots, evidence.
+
+Не печатай секреты. Для подозрения указывай только:
+file, line, secret type, redacted evidence.
+
+
+==================================================
+5. ПОЛНЫЙ AUTOMATED TEST MATRIX
+==================================================
+
+Запусти repository-authorized commands:
+
+cargo fmt --check
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+npm ci
+npm run check
+npm test
+
+python scripts/check_bundle_parity.py
+python scripts/check_evidence_provenance.py
+python scripts/check_historical_evidence.py
+python tests/test_trust_chain_invariants.py
+python scripts/check_command_parity.py
+python scripts/check_tool_risk_registry.py
+python scripts/check_ui_fake_state.py
+python tools/test_up02_wp01_security_negative.py
+
+Также найди и запусти все milestone-specific P0/P1/P2 security tests.
+
+Для каждого command записать:
+- command;
+- working directory;
+- start/end;
+- exit code;
+- pass/fail/skip counts;
+- log path;
+- exact HEAD;
+- real production helper или mock.
+
+Не повторять одинаковый full gate на неизменённом HEAD без причины.
+
+Отдельно оцени качество tests для:
+- approval authority;
+- logicalCallId/at-most-once dispatch;
+- OutcomeUnknown;
+- exact result retention;
+- workspace/session/grant binding;
+- provenance matching;
+- message count и UTF-8 byte limits;
+- acquisition retry;
+- stale generation/fingerprint;
+- local-only endpoint;
+- dialogs/accessibility;
+- frontend event validation;
+- command/tool/bundle/evidence parity.
+
+Для каждого свойства ответь:
+1. production path достижим?
+2. test запускает production helper?
+3. property реально проверяется?
+4. mutation может сломать property, оставив test зелёным?
+5. negative/Windows/restart/concurrency cases покрыты?
+
+
+==================================================
+6. ЧИСТАЯ RELEASE BUILD
+==================================================
+
+После успешных gates:
+- удалить только build artifacts внутри изолированной среды;
+- сохранить source untouched;
+- проверить lockfiles;
+- найти реальную release command в package scripts, Tauri config, CI или docs;
+- не угадывать команду;
+- выполнить clean release build.
+
+Сборка должна:
+- exit 0;
+- создать current artifacts;
+- не использовать stale output;
+- не включать debug/test secrets;
+- не менять accepted source tree.
+
+Для каждого artifact зафиксировать:
+- exact build command;
+- duration;
+- path;
+- size;
+- SHA-256;
+- architecture;
+- file/product version;
+- Authenticode status;
+- bundle/installer type;
+- exact HEAD;
+- build log.
+
+PowerShell:
+Get-FileHash -Algorithm SHA256 <artifact>
+Get-AuthenticodeSignature <artifact>
+Get-Item <artifact> | Format-List *
+
+Если проект создаёт MSI/NSIS/bundle — проверить каждый.
+Если только EXE — указать честно.
+Unsigned artifact не считать defect, если signing не входит в authority;
+указать release limitation.
+
+При наличии Windows Defender:
+- выполнить безопасное локальное сканирование artifact;
+- не отключать защиту;
+- не добавлять exclusions;
+- не загружать private artifact на публичные сервисы без approval.
+
+
+==================================================
+7. REAL WEBVIEW SMOKE — ОБЯЗАТЕЛЬНЫЙ RELEASE GATE
+==================================================
+
+`ENVIRONMENT_LIMITATION_DOCUMENTED` недостаточно для release-ready PASS.
+
+Определи:
+- installed Edge version;
+- WebView2 runtime version;
+- official Tauri-supported WebDriver tooling;
+- compatible driver version;
+- driver path;
+- official source;
+- checksum/license;
+- test-only nature.
+
+Не доверяй старой жёстко указанной версии без проверки среды.
+Не устанавливай непроверенный package.
+Не добавляй production dependency.
+
+Используй `tests/webview-smoke.mjs` или актуальный repository-authorized entrypoint.
+
+Smoke обязан реально проверить:
+1. app launch;
+2. first meaningful render;
+3. no blank/white screen;
+4. no fatal frontend/runtime error;
+5. no fatal console error;
+6. one safe IPC round trip;
+7. one reachable dialog/modal;
+8. keyboard close;
+9. correct focus return;
+10. clean shutdown;
+11. no orphan processes;
+12. no tool execution side effect.
+
+Зафиксируй:
+- command;
+- Edge/WebView2/driver versions;
+- artifact SHA-256;
+- exact HEAD;
+- duration;
+- console/runtime logs;
+- exit code;
+- orphan process check.
+
+Если нужен system-wide install, admin, license acceptance или unverified
+external download — HARD HUMAN DECISION.
+
+Без реально выполненного WebView smoke RELEASE_GATE_PASS запрещён.
+
+
+==================================================
+8. РУЧНАЯ СЦЕНАРНАЯ ПРОВЕРКА
+==================================================
+
+Запускай собранный artifact, не dev server.
+
+A. Startup
+- первый и повторный запуск;
+- два быстрых запуска;
+- clean shutdown и forced close;
+- no blank screen/infinite spinner;
+- correct title/version;
+- понятная безопасная ошибка.
+
+B. Local endpoint
+- local-only notice;
+- localhost success/failure;
+- remote endpoint не обещается;
+- Retry Connection только повторяет health check;
+- no config mutation;
+- no hidden runtime start;
+- no fake connected;
+- stale health result не перезаписывает новый state.
+
+C. Messages
+- 1,2,3,4 accepted;
+- 5 rejected;
+- exact UTF-8 boundary;
+- one byte over;
+- emoji/CJK;
+- frontend/backend parity;
+- no hidden `*2`.
+
+D. Acquisition
+- transient retry 1s и 2s;
+- exhaustion → manual Retry;
+- 4xx no retry;
+- cancel no retry;
+- digest/security/filesystem terminal;
+- no fake percentage;
+- no duplicate acquisition.
+
+E. Async stale protection
+- overlapping requests;
+- reverse completion;
+- changed fingerprint;
+- cancellation;
+- old workspace/session result;
+- stale result no mutation;
+- no auto-rebind.
+
+F. Dialogs/accessibility
+- Tab/Shift+Tab;
+- initial focus;
+- focus trap/return;
+- Escape;
+- accessible name/description;
+- error/status announcement;
+- destructive warning;
+- high contrast;
+- reduced motion;
+- no keyboard trap.
+
+G. Frontend events
+- valid event;
+- unknown top-level/nested rejected;
+- missing rejected;
+- null vs missing;
+- duplicate key;
+- invalid enum/type;
+- malformed envelope;
+- no crash/fake success.
+
+H. Approval/security
+- renderer not approval authority;
+- ApprovalCard presentation-only;
+- rejection blocks action;
+- stale/reused/mismatched grant rejected;
+- no token/grant/digest in UI/log;
+- tools remain disabled per authority.
+
+I. Restart/state
+- no stale transient state;
+- no stale approval;
+- no duplicate dispatch;
+- no orphan process;
+- no corrupt state after forced close;
+- missing/corrupt optional config fails safely.
+
+J. Filesystem/workspace
+- normal, spaced and Unicode paths;
+- read-only/missing path;
+- simulated symlink/junction/reparse escape in disposable temp workspace;
+- no write outside workspace;
+- no user-data destructive tests.
+
+
+==================================================
+9. LOGGING, STABILITY И CLEAN-MACHINE
+==================================================
+
+После success и всех основных failures проверь logs на отсутствие:
+- bearer/API keys;
+- approval tokens;
+- grants/nonces;
+- credentials/private keys;
+- forbidden full digests;
+- unnecessary private paths;
+- raw sensitive user content.
+
+Проверь:
+- errors truthful;
+- terminal failure не маскируется;
+- correlation context достаточен;
+- authority-bearing values не восстанавливаются из logs.
+
+Stability:
+- 10 launch/close cycles;
+- 20 dialog open/close cycles;
+- 10 Retry Connection cycles;
+- 10 invalid event injections в test harness;
+- 5 cancel/retry acquisition cycles.
+
+Измерить без выдуманных thresholds:
+- cold/warm startup;
+- idle CPU/memory;
+- memory growth;
+- child/orphan processes;
+- shutdown time;
+- crashes/hangs/UI freezes.
+
+Если доступна Windows Sandbox/VM:
+- перенести только artifacts и documented prerequisites;
+- не переносить repository/node_modules/target;
+- startup + endpoint + dialog + shutdown;
+- проверить отсутствие зависимости от developer machine paths.
+
+Если недоступна:
+CLEAN_MACHINE_TEST=NOT_RUN_ENVIRONMENT_LIMITATION
+и применить repository authority к verdict.
+
+
+==================================================
+10. REPAIR POLICY
+==================================================
+
+Первичная validation — без source changes.
+
+При defect:
+1. зафиксировать failing HEAD;
+2. создать evidence-backed finding;
+3. сохранить logs;
+4. вернуть первичный FAIL;
+5. создать отдельный repair branch/worktree;
+6. smallest safe fix;
+7. regression test;
+8. focused tests;
+9. full regression;
+10. clean rebuild;
+11. повторный WebView/manual scenario;
+12. independent audit нового exact HEAD.
+
+Максимум 2 repair cycles:
+BLOCKED_REPAIR_LIMIT
+
+Не чинить ослаблением test, contract или validation.
+
+
+==================================================
+11. EVIDENCE, VAULT И FINAL JUDGE
+==================================================
+
+Обновить только:
+Projects\LocalComet\Status.md
+Projects\LocalComet\Timeline.md
+Projects\LocalComet\Blockers.md
+
+Сохранить:
+- exact HEAD/branch;
+- archive SHA-256;
+- digest/count;
+- toolchain;
+- commands/exit codes/test counts;
+- build paths/hashes;
+- WebView versions/result;
+- manual checklist;
+- stability observations;
+- limitations/findings;
+- final verdict.
+
+Не менять `.obsidian`, unrelated notes и не сохранять secrets.
+
+Independent judge должен открыть raw logs и независимо проверить:
+- exact HEAD;
+- clean tree;
+- source digest/count;
+- required gates;
+- build;
+- artifact SHA-256;
+- real WebView smoke;
+- manual evidence;
+- no unsupported PASS;
+- vault/evidence update.
+
+
+==================================================
+12. VERDICT RULES И ОТЧЁТ
+==================================================
+
+RELEASE_GATE_PASS только если:
+- exact HEAD frozen;
+- source clean;
+- all required automated gates pass;
+- clean build pass;
+- artifact current and hashed;
+- real WebView smoke pass;
+- required manual scenarios pass;
+- no unresolved CRITICAL/HIGH;
+- no fake state;
+- no secret leakage;
+- independent judge pass;
+- vault/evidence updated;
+- PUSHED=false.
+
+RELEASE_GATE_CONDITIONAL:
+- нет CRITICAL/HIGH;
+- limitation не является обязательным release gate;
+- limitation точно документирована.
+
+WebView limitation не допускает release-ready PASS.
+
+RELEASE_GATE_FAIL если:
+- build/test/WebView fail или not run;
+- source/evidence mismatch;
+- artifact не привязан к exact HEAD;
+- CRITICAL/HIGH defect;
+- security boundary weakened;
+- fake state;
+- secret leakage;
+- unexpected source mutation;
+- judge FAIL.
+
+Финальный отчёт:
+1. Executive summary
+2. Exact HEAD/branch
+3. Git/worktrees
+4. Environment/toolchain
+5. Source provenance
+6. Automated gates
+7. Test blind spots
+8. Clean build
+9. Artifact inventory + SHA-256
+10. Signature/security scan
+11. WebView smoke
+12. Manual scenario matrix
+13. Accessibility
+14. Logs/privacy
+15. Stability/resources
+16. Clean-machine
+17. Findings
+18. Repairs
+19. Independent judge
+20. Vault/evidence
+21. Verdict
+22. Next action
+
+PASS format:
+
+LOCALCOMET_RELEASE_GATE_PASS
+MVP_TIER=M2_SAFE_LOCAL_MVP
+FINAL_HEAD=actual-full-sha
+FINAL_BRANCH=actual-branch
+SOURCE_DIGEST=actual-digest
+SOURCE_COUNT=actual-count
+AUTOMATED_GATES=PASS
+CLEAN_BUILD=PASS
+WINDOWS_ARTIFACT=PASS
+REAL_WEBVIEW_SMOKE=PASS
+MANUAL_SCENARIOS=PASS
+SECURITY_VALIDATION=PASS
+ACCESSIBILITY_VALIDATION=PASS
+LOG_PRIVACY_VALIDATION=PASS
+INDEPENDENT_JUDGE=PASS
+TREE_CLEAN=true
+VAULT_UPDATED=true
+PUSHED=false
+NEXT_ALLOWED=RELEASE_PACKAGING_OR_TAGGING
+
+CONDITIONAL format:
+
+LOCALCOMET_RELEASE_GATE_CONDITIONAL
+FINAL_HEAD=actual-full-sha
+LIMITATIONS=exact-list
+NEXT_ALLOWED=HUMAN_RELEASE_DECISION
+
+FAIL format:
+
+LOCALCOMET_RELEASE_GATE_FAIL
+FINAL_HEAD=actual-full-sha
+FINDINGS=exact-list
+NEXT_ALLOWED=LOCALCOMET_RELEASE_REPAIR
+
+
+==================================================
+13. START NOW
+==================================================
+
+1. Прочитай prompt полностью.
+2. Разреши exact current state.
+3. Заморозь accepted HEAD.
+4. Создай изолированную validation/build среду.
+5. Выполни static и automated gates.
+6. Выполни clean release build.
+7. Выполни настоящий WebView smoke.
+8. Выполни ручную сценарную матрицу.
+9. Выполни security/log/accessibility/stability checks.
+10. Запусти independent read-only judge.
+11. Обнови evidence и vault.
+12. Верни строгий PASS, CONDITIONAL или FAIL.
+
+Не спрашивай, продолжать ли после безопасных обратимых действий.
+Спрашивай только при hard human decision:
+- system-wide install;
+- admin permission;
+- unverified external download;
+- signing certificate;
+- paid service;
+- destructive action;
+- authority conflict;
+- два failed repair cycles.
