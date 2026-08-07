@@ -49,6 +49,7 @@ const REQUIRED_FLAGS: &[&str] = &[
     "--api-key-file",
     "--no-webui",
     "--no-agent",
+    "--jinja",
     "--ctx-size",
     "--n-predict",
     "--alias",
@@ -1227,6 +1228,15 @@ fn runtime_args(model: &Path, port: u16, api_key_file: &Path, alias: &str) -> Ve
         api_key_file.as_os_str().to_os_string(),
         OsString::from("--no-webui"),
         OsString::from("--no-agent"),
+        // Pin the chat template engine instead of inheriting the runtime
+        // default. A server started with --no-jinja rejects any request
+        // carrying tools/tool_choice ("tools param requires --jinja flag",
+        // verified against b10068), while the tool-less readiness probe still
+        // succeeds -- exactly the shape of a false Ready. The approved runtime
+        // b10068 happens to default --jinja on, so this is not a live bug fix;
+        // it stops a future runtime bump from silently flipping that default.
+        // REQUIRED_FLAGS below makes an engine without the flag fail closed.
+        OsString::from("--jinja"),
         OsString::from("--ctx-size"),
         OsString::from("4096"),
         OsString::from("--n-predict"),
@@ -2144,6 +2154,7 @@ mod tests {
         assert!(joined.contains("--host 127.0.0.1"));
         assert!(joined.contains("--no-webui"));
         assert!(joined.contains("--no-agent"));
+        assert!(joined.contains("--jinja"));
         assert!(!joined.contains("http://"));
     }
 

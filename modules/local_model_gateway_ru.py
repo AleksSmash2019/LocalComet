@@ -396,7 +396,7 @@ class LocalModelGateway:
 
     def probe(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         port = _validate_port(payload.get("port"))
-        adapter = ProviderAdapter(port, self.limits)
+        adapter = ProviderAdapter(port, self.limits, api_key=self._managed_credential_for(port))
         models = adapter.list_models()
         with self._lock:
             self._remember_discovery(port, models)
@@ -411,7 +411,7 @@ class LocalModelGateway:
 
     def list_models(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         port = _validate_port(payload.get("port"))
-        adapter = ProviderAdapter(port, self.limits)
+        adapter = ProviderAdapter(port, self.limits, api_key=self._managed_credential_for(port))
         models = adapter.list_models()
         with self._lock:
             self._remember_discovery(port, models)
@@ -720,6 +720,24 @@ class LocalModelGateway:
                 self._active = None
         if drain_events:
             self._drain_turn_events(active)
+
+    def _managed_credential_for(self, port: int) -> str | None:
+        # The managed runtime is launched with --api-key-file, but probe and
+        # list_models built their adapter without one, so the diagnostic path
+        # was the only caller talking to the managed port unauthenticated.
+        # b10068 serves /v1/models without a key (verified: 200 unauthenticated,
+        # 401 only on /v1/chat/completions), so this is not a live fix for the
+        # "probe returns empty {}" report -- that cause is still unknown. It
+        # removes the inconsistency before a stricter runtime turns it into a
+        # 401 that reads as "gateway down" while the runtime is Ready.
+        # Scope is deliberately narrow: the credential is returned only for the
+        # attached managed port, so external providers (LM Studio) keep the
+        # previous unauthenticated behavior and no key leaks to another port.
+        with self._lock:
+            managed = self._managed
+            if managed is not None and managed.port == port:
+                return managed.credential
+        return None
 
     def _remember_request_id(self, request_id: str) -> None:
         self._recent_request_ids.add(request_id)
