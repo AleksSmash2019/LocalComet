@@ -1,7 +1,8 @@
 use crate::approval::{
-    canonical_input_digest, command_family_for_tool, ApprovalDescriptor, ApprovalEnvelope,
-    ApprovalError, ApprovalPrompt, ApprovalRegistry, ApprovalScope, ExecutionGrant,
-    IdempotencyOutcome, NativeWindowsApprovalPrompt, RiskLevel,
+    canonical_input_digest, command_family_for_tool, ApprovalDecision, ApprovalDescriptor,
+    ApprovalEnvelope, ApprovalError, ApprovalPrompt, ApprovalRegistry, ApprovalScope,
+    ExecutionGrant, FrontendApprovalDispatcher, FrontendApprovalPrompt, IdempotencyOutcome,
+    RiskLevel, ScriptedApprovalPrompt,
 };
 use crate::control_plane::{build_tool_call_request, BridgeError, ControlPlaneBridge};
 use crate::workspace::WorkspaceIdentity;
@@ -110,6 +111,7 @@ pub struct ApprovalState {
     registry: Mutex<ApprovalRegistry>,
     workspace: Mutex<Option<WorkspaceIdentity>>,
     prompt: Arc<dyn ApprovalPrompt>,
+    pub dispatcher: Option<Arc<FrontendApprovalDispatcher>>,
 }
 
 impl Default for ApprovalState {
@@ -117,12 +119,27 @@ impl Default for ApprovalState {
         Self {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
-            prompt: Arc::new(NativeWindowsApprovalPrompt),
+            prompt: Arc::new(ScriptedApprovalPrompt {
+                decision: ApprovalDecision::Reject,
+            }), // Tests can override this
+            dispatcher: None,
         }
     }
 }
 
 impl ApprovalState {
+    pub fn new(app_handle: tauri::AppHandle) -> Self {
+        let dispatcher = Arc::new(FrontendApprovalDispatcher::new(app_handle));
+        Self {
+            registry: Mutex::new(ApprovalRegistry::new()),
+            workspace: Mutex::new(None),
+            prompt: Arc::new(FrontendApprovalPrompt {
+                dispatcher: Arc::clone(&dispatcher),
+            }),
+            dispatcher: Some(dispatcher),
+        }
+    }
+
     /// Store a confirmed workspace identity.
     ///
     /// Public API for workspace management. The `set_workspace` Tauri command
@@ -169,11 +186,42 @@ pub(crate) fn risk_level_for_tool(tool: &str) -> Result<RiskLevel, BridgeError> 
         | "runtime.start"
         | "runtime.stop"
         | "model.binding.set" => Ok(RiskLevel::Guarded),
-        "files.delete" | "artifact.remove" | "shell" | "computer_use" => Ok(RiskLevel::Dangerous),
+        "files.delete" | "artifact.remove" | "shell" | "computer_use" | "skills.invoke" => {
+            Ok(RiskLevel::Dangerous)
+        }
         _ => Err(BridgeError::new(
             "unknown_tool",
             "unknown tool is not registered in the risk policy",
         )),
+    }
+}
+
+#[tauri::command(async)]
+pub fn resolve_tool_approval(
+    state: tauri::State<'_, ApprovalState>,
+    request_id: String,
+    decision: String,
+) -> Result<(), BridgeError> {
+    let decision_enum = match decision.as_str() {
+        "approve" => ApprovalDecision::Approve,
+        "reject" => ApprovalDecision::Reject,
+        _ => {
+            return Err(BridgeError::new(
+                "invalid_decision",
+                "Decision must be 'approve' or 'reject'",
+            ))
+        }
+    };
+
+    if let Some(dispatcher) = &state.dispatcher {
+        dispatcher
+            .resolve(&request_id, decision_enum)
+            .map_err(|e| BridgeError::new("resolve_failed", &e))
+    } else {
+        Err(BridgeError::new(
+            "no_dispatcher",
+            "Frontend dispatcher not available",
+        ))
     }
 }
 
@@ -182,7 +230,7 @@ pub(crate) fn risk_level_for_tool(tool: &str) -> Result<RiskLevel, BridgeError> 
 /// closed if no workspace is confirmed (non-workspace operations bind the
 /// sentinel scope instead). Returns the plain token string; approval_id and
 /// call_id are derived from the token at consume time.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn request_approval(
     state: State<'_, ApprovalState>,
     tool: String,
@@ -438,7 +486,7 @@ fn run_tool_call_inner(
     // Validate all approval material before creating an idempotency entry, so
     // a missing token cannot leave a dangling in-flight logical call.
     let approval_fields = require_approval_fields(risk_level, token, approval_id, call_id)?;
-    let (grant_id, session, workspace_path, workspace_digest) = {
+    let (grant_id, session, workspace_path, workspace_digest, idempotency_receipt) = {
         let mut registry = state.registry.lock().expect("approval registry poisoned");
         let workspace_guard = state
             .workspace
@@ -478,28 +526,35 @@ fn run_tool_call_inner(
                 let (token, approval_id, call_id) = approval_fields
                     .as_ref()
                     .expect("guarded risk requires prevalidated approval fields");
-                let grant = registry
-                    .execute_approved(
-                        token,
-                        &tool,
-                        &digest,
-                        &workspace.canonical_path,
-                        approval_id,
-                        call_id,
-                        risk_level,
-                        command_family,
-                    )
-                    .map_err(|error| {
-                        BridgeError::new(approval_error_code(&error), &error.to_string())
-                    })?;
-                if grant.is_expired() {
-                    registry
-                        .complete_idempotent_call(idempotency_receipt, IdempotencyOutcome::Failed);
-                    return Err(BridgeError::new("grant_expired", "execution grant expired"));
+                match registry.execute_approved(
+                    token,
+                    &tool,
+                    &digest,
+                    &workspace.canonical_path,
+                    approval_id,
+                    call_id,
+                    risk_level,
+                    command_family,
+                ) {
+                    Ok(grant) if grant.is_expired() => {
+                        registry.complete_idempotent_call(
+                            idempotency_receipt,
+                            IdempotencyOutcome::Failed,
+                        );
+                        return Err(BridgeError::new("grant_expired", "execution grant expired"));
+                    }
+                    Ok(grant) => Some(grant.grant_id),
+                    Err(error) => {
+                        registry.complete_idempotent_call(
+                            idempotency_receipt,
+                            IdempotencyOutcome::Failed,
+                        );
+                        return Err(BridgeError::new(
+                            approval_error_code(&error),
+                            &error.to_string(),
+                        ));
+                    }
                 }
-                registry
-                    .complete_idempotent_call(idempotency_receipt, IdempotencyOutcome::Completed);
-                Some(grant.grant_id)
             }
         };
         let session = registry.session_id().to_owned();
@@ -508,17 +563,43 @@ fn run_tool_call_inner(
             session,
             workspace.canonical_path.clone(),
             workspace.digest.clone(),
+            Some(idempotency_receipt),
         )
     };
-    let (method, payload) = build_tool_call_request(
+    let (method, payload) = match build_tool_call_request(
         &tool,
         &input,
         &workspace_path,
         &workspace_digest,
         &session,
         grant_id.as_deref(),
-    )?;
-    bridge.request(method, payload)
+    ) {
+        Ok(request) => request,
+        Err(error) => {
+            if let Some(receipt) = idempotency_receipt {
+                state
+                    .registry
+                    .lock()
+                    .expect("approval registry poisoned")
+                    .complete_idempotent_call(receipt, IdempotencyOutcome::Failed);
+            }
+            return Err(error);
+        }
+    };
+    let result = bridge.request(method, payload);
+    if let Some(receipt) = idempotency_receipt {
+        let outcome = if result.is_ok() {
+            IdempotencyOutcome::Completed
+        } else {
+            IdempotencyOutcome::Failed
+        };
+        state
+            .registry
+            .lock()
+            .expect("approval registry poisoned")
+            .complete_idempotent_call(receipt, outcome);
+    }
+    result
 }
 
 /// Confirm a workspace: validate the path, invalidate tokens bound to the
@@ -654,6 +735,7 @@ mod tests {
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Approve,
             }),
+            dispatcher: None,
         }
     }
 
@@ -1149,6 +1231,7 @@ mod tests {
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Reject,
             }),
+            dispatcher: None,
         };
         let result = request_approval_inner(
             &approval_state,
@@ -1167,6 +1250,7 @@ mod tests {
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Approve,
             }),
+            dispatcher: None,
         };
         let input = json!({"artifact_id": "test-artifact"});
         let (token, approval_id, call_id) = {
