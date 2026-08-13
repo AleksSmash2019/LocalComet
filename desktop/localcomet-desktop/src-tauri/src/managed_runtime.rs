@@ -1294,17 +1294,35 @@ fn runtime_args(
         // it stops a future runtime bump from silently flipping that default.
         // REQUIRED_FLAGS below makes an engine without the flag fail closed.
         OsString::from("--jinja"),
-        // Context and generation budgets, raised from 4096/2048: the old pair
-        // starved real conversations (system prompt + history + file context
-        // no longer fit) and clipped answers, which read as "dumb" output from
-        // any model. KV-cache cost at 8k stays modest for the approved runtimes.
-        OsString::from("--ctx-size"),
-        OsString::from("8192"),
-        OsString::from("--n-predict"),
-        OsString::from("4096"),
-        OsString::from("--alias"),
-        OsString::from(alias),
     ];
+
+    let model_size_bytes = std::fs::metadata(model).map(|m| m.len()).unwrap_or(0);
+    let model_size_gb = model_size_bytes as f64 / 1_073_741_824.0;
+
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_memory();
+    let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
+
+    let mut ctx_size = 8192;
+    if model_size_gb > 3.0 {
+        if available_ram_gb < 4.5 {
+            ctx_size = 2048;
+        } else if available_ram_gb < 6.5 {
+            ctx_size = 4096;
+        }
+    } else {
+        if available_ram_gb < 3.0 {
+            ctx_size = 4096;
+        }
+    }
+
+    // Context and generation budgets, dynamically scaled to prevent OOM.
+    args.push(OsString::from("--ctx-size"));
+    args.push(OsString::from(ctx_size.to_string()));
+    args.push(OsString::from("--n-predict"));
+    args.push(OsString::from("4096"));
+    args.push(OsString::from("--alias"));
+    args.push(OsString::from(alias));
     if accelerated {
         // GPU offload for the Vulkan runtime: move every layer to the device.
         // The flag is appended last so positional assertions on earlier

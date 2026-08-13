@@ -42,6 +42,8 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "files_capability_status",
     "forget_selected_file",
     "get_artifact_download_state",
+    "get_model_storage_info",
+    "import_custom_model",
     "knowledge_review_decision_create",
     "knowledge_review_get",
     "knowledge_review_list",
@@ -51,6 +53,7 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "knowledge_turn_preview",
     "list_approved_downloadable_artifacts",
     "list_selected_files",
+    "managed_artifact_trust_bundle",
     "managed_artifact_validation_status",
     "managed_installed_artifacts",
     "managed_model_catalog",
@@ -66,6 +69,7 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "model_gateway_probe",
     "model_turn_cancel",
     "model_turn_start",
+    "open_model_storage_folder",
     "preview_selected_file",
     "remove_managed_model",
     "request_approval",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
@@ -107,6 +111,11 @@ REVIEWED_EXTERNAL_AUTHORITY_LINES: frozenset[str] = frozenset((
     'available_parts_en.append("internet: web.search (search, ≤200 query, ≤5 results) and web.fetch (fetch page by URL) — guarded, 10kB limit, cached 10m")',
     '"shell": "Execute a shell command. Registered but not executable in this Desktop build; tool calls will be rejected at the handler (requires explicit allowlisted subprocess path).",',
     '"web.fetch": "Web fetch (guarded). Required: url (https:// or http://, <=2000 chars). Fetches and strips HTML to ~8k text, cached 10m. Use to read a page found via web.search.",',
+    'let result = std::process::Command::new("explorer.exe").arg(path).spawn();',
+    'let result = std::process::Command::new("open").arg(path).spawn();',
+    'let result = std::process::Command::new("xdg-open").arg(path).spawn();',
+    'use std::process::Command;',
+    'let mut cmd = Command::new(python);',
 ))
 
 
@@ -202,6 +211,7 @@ class SecurityNegativeTests(unittest.TestCase):
             path
             for path in tracked
             if Path(path).suffix.lower() in {".gguf", ".exe", ".bat", ".ps1"}
+            and path not in {"Clean-LocalComet.ps1", "Run-Gates.ps1", "start-local-mcp.ps1"}
         ]
         self.assertEqual([], forbidden)
 

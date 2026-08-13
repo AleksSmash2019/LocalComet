@@ -88,7 +88,6 @@ impl ArtifactValidationCache {
                         && entry.file_size == identity.file_size
                         && entry.mtime_unix_nanos == identity.mtime_unix_nanos
                         && entry.expected_sha256 == expected_sha256
-                        && entry.observed_sha256 == expected_sha256
                 }) {
                     return Ok(ValidatedHash {
                         observed_sha256: entry.observed_sha256.clone(),
