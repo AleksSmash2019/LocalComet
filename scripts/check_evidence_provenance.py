@@ -24,7 +24,9 @@ Injection: modify any source file covered by refresh_evidence.SOURCE_GLOBS
 without re-running refresh_evidence.py -> this gate exits 1 (STALE).
 """
 
+import datetime
 import hashlib
+import hmac
 import pathlib
 import sys
 
@@ -95,8 +97,6 @@ def main() -> int:
             continue
             
         if "evidence_signature" in header:
-            import hmac
-            import datetime
             try:
                 ts = datetime.datetime.fromisoformat(header["timestamp"])
                 now = datetime.datetime.now(datetime.timezone.utc)

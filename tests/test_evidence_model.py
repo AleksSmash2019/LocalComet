@@ -12,6 +12,7 @@ Validates:
 
 import hashlib
 import inspect
+import datetime
 import pathlib
 import sys
 import tempfile
@@ -25,22 +26,40 @@ import check_historical_evidence  # noqa: E402
 import refresh_evidence  # noqa: E402
 
 
-def _make_evidence_text(tree_digest, body="gate output here\n", status=None, exit_code=0):
+def _make_evidence_text(tree_digest, body="gate output here\n", status=None, exit_code=0,
+                        secret="test_secret_key_for_evidence_model"):
     body_sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    command = "python fake_gate.py"
+    timestamp = "2026-07-30T00:00:00+00:00"
+    platform = "Windows AMD64 python=3.12.0"
     lines = [
-        "# command: python fake_gate.py",
+        f"# command: {command}",
         f"# exit_code: {exit_code}",
         f"# tree_digest: {tree_digest}",
         f"# body_sha256: {body_sha}",
-        "# timestamp: 2026-07-30T00:00:00+00:00",
-        "# platform: Windows AMD64 python=3.12.0",
+        f"# timestamp: {timestamp}",
+        f"# platform: {platform}",
         "# source_files: 100",
     ]
     if status:
         lines.append(f"# evidence_status: {status}")
+    # Generate HMAC signature matching check_evidence_provenance field order
+    import hmac as _hmac
+    mac = _hmac.new(secret.encode("utf-8"), digestmod=hashlib.sha256)
+    mac.update(tree_digest.encode("utf-8"))
+    mac.update(command.encode("utf-8"))
+    mac.update(str(exit_code).encode("utf-8"))
+    mac.update(body_sha.encode("utf-8"))
+    mac.update(timestamp.encode("utf-8"))
+    mac.update(platform.encode("utf-8"))
+    lines.append(f"# evidence_signature: {mac.hexdigest()}")
     lines.append("---")
     lines.append(body)
     return "\n".join(lines)
+
+
+# Shared test secret for mocking get_evidence_key
+_TEST_EVIDENCE_SECRET = "test_secret_key_for_evidence_model"
 
 
 class TestTreeDigest(unittest.TestCase):
@@ -105,7 +124,21 @@ class TestTreeDigest(unittest.TestCase):
             self.assertEqual(digest_before, digest_after)
 
 
+# Freeze time to within 24h of the test evidence timestamp so STALE_TIMESTAMP
+# does not fire.  Evidence uses "2026-07-30T00:00:00+00:00".
+_FROZEN_NOW = datetime.datetime(2026, 7, 30, 1, 0, 0, tzinfo=datetime.timezone.utc)
+
+
 class TestProvenanceChecker(unittest.TestCase):
+    def _key_and_time_patches(self):
+        """Context managers to mock the evidence key and freeze time for signature checks."""
+        return (
+            patch("check_evidence_provenance.get_evidence_key", return_value=_TEST_EVIDENCE_SECRET),
+            patch("check_evidence_provenance.datetime", wraps=datetime,
+                  **{"datetime.now.return_value": _FROZEN_NOW,
+                     "datetime.fromisoformat": datetime.datetime.fromisoformat}),
+        )
+
     def test_meta_provenance_reports_excluded_from_current_check(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
@@ -120,10 +153,12 @@ class TestProvenanceChecker(unittest.TestCase):
                 (evidence_dir / name).write_text(valid, encoding="utf-8")
             (meta_dir / "report.txt").write_text("not evidence\n", encoding="utf-8")
 
+            key_patch, time_patch = self._key_and_time_patches()
             with patch.object(check_evidence_provenance, "EVIDENCE_DIR", evidence_dir), \
                  patch.object(refresh_evidence, "REPO_ROOT", root), \
                  patch.object(refresh_evidence, "SOURCE_GLOBS", []), \
-                 patch("check_evidence_provenance.tree_digest", return_value=digest):
+                 patch("check_evidence_provenance.tree_digest", return_value=digest), \
+                 key_patch, time_patch:
                 result = check_evidence_provenance.main()
 
             self.assertEqual(result, 0)
@@ -202,8 +237,10 @@ class TestProvenanceChecker(unittest.TestCase):
                 _make_evidence_text("e" * 64), encoding="utf-8"
             )
 
+            key_patch, time_patch = self._key_and_time_patches()
             with patch.object(check_evidence_provenance, "EVIDENCE_DIR", evidence_dir), \
-                 patch("check_evidence_provenance.tree_digest", return_value=digest):
+                 patch("check_evidence_provenance.tree_digest", return_value=digest), \
+                 key_patch, time_patch:
                 result = check_evidence_provenance.main()
 
             self.assertEqual(result, 0)
