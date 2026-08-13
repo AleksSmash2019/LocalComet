@@ -21,7 +21,7 @@ import os
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 EVIDENCE_DIR = REPO_ROOT / "artifacts" / "evidence"
 
-def get_evidence_key() -> str:
+def get_evidence_key(allow_generate: bool = True) -> str:
     appdata = os.environ.get("LOCALAPPDATA")
     if not appdata:
         appdata = str(pathlib.Path.home() / "AppData" / "Local")
@@ -30,6 +30,9 @@ def get_evidence_key() -> str:
     if key_path.exists():
         return key_path.read_text(encoding="utf-8").strip()
     
+    if not allow_generate:
+        raise FileNotFoundError(f"Evidence key not found: {key_path}")
+        
     key_path.parent.mkdir(parents=True, exist_ok=True)
     new_key = os.urandom(32).hex()
     key_path.write_text(new_key, encoding="utf-8")

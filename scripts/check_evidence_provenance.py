@@ -110,7 +110,7 @@ def main() -> int:
                 continue
 
             try:
-                secret = get_evidence_key()
+                secret = get_evidence_key(allow_generate=False)
             except Exception as e:
                 problems += 1
                 print(f"FAIL: KEY_ERROR: {path.name} failed to load evidence key: {e}")
