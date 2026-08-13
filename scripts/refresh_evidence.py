@@ -16,9 +16,24 @@ import pathlib
 import platform
 import subprocess
 import sys
+import os
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 EVIDENCE_DIR = REPO_ROOT / "artifacts" / "evidence"
+
+def get_evidence_key() -> str:
+    appdata = os.environ.get("LOCALAPPDATA")
+    if not appdata:
+        appdata = str(pathlib.Path.home() / "AppData" / "Local")
+    
+    key_path = pathlib.Path(appdata) / "LocalComet" / "DevRuntime" / "evidence.key"
+    if key_path.exists():
+        return key_path.read_text(encoding="utf-8").strip()
+    
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    new_key = os.urandom(32).hex()
+    key_path.write_text(new_key, encoding="utf-8")
+    return new_key
 
 SOURCE_GLOBS = [
     "desktop/localcomet-desktop/src-tauri/src/**/*.rs",
@@ -98,9 +113,11 @@ def run_and_save(name: str, cmd: list[str], digest: str) -> int:
     platform_str = f"{platform.system()} {platform.machine()} python={sys.version.split()[0]}"
     cmd_str = ' '.join(cmd)
     
-    # Bind all fields together with an HMAC using the tree digest as the key
+    # Bind all fields together with an HMAC using the secret evidence key
     import hmac
-    mac = hmac.new(digest.encode("utf-8"), digestmod=hashlib.sha256)
+    secret = get_evidence_key()
+    mac = hmac.new(secret.encode("utf-8"), digestmod=hashlib.sha256)
+    mac.update(digest.encode("utf-8"))
     mac.update(cmd_str.encode("utf-8"))
     mac.update(str(result.returncode).encode("utf-8"))
     mac.update(body_sha.encode("utf-8"))

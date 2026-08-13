@@ -29,12 +29,12 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from refresh_evidence import EVIDENCE_DIR, tree_digest  # noqa: E402
+from refresh_evidence import EVIDENCE_DIR, tree_digest, get_evidence_key  # noqa: E402
 
 # Meta-evidence (checker output, provenance snapshots) lives here; NOT scanned.
 META_DIR = EVIDENCE_DIR / "meta"
 
-REQUIRED_FIELDS = ("command", "exit_code", "tree_digest", "body_sha256")
+REQUIRED_FIELDS = ("command", "exit_code", "tree_digest", "body_sha256", "timestamp", "platform")
 REQUIRED_EVIDENCE_FILES = (
     "cargo_test.txt",
     "trust_chain.txt",
@@ -96,7 +96,28 @@ def main() -> int:
             
         if "evidence_signature" in header:
             import hmac
-            mac = hmac.new(header["tree_digest"].encode("utf-8"), digestmod=hashlib.sha256)
+            import datetime
+            try:
+                ts = datetime.datetime.fromisoformat(header["timestamp"])
+                now = datetime.datetime.now(datetime.timezone.utc)
+                if (now - ts).total_seconds() > 86400:
+                    problems += 1
+                    print(f"FAIL: STALE_TIMESTAMP: {path.name} is older than 24 hours")
+                    continue
+            except ValueError:
+                problems += 1
+                print(f"FAIL: MALFORMED_TIMESTAMP: {path.name}")
+                continue
+
+            try:
+                secret = get_evidence_key()
+            except Exception as e:
+                problems += 1
+                print(f"FAIL: KEY_ERROR: {path.name} failed to load evidence key: {e}")
+                continue
+
+            mac = hmac.new(secret.encode("utf-8"), digestmod=hashlib.sha256)
+            mac.update(header.get("tree_digest", "").encode("utf-8"))
             mac.update(header.get("command", "").encode("utf-8"))
             mac.update(header.get("exit_code", "").encode("utf-8"))
             mac.update(header.get("body_sha256", "").encode("utf-8"))
