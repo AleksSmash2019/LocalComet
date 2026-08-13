@@ -1289,6 +1289,42 @@ mod tests {
     }
 
     #[test]
+    fn p0b_import_custom_model_binds_sentinel_workspace() {
+        let approval_state = ApprovalState {
+            registry: Mutex::new(ApprovalRegistry::new()),
+            workspace: Mutex::new(None),
+            prompt: Arc::new(ScriptedApprovalPrompt {
+                decision: ApprovalDecision::Approve,
+            }),
+            dispatcher: None,
+        };
+        let input = json!({"source_path": "model.gguf", "filename": "model.gguf"});
+        
+        let envelope = request_approval_inner(
+            &approval_state,
+            "import_custom_model".to_string(),
+            input.clone(),
+        )
+        .expect("request_approval should succeed with no workspace");
+        
+        assert_eq!(envelope.tool, "import_custom_model");
+        assert_eq!(envelope.command_family, CommandFamily::ArtifactDownload);
+        assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+
+        let grant = validate_approval_token(
+            &approval_state,
+            "import_custom_model",
+            &input,
+            &envelope.token,
+            &envelope.approval_id,
+            &envelope.call_id,
+        )
+        .expect("validate_approval_token should succeed");
+        
+        assert_eq!(grant.workspace, NON_WORKSPACE_SENTINEL);
+    }
+
+    #[test]
     fn p0b_r4_error_codes_are_specific() {
         let approval_state = test_approval_state_with_workspace();
         let input = json!({"path": "notes.txt"});
