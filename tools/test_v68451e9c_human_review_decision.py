@@ -18,8 +18,10 @@ import unittest
 from unittest import mock
 
 sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, os.fspath(ROOT))
 
-from modules.knowledge_change_proposal_ru import (
+from modules.knowledge_change_proposal_ru import (  # noqa: E402
     CONTRACT_VERSION as E9A_CONTRACT_VERSION,
     CanonicalLocationHint,
     KnowledgeChangeProposal,

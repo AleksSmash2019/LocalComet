@@ -14,6 +14,16 @@ export const en: TranslationMap = {
   'sidebar.new_conversation': 'New chat',
   'conversation.empty': 'No conversations',
 
+  // Skills
+  'skills.title': 'Skills',
+  'skills.install_new': 'Install',
+  'skills.empty': 'No skills installed.',
+  'skills.permissions': 'Permissions:',
+  'skills.no_permissions': 'None',
+  'skills.enable': 'Enable',
+  'skills.disable': 'Disable',
+  'skills.uninstall': 'Uninstall',
+
   // Sidebar groups
   'group.local_chats': 'Local chats',
 
@@ -41,6 +51,7 @@ export const en: TranslationMap = {
   'chat.request_timed_out_detail': 'The local response timed out. The model remains safe to retry when ready.',
   'chat.connect_model': 'Connect model',
   'chat.setup_local_ai': 'Set up local AI',
+  'chat.header_model_open': 'Open model settings',
   'chat.model_installing': 'Setting up local AI…',
   'chat.model_connecting': 'Connecting model…',
   'chat.user_message': 'User message',
@@ -78,6 +89,7 @@ export const en: TranslationMap = {
   'approval.side_effects.tool_filesystem_read': 'Reads files in the workspace',
   'approval.side_effects.tool_filesystem_write': 'Writes files in the workspace',
   'approval.side_effects.tool_filesystem_delete': 'Deletes files in the workspace',
+  'approval.side_effects.computer_use': 'Controls windows, clicks and typing on this computer',
   'approval.error_approval_required': 'This action requires approval',
   'approval.error_grant_expired': 'The grant expired — please approve the action again',
   'approval.error_policy_blocked': 'Action is outside the confirmed workspace',
@@ -161,6 +173,7 @@ export const en: TranslationMap = {
   'conn.model_loading': 'Model: Loading',
   'conn.model_unavailable': 'Model: Unavailable',
   'conn.model_error': 'Model: Error',
+  'item.new_chat': 'New chat',
 
   // Model Setup
   'setup.title': 'Connect model',
@@ -325,6 +338,9 @@ export const en: TranslationMap = {
   'permissions.tools_desc': 'Allow using external utilities and sidecar applications.',
   'permissions.computer_use': 'Computer Use',
   'permissions.computer_use_desc': 'Allow the model to control windows, clicks and typing. Requires approval.',
+  'permissions.risk_dangerous': 'Dangerous',
+  'permissions.risk_guarded': 'Guarded',
+  'permissions.risk_readonly': 'Read Only',
   'capability.local_chat': 'Local chat',
   'capability.local_model_inference': 'Local model inference',
   'capability.approved_model_setup': 'Approved local model setup',
@@ -398,6 +414,7 @@ export const en: TranslationMap = {
   'models.cancel': 'Cancel',
   'models.actions': 'Model manager actions',
   'models.setup': 'Set up local AI',
+  'models.setup_managed': 'Download and connect',
   'models.install_engine': 'Install engine',
   'models.retry_engine': 'Retry engine',
   'models.download_model': 'Download model',
@@ -441,6 +458,8 @@ export const en: TranslationMap = {
   'models.state.failed': 'Download failed',
   'models.state.valid': 'Installed',
   'models.state.not_installed': 'Not installed',
+  'models.variant.cpu': 'CPU engine',
+  'models.variant.vulkan': 'GPU (Vulkan) engine',
   'models.state.bytes_mismatch': 'Invalid size',
   'models.state.hash_mismatch': 'Invalid integrity',
   'models.state.invalid_path': 'Invalid managed path',
@@ -456,6 +475,7 @@ export const en: TranslationMap = {
   'hf.search_placeholder': 'Search models… (e.g. qwen2, llama, gemma)',
   'hf.search_button': 'Search',
   'hf.searching': 'Searching…',
+  'hf.loading': 'Searching Hugging Face…',
   'hf.error': 'Error',
   'hf.no_results': 'No results found. Try a different query.',
   'hf.loading_files': 'Loading file list…',
@@ -466,9 +486,23 @@ export const en: TranslationMap = {
   'hf.download': 'Download',
   'hf.downloading': 'Downloading…',
   'hf.retry': 'Retry',
+  'hf.installed': 'Installed',
+  'hf.cancel_title': 'Cancel download',
+  'hf.cancelled': 'Cancelled',
+  'hf.failed': 'Failed',
+  'hf.stage.awaiting_confirmation': 'Awaiting confirmation',
+  'hf.stage.checking_disk': 'Checking disk',
+  'hf.stage.cancelling': 'Cancelling',
+  'hf.stage.verifying_size': 'Verifying size',
+  'hf.stage.verifying_hash': 'Verifying checksum',
+  'hf.stage.validating_artifact': 'Validating artifact',
+  'hf.stage.installing': 'Installing',
+  'hf.approved_title': 'Recommended artifacts',
+  'hf.refresh': 'Refresh',
 
   // Project
   'project.detail': 'Local chat with model',
+  'modelfit.title': 'Find a suitable model',
 
   // Risk
   'risk.read_only': 'Read-only',

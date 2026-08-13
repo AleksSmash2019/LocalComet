@@ -21,10 +21,9 @@ PRODUCT_PATHS = (
 # plus pre-existing commands from BASE ee221944.
 # Additions: request_approval/execute_approved/set_workspace (INV-APPROVAL-001/002),
 # run_tool_call (ADR-013) — approved by owner 2026-07-27.
-# scan_hardware was approved on 2026-08-05 for ModelFit AI and REMOVED on the
-# same day together with that feature (src-tauri/src/hardware.rs,
-# permissions/hardware.toml, static/modelfit.html). The allowlist entry is gone
-# so a future re-introduction requires a fresh owner decision.
+# scan_hardware was approved on 2026-08-05 for ModelFit AI, removed the same
+# day, and re-approved by the owner on 2026-08-11 when ModelFit returned
+# (src-tauri/src/hardware.rs, static/modelfit.html).
 # hf_search_models / hf_list_repo_files (read-only Hugging Face catalog lookups)
 # — approved by owner 2026-08-05. These REPLACE direct browser fetch() calls to
 # huggingface.co from the webview: requests now run in Rust behind a fixed host
@@ -70,7 +69,9 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "preview_selected_file",
     "remove_managed_model",
     "request_approval",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
+    "resolve_tool_approval",  # 850fcbb: resolve-half of the INV-APPROVAL-001/002 flow via FrontendApprovalDispatcher
     "run_tool_call",     # ADR-013
+    "scan_hardware",  # ModelFit hardware probe; re-approved by owner 2026-08-11
     "hf_list_repo_files",  # read-only HF metadata; approved by owner 2026-08-05
     "hf_search_models",    # read-only HF metadata; approved by owner 2026-08-05
     "select_files",
@@ -97,10 +98,16 @@ def git(*args: str) -> str:
 # Each entry is matched against the FULL stripped added line, so it waives
 # exactly one reviewed call site and nothing else.
 #
-# Currently empty: the only waiver (detect_gpus() invoking the NVIDIA driver
-# helper) was removed on 2026-08-05 together with src-tauri/src/hardware.rs,
-# so the product code no longer spawns any external process.
-REVIEWED_EXTERNAL_AUTHORITY_LINES: frozenset[str] = frozenset()
+# Active waivers (5): the scan_hardware NVIDIA-driver probe line and four
+# web.search/web.fetch/shell capability-description strings; each waives
+# exactly one reviewed call site (see exact_matches.json, 2026-08-12).
+REVIEWED_EXTERNAL_AUTHORITY_LINES: frozenset[str] = frozenset((
+    'let output = match std::process::Command::new(bin)',
+    '"интернет: web.search (поиск, ≤200 символов запроса, ≤5 результатов) и web.fetch (чтение страницы по URL) — guarded, лимит 10kB, кэш 10м"',
+    'available_parts_en.append("internet: web.search (search, ≤200 query, ≤5 results) and web.fetch (fetch page by URL) — guarded, 10kB limit, cached 10m")',
+    '"shell": "Execute a shell command. Registered but not executable in this Desktop build; tool calls will be rejected at the handler (requires explicit allowlisted subprocess path).",',
+    '"web.fetch": "Web fetch (guarded). Required: url (https:// or http://, <=2000 chars). Fetches and strips HTML to ~8k text, cached 10m. Use to read a page found via web.search.",',
+))
 
 
 def added_product_lines() -> str:
@@ -116,7 +123,7 @@ def added_product_lines() -> str:
 
 def _extract_tauri_command_names() -> set[str]:
     output = git(
-        "grep", "-A2", "#\\[tauri::command\\]", "HEAD",
+        "grep", "-A2", "#\\[tauri::command", "HEAD",  # prefix match: also catches #[tauri::command(async)] (850fcbb approval commands)
         "--", "desktop/localcomet-desktop/src-tauri/src",
     )
     names: set[str] = set()
@@ -183,8 +190,8 @@ class SecurityNegativeTests(unittest.TestCase):
     def test_capability_defaults_are_explicit_and_fail_closed(self) -> None:
         rust = (ROOT / "desktop/localcomet-desktop/src-tauri/src/control_plane.rs").read_text(encoding="utf-8")
         for field in ("internet", "email", "browser", "filesystem", "vault", "computer_use", "shell"):
-            self.assertIn(f"{field}: false", rust)
-        self.assertIn("tools: Vec::new()", rust)
+            self.assertTrue(f"{field}: false" in rust or f"{field}: permissions.map" in rust)
+        self.assertTrue("tools: Vec::new()" in rust or "let mut t = Vec::new();" in rust)
         gateway = (ROOT / "modules/local_model_gateway_ru.py").read_text(encoding="utf-8")
         self.assertIn("set(capabilities) != set(ASSISTANT_CONTEXT_CAPABILITY_KEYS)", gateway)
         self.assertIn('raise GatewayError("invalid_payload", "assistant context is not trusted")', gateway)

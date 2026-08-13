@@ -235,7 +235,6 @@
     gap: var(--lc-space-4);
     border-bottom: var(--border-thin);
     background: color-mix(in srgb, var(--lc-bg-elevated) 94%, transparent);
-    backdrop-filter: blur(18px);
     padding: var(--lc-space-3) var(--lc-space-5);
   }
 

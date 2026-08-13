@@ -39,7 +39,7 @@ const MAX_LOG_BYTES: usize = 256 * 1024;
 const MAX_LOG_LINES: usize = 200;
 const MAX_LOG_CARRY_BYTES: usize = 512 * 1024;
 const MAX_PROBE_BYTES: usize = 64 * 1024;
-const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(300);
+const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(180);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const PROCESS_DROP_WAIT_RESERVE: Duration = Duration::from_secs(2);
 const REQUIRED_FLAGS: &[&str] = &[
@@ -613,7 +613,13 @@ impl ManagedRuntimeSupervisor {
                 write_private_api_key_file(&roots.state_root, &credential)?;
             let spec = ManagedRuntimeLaunchSpec {
                 executable: launch.executable.clone(),
-                args: runtime_args(&launch.model_path, port, &api_key_file, &alias),
+                args: runtime_args(
+                    &launch.model_path,
+                    port,
+                    &api_key_file,
+                    &alias,
+                    launch.runtime_id.contains("vulkan"),
+                ),
                 current_dir: launch.package_dir.clone(),
                 env: sanitized_runtime_environment(),
             };
@@ -1056,11 +1062,38 @@ fn remaining_millis(deadline: Instant) -> u32 {
 
 fn join_reader_bounded(handle: thread::JoinHandle<()>, deadline: Instant) {
     while !handle.is_finished() && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(20));
     }
     if handle.is_finished() {
         let _ = handle.join();
     }
+}
+
+struct CapabilityProbeCacheEntry {
+    key: String,
+}
+
+// The capability probes spawn the runtime executable twice on every start
+// (each probe carries its own 2s deadline), adding up to ~4s of pure launch
+// latency. The probe outcome is deterministic per runtime binary, so cache it
+// in memory keyed by executable identity (path + length + mtime + runtime
+// id/tag): a rebuilt or replaced binary re-runs the probes, and every process
+// start re-verifies at least once. The artifact-trust layer still validates
+// the pinned runtime bytes on every resolve_launch_for_start.
+static CAPABILITY_PROBE_CACHE: std::sync::OnceLock<Mutex<Option<CapabilityProbeCacheEntry>>> =
+    std::sync::OnceLock::new();
+
+fn capability_probe_cache_key(runtime: &ValidatedRuntimeModel) -> Option<String> {
+    let metadata = fs::metadata(&runtime.executable).ok()?;
+    let modified = metadata.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
+    Some(format!(
+        "{}:{}:{:?}:{}:{}",
+        runtime.runtime_id,
+        runtime.runtime_release_tag,
+        runtime.executable,
+        metadata.len(),
+        modified.as_nanos()
+    ))
 }
 
 fn verify_runtime_capabilities(
@@ -1068,6 +1101,16 @@ fn verify_runtime_capabilities(
     attempt: &StartupAttempt,
 ) -> Result<(), ManagedRuntimeError> {
     attempt.ensure_active()?;
+    let cache_key = capability_probe_cache_key(runtime);
+    if let Some(key) = &cache_key {
+        let cache = CAPABILITY_PROBE_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("capability probe cache poisoned");
+        if cache.as_ref().is_some_and(|entry| &entry.key == key) {
+            return Ok(());
+        }
+    }
     let version_output = run_capability_probe(runtime, "--version", attempt)?;
     if version_output.len() > 4096 {
         return Err(ManagedRuntimeError::new(
@@ -1084,6 +1127,13 @@ fn verify_runtime_capabilities(
                 "runtime required flag unsupported",
             ));
         }
+    }
+    if let Some(key) = cache_key {
+        let mut cache = CAPABILITY_PROBE_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("capability probe cache poisoned");
+        *cache = Some(CapabilityProbeCacheEntry { key });
     }
     Ok(())
 }
@@ -1122,13 +1172,14 @@ fn run_capability_probe(
         },
         None => None,
     };
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(2);
     let mut completed = false;
     while Instant::now() < deadline && !attempt.is_cancelled() {
-        if process.wait_bounded(50) {
+        if process.wait_bounded(200) {
             completed = true;
             break;
         }
+        thread::sleep(Duration::from_millis(20));
     }
     if !completed {
         process.terminate(1);
@@ -1197,7 +1248,7 @@ fn join_probe_reader(
     match reader {
         Some(handle) => {
             while !handle.is_finished() && Instant::now() < deadline {
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(20));
             }
             if !handle.is_finished() {
                 return Err(ManagedRuntimeError::new(
@@ -1216,8 +1267,14 @@ fn join_probe_reader(
     }
 }
 
-fn runtime_args(model: &Path, port: u16, api_key_file: &Path, alias: &str) -> Vec<OsString> {
-    vec![
+fn runtime_args(
+    model: &Path,
+    port: u16,
+    api_key_file: &Path,
+    alias: &str,
+    accelerated: bool,
+) -> Vec<OsString> {
+    let mut args = vec![
         OsString::from("--model"),
         model.as_os_str().to_os_string(),
         OsString::from("--host"),
@@ -1237,13 +1294,25 @@ fn runtime_args(model: &Path, port: u16, api_key_file: &Path, alias: &str) -> Ve
         // it stops a future runtime bump from silently flipping that default.
         // REQUIRED_FLAGS below makes an engine without the flag fail closed.
         OsString::from("--jinja"),
+        // Context and generation budgets, raised from 4096/2048: the old pair
+        // starved real conversations (system prompt + history + file context
+        // no longer fit) and clipped answers, which read as "dumb" output from
+        // any model. KV-cache cost at 8k stays modest for the approved runtimes.
         OsString::from("--ctx-size"),
-        OsString::from("4096"),
+        OsString::from("8192"),
         OsString::from("--n-predict"),
-        OsString::from("512"),
+        OsString::from("4096"),
         OsString::from("--alias"),
         OsString::from(alias),
-    ]
+    ];
+    if accelerated {
+        // GPU offload for the Vulkan runtime: move every layer to the device.
+        // The flag is appended last so positional assertions on earlier
+        // arguments stay stable across runtimes.
+        args.push(OsString::from("--gpu-layers"));
+        args.push(OsString::from("99"));
+    }
+    args
 }
 
 fn sanitized_runtime_environment() -> Vec<(OsString, OsString)> {
@@ -2145,6 +2214,7 @@ mod tests {
             12345,
             Path::new(r"C:\k\key.txt"),
             "alias",
+            false,
         );
         let joined = args
             .iter()
@@ -2156,6 +2226,24 @@ mod tests {
         assert!(joined.contains("--no-agent"));
         assert!(joined.contains("--jinja"));
         assert!(!joined.contains("http://"));
+        assert!(!joined.contains("--gpu-layers"));
+    }
+
+    #[test]
+    fn accelerated_runtime_args_request_full_gpu_offload() {
+        let args = runtime_args(
+            Path::new(r"C:\m\model.gguf"),
+            12345,
+            Path::new(r"C:\k\key.txt"),
+            "alias",
+            true,
+        );
+        let joined = args
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--gpu-layers 99"));
     }
 
     #[test]
@@ -2168,7 +2256,7 @@ mod tests {
             .join("approved-model")
             .join("approved-model.gguf");
         let key = application_root.join("runtime-state").join("key-test.txt");
-        let args = runtime_args(&model, 12345, &key, "approved-model");
+        let args = runtime_args(&model, 12345, &key, "approved-model", false);
 
         assert_eq!(args[1], model.into_os_string());
         assert_eq!(args[7], key.into_os_string());

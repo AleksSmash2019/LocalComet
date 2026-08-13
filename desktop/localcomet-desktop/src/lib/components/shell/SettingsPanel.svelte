@@ -2,9 +2,10 @@
   import { onMount } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
   import ModelManagerSection from '$lib/components/model/ModelManagerSection.svelte';
+  import SkillsManagerSection from '$lib/components/model/SkillsManagerSection.svelte';
   import PermissionsSection from '$lib/components/shell/PermissionsSection.svelte';
   import ObservabilityRoom from '$lib/components/logs/ObservabilityRoom.svelte';
-  import { controlPlaneStore } from '$lib/stores/controlPlane';
+  import { controlPlaneBridgeState } from '$lib/stores/controlPlane';
   import {
     inspectorDrawerOpen,
     inspectorVisible,
@@ -29,6 +30,7 @@
   const sections = [
     { id: 'interface', labelKey: 'settings.tab_interface' },
     { id: 'models', labelKey: 'settings.tab_models' },
+    { id: 'skills', labelKey: 'skills.title' },
     { id: 'permissions', labelKey: 'settings.tab_permissions' },
     { id: 'observability', labelKey: 'settings.tab_observability' },
     { id: 'about', labelKey: 'settings.tab_about' }
@@ -51,13 +53,13 @@
 
   $: diagnosticsOpen = $inspectorVisible || $inspectorDrawerOpen;
   $: connectionLabel =
-    $controlPlaneStore.bridgeState === 'READY'
+    $controlPlaneBridgeState === 'READY'
       ? $t('diag.control_plane_connected')
-      : $controlPlaneStore.bridgeState === 'CONNECTING'
+      : $controlPlaneBridgeState === 'CONNECTING'
         ? $t('diag.control_plane_starting')
-        : $controlPlaneStore.bridgeState === 'UNAVAILABLE'
+        : $controlPlaneBridgeState === 'UNAVAILABLE'
           ? $t('diag.control_plane_unavailable')
-          : $controlPlaneStore.bridgeState === 'ERROR'
+          : $controlPlaneBridgeState === 'ERROR'
             ? $t('diag.control_plane_error')
             : $t('diag.control_plane_unknown');
 
@@ -164,6 +166,9 @@
 
     <div class:panel-hidden={$settingsSection !== 'models'} aria-hidden={$settingsSection !== 'models'}>
       <ModelManagerSection />
+    </div>
+    <div class:panel-hidden={$settingsSection !== 'skills'} aria-hidden={$settingsSection !== 'skills'}>
+      <SkillsManagerSection />
     </div>
     <div class:panel-hidden={$settingsSection !== 'permissions'} aria-hidden={$settingsSection !== 'permissions'}>
       <PermissionsSection />

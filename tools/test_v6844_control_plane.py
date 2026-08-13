@@ -679,9 +679,9 @@ def run_source_checks() -> None:
     for forbidden in ["fetch(", "WebSocket", "EventSource", "localStorage", "sessionStorage", "indexedDB", "IndexedDB"]:
         check(forbidden not in frontend_text, f"forbidden frontend API {forbidden}")
     check("Control Plane demo" in frontend_text, "composer demo notice missing")
-    check("chat.connect_model" in frontend_text and "conn.model_connected" in frontend_text, "header model status missing")
+    check("chat.connect_model" in frontend_text and "conn.model_ready" in frontend_text, "header model status missing")
     check("diag.model_called" in frontend_text and "diag.tools_executed" in frontend_text, "inspector facts missing")
-    check("Reserved" in frontend_text and "Provider" in frontend_text and "Harness" in frontend_text, "deferred sections missing")
+    check("reserved: [" in frontend_text and "Provider" in frontend_text and "Harness" in frontend_text, "deferred sections missing")
     capability = json.loads(read(DESKTOP / "src-tauri" / "capabilities" / "main.json"))
     permissions = capability["permissions"]
     check("*" not in json.dumps(permissions), "wildcard permission present")
@@ -699,8 +699,14 @@ def run_source_checks() -> None:
         check(all(not value.startswith("desktop/localcomet-desktop/") for value in values), "desktop file in Python manifest")
         all_paths.extend(values)
     check(len(all_paths) == len(set(all_paths)), "manifest cross-category duplicate")
-    check(not (DESKTOP / "node_modules").exists(), "node_modules exists")
-    check(not (DESKTOP / "src-tauri" / "target").exists(), "src-tauri target exists")
+    tracked_artifacts = subprocess.run(
+        ["git", "ls-files", "--", "desktop/localcomet-desktop/node_modules", "desktop/localcomet-desktop/src-tauri/target"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    check(tracked_artifacts == "", "node_modules or src-tauri target tracked in git")
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=ROOT, text=True, capture_output=True, check=True)
     check(staged.stdout.strip() == "", "staged files are not empty")
 

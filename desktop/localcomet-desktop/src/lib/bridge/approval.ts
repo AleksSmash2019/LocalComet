@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export type ApprovalRiskLevel = 'read_only' | 'guarded' | 'dangerous';
-export type ApprovalCommandFamily = 'artifact_download' | 'artifact_remove' | 'runtime_start' | 'runtime_stop' | 'model_binding_set' | 'tool_filesystem_read' | 'tool_filesystem_write' | 'tool_filesystem_delete';
+export type ApprovalCommandFamily = 'artifact_download' | 'artifact_remove' | 'runtime_start' | 'runtime_stop' | 'model_binding_set' | 'tool_filesystem_read' | 'tool_filesystem_write' | 'tool_filesystem_delete' | 'computer_use';
 
 export interface ApprovalEnvelope {
   token: string;
@@ -35,7 +35,7 @@ const TOKEN_RE = /^lcap_[0-9a-f]{64}$/;
 const APPROVAL_ID_RE = /^appr_[0-9a-f]{32}$/;
 const CALL_ID_RE = /^call_[0-9a-f]{32}$/;
 const RISK_LEVELS: readonly string[] = ['read_only', 'guarded', 'dangerous'];
-const COMMAND_FAMILIES: readonly string[] = ['artifact_download', 'artifact_remove', 'runtime_start', 'runtime_stop', 'model_binding_set', 'tool_filesystem_read', 'tool_filesystem_write', 'tool_filesystem_delete'];
+const COMMAND_FAMILIES: readonly string[] = ['artifact_download', 'artifact_remove', 'runtime_start', 'runtime_stop', 'model_binding_set', 'tool_filesystem_read', 'tool_filesystem_write', 'tool_filesystem_delete', 'computer_use'];
 
 export function validateApprovalEnvelope(raw: unknown, expectedTool: string): ApprovalEnvelope {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {

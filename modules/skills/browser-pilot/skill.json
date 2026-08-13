@@ -1,0 +1,1 @@
+{"localcomet.skill": "1.0", "id": "browser-pilot", "name": "Browser Pilot", "version": "0.1.0", "description": "Open URLs, fetch page text, take screenshots, summarize HTML.", "author": "LocalComet", "entrypoint": "entrypoint.py", "permissions": ["clipboard", "network", "ui.extension"], "capabilities": ["browser.open", "browser.fetch", "browser.summarize"], "dependencies": []}

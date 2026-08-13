@@ -1,23 +1,15 @@
 #!/usr/bin/env python
-"""Bug #1 reproduction: inference fails with `invalid_payload: assistant
-conversation context is invalid`.
+"""Regression guard for `invalid_payload: assistant conversation context is invalid`.
 
-Root cause: the running desktop sidecar loads its gateway module from the
-built app bundle (%LOCALAPPDATA%\\LocalComet\\DevRuntime\\cargo-target\\debug\\
-app\\modules\\local_model_gateway_ru.py). That bundled copy is stale and
-expects only two conversation keys {locale, project_context_available}, while
-the Rust bridge (control_plane.rs AssistantContext::trusted) serializes three
-{locale, project_context_available, selected_files_context_available}. The set
-mismatch makes _validate_assistant_context reject every model turn.
+The Rust bridge and Python gateway deliberately use an exact, fail-closed
+``assistant_context`` schema. Any unilateral Rust field addition rejects every
+turn before the gateway reaches llama-server. This test:
 
-The repository source is internally consistent (three keys on both the Rust and
-Python sides); only the deployed bundle is out of sync. This test:
-
-  PART A - guards source parity: the repo gateway must accept the exact payload
-           the Rust bridge serializes. Passes today and must keep passing.
-  PART B - reproduces the bug: the deployed bundle gateway must accept the same
-           payload. Fails today (stale bundle) and passes once the app bundle is
-           rebuilt so modules/ is refreshed from source.
+  PART A - guards source parity: the Rust conversation struct must have the
+           three canonical fields and the repo gateway must accept the exact
+           payload serialized from that contract.
+  PART B - verifies deployment parity: the deployed bundle gateway must accept
+           the same payload. It fails if modules/ has drifted from source.
 
 Run directly: python tools/test_bug1_inference_bundle_parity.py
 """
@@ -27,13 +19,18 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
 
-APPLICATION_VERSION = "v6.84.6"
+RUST_CONTROL_PLANE = (
+    ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "src" / "control_plane.rs"
+)
+RUST_MANIFEST = RUST_CONTROL_PLANE.parents[1] / "Cargo.toml"
+RUST_CONTRACT_PREFIX = "LOCALCOMET_ASSISTANT_CONTEXT_CONTRACT="
 
 _SUBPROCESS_PROGRAM = (
     "import sys, json\n"
@@ -47,36 +44,6 @@ _SUBPROCESS_PROGRAM = (
     "except GatewayError as exc:\n"
     "    print('REJECTED:' + exc.code + ':' + exc.message)\n"
 )
-
-
-def rust_bridge_assistant_context(
-    locale: str, selected_files_context_available: bool
-) -> dict:
-    """Mirror of control_plane.rs AssistantContext::trusted serialization."""
-    return {
-        "application": {
-            "name": "LocalComet",
-            "mode": "local_offline_desktop_assistant",
-            "version": APPLICATION_VERSION,
-        },
-        "conversation": {
-            "locale": locale,
-            "project_context_available": False,
-            "selected_files_context_available": selected_files_context_available,
-        },
-        "capabilities": {
-            "local_chat": True,
-            "local_model_inference": True,
-            "internet": False,
-            "email": False,
-            "browser": False,
-            "filesystem": False,
-            "vault": False,
-            "computer_use": False,
-            "shell": False,
-            "tools": [],
-        },
-    }
 
 
 def validate_with_root(root: Path, payload: dict) -> str:
@@ -101,6 +68,69 @@ def validate_with_root(root: Path, payload: dict) -> str:
     return completed.stdout.strip().splitlines()[-1]
 
 
+def rust_bridge_assistant_contexts() -> list[tuple[str, dict]]:
+    env = os.environ.copy()
+    if not env.get("CARGO_TARGET_DIR"):
+        local_app_data = env.get("LOCALAPPDATA")
+        target = (
+            Path(local_app_data) / "LocalComet" / "DevRuntime" / "cargo-target"
+            if local_app_data
+            else Path(tempfile.gettempdir()) / "localcomet-cargo-target"
+        )
+        env["CARGO_TARGET_DIR"] = str(target)
+    target = Path(env["CARGO_TARGET_DIR"]).resolve()
+    assert not target.is_relative_to(ROOT.resolve()), (
+        f"CARGO_TARGET_DIR must stay outside source: {target}"
+    )
+    completed = subprocess.run(
+        [
+            "cargo",
+            "test",
+            "--manifest-path",
+            str(RUST_MANIFEST),
+            "--lib",
+            "assistant_context_contract_payloads_are_machine_readable",
+            "--",
+            "--nocapture",
+        ],
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    output = (completed.stdout or "") + (completed.stderr or "")
+    if completed.returncode != 0:
+        raise RuntimeError(f"Rust assistant-context contract test failed:\n{output}")
+    contract_lines = [
+        line.split(RUST_CONTRACT_PREFIX, 1)[1]
+        for line in output.splitlines()
+        if RUST_CONTRACT_PREFIX in line
+    ]
+    assert len(contract_lines) == 1, "Rust assistant-context contract payload is missing"
+    payloads = json.loads(contract_lines[0])
+    assert isinstance(payloads, list) and payloads, "Rust assistant-context contract is empty"
+    result: list[tuple[str, dict]] = []
+    for item in payloads:
+        assert isinstance(item, dict) and set(item) == {"case", "context"}
+        assert isinstance(item["case"], str) and isinstance(item["context"], dict)
+        result.append((item["case"], item["context"]))
+    return result
+
+
+def assert_binding_preserves_validation_cache() -> None:
+    source = RUST_CONTROL_PLANE.read_text(encoding="utf-8")
+    start = source.index("pub async fn model_binding_set(")
+    end = source.index("#[tauri::command]", start + 1)
+    binding_command = source[start:end]
+    assert "invalidate_validation_cache" not in binding_command, (
+        "A successful model binding must not evict the verified artifact hash; "
+        "binding does not mutate model bytes and launch already force-validates them"
+    )
+
+
 def deployed_bundle_modules_dir() -> Path | None:
     base = os.environ.get("LOCALAPPDATA")
     if not base:
@@ -119,20 +149,17 @@ def deployed_bundle_modules_dir() -> Path | None:
     return None
 
 
-def check_source_parity() -> None:
-    for locale in ("ru", "en"):
-        for selected in (False, True):
-            payload = rust_bridge_assistant_context(locale, selected)
-            result = validate_with_root(ROOT, payload)
-            assert result == "ACCEPTED", (
-                f"PART A source parity broken: repo gateway rejected the Rust "
-                f"bridge payload (locale={locale}, selected_files={selected}): "
-                f"{result}"
-            )
+def check_source_parity(payloads: list[tuple[str, dict]]) -> None:
+    for case, payload in payloads:
+        result = validate_with_root(ROOT, payload)
+        assert result == "ACCEPTED", (
+            "PART A source parity broken: repo gateway rejected the exact Rust "
+            f"bridge payload (case={case}): {result}"
+        )
     print("PART A OK: repo gateway accepts the Rust bridge assistant_context")
 
 
-def check_deployed_bundle() -> bool:
+def check_deployed_bundle(payloads: list[tuple[str, dict]]) -> bool:
     bundle_modules = deployed_bundle_modules_dir()
     if bundle_modules is None:
         print(
@@ -142,25 +169,25 @@ def check_deployed_bundle() -> bool:
         )
         return True
     bundle_root = bundle_modules.parent
-    payload = rust_bridge_assistant_context("ru", False)
-    result = validate_with_root(bundle_root, payload)
-    if result == "ACCEPTED":
-        print("PART B OK: deployed bundle gateway accepts the Rust bridge payload")
-        return True
-    print(
-        "PART B FAIL: deployed bundle gateway rejected the Rust bridge payload: "
-        f"{result}\n"
-        f"  bundle: {bundle_modules / 'local_model_gateway_ru.py'}\n"
-        "  This reproduces Bug #1 (request_model_turn_reserved -> invalid_payload).\n"
-        "  Fix: rebuild the app bundle so modules/ is refreshed from source, "
-        "then restart the app."
-    )
-    return False
+    for case, payload in payloads:
+        result = validate_with_root(bundle_root, payload)
+        if result != "ACCEPTED":
+            print(
+                "PART B FAIL: deployed bundle gateway rejected the exact Rust "
+                f"bridge payload (case={case}): {result}\n"
+                f"  bundle: {bundle_modules / 'local_model_gateway_ru.py'}\n"
+                "  Rebuild the app bundle so modules/ is refreshed from source."
+            )
+            return False
+    print("PART B OK: deployed bundle gateway accepts the Rust bridge payloads")
+    return True
 
 
 def main() -> int:
-    check_source_parity()
-    bundle_ok = check_deployed_bundle()
+    assert_binding_preserves_validation_cache()
+    payloads = rust_bridge_assistant_contexts()
+    check_source_parity(payloads)
+    bundle_ok = check_deployed_bundle(payloads)
     if not bundle_ok:
         return 1
     print("ALL OK")

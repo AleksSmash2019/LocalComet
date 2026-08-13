@@ -51,6 +51,7 @@ pub enum CommandFamily {
     ToolFilesystemRead,
     ToolFilesystemWrite,
     ToolFilesystemDelete,
+    ComputerUse,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,56 +72,86 @@ pub trait ApprovalPrompt: Send + Sync {
     ) -> Result<ApprovalDecision, ApprovalPromptError>;
 }
 
-pub struct NativeWindowsApprovalPrompt;
+pub struct FrontendApprovalDispatcher {
+    app: tauri::AppHandle,
+    pending: std::sync::Mutex<
+        std::collections::HashMap<String, std::sync::mpsc::Sender<ApprovalDecision>>,
+    >,
+}
 
-impl ApprovalPrompt for NativeWindowsApprovalPrompt {
+impl FrontendApprovalDispatcher {
+    pub fn new(app: tauri::AppHandle) -> Self {
+        Self {
+            app,
+            pending: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    pub fn resolve(&self, request_id: &str, decision: ApprovalDecision) -> Result<(), String> {
+        let mut pending = self.pending.lock().map_err(|_| "poisoned")?;
+        if let Some(tx) = pending.remove(request_id) {
+            let _ = tx.send(decision);
+            Ok(())
+        } else {
+            Err("request not found".into())
+        }
+    }
+}
+
+pub struct FrontendApprovalPrompt {
+    pub dispatcher: std::sync::Arc<FrontendApprovalDispatcher>,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct ApprovalRequestPayload {
+    pub request_id: String,
+    pub tool: String,
+    pub risk_level: String,
+    pub target_summary: String,
+    pub side_effect_category: String,
+    pub destructive: bool,
+}
+
+impl ApprovalPrompt for FrontendApprovalPrompt {
     fn decide(
         &self,
         descriptor: &ApprovalDescriptor,
     ) -> Result<ApprovalDecision, ApprovalPromptError> {
-        #[cfg(target_os = "windows")]
+        let request_id = generate_approval_id();
+        let (tx, rx) = std::sync::mpsc::channel();
+
         {
-            use windows_sys::Win32::UI::WindowsAndMessaging::{
-                MessageBoxW, IDCANCEL, IDOK, MB_ICONQUESTION, MB_OKCANCEL,
-            };
-            let title: Vec<u16> = "LocalComet\0".encode_utf16().collect();
-            let mut body = format!(
-                "Tool: {}\nRisk: {}\nTarget: {}\nSide-effect: {}",
-                descriptor.tool,
-                match descriptor.risk_level {
-                    RiskLevel::ReadOnly => "read_only",
-                    RiskLevel::Guarded => "guarded",
-                    RiskLevel::Dangerous => "dangerous",
-                },
-                descriptor.target_summary,
-                descriptor.side_effect_category,
-            );
-            if descriptor.destructive {
-                body.push_str("\nWARNING: This operation is destructive and cannot be undone.");
-            }
-            let body_wide: Vec<u16> = body.encode_utf16().chain(std::iter::once(0)).collect();
-            let result = unsafe {
-                MessageBoxW(
-                    std::ptr::null_mut(),
-                    body_wide.as_ptr(),
-                    title.as_ptr(),
-                    MB_OKCANCEL | MB_ICONQUESTION,
-                )
-            };
-            match result {
-                IDOK => Ok(ApprovalDecision::Approve),
-                IDCANCEL => Ok(ApprovalDecision::Reject),
-                _ => Err(ApprovalPromptError::Unavailable(
-                    "unexpected dialog result".into(),
-                )),
-            }
+            let mut pending = self.dispatcher.pending.lock().expect("poisoned");
+            pending.insert(request_id.clone(), tx);
         }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = descriptor;
-            Err(ApprovalPromptError::Unavailable(
-                "trusted approval prompt is unavailable".into(),
-            ))
+
+        let payload = ApprovalRequestPayload {
+            request_id,
+            tool: descriptor.tool.clone(),
+            risk_level: match descriptor.risk_level {
+                RiskLevel::ReadOnly => "read_only",
+                RiskLevel::Guarded => "guarded",
+                RiskLevel::Dangerous => "dangerous",
+            }
+            .to_string(),
+            target_summary: descriptor.target_summary.clone(),
+            side_effect_category: descriptor.side_effect_category.clone(),
+            destructive: descriptor.destructive,
+        };
+
+        use tauri::Emitter;
+        if let Err(e) = self.dispatcher.app.emit("request_tool_approval", payload) {
+            return Err(ApprovalPromptError::Unavailable(format!(
+                "Failed to emit to frontend: {e}"
+            )));
+        }
+
+        match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+            Ok(decision) => Ok(decision),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(ApprovalDecision::Reject),
+            Err(_) => Err(ApprovalPromptError::Unavailable(
+                "Frontend disconnected".into(),
+            )),
         }
     }
 }
@@ -171,6 +202,7 @@ pub fn command_family_for_tool(tool: &str) -> Option<CommandFamily> {
         "files.read" | "files.list" => Some(CommandFamily::ToolFilesystemRead),
         "files.write" | "files.create_folder" => Some(CommandFamily::ToolFilesystemWrite),
         "files.delete" => Some(CommandFamily::ToolFilesystemDelete),
+        "computer_use" => Some(CommandFamily::ComputerUse),
         _ => None,
     }
 }

@@ -29,7 +29,7 @@ from modules.workspace_policy import WorkspacePolicy, WorkspacePolicyError
 MAX_TOOL_FILE_BYTES = 1_000_000
 
 SUPPORTED_TOOLS = frozenset(
-    ("files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch")
+    ("files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch", "skills.invoke")
 )
 
 
@@ -431,6 +431,22 @@ def _shell(
     )
 
 
+def _skills_invoke(policy: WorkspacePolicy, tool: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    from modules.skills.skills_invoker import SkillInvokeError, invoke_skill
+
+    skill_id = _require_str(payload, "skill_id")
+    arguments = payload.get("arguments")
+    if arguments is not None and not isinstance(arguments, (Mapping, list)):
+        raise ToolExecutionError(
+            "invalid_payload",
+            "arguments must be an object or array",
+        )
+    try:
+        return invoke_skill(skill_id, arguments)
+    except SkillInvokeError as exc:
+        raise ToolExecutionError(exc.code, exc.message) from exc
+
+
 def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
     tool = _require_str(payload, "tool")
     workspace = _require_str(payload, "workspace")
@@ -463,6 +479,8 @@ def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
         return _web_search(policy, tool, input_obj)
     if tool == "web.fetch":
         return _web_fetch(policy, tool, input_obj)
+    if tool == "skills.invoke":
+        return _skills_invoke(policy, tool, input_obj)
     raise ToolExecutionError(
         "unsupported_method",
         f"tool not implemented: {tool}",

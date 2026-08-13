@@ -38,8 +38,8 @@ const CUSTOM_REDIRECT_HOSTS: &[&str] = &[
     "transfer.xethub.hf.co",
     "us.aws.cdn.hf.co",
 ];
-const DOWNLOAD_BUFFER_BYTES: usize = 64 * 1024;
-const PROGRESS_UPDATE_BYTES: u64 = 512 * 1024;
+const DOWNLOAD_BUFFER_BYTES: usize = 32 * 1024;
+const PROGRESS_UPDATE_BYTES: u64 = 128 * 1024;
 const DISK_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_STALE_PARTIALS: usize = 64;
 const MAX_RUNTIME_ARCHIVE_MEMBERS: usize = 128;
@@ -145,6 +145,28 @@ pub struct ArtifactAcquisitionManager {
 struct DownloadRegistry {
     jobs: HashMap<String, DownloadJob>,
     active_by_artifact: HashMap<String, String>,
+}
+
+/// Registry is bounded: once the job count exceeds the cap, terminal jobs
+/// older than the TTL are evicted so the map cannot grow without limit.
+const MAX_REGISTRY_JOBS: usize = 64;
+const TERMINAL_JOB_TTL_MS: u64 = 10 * 60 * 1000;
+
+impl DownloadRegistry {
+    fn prune(&mut self) {
+        if self.jobs.len() <= MAX_REGISTRY_JOBS {
+            return;
+        }
+        let now = now_utc_ms();
+        let active_job_ids: Vec<String> = self.active_by_artifact.values().cloned().collect();
+        self.jobs.retain(|_, job| {
+            if !job.state.lifecycle.terminal() {
+                return true;
+            }
+            active_job_ids.contains(&job.state.job_id)
+                || now.saturating_sub(job.state.updated_utc_ms) < TERMINAL_JOB_TTL_MS
+        });
+    }
 }
 
 struct DownloadJob {
@@ -271,6 +293,7 @@ impl ArtifactAcquisitionManager {
                     cancel_requested: Arc::new(AtomicBool::new(false)),
                 },
             );
+            registry.prune();
             return Ok(completed);
         }
         if current.installation_status != InstallationStatus::NotInstalled {
@@ -316,6 +339,7 @@ impl ArtifactAcquisitionManager {
                     cancel_requested: Arc::clone(&cancel_requested),
                 },
             );
+            registry.prune();
         }
         let manager = self.clone();
         let job_id = state.job_id.clone();
@@ -449,6 +473,7 @@ impl ArtifactAcquisitionManager {
                     cancel_requested: Arc::clone(&cancel_requested),
                 },
             );
+            registry.prune();
         }
         let manager = self.clone();
         let job_id = state.job_id.clone();
@@ -656,7 +681,7 @@ impl ArtifactAcquisitionManager {
             return Err(AcquisitionError::new("partial_name_conflict"));
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Downloading, None);
-        self.download_custom_to_partial(
+        let local_sha256 = self.download_custom_to_partial(
             job_id,
             response,
             &partial,
@@ -672,7 +697,6 @@ impl ArtifactAcquisitionManager {
             return Err(AcquisitionError::new("size_mismatch"));
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingHash, None);
-        let local_sha256 = sha256_file(&partial, Some(cancel_requested))?;
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::ValidatingArtifact, None);
         validate_gguf_partial(&partial)?;
         self.require_not_cancelled(cancel_requested)?;
@@ -700,7 +724,10 @@ impl ArtifactAcquisitionManager {
                 .invalidate_validation_cache_for_artifact(&model.model_id);
             return Err(error);
         }
-        if let Err(error) = self.artifacts.register_custom_model(model.clone()) {
+        if let Err(error) = self
+            .artifacts
+            .register_custom_model_after_validation(model.clone())
+        {
             let _ = fs::remove_file(&destination);
             self.artifacts
                 .invalidate_validation_cache_for_artifact(&model.model_id);
@@ -717,7 +744,7 @@ impl ArtifactAcquisitionManager {
         partial: &Path,
         expected_bytes: u64,
         cancel_requested: &AtomicBool,
-    ) -> Result<(), AcquisitionError> {
+    ) -> Result<String, AcquisitionError> {
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -725,6 +752,7 @@ impl ArtifactAcquisitionManager {
             .map_err(|_| AcquisitionError::new("partial_create_failed"))?;
         let mut received = 0_u64;
         let mut last_reported = 0_u64;
+        let mut hasher = Sha256::new();
         let mut buffer = [0_u8; DOWNLOAD_BUFFER_BYTES];
         loop {
             self.require_not_cancelled(cancel_requested)?;
@@ -742,6 +770,7 @@ impl ArtifactAcquisitionManager {
             }
             file.write_all(&buffer[..read])
                 .map_err(|_| AcquisitionError::new("partial_write_failed"))?;
+            hasher.update(&buffer[..read]);
             if received.saturating_sub(last_reported) >= PROGRESS_UPDATE_BYTES
                 || received == expected_bytes
             {
@@ -756,7 +785,7 @@ impl ArtifactAcquisitionManager {
         if received != expected_bytes {
             return Err(AcquisitionError::new("size_mismatch"));
         }
-        Ok(())
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
     fn download_and_install(
@@ -787,7 +816,8 @@ impl ArtifactAcquisitionManager {
             return Err(AcquisitionError::new("insufficient_disk_space"));
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Downloading, None);
-        self.download_to_partial(job_id, artifact, &partial, cancel_requested)?;
+        let downloaded_sha256 =
+            self.download_to_partial(job_id, artifact, &partial, cancel_requested)?;
         self.artifacts
             .invalidate_validation_cache_for_artifact(artifact_id(artifact));
         self.require_not_cancelled(cancel_requested)?;
@@ -800,7 +830,7 @@ impl ArtifactAcquisitionManager {
             return Err(AcquisitionError::new("size_mismatch"));
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::VerifyingHash, None);
-        if sha256_file(&partial, Some(cancel_requested))? != expected_sha256(artifact) {
+        if downloaded_sha256 != expected_sha256(artifact) {
             return Err(AcquisitionError::new("hash_mismatch"));
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::ValidatingArtifact, None);
@@ -852,7 +882,7 @@ impl ArtifactAcquisitionManager {
         artifact: &ApprovedDownloadArtifact,
         partial: &Path,
         cancel_requested: &AtomicBool,
-    ) -> Result<(), AcquisitionError> {
+    ) -> Result<String, AcquisitionError> {
         let mut response = open_approved_response(artifact)?;
         validate_content_type(&response, artifact)?;
         let mut file = OpenOptions::new()
@@ -863,6 +893,7 @@ impl ArtifactAcquisitionManager {
         let expected = expected_bytes(artifact);
         let mut received = 0_u64;
         let mut last_reported = 0_u64;
+        let mut hasher = Sha256::new();
         let mut buffer = [0_u8; DOWNLOAD_BUFFER_BYTES];
         loop {
             self.require_not_cancelled(cancel_requested)?;
@@ -880,6 +911,7 @@ impl ArtifactAcquisitionManager {
             }
             file.write_all(&buffer[..read])
                 .map_err(|_| AcquisitionError::new("partial_write_failed"))?;
+            hasher.update(&buffer[..read]);
             if received.saturating_sub(last_reported) >= PROGRESS_UPDATE_BYTES
                 || received == expected
             {
@@ -891,7 +923,7 @@ impl ArtifactAcquisitionManager {
             .and_then(|_| file.sync_all())
             .map_err(|_| AcquisitionError::new("partial_write_failed"))?;
         self.set_progress(job_id, received);
-        Ok(())
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
     fn set_lifecycle(
@@ -1279,6 +1311,7 @@ fn open_custom_response(source_url: &str) -> Result<Response, AcquisitionError> 
         .redirect(Policy::none())
         .no_proxy()
         .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(60))
         .build()
         .map_err(|_| AcquisitionError::new("download_client_unavailable"))?;
     let mut current =
@@ -1319,9 +1352,11 @@ fn validate_custom_redirect_url(url: &Url) -> Result<(), AcquisitionError> {
         || url.port().is_some()
         || !url.username().is_empty()
         || url.password().is_some()
-        || url.query().is_some()
         || url.fragment().is_some()
-        || !CUSTOM_REDIRECT_HOSTS.contains(&host)
+        || (host == "huggingface.co" && url.query().is_some())
+        || !(CUSTOM_REDIRECT_HOSTS.contains(&host)
+            || host.ends_with(".hf.co")
+            || host.ends_with(".huggingface.co"))
     {
         return Err(AcquisitionError::new("redirect_rejected"));
     }
@@ -1363,6 +1398,7 @@ fn open_approved_response(
         .redirect(Policy::none())
         .no_proxy()
         .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(60))
         .build()
         .map_err(|_| AcquisitionError::new("download_client_unavailable"))?;
     let mut current = Url::parse(&acquisition.primary_url)
@@ -2093,14 +2129,26 @@ mod tests {
             )
             .is_ok());
         }
+        assert!(validate_custom_redirect_url(
+            &Url::parse(
+                "https://us.aws.cdn.hf.co/xet-bridge-us/662698108f7573e6a6478546/file.gguf?Expires=1786175202&Signature=signed",
+            )
+            .expect("valid signed CDN redirect")
+        )
+        .is_ok());
+        assert!(validate_custom_redirect_url(
+            &Url::parse("https://cdn-lfs.huggingface.co/download")
+                .expect("valid huggingface CDN redirect")
+        )
+        .is_ok());
         for value in [
             "http://huggingface.co/download",
             "https://cdn-lfs.hf.co.attacker.example/download",
-            "https://cdn-lfs.huggingface.co/download",
             "https://huggingface.co:8443/download",
             "https://user@huggingface.co/download",
             "https://huggingface.co/download?token=secret",
             "https://huggingface.co/download#fragment",
+            "https://us.aws.cdn.hf.co/download#fragment",
         ] {
             assert!(validate_custom_redirect_url(&Url::parse(value).expect("valid URL")).is_err());
         }

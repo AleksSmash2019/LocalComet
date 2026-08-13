@@ -79,12 +79,12 @@ real-sidecar тесты в ExitedBeforeReady вместо ReadinessTimeout).
 и фикса real-sidecar env):
 
 - svelte-check: 0 ошибок, 0 предупреждений
-- vitest: 24 файла, 364 теста пройдено
-- Rust: 460 passed, 0 failed, 6 ignored; fmt и clippy -D warnings зелёные
+- vitest: 25 файлов, 384 теста пройдено
+- Rust: 498 passed, 0 failed; fmt и clippy -D warnings зелёные
 - trust-chain: 15 файлов проходят byte invariants
-- command parity: 43 команды зарегистрированы и вызываются
-- tool risk registry: 5 console tools и 5 sidecar tools покрыты, 10 записей валидны
-- INV-UI-001: 81 frontend-файл без fake-state violations
+- command parity: 46 команд зарегистрированы и вызываются
+- tool risk registry: 7 console tools и 9 sidecar tools покрыты, 16 записей валидны
+- INV-UI-001: 92 frontend-файла без fake-state violations
 - bundle parity: 146 shipped modules совпадают с source в обеих runtime locations
 - ADR-015 Python parity: 67 passed, 1 skipped (Block 3/4 iteration limit)
 - CLI smoke: 8 passed, 0 failed

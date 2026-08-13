@@ -146,6 +146,27 @@ commands.allow = [
 ]
 
 [[permission]]
+identifier = "allow-managed-artifact-trust-bundle"
+description = "Allow reading one consistent LocalComet managed artifact trust bundle."
+commands.allow = [
+  "managed_artifact_trust_bundle",
+]
+
+[[permission]]
+identifier = "allow-get-model-storage-info"
+description = "Allow reading the LocalComet managed model storage path and bounded usage metadata."
+commands.allow = [
+  "get_model_storage_info",
+]
+
+[[permission]]
+identifier = "allow-open-model-storage-folder"
+description = "Allow opening the fixed LocalComet managed model storage folder in the platform file manager."
+commands.allow = [
+  "open_model_storage_folder",
+]
+
+[[permission]]
 identifier = "allow-managed-artifact-validation-status"
 description = "Allow reading live validation status for one LocalComet catalog artifact ID."
 commands.allow = [

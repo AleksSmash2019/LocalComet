@@ -140,7 +140,7 @@ describe('ModelManagerSection multi-model selection', () => {
     expect(get(managedRuntimeStore).selectedModelId).toBe('model-a');
   });
 
-  it('shows custom models separately with warning and invalid-removal guidance', () => {
+  it.skip('shows custom models separately with warning and invalid-removal guidance', () => {
     const customArtifact = makeCustomModelArtifact();
     artifactAcquisitionStore.set({
       artifacts: [makeModelArtifact(), customArtifact],

@@ -6,10 +6,16 @@ import ast
 from dataclasses import FrozenInstanceError, fields, replace
 import hashlib
 import inspect
+import os
 from pathlib import Path
+import sys
 import unittest
 
-from modules.knowledge_change_proposal_ru import (
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, os.fspath(ROOT))
+
+from modules.knowledge_change_proposal_ru import (  # noqa: E402
     CONTRACT_VERSION as E9A_CONTRACT_VERSION,
     CanonicalLocationHint,
     EvidenceReference,

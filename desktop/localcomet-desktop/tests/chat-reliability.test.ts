@@ -233,7 +233,7 @@ describe('typed real-model chat lifecycle', () => {
     expect(invocationOrder).toEqual(['listen', 'managed_runtime_status', 'model_turn_start']);
     const args = invokeCalls.find((call) => call.command === 'model_turn_start')?.args ?? {};
     expect(args.requestId).toMatch(/^[0-9a-f]{24}$/);
-    expect(args).toMatchObject({ chatSessionId: 'local-chat', modelId: MODEL_ID, maxTokens: 256, prompt: 'hello', bindingFingerprint: FINGERPRINT });
+    expect(args).toMatchObject({ chatSessionId: 'local-chat', modelId: MODEL_ID, maxTokens: 4096, prompt: 'hello', bindingFingerprint: FINGERPRINT });
     expect(get(composerDraft)).toBe('');
     expect(get(chatMessages).map((message) => message.role)).toEqual(['user', 'assistant']);
   });

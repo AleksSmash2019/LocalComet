@@ -53,12 +53,12 @@ class ToolRegistryTests(unittest.TestCase):
     def test_registry_has_exactly_five_files_tools(self) -> None:
         self.assertEqual(
             set(TOOL_REGISTRY),
-            {"files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch"},
+            {"files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch", "skills.invoke"},
         )
 
     def test_build_tool_schemas_is_openai_function_format(self) -> None:
         schemas = build_tool_schemas()
-        self.assertEqual(len(schemas), 9)
+        self.assertEqual(len(schemas), 10)
         for schema in schemas:
             self.assertEqual(schema["type"], "function")
             fn = schema["function"]
@@ -149,6 +149,7 @@ class ValidateToolCallTests(unittest.TestCase):
             "computer_use": {"action": "click", "coordinate": [100, 100], "text": "hello"},
             "web.search": {"query": "rust tauri"},
             "web.fetch": {"url": "https://example.com"},
+            "skills.invoke": {"skill_id": "demo-echo", "arguments": ["a", 1]},
         }
         self.assertEqual(set(valid_arguments), set(TOOL_REGISTRY))
         for name, arguments in valid_arguments.items():

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import '../../../app.css';
-  import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import CommandPalette from '$lib/components/common/CommandPalette.svelte';
+  import ApprovalModal from './ApprovalModal.svelte';
   import Diagnostics from '$lib/components/agent/Diagnostics.svelte';
   import ChatHeader from './ChatHeader.svelte';
   import ConversationSidebar from './ConversationSidebar.svelte';
@@ -28,7 +28,7 @@
     sidebarExpanded,
     themeMode
   } from '$lib/stores/shellStore';
-  import { controlPlaneStore, initializeControlPlaneBridge, shutdownControlPlaneBridge } from '$lib/stores/controlPlane';
+  import { controlPlaneBridgeState, initializeControlPlaneBridge, shutdownControlPlaneBridge } from '$lib/stores/controlPlane';
   import { initializeModelGateway, shutdownModelGateway } from '$lib/stores/modelGateway';
   import { initializeArtifactAcquisition, resetArtifactAcquisitionStore } from '$lib/stores/artifactAcquisition';
   import { initializeKnowledgePreviewEvents, shutdownKnowledgePreviewEvents } from '$lib/stores/knowledgePreview';
@@ -92,10 +92,8 @@
   }
 
   $: resolvedTheme = $themeMode === 'system' ? (systemDark ? 'dark' : 'light') : $themeMode;
-  $: transcriptRevision = $chatMessages.reduce(
-    (revision, message) => revision + message.body.length + (message.state?.length ?? 0),
-    $chatMessages.length
-  );
+  $: transcriptRevision =
+    $chatMessages.length + ($chatMessages[$chatMessages.length - 1]?.body.length ?? 0);
   $: if (transcriptViewport && transcriptRevision >= 0) {
     void revealLatestTranscriptContent();
   }
@@ -167,23 +165,23 @@
   });
 
   $: controlPlaneLabel =
-    $controlPlaneStore.bridgeState === 'READY'
+    $controlPlaneBridgeState === 'READY'
       ? $t('diag.control_plane_connected')
-      : $controlPlaneStore.bridgeState === 'CONNECTING'
+      : $controlPlaneBridgeState === 'CONNECTING'
         ? $t('diag.control_plane_starting')
-        : $controlPlaneStore.bridgeState === 'UNAVAILABLE'
+        : $controlPlaneBridgeState === 'UNAVAILABLE'
           ? $t('diag.control_plane_unavailable')
-          : $controlPlaneStore.bridgeState === 'ERROR'
+          : $controlPlaneBridgeState === 'ERROR'
             ? $t('diag.control_plane_error')
             : $t('diag.control_plane_unknown');
   $: controlPlaneTone =
-    $controlPlaneStore.bridgeState === 'READY'
+    $controlPlaneBridgeState === 'READY'
       ? 'ready'
-      : $controlPlaneStore.bridgeState === 'CONNECTING'
+      : $controlPlaneBridgeState === 'CONNECTING'
         ? 'info'
-        : $controlPlaneStore.bridgeState === 'ERROR'
+        : $controlPlaneBridgeState === 'ERROR'
           ? 'danger'
-          : $controlPlaneStore.bridgeState === 'UNAVAILABLE'
+          : $controlPlaneBridgeState === 'UNAVAILABLE'
             ? 'disabled'
             : 'unknown';
 </script>
@@ -221,7 +219,9 @@
         </div>
         <MessageComposer />
       </main>
-      <Diagnostics className={$inspectorDrawerOpen ? 'drawer-open' : ''} onClose={closeDiagnosticsPanel} />
+      {#if $inspectorVisible || $inspectorDrawerOpen}
+        <Diagnostics className={$inspectorDrawerOpen ? 'drawer-open' : ''} onClose={closeDiagnosticsPanel} />
+      {/if}
       {#if $modelSetupDrawerOpen}
         <ModelSetupDrawer onClose={closeModelSetup} />
       {/if}
@@ -234,11 +234,13 @@
         <p class="hf-lazy-error">{error?.message ?? 'Failed to load'}</p>
       {/await}
     {:else if $activeWorkspace === 'modelfit'}
-      <iframe src="/modelfit.html" title="Подобрать модель" class="modelfit-frame"></iframe>
+      <iframe src="/modelfit.html" title={$t('modelfit.title')} class="modelfit-frame"></iframe>
     {:else}
       <OnboardingScreen />
     {/if}
   </div>
+
+  <ApprovalModal />
 
   {#if $settingsPanelOpen}
     <SettingsPanel onClose={closeSettingsAndRestoreFocus} />

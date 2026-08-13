@@ -5,6 +5,7 @@ import ManagedRuntimePanel from '../src/lib/components/model/ManagedRuntimePanel
 import * as modelGatewayBridge from '../src/lib/bridge/modelGateway';
 import {
   cancelArtifactDownload,
+  getManagedArtifactTrustBundle,
   getManagedArtifactValidationStatus,
   getArtifactDownloadState,
   getManagedInstalledArtifacts,
@@ -48,6 +49,14 @@ const CUSTOM_MODEL_URL = 'https://huggingface.co/owner/repo/resolve/main/model.g
 
 let invokeCalls: { command: string; args?: Record<string, unknown> }[] = [];
 let responses: Record<string, unknown> = {};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((accept) => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+}
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
@@ -273,6 +282,11 @@ function installResponses(): void {
     managed_runtime_catalog: runtimeCatalogFixture(),
     managed_model_catalog: modelCatalogFixture(),
     managed_installed_artifacts: installedArtifactsFixture(),
+    managed_artifact_trust_bundle: () => ({
+      runtime_catalog: responses.managed_runtime_catalog,
+      model_catalog: responses.managed_model_catalog,
+      installed_artifacts: responses.managed_installed_artifacts
+    }),
     managed_artifact_validation_status: validationFixture(MODEL_ID, 'model'),
     managed_model_readiness: readinessFixture(),
     managed_runtime_logs: { stdout_tail: [], stderr_tail: [] },
@@ -314,6 +328,7 @@ describe('managed artifact trust frontend contract', () => {
     const runtimeCatalog = await getManagedRuntimeCatalog();
     const modelCatalog = await getManagedModelCatalog();
     await getManagedInstalledArtifacts();
+    const trustBundle = await getManagedArtifactTrustBundle();
     await getManagedArtifactValidationStatus(MODEL_ID);
     await getManagedModelReadiness(MODEL_ID);
 
@@ -321,11 +336,13 @@ describe('managed artifact trust frontend contract', () => {
       { command: 'managed_runtime_catalog', args: undefined },
       { command: 'managed_model_catalog', args: undefined },
       { command: 'managed_installed_artifacts', args: undefined },
+      { command: 'managed_artifact_trust_bundle', args: undefined },
       { command: 'managed_artifact_validation_status', args: { artifactId: MODEL_ID } },
       { command: 'managed_model_readiness', args: { modelId: MODEL_ID } }
     ]);
     expect(runtimeCatalog.runtimes[0]).not.toHaveProperty('installation_status');
     expect(modelCatalog.models[0]).not.toHaveProperty('installation_status');
+    expect(trustBundle.model_catalog.models[0]).toEqual(modelCatalog.models[0]);
     expect(Object.keys(modelGatewayBridge)).not.toEqual(expect.arrayContaining([
       'approveManagedArtifact',
       'writeManagedCatalog',
@@ -669,6 +686,34 @@ describe('managed artifact trust frontend contract', () => {
     expect(body).toContain('Stop Runtime');
     expect(body).toContain('Confirm Binding');
     expect(body).not.toMatch(/C:\\|absolute_path|Model path|Executable|Approve artifact|Download model/i);
+  });
+
+  it('does not let an older slow trust refresh overwrite a newer snapshot', async () => {
+    const olderBundle = deferred<unknown>();
+    let bundleCall = 0;
+    responses.managed_artifact_trust_bundle = () => {
+      bundleCall += 1;
+      if (bundleCall === 1) return olderBundle.promise;
+      return {
+        runtime_catalog: runtimeCatalogFixture(),
+        model_catalog: modelCatalogFixture(),
+        installed_artifacts: installedArtifactsFixture()
+      };
+    };
+
+    const olderRefresh = refreshManagedRuntimeStatus();
+    await Promise.resolve();
+    await refreshManagedRuntimeStatus();
+    olderBundle.resolve({
+      runtime_catalog: runtimeCatalogFixture('f'.repeat(64)),
+      model_catalog: modelCatalogFixture('f'.repeat(64)),
+      installed_artifacts: { ...installedArtifactsFixture(), catalog_digest: 'f'.repeat(64) }
+    });
+    await olderRefresh;
+
+    expect(get(managedRuntimeStore).catalogIdentity?.catalog_digest).toBe(CATALOG_DIGEST);
+    expect(get(managedRuntimeStore).catalog.map((model) => model.model_id)).toEqual([MODEL_ID]);
+    expect(get(managedRuntimeStore).lastError).toBeNull();
   });
 
   it('combines custom models and validation without treating them as approved catalog entries', async () => {

@@ -1,0 +1,1 @@
+{"localcomet.skill": "1.0", "id": "log-sleuth", "name": "Log Sleuth", "version": "0.1.0", "description": "Analyze logs, extract errors, detect crash patterns, summarize traces.", "author": "LocalComet", "entrypoint": "entrypoint.py", "permissions": ["filesystem.read", "process.spawn"], "capabilities": ["log.read", "log.errors", "log.trace"], "dependencies": []}

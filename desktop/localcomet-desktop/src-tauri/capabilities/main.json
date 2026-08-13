@@ -24,6 +24,7 @@
     "allow-knowledge-turn-preview",
     "allow-list-selected-files",
     "allow-managed-artifact-validation-status",
+    "allow-managed-artifact-trust-bundle",
     "allow-managed-installed-artifacts",
     "allow-managed-model-catalog",
     "allow-managed-model-readiness",

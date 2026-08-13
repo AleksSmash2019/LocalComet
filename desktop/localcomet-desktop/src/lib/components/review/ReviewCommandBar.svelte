@@ -28,6 +28,12 @@
     $reviewFilters.query.length > 0 ||
     $reviewFilters.statuses.length > 0 ||
     $reviewFilters.operations.length > 0;
+
+  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+  function onSearchInput(value: string): void {
+    if (searchDebounce !== undefined) clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => setReviewQuery(value), 150);
+  }
 </script>
 
 <section class="command-bar" aria-label={$t('review.command_bar.label')}>
@@ -39,7 +45,7 @@
       maxlength="200"
       value={$reviewFilters.query}
       placeholder={$t('review.command_bar.search_placeholder')}
-      oninput={(event) => setReviewQuery((event.currentTarget as HTMLInputElement).value)}
+      oninput={(event) => onSearchInput((event.currentTarget as HTMLInputElement).value)}
     />
   </div>
 

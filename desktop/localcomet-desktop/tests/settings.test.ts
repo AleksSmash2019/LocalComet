@@ -56,8 +56,8 @@ describe('minimal Settings surface', () => {
   it('renders repository-proven About values', () => {
     const html = settingsHtml('en');
     expect(html).toContain('LocalComet');
-    expect(html).toContain('v6.84.5.1');
-    expect(html).toContain('v6.84.5.1b');
+    expect(html).toContain('v6.84.6');
+    expect(html).toContain('v6.84.6b');
     expect(html).toContain('UNSIGNED_INTERNAL_BUILD');
   });
 

@@ -146,7 +146,6 @@
     border-right: 0;
     padding: var(--lc-space-4);
     background: var(--lc-panel);
-    backdrop-filter: blur(18px);
   }
 
   .diagnostics.hidden {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import EmptyState from '$lib/components/common/EmptyState.svelte';
-  import { chatMessages, composerDraft, openSettings, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
+  import { chatMessages, composerDraft, openModelSetup, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import {
     inferenceBusy,
     managedModelReady,
@@ -53,7 +53,7 @@
         busy={modelLoading}
         statusLabel={modelLoading ? $t('chat.model_loading_status') : $managedModelReady ? $t('chat.local_only_status') : undefined}
         actionLabel={!$managedModelReady && !modelLoading ? $t('chat.setup_local_ai') : undefined}
-        onAction={!$managedModelReady && !modelLoading ? () => openSettings('models') : undefined}
+        onAction={!$managedModelReady && !modelLoading ? () => openModelSetup('managed') : undefined}
       />
       {#if $managedModelReady}
         <div class="prompt-cards-section">
@@ -79,7 +79,7 @@
         </div>
       {/if}
   {:else}
-    {#each visibleMessages as message}
+    {#each visibleMessages as message (message.id)}
       <article class="message {message.role}" aria-label={message.role === 'user' ? $t('chat.user_message') : $t('chat.model_response')}>
         <div class="avatar" aria-hidden="true">{message.role === 'user' ? 'U' : 'LC'}</div>
         <div class="bubble">

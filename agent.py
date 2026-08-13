@@ -2,6 +2,9 @@
 # It is not imported by any production module and is kept for reference only.
 # Do not add new functionality here. Use next/app_v5.py for the current agent loop.
 
+import os
+import urllib.parse
+
 import requests
 import subprocess
 import pyautogui
@@ -52,7 +55,7 @@ def open_app(app):
     }
 
     cmd = apps.get(app.lower(), app)
-    subprocess.Popen(["cmd", "/c", "start", "", cmd], shell=True)
+    subprocess.Popen(["cmd", "/c", "start", "", cmd])
     return f"Открыл: {cmd}"
 
 def type_text(text):
@@ -62,7 +65,8 @@ def type_text(text):
     return "Текст вставлен."
 
 def search_web(query):
-    subprocess.Popen(f'start chrome "https://www.google.com/search?q={query}"', shell=True)
+    url = "https://www.google.com/search?q=" + urllib.parse.quote_plus(query)
+    os.startfile(url)  # Windows-native, no shell interpolation of model-controlled text
     return f"Ищу: {query}"
 
 def run_action(reply):

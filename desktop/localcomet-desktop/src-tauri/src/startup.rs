@@ -6,6 +6,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const STARTUP_LOG_DISPLAY_PATH: &str = r"<LocalComet application-data root>\logs\startup.log";
 
+/// Rotation threshold: when the log exceeds this size its content is discarded
+/// before the next row is appended, keeping the file bounded across launches.
+const STARTUP_LOG_MAX_BYTES: u64 = 1024 * 1024;
+
 #[derive(Clone, Copy, Debug)]
 pub enum StartupPhase {
     SingleInstance,
@@ -54,6 +58,15 @@ pub fn record(phase: StartupPhase, status: &str, code: &str) {
         safe_token(status),
         safe_token(code)
     );
+    if let Ok(metadata) = std::fs::metadata(&path) {
+        if metadata.len() > STARTUP_LOG_MAX_BYTES {
+            let _ = OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(&path);
+        }
+    }
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = file.write_all(row.as_bytes());
     }

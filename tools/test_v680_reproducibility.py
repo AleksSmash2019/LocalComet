@@ -32,6 +32,9 @@ def _paths_under(root: Path) -> dict[str, str]:
         ".incident_backup/",
         ".localcomet/",
         ".tmp/",
+        # Gate infrastructure output (runner logs/reports) churns by design
+        # during runs; it is not source and cannot represent a mutation.
+        "artifacts/",
         "Projects/Reports/",
         "Projects/ComputerUse/",
         "Projects/ChatGPTRelay/",
@@ -44,14 +47,17 @@ def _paths_under(root: Path) -> dict[str, str]:
         "desktop/localcomet-desktop/build/",
         "desktop/localcomet-desktop/src-tauri/target/",
     )
-    for path in root.rglob("*"):
-        rel = path.relative_to(root).as_posix()
-        if ".git/" in rel or "__pycache__" in rel:
-            continue
-        if any(rel.startswith(prefix) for prefix in ignored_prefixes):
-            continue
-        if path.is_file():
-            result[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not (Path(dirpath) / d).is_symlink()]
+        for entry_name in dirnames + filenames:
+            path = Path(dirpath) / entry_name
+            rel = path.relative_to(root).as_posix()
+            if ".git/" in rel or "__pycache__" in rel:
+                continue
+            if any(rel.startswith(prefix) for prefix in ignored_prefixes):
+                continue
+            if path.is_file():
+                result[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
     return result
 
 

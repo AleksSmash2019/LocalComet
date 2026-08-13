@@ -1,0 +1,1 @@
+{"localcomet.skill": "1.0", "id": "system-doctor", "name": "System Doctor", "version": "0.1.0", "description": "Diagnose sidecar, gateway, IPC, ports, runtime health.", "author": "LocalComet", "entrypoint": "entrypoint.py", "permissions": ["filesystem.read", "process.spawn", "settings.read"], "capabilities": ["system.health", "ipc.check", "runtime.restart"], "dependencies": []}

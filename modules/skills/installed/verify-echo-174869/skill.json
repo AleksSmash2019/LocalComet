@@ -1,0 +1,1 @@
+{"localcomet.skill": "1.0", "id": "verify-echo-174869", "name": "Verify Echo", "version": "0.1.0", "description": "Ad-hoc verification skill for skills.invoke wiring.", "author": "LocalComet", "entrypoint": "entrypoint.py", "permissions": ["ui.extension"], "capabilities": ["echo"], "dependencies": []}

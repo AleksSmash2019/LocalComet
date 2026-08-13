@@ -2,14 +2,30 @@
   import type { CodeBlockMock } from '$lib/data/mockData';
 
   export let block: CodeBlockMock;
+  
+  let copied = false;
+  let copyTimeout: ReturnType<typeof setTimeout>;
+  
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(block.code);
+      copied = true;
+      clearTimeout(copyTimeout);
+      copyTimeout = setTimeout(() => {
+        copied = false;
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy code', err);
+    }
+  }
 </script>
 
-<figure class="code-block" aria-label="Disabled runtime capability summary">
+<figure class="code-block" aria-label="Code block">
   <figcaption>
     <span>{block.filename}</span>
     <div>
       <span>{block.language}</span>
-      <button type="button" disabled aria-label="Copy disabled in this release">Copy</button>
+      <button type="button" aria-label="Copy code" onclick={copyCode}>{copied ? 'Copied!' : 'Copy'}</button>
     </div>
   </figcaption>
   <pre><code>{block.code}</code></pre>
@@ -49,7 +65,12 @@
     border-radius: var(--lc-radius-sm);
     background: var(--color-panel);
     color: var(--color-muted);
-    cursor: not-allowed;
+    cursor: pointer;
+    padding: 0 var(--lc-space-2);
+  }
+  
+  button:hover {
+    background: var(--color-surface);
   }
 
   pre {

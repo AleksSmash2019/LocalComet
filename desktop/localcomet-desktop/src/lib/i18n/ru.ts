@@ -14,6 +14,16 @@ export const ru: TranslationMap = {
   'sidebar.new_conversation': 'Новый чат',
   'conversation.empty': 'Нет разговоров',
 
+  // Skills
+  'skills.title': 'Навыки',
+  'skills.install_new': 'Установить',
+  'skills.empty': 'Нет установленных навыков',
+  'skills.permissions': 'Разрешения:',
+  'skills.no_permissions': 'Нет',
+  'skills.enable': 'Включить',
+  'skills.disable': 'Отключить',
+  'skills.uninstall': 'Удалить',
+
   // Sidebar groups
   'group.local_chats': 'Локальные чаты',
 
@@ -41,6 +51,7 @@ export const ru: TranslationMap = {
   'chat.request_timed_out_detail': 'Время локального ответа истекло. Когда модель готова, запрос можно безопасно повторить.',
   'chat.connect_model': 'Подключить модель',
   'chat.setup_local_ai': 'Настроить локальный AI',
+  'chat.header_model_open': 'Открыть настройки модели',
   'chat.model_installing': 'Настраивается локальный AI…',
   'chat.model_connecting': 'Подключение модели…',
   'chat.user_message': 'Сообщение пользователя',
@@ -78,6 +89,7 @@ export const ru: TranslationMap = {
   'approval.side_effects.tool_filesystem_read': 'Читает файлы в рабочей области',
   'approval.side_effects.tool_filesystem_write': 'Пишет файлы в рабочей области',
   'approval.side_effects.tool_filesystem_delete': 'Удаляет файлы в рабочей области',
+  'approval.side_effects.computer_use': 'Управляет курсором, окнами и вводом на этом компьютере',
   'approval.error_approval_required': 'Для этого действия требуется подтверждение',
   'approval.error_grant_expired': 'Разрешение истекло — подтвердите действие заново',
   'approval.error_policy_blocked': 'Действие за пределами подтверждённой рабочей области',
@@ -161,6 +173,7 @@ export const ru: TranslationMap = {
   'conn.model_loading': 'Модель: загрузка',
   'conn.model_unavailable': 'Модель: недоступна',
   'conn.model_error': 'Модель: ошибка',
+  'item.new_chat': 'Новый чат',
 
   // Model Setup
   'setup.title': 'Подключить модель',
@@ -216,6 +229,9 @@ export const ru: TranslationMap = {
   'permissions.tools_desc': 'Разрешить использование внешних утилит и сайдкар-приложений.',
   'permissions.computer_use': 'Управление компьютером',
   'permissions.computer_use_desc': 'Разрешить модели управлять окнами, кликами и вводом. Требует подтверждения.',
+  'permissions.risk_dangerous': 'Опасно',
+  'permissions.risk_guarded': 'Защищено',
+  'permissions.risk_readonly': 'Чтение',
 
   // Diagnostics
   'diag.title': 'Диагностика',
@@ -398,6 +414,7 @@ export const ru: TranslationMap = {
   'models.cancel': 'Отмена',
   'models.actions': 'Действия менеджера моделей',
   'models.setup': 'Настроить локальный AI',
+  'models.setup_managed': 'Загрузить и подключить',
   'models.install_engine': 'Установить движок',
   'models.retry_engine': 'Повторить движок',
   'models.download_model': 'Загрузить модель',
@@ -441,6 +458,8 @@ export const ru: TranslationMap = {
   'models.state.failed': 'Ошибка загрузки',
   'models.state.valid': 'Установлено',
   'models.state.not_installed': 'Не установлено',
+  'models.variant.cpu': 'Движок CPU',
+  'models.variant.vulkan': 'Движок GPU (Vulkan)',
   'models.state.bytes_mismatch': 'Неверный размер',
   'models.state.hash_mismatch': 'Неверная целостность',
   'models.state.invalid_path': 'Неверный управляемый путь',
@@ -456,6 +475,7 @@ export const ru: TranslationMap = {
   'hf.search_placeholder': 'Поиск модели… (например, qwen2, llama, gemma)',
   'hf.search_button': 'Найти',
   'hf.searching': 'Ищем…',
+  'hf.loading': 'Ищем в Hugging Face…',
   'hf.error': 'Ошибка',
   'hf.no_results': 'Ничего не найдено. Попробуйте другой запрос.',
   'hf.loading_files': 'Загрузка списка файлов…',
@@ -466,9 +486,23 @@ export const ru: TranslationMap = {
   'hf.download': 'Скачать',
   'hf.downloading': 'Качаем…',
   'hf.retry': 'Повторить',
+  'hf.installed': 'Установлено',
+  'hf.cancel_title': 'Отменить скачивание',
+  'hf.cancelled': 'Отменено',
+  'hf.failed': 'Ошибка',
+  'hf.stage.awaiting_confirmation': 'Ожидание подтверждения',
+  'hf.stage.checking_disk': 'Проверяем диск',
+  'hf.stage.cancelling': 'Отменяем',
+  'hf.stage.verifying_size': 'Проверяем размер',
+  'hf.stage.verifying_hash': 'Проверяем контрольную сумму',
+  'hf.stage.validating_artifact': 'Валидируем артефакт',
+  'hf.stage.installing': 'Устанавливаем',
+  'hf.approved_title': 'Рекомендованные артефакты',
+  'hf.refresh': 'Обновить',
 
   // Project
   'project.detail': 'Локальный чат с моделью',
+  'modelfit.title': 'Подобрать модель',
 
   // Risk
   'risk.read_only': 'Только чтение',

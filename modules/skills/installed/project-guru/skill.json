@@ -1,0 +1,1 @@
+{"localcomet.skill": "1.0", "id": "project-guru", "name": "Project Guru", "version": "0.1.0", "description": "Analyze repo structure, find files, read code, detect hotspots.", "author": "LocalComet", "entrypoint": "entrypoint.py", "permissions": ["filesystem.read", "ui.extension"], "capabilities": ["project.map", "code.search", "hotspot.detect"], "dependencies": []}

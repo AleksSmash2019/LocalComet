@@ -31,7 +31,7 @@ PYTHON_GATEWAY_PATH = REPO_ROOT / "modules" / "local_model_gateway_ru.py"
 PYTHON_EXECUTION_PATH = REPO_ROOT / "modules" / "tool_execution_ru.py"
 
 ARM_RE = re.compile(
-    r'((?:"[^"]+"\s*\|\s*)*"[^"]+")\s*=>\s*'
+    r'((?:"[^"]+"\s*\|\s*)*"[^"]+")\s*=>\s*\{?\s*'
     r'(?:RiskLevel::(?P<bare>ReadOnly|Guarded|Dangerous)'
     r'|Ok\(\s*RiskLevel::(?P<wrapped>ReadOnly|Guarded|Dangerous)\s*\))'
 )
@@ -170,9 +170,9 @@ def check_model_tool_registry() -> list[str]:
             f"python_only={sorted(python_set - rust_set)}"
         )
 
-    if len(rust_tools) != 9:
+    if len(rust_tools) != 10:
         errors.append(
-            f"B3F: Rust REGISTERED_MODEL_TOOLS cardinality is {len(rust_tools)}, expected 9"
+            f"B3F: Rust REGISTERED_MODEL_TOOLS cardinality is {len(rust_tools)}, expected 10"
         )
 
     with TOML_PATH.open("rb") as handle:
@@ -365,7 +365,7 @@ def main() -> int:
             print(f"FAIL: {error}")
         return 1
     print(f"OK: Rust risk_level_for_tool matches tool_risk_levels.toml ({len(tools)} tools)")
-    print("OK: Rust REGISTERED_MODEL_TOOLS matches Python TOOL_REGISTRY (9 tools)")
+    print("OK: Rust REGISTERED_MODEL_TOOLS matches Python TOOL_REGISTRY (10 tools)")
     print("OK: R4 execution coverage confirmed via SUPPORTED_TOOLS")
     print("OK: parser self-tests passed")
     return 0

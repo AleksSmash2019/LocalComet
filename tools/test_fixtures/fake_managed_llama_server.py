@@ -16,6 +16,7 @@ FLAGS = (
     "--api-key-file",
     "--no-webui",
     "--no-agent",
+    "--jinja",
     "--ctx-size",
     "--n-predict",
     "--alias",
@@ -115,6 +116,11 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--api-key-file", required=True)
     parser.add_argument("--no-webui", action="store_true", required=True)
     parser.add_argument("--no-agent", action="store_true", required=True)
+    parser.add_argument(
+        "--jinja",
+        action="store_true",
+        required=True,
+    )
     parser.add_argument("--ctx-size", required=True)
     parser.add_argument("--n-predict", required=True)
     parser.add_argument("--alias", required=True)

@@ -17,10 +17,11 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 LIB_RS = REPO_ROOT / "desktop" / "localcomet-desktop" / "src-tauri" / "src" / "lib.rs"
 SRC_DIR = REPO_ROOT / "desktop" / "localcomet-desktop" / "src"
 
-# Static assets that call Tauri commands outside the Svelte source tree.
-# ModelFit AI ships as a prebuilt HTML bundle loaded in an iframe; it reaches
-# the backend through the window.__modelfit_invoke bridge exposed by
-# src/lib/bridge/modelfit.ts, so its invocations never appear in src/.
+UTILITY_COMMANDS = {
+    "get_model_storage_info",
+    "open_model_storage_folder",
+}
+
 STATIC_DIR = REPO_ROOT / "desktop" / "localcomet-desktop" / "static"
 
 
@@ -97,7 +98,7 @@ def main() -> int:
 
     invoked = extract_frontend_invokes(SRC_DIR) | extract_static_invokes(STATIC_DIR)
 
-    registered_not_invoked = registered - invoked
+    registered_not_invoked = registered - UTILITY_COMMANDS - invoked
     invoked_not_registered = invoked - registered
 
     errors = []

@@ -1,4 +1,4 @@
-import { get, writable } from 'svelte/store';
+import { derived, get, writable } from 'svelte/store';
 import {
   bootstrapControlPlane,
   cancelTurn,
@@ -57,6 +57,7 @@ let unsubscribeEvents: (() => void) | null = null;
 let bootstrapStarted = false;
 
 export const controlPlaneStore = writable<ControlPlaneState>(initialState);
+export const controlPlaneBridgeState = derived(controlPlaneStore, (state) => state.bridgeState);
 
 export async function initializeControlPlaneBridge(): Promise<void> {
   if (bootstrapStarted) return;
@@ -220,7 +221,11 @@ export function applyControlPlaneEvent(event: ControlPlaneEvent): void {
         ...next,
         items: next.items.map((item) =>
           item.item_id === event.item_id
-            ? { ...item, state: 'STREAMING', text: `${item.text}${event.text ?? ''}`.slice(0, MAX_ITEM_TEXT) }
+            ? {
+                ...item,
+                state: 'STREAMING',
+                text: item.text.length >= MAX_ITEM_TEXT ? item.text : `${item.text}${event.text ?? ''}`.slice(0, MAX_ITEM_TEXT)
+              }
             : item
         )
       };
@@ -230,7 +235,7 @@ export function applyControlPlaneEvent(event: ControlPlaneEvent): void {
         ...next,
         items: next.items.map((item) =>
           item.item_id === event.item_id
-            ? { ...item, state: 'COMPLETED', text: event.text ? `${item.text}${event.text}`.slice(0, MAX_ITEM_TEXT) : item.text }
+            ? { ...item, state: 'COMPLETED', text: event.text ? (item.text.length >= MAX_ITEM_TEXT ? item.text : `${item.text}${event.text}`.slice(0, MAX_ITEM_TEXT)) : item.text }
             : item
         )
       };

@@ -85,10 +85,10 @@
       {/if}
     </div>
     <div class="approval-actions">
-      <button type="button" disabled={busy} on:click={onConfirm} aria-label={$t('approval.confirm')}>
+      <button type="button" disabled={busy} onclick={onConfirm} aria-label={$t('approval.confirm')}>
         {$t('approval.confirm')}
       </button>
-      <button type="button" disabled={busy} on:click={onReject} aria-label={$t('approval.reject')}>
+      <button type="button" disabled={busy} onclick={onReject} aria-label={$t('approval.reject')}>
         {$t('approval.reject')}
       </button>
     </div>

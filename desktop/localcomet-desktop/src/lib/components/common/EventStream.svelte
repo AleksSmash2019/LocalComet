@@ -21,7 +21,7 @@
     <p class="empty">{$t('diag.no_validated_events')}</p>
   {:else}
     <ol>
-      {#each visibleEvents as event}
+      {#each visibleEvents as event (event.sequence)}
         <li>
           <span class="seq">#{event.sequence}</span>
           <span class="event-method" title={event.method}>{event.method}</span>

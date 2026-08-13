@@ -367,7 +367,7 @@ class ModelChatBackendTests(unittest.TestCase):
                 {**request, "submitted_at_unix_ms": 9_007_199_254_740_992},
                 {**request, "submitted_at_unix_ms": True},
                 {**request, "max_tokens": 0},
-                {**request, "max_tokens": 513},
+                {**request, "max_tokens": 8193},
                 {**request, "max_tokens": True},
                 {**request, "prompt": "  \n"},
                 {**request, "binding_fingerprint": "0" * 64},

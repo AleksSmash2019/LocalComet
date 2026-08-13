@@ -36,3 +36,5 @@ windows-sys = { version = "0.61.2", features = [
 ] }
 sysinfo = "0.31"
 raw-cpuid = "11.6.0"
+tauri-plugin-dialog = "2.7"
+tauri-plugin-fs = "2.5"

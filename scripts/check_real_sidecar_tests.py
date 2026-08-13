@@ -62,6 +62,10 @@ def main() -> int:
     if ignored_total > 0:
         problems.append(f"{ignored_total} test(s) reported ignored under require mode")
 
+    ran_counts = [int(value) for value in re.findall(r"running (\d+) test", output)]
+    if not ran_counts or sum(ran_counts) == 0:
+        problems.append("no real-sidecar tests matched the filter under require mode (false green)")
+
     if "LOCALCOMET_REQUIRE_REAL_SIDECAR is set but the real-sidecar environment" in output:
         problems.append(
             "real-sidecar tests panicked: sidecar environment missing "

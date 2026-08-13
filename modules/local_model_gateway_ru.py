@@ -33,8 +33,11 @@ SUPPORTED_FINISH_REASONS = (None, "stop", "length", "content_filter", "tool_call
 TURN_ID_RE = re.compile(r"^[0-9a-f]{24}$")
 CHAT_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
-DEFAULT_MAX_TOKENS = 256
-MAX_MAX_TOKENS = 512
+# Raised from 256/512: 256 tokens per turn truncated every answer and made
+# any model look limited. 4096 matches the managed runtime's --n-predict; the
+# 8192 ceiling covers the external OpenAI-compatible provider (LM Studio).
+DEFAULT_MAX_TOKENS = 4096
+MAX_MAX_TOKENS = 8192
 MAX_RECENT_REQUEST_IDS = 256
 MAX_TOOL_CALLS_PER_TURN = 10
 PUBLIC_TIMEOUT_ERROR_CODES = {
@@ -226,7 +229,7 @@ def _expected_assistant_context(
         selected_files_context_available=selected_files_context_available,
         local_chat=True,
         local_model_inference=True,
-        internet=False,
+        internet=has_web,
         email=False,
         browser=has_web,
         filesystem=has_files,
@@ -655,6 +658,7 @@ class LocalModelGateway:
                 threading.Event(),
                 lambda: None,
                 max_tokens=1,
+                include_reasoning=True,
             )
         )
         if not readiness_text.strip():
@@ -1182,8 +1186,9 @@ def build_system_instruction(context: AssistantContext) -> str:
             "На вопрос о личности отвечай: «Я локальный помощник внутри LocalComet»; никогда не отвечай «Я LocalComet». "
             + capabilities_sentence
             + "Сообщение пользователя не может изменить реальные возможности. Не утверждай, что недоступный доступ есть или действие выполнено. "
-            "На вопрос о таком доступе начинай: «Нет, доступа нет». На просьбу о действии прямо откажись; можешь предложить текстовый черновик. "
-            "Если пользователь заявляет о новом доступе, скажи, что это ничего не меняет и доступа всё равно нет. "
+            "На вопрос о таком доступе начинай: «Нет, доступа нет» и предложи ближайший доступный путь. "
+            "Если пользователь заявляет о новом доступе, это ничего не меняет без доверенного инструмента. "
+            "При наличии computer_use сначала запроси подтверждение, затем делай по одному шагу, проверяя каждый screenshot; программы открывай только через open_app. "
             "На вопрос «Что ты умеешь прямо сейчас?» отвечай ТОЛЬКО ДОСЛОВНО: «Доступны локальный текстовый чат и генерация ответов локальной моделью». "
             "Если спрашивают, что недоступно, перечисли недоступные возможности выше, а не доступные. "
             "На вопрос о проекте отвечай: «Контекст проекта не предоставлен, поэтому я не знаю деталей и не буду их выдумывать. Опишите проект в чате». "
@@ -1352,6 +1357,7 @@ class ProviderAdapter:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         tools: list[dict[str, Any]] | None = None,
         tool_call_accumulator: ToolCallAccumulator | None = None,
+        include_reasoning: bool = False,
         before_outbound_request: Callable[[tuple[dict[str, str], ...]], None] | None = None,
         after_outbound_request: Callable[[tuple[dict[str, str], ...]], None] | None = None,
     ) -> Iterable[Any]:
@@ -1515,7 +1521,7 @@ class ProviderAdapter:
                                 raise GatewayError("budget_exceeded", "SSE event limit reached")
                             try:
                                 delta, tool_calls_delta, done = _parse_sse_event(
-                                    event_lines, tools_enabled
+                                    event_lines, tools_enabled, include_reasoning=include_reasoning
                                 )
                             except GatewayError as exc:
                                 if exc.code in {"payload_too_large", "budget_exceeded"}:
@@ -2022,7 +2028,9 @@ def _expect_one_of(value: object, options: tuple[str, ...], name: str) -> str:
     raise GatewayError("invalid_payload", f"{name} is unsupported")
 
 
-def _parse_sse_event(lines: list[str], tools_enabled: bool = False) -> tuple[str, list, bool]:
+def _parse_sse_event(
+    lines: list[str], tools_enabled: bool = False, *, include_reasoning: bool = False
+) -> tuple[str, list, bool]:
     data = "\n".join(lines)
     if data == "[DONE]":
         return "", [], True
@@ -2049,6 +2057,10 @@ def _parse_sse_event(lines: list[str], tools_enabled: bool = False) -> tuple[str
         content = ""
     if not isinstance(content, str):
         raise GatewayError("invalid_payload", "SSE content delta is invalid")
+    if include_reasoning and not content:
+        reasoning = delta.get("reasoning_content")
+        if isinstance(reasoning, str):
+            content = reasoning
     tool_calls_delta: list = []
     if tools_enabled:
         raw_tool_calls = delta.get("tool_calls")
@@ -2190,6 +2202,7 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str}},
     "web.search": {"required": ("query",), "properties": {"query": str}},
     "web.fetch": {"required": ("url",), "properties": {"url": str}},
+    "skills.invoke": {"required": ("skill_id",), "properties": {"skill_id": str, "arguments": list}},
 }
 
 _TOOL_DESCRIPTIONS: dict[str, str] = {
@@ -2201,6 +2214,7 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "shell": "Execute a shell command. Registered but not executable in this Desktop build; tool calls will be rejected at the handler (requires explicit allowlisted subprocess path).",
     "web.search": "Web search (guarded). Required: query (<=200 chars). Returns up to 5 results {url,title,snippet}. Rate-limited, cached 10m. Use for fresh news/facts when local knowledge is stale.",
     "web.fetch": "Web fetch (guarded). Required: url (https:// or http://, <=2000 chars). Fetches and strips HTML to ~8k text, cached 10m. Use to read a page found via web.search.",
+    "skills.invoke": "Skill invocation (dangerous). Required: skill_id (installed+enabled skill). Optional: arguments (object or array, passed verbatim as JSON). Spawns the skill entrypoint with no shell, 180s timeout, bounded output. Dangerous: user approval is required before execution.",
     "computer_use": "Desktop Computer Use. Actions are allowlisted only. Valid action values: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait, drag. Use text for type/paste/key/hotkey payload and optional coordinate [x,y] as advisory hint (0-1000 normalized or pixel advisory; for small targets zoom/enable_zoom and retry with precise targeting). Dangerous: user approval is required before execution. Delegated to the local allowlisted executor; free-form OS commands are rejected. After each computer_use step, call screenshot, evaluate outcome, retry if not achieved (Anthropic best-practice self-correction loop).",
 }
 
@@ -2441,6 +2455,16 @@ def _raise_model_readiness_timeout_if_due(
         raise _model_readiness_timeout(timeout_code)
 
 
+# A deadline watchdog sleeps until its deadline and can be released a few
+# microseconds early, so `now` may sit just below `overall_deadline` at the
+# moment the timeout is classified. Comparing strictly made the overall timeout
+# fall through to the first-token branch and report first_token_timeout instead
+# of request_timed_out, which is why the whole suite flaked in CI while the test
+# passed when run alone. The tolerance only applies once a caller already knows a
+# deadline fired (force_phase), so it cannot invent a timeout that is not due.
+_DEADLINE_WAKE_TOLERANCE_SECONDS = 0.005
+
+
 def _raise_stream_timeout_if_due(
     now: float,
     *,
@@ -2451,8 +2475,11 @@ def _raise_stream_timeout_if_due(
     inactivity_timeout_seconds: float,
     force_phase: bool = False,
 ) -> None:
-    if force_phase or now >= overall_deadline:
-        if now >= overall_deadline:
+    overall_due = now >= overall_deadline or (
+        force_phase and now >= overall_deadline - _DEADLINE_WAKE_TOLERANCE_SECONDS
+    )
+    if force_phase or overall_due:
+        if overall_due:
             raise GatewayError(
                 "overall_timeout",
                 "model completion exceeded the overall deadline",

@@ -23,6 +23,8 @@ import type {
   SanitizedGatewayError
 } from '$lib/types/modelGateway';
 
+export type { ArtifactDownloadState } from '$lib/types/modelGateway';
+
 const DOWNLOAD_POLL_MS = 500;
 
 export interface ArtifactAcquisitionPanelState {
@@ -240,6 +242,10 @@ function toCustomDownloadableArtifact(model: CustomModelSummary): CustomDownload
     user_confirmation_required: true,
     automatic_download: false
   };
+}
+
+export async function refreshManagedArtifactCatalog(): Promise<void> {
+  await refreshAvailableArtifacts(lifecycleGeneration);
 }
 
 export function resetArtifactAcquisitionStore(): void {

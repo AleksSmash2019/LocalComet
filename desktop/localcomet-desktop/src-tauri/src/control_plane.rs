@@ -1,5 +1,4 @@
 use crate::approval::canonical_input_digest;
-use crate::artifact_trust::ArtifactTrustService;
 use crate::files::SelectedFilesManager;
 use crate::ipc;
 use crate::managed_runtime::ManagedRuntimeSupervisor;
@@ -64,9 +63,10 @@ pub(crate) const REGISTERED_MODEL_TOOLS: &[&str] = &[
     "computer_use",
     "web.search",
     "web.fetch",
+    "skills.invoke",
 ];
 
-const _: () = assert!(REGISTERED_MODEL_TOOLS.len() == 9);
+const _: () = assert!(REGISTERED_MODEL_TOOLS.len() == 10);
 
 #[derive(Clone, Copy)]
 struct ModelToolArgumentSchema {
@@ -98,6 +98,11 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_string_fields: &["action"],
             optional_string_fields: &["text"],
             optional_array_fields: &["coordinate"],
+        }),
+        "skills.invoke" => Some(ModelToolArgumentSchema {
+            required_string_fields: &["skill_id"],
+            optional_string_fields: &[],
+            optional_array_fields: &["arguments"],
         }),
         "web.search" => Some(ModelToolArgumentSchema {
             required_string_fields: &["query"],
@@ -348,7 +353,6 @@ struct AssistantConversationContext {
     locale: String,
     project_context_available: bool,
     selected_files_context_available: bool,
-    messages: Vec<Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -389,7 +393,6 @@ impl AssistantContext {
         locale: &str,
         selected_files_context_available: bool,
         permissions: Option<&AgentPermissions>,
-        messages: Vec<Value>,
     ) -> Result<Self, BridgeError> {
         if !matches!(locale, "ru" | "en") {
             return Err(BridgeError::new(
@@ -407,7 +410,6 @@ impl AssistantContext {
                 locale: locale.to_owned(),
                 project_context_available: false,
                 selected_files_context_available,
-                messages,
             },
             capabilities: AssistantCapabilities {
                 local_chat: true,
@@ -2241,7 +2243,6 @@ pub async fn model_gateway_list_models(
 #[allow(clippy::too_many_arguments)]
 pub async fn model_binding_set(
     state: State<'_, Arc<ControlPlaneBridge>>,
-    artifacts: State<'_, Arc<ArtifactTrustService>>,
     approval: State<'_, crate::approval_commands::ApprovalState>,
     provider_id: String,
     harness_id: String,
@@ -2283,12 +2284,8 @@ pub async fn model_binding_set(
     let mut python_payload = semantic_payload;
     python_payload["confirmed"] = json!(true);
     let state = Arc::clone(&state);
-    let artifacts = Arc::clone(&artifacts);
-    let bound_model_id = model_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        state
-            .request(ControlPlaneMethod::ModelBindingSet, python_payload)
-            .inspect(|_| artifacts.invalidate_validation_cache_for_artifact(&bound_model_id))
+        state.request(ControlPlaneMethod::ModelBindingSet, python_payload)
     })
     .await
     .map_err(|_| BridgeError::new("runtime_unavailable", "model binding worker failed"))?
@@ -2310,7 +2307,6 @@ pub async fn model_turn_start(
     locale: String,
     binding_fingerprint: String,
     agent_permissions: AgentPermissions,
-    messages: Vec<Value>,
 ) -> Result<Value, BridgeError> {
     ensure_request_id(&request_id)?;
     ensure_chat_session_id(&chat_session_id)?;
@@ -2321,7 +2317,9 @@ pub async fn model_turn_start(
             "submitted_at_unix_ms is invalid",
         ));
     }
-    if !(1..=512).contains(&max_tokens) {
+    // Raised from 512: the managed runtime now runs --n-predict 4096 and the
+    // external OpenAI-compatible provider (LM Studio) has no such ceiling.
+    if !(1..=8192).contains(&max_tokens) {
         return Err(BridgeError::new(
             "invalid_payload",
             "max_tokens is outside the allowed range",
@@ -2368,7 +2366,6 @@ pub async fn model_turn_start(
         &locale,
         file_context_report.is_some(),
         Some(&agent_permissions),
-        messages,
     )?;
     ensure_fingerprint(&binding_fingerprint)?;
     let identity = ModelRequestIdentity {
@@ -2840,7 +2837,7 @@ fn knowledge_model_identity_from_event(
         || ensure_fingerprint(binding_fingerprint).is_err()
         || submitted_at_unix_ms == 0
         || submitted_at_unix_ms > 9_007_199_254_740_991
-        || !(1..=512).contains(&max_tokens)
+        || !(1..=8192).contains(&max_tokens)
         || ensure_provider(provider_id).is_err()
         || ensure_harness(harness_id).is_err()
     {
@@ -4954,8 +4951,7 @@ mod tests {
     #[test]
     fn model_turn_wire_digest_covers_assistant_context() {
         let identity = model_identity();
-        let neutral =
-            AssistantContext::trusted("ru", false, None, vec![]).expect("trusted context");
+        let neutral = AssistantContext::trusted("ru", false, None).expect("trusted context");
         let baseline =
             model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &neutral));
         assert_eq!(
@@ -5003,8 +4999,7 @@ mod tests {
     fn model_turn_dispatch_requires_the_reserved_wire_digest() {
         let identity = model_identity();
         let request_id = identity.request_id.clone();
-        let neutral =
-            AssistantContext::trusted("ru", false, None, vec![]).expect("trusted context");
+        let neutral = AssistantContext::trusted("ru", false, None).expect("trusted context");
         let reserved =
             model_turn_wire_digest(&model_turn_wire_payload(&identity, "prompt", &neutral));
         let registry = Mutex::new(ModelRequestRegistry::default());
@@ -5137,7 +5132,7 @@ mod tests {
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
             "prompt": "hello",
-            "assistant_context": AssistantContext::trusted("ru", false, None, vec![]).unwrap(),
+            "assistant_context": AssistantContext::trusted("ru", false, None).unwrap(),
             "binding_fingerprint": identity.binding_fingerprint,
         });
         assert!(validate_payload_for_method(ControlPlaneMethod::ModelTurnStart, &payload).is_ok());
@@ -5258,9 +5253,9 @@ mod tests {
 
     #[test]
     fn assistant_context_is_trusted_typed_and_fail_closed() {
-        let russian = AssistantContext::trusted("ru", false, None, vec![]).unwrap();
-        let english = AssistantContext::trusted("en", false, None, vec![]).unwrap();
-        let with_files = AssistantContext::trusted("ru", true, None, vec![]).unwrap();
+        let russian = AssistantContext::trusted("ru", false, None).unwrap();
+        let english = AssistantContext::trusted("en", false, None).unwrap();
+        let with_files = AssistantContext::trusted("ru", true, None).unwrap();
         assert_eq!(russian.application.name, "LocalComet");
         assert_eq!(russian.application.mode, "local_offline_desktop_assistant");
         assert_eq!(russian.application.version, DESKTOP_STATUS_BRIDGE_VERSION);
@@ -5286,7 +5281,6 @@ mod tests {
                 computer_use: false,
                 internet: true,
             }),
-            vec![],
         )
         .unwrap();
         assert!(with_internet.capabilities.internet);
@@ -5306,12 +5300,102 @@ mod tests {
         assert!(!russian.capabilities.computer_use);
         assert!(!russian.capabilities.shell);
         assert!(russian.capabilities.tools.is_empty());
-        assert!(AssistantContext::trusted("fr", false, None, vec![]).is_err());
+        assert!(AssistantContext::trusted("fr", false, None).is_err());
+
+        assert_eq!(
+            serde_json::to_value(&russian).unwrap(),
+            json!({
+                "application": {
+                    "name": "LocalComet",
+                    "mode": "local_offline_desktop_assistant",
+                    "version": DESKTOP_STATUS_BRIDGE_VERSION,
+                },
+                "conversation": {
+                    "locale": "ru",
+                    "project_context_available": false,
+                    "selected_files_context_available": false,
+                },
+                "capabilities": {
+                    "local_chat": true,
+                    "local_model_inference": true,
+                    "internet": false,
+                    "email": false,
+                    "browser": false,
+                    "filesystem": false,
+                    "vault": false,
+                    "computer_use": false,
+                    "shell": false,
+                    "tools": [],
+                },
+            }),
+            "Rust must serialize the exact assistant_context accepted by the sidecar",
+        );
 
         let serialized = serde_json::to_string(&russian).unwrap();
         assert!(!serialized.contains("C:\\"));
         assert!(!serialized.contains("/home/"));
         assert!(!serialized.to_ascii_lowercase().contains("secret"));
+    }
+
+    #[test]
+    fn assistant_context_contract_payloads_are_machine_readable() {
+        let cases = [
+            ("neutral", None),
+            (
+                "files",
+                Some(AgentPermissions {
+                    files: true,
+                    shell: false,
+                    tools: false,
+                    computer_use: false,
+                    internet: false,
+                }),
+            ),
+            (
+                "shell",
+                Some(AgentPermissions {
+                    files: false,
+                    shell: true,
+                    tools: false,
+                    computer_use: false,
+                    internet: false,
+                }),
+            ),
+            (
+                "computer_use",
+                Some(AgentPermissions {
+                    files: false,
+                    shell: false,
+                    tools: false,
+                    computer_use: true,
+                    internet: false,
+                }),
+            ),
+            (
+                "internet",
+                Some(AgentPermissions {
+                    files: false,
+                    shell: false,
+                    tools: false,
+                    computer_use: false,
+                    internet: true,
+                }),
+            ),
+        ];
+        let payloads: Vec<Value> = cases
+            .iter()
+            .map(|(name, permissions)| {
+                json!({
+                    "case": name,
+                    "context": AssistantContext::trusted("ru", false, permissions.as_ref())
+                        .expect("trusted context"),
+                })
+            })
+            .collect();
+        println!(
+            "LOCALCOMET_ASSISTANT_CONTEXT_CONTRACT={}",
+            serde_json::to_string(&payloads).expect("serialize assistant context contract")
+        );
     }
 
     #[test]
@@ -6132,7 +6216,7 @@ mod tests {
 
     #[test]
     fn b3f_registered_model_tools_is_closed_deterministic_and_bounded() {
-        assert_eq!(REGISTERED_MODEL_TOOLS.len(), 9);
+        assert_eq!(REGISTERED_MODEL_TOOLS.len(), 10);
         assert_eq!(
             REGISTERED_MODEL_TOOLS,
             &[
@@ -6145,10 +6229,11 @@ mod tests {
                 "computer_use",
                 "web.search",
                 "web.fetch",
+                "skills.invoke",
             ]
         );
         let as_set: std::collections::HashSet<&&str> = REGISTERED_MODEL_TOOLS.iter().collect();
-        assert_eq!(as_set.len(), 9, "no duplicates");
+        assert_eq!(as_set.len(), 10, "no duplicates");
     }
 
     fn tool_event_with_name(

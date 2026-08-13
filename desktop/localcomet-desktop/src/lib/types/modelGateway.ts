@@ -217,7 +217,7 @@ export interface ApprovedRuntimeSummary {
   readonly release_tag: string;
   readonly platform: 'windows';
   readonly architecture: 'x86-64';
-  readonly variant: 'cpu';
+  readonly variant: 'cpu' | 'vulkan';
   readonly upstream_repository: string;
   readonly upstream_revision: string;
   readonly asset_filename: string;
@@ -314,6 +314,12 @@ export type ManagedArtifactValidationSummary = ArtifactValidationSummary | Custo
 export interface ManagedInstalledArtifacts extends ManagedCatalogIdentity {
   readonly artifacts: readonly ArtifactValidationSummary[];
   readonly custom_artifacts: readonly CustomArtifactValidationSummary[];
+}
+
+export interface ManagedArtifactTrustBundle {
+  readonly runtime_catalog: ManagedRuntimeCatalog;
+  readonly model_catalog: ManagedModelCatalog;
+  readonly installed_artifacts: ManagedInstalledArtifacts;
 }
 
 export interface ApprovedDownloadableArtifact {

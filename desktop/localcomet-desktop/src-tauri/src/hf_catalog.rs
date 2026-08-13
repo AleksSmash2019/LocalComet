@@ -9,6 +9,8 @@
 //! go through `start_approved_artifact_download`, which requires an approval
 //! token and verifies SHA-256 plus GGUF magic bytes.
 
+use std::io::Read;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use reqwest::blocking::Client;
@@ -39,14 +41,20 @@ pub struct HfRepoFile {
     pub size: Option<u64>,
 }
 
-fn client() -> Result<Client, String> {
-    Client::builder()
-        .redirect(Policy::none())
-        .no_proxy()
-        .connect_timeout(Duration::from_secs(15))
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|_| "hf_client_unavailable".to_string())
+fn client() -> Result<&'static Client, String> {
+    static CLIENT: OnceLock<Result<Client, String>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            Client::builder()
+                .redirect(Policy::none())
+                .no_proxy()
+                .connect_timeout(Duration::from_secs(15))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .map_err(|_| "hf_client_unavailable".to_string())
+        })
+        .as_ref()
+        .map_err(Clone::clone)
 }
 
 /// Reject anything that is not a plain search term.
@@ -100,17 +108,38 @@ fn get_json(url: Url) -> Result<serde_json::Value, String> {
     if !response.status().is_success() {
         return Err(format!("hf_http_{}", response.status().as_u16()));
     }
-    let bytes = response
-        .bytes()
-        .map_err(|_| "hf_request_failed".to_string())?;
-    if bytes.len() > MAX_RESPONSE_BYTES {
-        return Err("hf_response_too_large".into());
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
+    {
+        return Err("hf_response_too_large".to_string());
     }
+    let bytes = read_bounded(response)?;
     serde_json::from_slice(&bytes).map_err(|_| "hf_response_invalid".to_string())
 }
 
+fn read_bounded(reader: impl Read) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    reader
+        .take(MAX_RESPONSE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "hf_request_failed".to_string())?;
+    if bytes.len() > MAX_RESPONSE_BYTES {
+        return Err("hf_response_too_large".to_string());
+    }
+    Ok(bytes)
+}
+
 #[tauri::command]
-pub fn hf_search_models(query: String) -> Result<Vec<HfModelSummary>, String> {
+pub async fn hf_search_models(query: String) -> Result<Vec<HfModelSummary>, String> {
+    // The network call is blocking; run it off the async runtime via spawn_blocking
+    // so the webview thread never stalls on HF latency (up to 30s).
+    tauri::async_runtime::spawn_blocking(move || hf_search_models_blocking(query))
+        .await
+        .map_err(|_| "hf_request_failed".to_string())?
+}
+
+fn hf_search_models_blocking(query: String) -> Result<Vec<HfModelSummary>, String> {
     let term = sanitize_query(&query)?;
     let mut url =
         Url::parse("https://huggingface.co/api/models").map_err(|_| "host_rejected".to_string())?;
@@ -161,7 +190,13 @@ pub fn hf_search_models(query: String) -> Result<Vec<HfModelSummary>, String> {
 }
 
 #[tauri::command]
-pub fn hf_list_repo_files(model_id: String) -> Result<Vec<HfRepoFile>, String> {
+pub async fn hf_list_repo_files(model_id: String) -> Result<Vec<HfRepoFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || hf_list_repo_files_blocking(model_id))
+        .await
+        .map_err(|_| "hf_request_failed".to_string())?
+}
+
+fn hf_list_repo_files_blocking(model_id: String) -> Result<Vec<HfRepoFile>, String> {
     let id = sanitize_model_id(&model_id)?;
     let url = Url::parse(&format!("https://huggingface.co/api/models/{id}"))
         .map_err(|_| "host_rejected".to_string())?;
@@ -194,6 +229,7 @@ pub fn hf_list_repo_files(model_id: String) -> Result<Vec<HfRepoFile>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn query_rejects_injection_and_overlong_input() {
@@ -228,5 +264,27 @@ mod tests {
             let url = Url::parse(bad).expect("test url");
             assert_eq!(get_json(url).unwrap_err(), "host_rejected", "{bad}");
         }
+    }
+
+    #[test]
+    fn bounded_reader_accepts_response_at_limit() {
+        let bytes = vec![b'x'; MAX_RESPONSE_BYTES];
+
+        assert_eq!(
+            read_bounded(Cursor::new(bytes))
+                .expect("bounded response")
+                .len(),
+            MAX_RESPONSE_BYTES
+        );
+    }
+
+    #[test]
+    fn bounded_reader_rejects_response_over_limit() {
+        let bytes = vec![b'x'; MAX_RESPONSE_BYTES + 1];
+
+        assert_eq!(
+            read_bounded(Cursor::new(bytes)).expect_err("oversized response"),
+            "hf_response_too_large"
+        );
     }
 }

@@ -140,7 +140,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: python scripts/check_real_sidecar_tests.py
       - name: cargo clippy (-D warnings)
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
       - name: cargo fmt --check
         run: cargo fmt --check
 

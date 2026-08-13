@@ -26,6 +26,7 @@ TRUST_COMMAND_PERMISSIONS = {
     "managed_runtime_catalog": "allow-managed-runtime-catalog",
     "managed_model_catalog": "allow-managed-model-catalog",
     "managed_installed_artifacts": "allow-managed-installed-artifacts",
+    "managed_artifact_trust_bundle": "allow-managed-artifact-trust-bundle",
     "managed_artifact_validation_status": "allow-managed-artifact-validation-status",
     "managed_model_readiness": "allow-managed-model-readiness",
 }
@@ -81,6 +82,7 @@ def run_fixture_protocol() -> None:
                 str(key_file),
                 "--no-webui",
                 "--no-agent",
+                "--jinja",
                 "--ctx-size",
                 "4096",
                 "--n-predict",
@@ -170,11 +172,14 @@ def run_trust_command_guards() -> None:
         "managed_runtime_catalog": "state.runtime_catalog()",
         "managed_model_catalog": "state.model_catalog()",
         "managed_installed_artifacts": "state.installed_artifacts()",
+        "managed_artifact_trust_bundle": "state.artifact_trust_bundle()",
         "managed_artifact_validation_status": ".artifact_validation_status(&artifact_id)",
         "managed_model_readiness": "state.model_readiness(&model_id)",
     }
     for command in TRUST_COMMAND_PERMISSIONS:
-        definition = re.compile(rf"#\[tauri::command\]\s*pub fn {re.escape(command)}\s*\(")
+        definition = re.compile(
+            rf"#\[tauri::command\]\s*pub (?:async )?fn {re.escape(command)}\s*\("
+        )
         check(len(definition.findall(trust_text)) == 1, f"typed Tauri command is not defined exactly once: {command}")
         check(len(re.findall(rf"\b{re.escape(command)}\b", handler)) == 1, f"invoke handler exposure is not exact: {command}")
         block = rust_function_block(trust_text, command)
@@ -186,7 +191,12 @@ def run_trust_command_guards() -> None:
 
     check("artifact_id: String" in rust_function_block(trust_text, "managed_artifact_validation_status"), "artifact status is not keyed by stable ID")
     check("model_id: String" in rust_function_block(trust_text, "managed_model_readiness"), "model readiness is not keyed by stable ID")
-    for command in ("managed_runtime_catalog", "managed_model_catalog", "managed_installed_artifacts"):
+    for command in (
+        "managed_runtime_catalog",
+        "managed_model_catalog",
+        "managed_installed_artifacts",
+        "managed_artifact_trust_bundle",
+    ):
         signature = rust_function_block(trust_text, command).split("{", 1)[0]
         check("String" not in signature, f"list command accepts frontend-controlled text: {command}")
 
@@ -240,7 +250,7 @@ def run_source_guards() -> None:
     check("subprocess" not in fixture_text, "fixture imports subprocess")
     check("urllib" not in fixture_text and "requests" not in fixture_text, "fixture has outbound network client")
     check('include_bytes!("../resources/localcomet/approved-artifacts.v1.json")' in trust_text, "approved catalog is not source-embedded")
-    check("resolve_launch(model_id)" in managed_text, "managed launch does not resolve a stable model ID")
+    check("resolve_launch_for_start(model_id" in managed_text, "managed launch does not resolve a stable model ID")
     check("model_path: String" not in rust_function_block(managed_text, "managed_runtime_start"), "managed runtime start accepts a raw model path")
     check("ManagedRuntimeLaunchSpec" in job_text, "managed launch spec missing")
     check("CREATE_SUSPENDED" in job_text and "AssignProcessToJobObject" in job_text and "ResumeThread" in job_text, "suspended containment sequence missing")

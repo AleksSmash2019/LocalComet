@@ -271,15 +271,18 @@ def test_compare_and_determinism_no_repo_writes() -> None:
 
 def _repo_snapshot() -> str:
     items: dict[str, str] = {}
-    for path in ROOT.rglob("*"):
-        rel = path.relative_to(ROOT).as_posix()
-        if rel.startswith(".git/") or "__pycache__" in rel:
-            continue
-        if path.is_file():
-            try:
-                items[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
-            except OSError:
-                items[rel] = "<unreadable>"
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [d for d in dirnames if not (Path(dirpath) / d).is_symlink()]
+        for entry_name in dirnames + filenames:
+            path = Path(dirpath) / entry_name
+            rel = path.relative_to(ROOT).as_posix()
+            if rel.startswith(".git/") or "__pycache__" in rel:
+                continue
+            if path.is_file():
+                try:
+                    items[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+                except OSError:
+                    items[rel] = "<unreadable>"
     return hashlib.sha256(json.dumps(items, sort_keys=True).encode("utf-8")).hexdigest()
 
 

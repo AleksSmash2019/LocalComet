@@ -28,14 +28,14 @@ use windows_sys::Win32::Foundation::{GENERIC_READ, INVALID_HANDLE_VALUE};
 
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, MoveFileExW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
-    FILE_SHARE_READ, FILE_SHARE_WRITE, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    OPEN_EXISTING,
+    CreateFileW, GetDiskFreeSpaceExW, MoveFileExW, FILE_FLAG_BACKUP_SEMANTICS,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ, FILE_SHARE_WRITE, MOVEFILE_REPLACE_EXISTING,
+    MOVEFILE_WRITE_THROUGH, OPEN_EXISTING,
 };
 
 const CATALOG_BYTES: &[u8] = include_bytes!("../resources/localcomet/approved-artifacts.v1.json");
 const EMBEDDED_CATALOG_SHA256: &str =
-    "d304cabc424816a8f095bdfd453ceccea85cb32b86f0acd3175c719bd3d71198";
+    "0fe82e89b143e6f520a650435a6a904bb2fc3c4d905a46e2d3b85b2dc0d6301b";
 const CATALOG_ID: &str = "localcomet-approved-artifacts";
 const SCHEMA_VERSION: u32 = 1;
 const MAX_ARTIFACTS: usize = 32;
@@ -47,6 +47,7 @@ pub(crate) const MAX_CUSTOM_MODELS: usize = 32;
 const MAX_CUSTOM_MANIFEST_BYTES: u64 = 1024 * 1024;
 const CUSTOM_MANIFEST_FILENAME: &str = "custom-models.v1.json";
 const CUSTOM_MODEL_RUNTIME_ID: &str = "llama-cpp-windows-x86-64-cpu-bootstrap";
+const VULKAN_MODEL_RUNTIME_ID: &str = "llama-cpp-windows-x86-64-vulkan-bootstrap";
 const CUSTOM_MODEL_ID_PREFIX: &str = "custom-hf-";
 const MODEL_ROOT_SENTINEL: &str = "<MANAGED_MODEL_ROOT>";
 static CUSTOM_MANIFEST_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -509,6 +510,22 @@ pub struct ManagedInstalledArtifacts {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct ManagedArtifactTrustBundle {
+    pub runtime_catalog: ManagedRuntimeCatalog,
+    pub model_catalog: ManagedModelCatalog,
+    pub installed_artifacts: ManagedInstalledArtifacts,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ModelStorageInfo {
+    pub models_path: String,
+    pub runtimes_path: String,
+    pub free_bytes: Option<u64>,
+    pub models_bytes: u64,
+    pub installed_models: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct ModelReadinessSummary {
     pub schema_version: u32,
     pub catalog_id: String,
@@ -631,11 +648,10 @@ pub struct ArtifactTrustService {
 
 impl ArtifactTrustService {
     pub fn production(application_data_root: &Path) -> Result<Self, ArtifactTrustError> {
+        let roots = ManagedArtifactRoots::from_application_data_root(application_data_root);
+        ensure_managed_directories(&roots)?;
         let catalog_bytes = canonical_embedded_catalog_bytes()?;
-        Self::from_catalog_bytes(
-            catalog_bytes.as_ref(),
-            ManagedArtifactRoots::from_application_data_root(application_data_root),
-        )
+        Self::from_catalog_bytes(catalog_bytes.as_ref(), roots)
     }
 
     pub(crate) fn from_catalog_bytes(
@@ -713,12 +729,29 @@ impl ArtifactTrustService {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn register_custom_model(
         &self,
         model: CustomModelArtifact,
     ) -> Result<(), ArtifactTrustError> {
+        self.register_custom_model_with_validation(model, true)
+    }
+
+    pub(crate) fn register_custom_model_after_validation(
+        &self,
+        model: CustomModelArtifact,
+    ) -> Result<(), ArtifactTrustError> {
+        // The acquisition path forces a post-install hash before durable registration.
+        self.register_custom_model_with_validation(model, false)
+    }
+
+    fn register_custom_model_with_validation(
+        &self,
+        model: CustomModelArtifact,
+        force_full: bool,
+    ) -> Result<(), ArtifactTrustError> {
         if self
-            .validate_custom_model_artifact(&model, true)
+            .validate_custom_model_artifact(&model, force_full)
             .installation_status
             != InstallationStatus::Valid
         {
@@ -978,6 +1011,14 @@ impl ArtifactTrustService {
     }
 
     pub fn model_catalog(&self) -> ManagedModelCatalog {
+        let custom_models = self.custom_models_snapshot();
+        self.model_catalog_from_custom(&custom_models)
+    }
+
+    fn model_catalog_from_custom(
+        &self,
+        custom_models: &[CustomModelArtifact],
+    ) -> ManagedModelCatalog {
         ManagedModelCatalog {
             schema_version: self.catalog.schema_version,
             catalog_id: self.catalog.catalog_id.clone(),
@@ -1010,16 +1051,20 @@ impl ArtifactTrustService {
                 })
                 .collect(),
             maximum_models: MAX_ARTIFACTS,
-            custom_models: self
-                .custom_models_snapshot()
-                .iter()
-                .map(CustomModelSummary::from)
-                .collect(),
+            custom_models: custom_models.iter().map(CustomModelSummary::from).collect(),
             maximum_custom_models: MAX_CUSTOM_MODELS,
         }
     }
 
     pub fn installed_artifacts(&self) -> ManagedInstalledArtifacts {
+        let custom_models = self.custom_models_snapshot();
+        self.installed_artifacts_from_custom(&custom_models)
+    }
+
+    fn installed_artifacts_from_custom(
+        &self,
+        custom_models: &[CustomModelArtifact],
+    ) -> ManagedInstalledArtifacts {
         let mut artifacts = Vec::new();
         for runtime in &self.catalog.runtimes {
             artifacts.push(self.runtime_validation_summary(runtime));
@@ -1027,8 +1072,7 @@ impl ArtifactTrustService {
         for model in &self.catalog.models {
             artifacts.push(self.model_validation_summary(model));
         }
-        let custom_artifacts = self
-            .custom_models_snapshot()
+        let custom_artifacts = custom_models
             .iter()
             .map(|model| self.custom_model_validation_summary(model))
             .collect();
@@ -1039,6 +1083,40 @@ impl ArtifactTrustService {
             catalog_digest: self.catalog_digest.clone(),
             artifacts,
             custom_artifacts,
+        }
+    }
+
+    pub fn artifact_trust_bundle(&self) -> ManagedArtifactTrustBundle {
+        let custom_models = self.custom_models_snapshot();
+        ManagedArtifactTrustBundle {
+            runtime_catalog: self.runtime_catalog(),
+            model_catalog: self.model_catalog_from_custom(&custom_models),
+            installed_artifacts: self.installed_artifacts_from_custom(&custom_models),
+        }
+    }
+
+    pub fn model_storage_info(&self) -> ModelStorageInfo {
+        let custom_models = self.custom_models_snapshot();
+        let installed = self.installed_artifacts_from_custom(&custom_models);
+        let installed_models = installed
+            .artifacts
+            .iter()
+            .filter(|artifact| {
+                artifact.kind == ArtifactKind::Model
+                    && artifact.installation_status == InstallationStatus::Valid
+            })
+            .count()
+            + installed
+                .custom_artifacts
+                .iter()
+                .filter(|artifact| artifact.installation_status == InstallationStatus::Valid)
+                .count();
+        ModelStorageInfo {
+            models_path: self.roots.model_root.to_string_lossy().into_owned(),
+            runtimes_path: self.roots.runtime_root.to_string_lossy().into_owned(),
+            free_bytes: available_space(&self.roots.model_root),
+            models_bytes: directory_file_bytes(&self.roots.model_root),
+            installed_models,
         }
     }
 
@@ -1141,12 +1219,18 @@ impl ArtifactTrustService {
         let mut selected_runtime_id = None;
         let mut selected_runtime_status = None;
         let mut saw_invalid_runtime = false;
-        for runtime_id in model.compatible_runtime_ids() {
+        let mut runtime_candidates: Vec<&str> = model
+            .compatible_runtime_ids()
+            .iter()
+            .map(String::as_str)
+            .collect();
+        runtime_candidates.sort_by_key(|id| if *id == VULKAN_MODEL_RUNTIME_ID { 0 } else { 1 });
+        for runtime_id in runtime_candidates {
             let runtime = self
                 .catalog
                 .runtimes
                 .iter()
-                .find(|runtime| &runtime.runtime_id == runtime_id)
+                .find(|runtime| runtime.runtime_id == runtime_id)
                 .ok_or_else(|| {
                     ArtifactTrustError::new("invalid_catalog", "unknown compatible runtime")
                 })?;
@@ -1887,6 +1971,57 @@ pub async fn managed_installed_artifacts(
 }
 
 #[tauri::command]
+pub async fn get_model_storage_info(
+    state: State<'_, Arc<ArtifactTrustService>>,
+) -> Result<ModelStorageInfo, BridgeError> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || state.model_storage_info())
+        .await
+        .map_err(|_| BridgeError::new("runtime_unavailable", "model storage worker failed"))
+}
+
+#[tauri::command]
+pub fn open_model_storage_folder(
+    state: State<'_, Arc<ArtifactTrustService>>,
+) -> Result<(), BridgeError> {
+    let path = &state.roots().model_root;
+    #[cfg(windows)]
+    let result = std::process::Command::new("explorer.exe").arg(path).spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(path).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(path).spawn();
+    result.map(|_| ()).map_err(|_| {
+        BridgeError::new(
+            "storage_open_failed",
+            "model storage folder could not be opened",
+        )
+    })
+}
+
+#[tauri::command]
+pub async fn managed_artifact_trust_bundle(
+    state: State<'_, Arc<ArtifactTrustService>>,
+) -> Result<ManagedArtifactTrustBundle, BridgeError> {
+    let state = Arc::clone(&state);
+    tauri::async_runtime::spawn_blocking(move || {
+        let start = std::time::Instant::now();
+        let result = state.artifact_trust_bundle();
+        eprintln!(
+            "[TBDEBUG] bundle={}",
+            serde_json::to_string(&result).unwrap_or_default()
+        );
+        let dur_ms = start.elapsed().as_millis();
+        if perf_logging_enabled() {
+            eprintln!("[PERF] cmd=managed_artifact_trust_bundle dur_ms={dur_ms}");
+        }
+        result
+    })
+    .await
+    .map_err(|_| BridgeError::new("runtime_unavailable", "artifact trust worker failed"))
+}
+
+#[tauri::command]
 pub async fn managed_artifact_validation_status(
     state: State<'_, Arc<ArtifactTrustService>>,
     artifact_id: String,
@@ -2001,7 +2136,10 @@ pub(crate) fn validate_custom_huggingface_url(
         source_repository,
         source_revision: revision.to_string(),
         asset_filename: filename.to_string(),
-        compatible_runtime_ids: vec![CUSTOM_MODEL_RUNTIME_ID.to_string()],
+        compatible_runtime_ids: vec![
+            CUSTOM_MODEL_RUNTIME_ID.to_string(),
+            VULKAN_MODEL_RUNTIME_ID.to_string(),
+        ],
         managed_relative_path,
     })
 }
@@ -2025,6 +2163,66 @@ fn validate_custom_url_segment(segment: &str) -> Result<(), ArtifactTrustError> 
         ));
     }
     Ok(())
+}
+
+fn ensure_managed_directories(roots: &ManagedArtifactRoots) -> Result<(), ArtifactTrustError> {
+    for path in [
+        roots.model_root.join("custom"),
+        roots.model_root.join("approved"),
+        roots.runtime_root.clone(),
+        roots.state_root.clone(),
+        roots.app_data_root.join("state"),
+        roots.app_data_root.join("logs"),
+    ] {
+        fs::create_dir_all(&path).map_err(|_| {
+            ArtifactTrustError::new(
+                "managed_storage_unavailable",
+                "managed LocalComet storage could not be created",
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn directory_file_bytes(root: &Path) -> u64 {
+    let mut total = 0_u64;
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(path) = pending.pop() {
+        let Ok(entries) = fs::read_dir(path) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            if metadata.is_file() {
+                total = total.saturating_add(metadata.len());
+            } else if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                pending.push(entry.path());
+            }
+        }
+    }
+    total
+}
+
+#[cfg(windows)]
+fn available_space(path: &Path) -> Option<u64> {
+    let mut available = 0_u64;
+    let mut total = 0_u64;
+    let mut free = 0_u64;
+    let mut wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let result =
+        unsafe { GetDiskFreeSpaceExW(wide.as_mut_ptr(), &mut available, &mut total, &mut free) };
+    (result != 0).then_some(available)
+}
+
+#[cfg(not(windows))]
+fn available_space(_path: &Path) -> Option<u64> {
+    None
 }
 
 fn custom_manifest_path(roots: &ManagedArtifactRoots) -> Result<PathBuf, ArtifactTrustError> {
@@ -2366,7 +2564,7 @@ fn validate_catalog(catalog: &ApprovedArtifactCatalog) -> Result<(), ArtifactTru
         ])?;
         if runtime.platform != "windows"
             || runtime.architecture != "x86-64"
-            || runtime.variant != "cpu"
+            || !matches!(runtime.variant.as_str(), "cpu" | "vulkan")
             || runtime.archive_format != "zip"
             || runtime.permitted_bind_scope != "loopback-only"
             || runtime.supported_api_protocol != "openai-compatible-v1"
@@ -3364,6 +3562,62 @@ impl<'de> Visitor<'de> for UniqueValueVisitor {
     }
 }
 
+#[tauri::command]
+pub async fn import_custom_model(
+    state: tauri::State<'_, Arc<ArtifactTrustService>>,
+    source_path: String,
+    filename: String,
+) -> Result<String, String> {
+    let source = std::path::PathBuf::from(&source_path);
+    if !source.exists() {
+        return Err("Source file does not exist".to_string());
+    }
+
+    let roots = state.roots();
+    let ts = now_unix_ms();
+    let dest_filename = format!("{}-{}", ts, filename);
+    let dest_path = roots.model_root.join(&dest_filename);
+
+    let state_clone = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::copy(&source, &dest_path).map_err(|e| e.to_string())?;
+        let bytes = std::fs::metadata(&dest_path)
+            .map_err(|e| e.to_string())?
+            .len();
+        let sha256 = sha256_file(&dest_path).map_err(|e| e.code().to_string())?;
+
+        let model_id = format!("custom-{}", ts);
+
+        let mut compatible_runtime_ids = Vec::new();
+        for runtime in &state_clone.catalog.runtimes {
+            compatible_runtime_ids.push(runtime.runtime_id.clone());
+        }
+
+        let model = CustomModelArtifact {
+            model_id: model_id.clone(),
+            display_name: filename.clone(),
+            source_url: format!(
+                "https://huggingface.co/local/import/resolve/main/{}",
+                dest_filename
+            ),
+            source_repository: "local/import".to_string(),
+            source_revision: "main".to_string(),
+            asset_filename: dest_filename.clone(),
+            asset_bytes: bytes,
+            asset_sha256: sha256,
+            compatible_runtime_ids,
+            managed_relative_path: dest_filename,
+        };
+
+        state_clone
+            .register_custom_model_after_validation(model)
+            .map_err(|e| e.code().to_string())?;
+        Ok(model_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3602,10 +3856,10 @@ mod tests {
             schema_version: SCHEMA_VERSION,
             catalog_id: CATALOG_ID.into(),
             catalog_version: "1.0.0-custom-test".into(),
-            runtimes: vec![test_runtime(
-                CUSTOM_MODEL_RUNTIME_ID,
-                CUSTOM_MODEL_RUNTIME_ID,
-            )],
+            runtimes: vec![
+                test_runtime(CUSTOM_MODEL_RUNTIME_ID, CUSTOM_MODEL_RUNTIME_ID),
+                test_runtime(VULKAN_MODEL_RUNTIME_ID, VULKAN_MODEL_RUNTIME_ID),
+            ],
             models: vec![test_model(vec![CUSTOM_MODEL_RUNTIME_ID.into()])],
         }
     }
@@ -3653,7 +3907,10 @@ mod tests {
         );
         assert_eq!(
             source.compatible_runtime_ids,
-            vec![CUSTOM_MODEL_RUNTIME_ID.to_string()]
+            vec![
+                CUSTOM_MODEL_RUNTIME_ID.to_string(),
+                VULKAN_MODEL_RUNTIME_ID.to_string()
+            ]
         );
 
         for rejected in [
@@ -3707,6 +3964,22 @@ mod tests {
         assert_eq!(
             installed.custom_artifacts[0].installation_status,
             InstallationStatus::Valid
+        );
+
+        let bundle = service.artifact_trust_bundle();
+        assert_eq!(bundle.model_catalog.custom_models.len(), 1);
+        assert_eq!(bundle.installed_artifacts.custom_artifacts.len(), 1);
+        assert_eq!(
+            bundle.model_catalog.custom_models[0].model_id,
+            bundle.installed_artifacts.custom_artifacts[0].artifact_id
+        );
+        assert_eq!(
+            bundle.runtime_catalog.catalog_digest,
+            bundle.model_catalog.catalog_digest
+        );
+        assert_eq!(
+            bundle.model_catalog.catalog_digest,
+            bundle.installed_artifacts.catalog_digest
         );
 
         drop(service);
@@ -3958,11 +4231,32 @@ mod tests {
         let service =
             ArtifactTrustService::from_catalog_bytes(catalog_bytes.as_ref(), workspace.roots())
                 .expect("embedded catalog must be valid");
+        {
+            let bundle = service.artifact_trust_bundle();
+            eprintln!(
+                "DIAG bundle: runtime_catalog.runtimes={} model_catalog.models={} custom={} installed_artifacts={} installed_custom={} digest={}",
+                bundle.runtime_catalog.runtimes.len(),
+                bundle.model_catalog.models.len(),
+                bundle.model_catalog.custom_models.len(),
+                bundle.installed_artifacts.artifacts.len(),
+                bundle.installed_artifacts.custom_artifacts.len(),
+                bundle.runtime_catalog.catalog_digest,
+            );
+            for m in &bundle.model_catalog.models {
+                eprintln!(
+                    "DIAG model {} compatible={:?}",
+                    m.model_id, m.compatible_runtime_ids
+                );
+            }
+            for r in &bundle.runtime_catalog.runtimes {
+                eprintln!("DIAG runtime {} variant={}", r.runtime_id, r.variant);
+            }
+        }
         assert_eq!(
             sha256_bytes(catalog_bytes.as_ref()),
             EMBEDDED_CATALOG_SHA256
         );
-        assert_eq!(service.catalog.runtimes.len(), 1);
+        assert_eq!(service.catalog.runtimes.len(), 2);
         assert_eq!(service.catalog.models.len(), 2);
 
         let runtime = &service.catalog.runtimes[0];
@@ -3987,6 +4281,33 @@ mod tests {
             30
         );
         assert_eq!(runtime.required_files.len(), 30);
+
+        let gpu_runtime = &service.catalog.runtimes[1];
+        assert_eq!(
+            gpu_runtime.runtime_id,
+            "llama-cpp-windows-x86-64-vulkan-bootstrap"
+        );
+        assert_eq!(gpu_runtime.release_tag, "b10068");
+        assert_eq!(gpu_runtime.variant, "vulkan");
+        assert_eq!(gpu_runtime.asset_bytes, 33_271_704);
+        assert_eq!(
+            gpu_runtime.asset_sha256,
+            "4f3e6fd215fdf22d2fd6232a5501f9e791a93d9193db4faf59e391eff90f6169"
+        );
+        assert_eq!(gpu_runtime.archive_members.len(), 52);
+        assert_eq!(
+            gpu_runtime
+                .archive_members
+                .iter()
+                .filter(|member| member.disposition == RuntimeArchiveMemberDisposition::Install)
+                .count(),
+            31
+        );
+        assert_eq!(gpu_runtime.required_files.len(), 31);
+        assert!(gpu_runtime
+            .required_files
+            .iter()
+            .any(|file| file.relative_path == "ggml-vulkan.dll"));
         assert_eq!(
             runtime.license_asset.source_relative_path,
             "third_party/llama.cpp/LICENSE-MIT.txt"

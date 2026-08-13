@@ -1,0 +1,148 @@
+{
+  "demo-echo": {
+    "name": "Demo Echo",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "ui.extension"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "b2bec9ff7407733666d827d2c69af3d7c4d5c030c6f475924b61327095bf674d",
+    "path": "installed\\demo-echo"
+  },
+  "verify-echo-174869": {
+    "name": "Verify Echo",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "ui.extension"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "2f2c4957bc4ed9441af9a4d9600d348b3f4ce6f2defb5f8d59fb4bd917d5e807",
+    "path": "installed\\verify-echo-174869"
+  },
+  "verify-echo-655999": {
+    "name": "Verify Echo",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "ui.extension"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "c55425f1fd3f1a8baf3a1106464edb908f33ab2afb8f32355d0de28b133ac028",
+    "path": "installed\\verify-echo-655999"
+  },
+  "project-guru": {
+    "name": "Project Guru",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "filesystem.read",
+      "ui.extension"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "1e5d8a6e63f21f56a5f89b278ae29e59393e9709716293113ad43416cbff0ef6",
+    "path": "installed\\project-guru"
+  },
+  "code-runner": {
+    "name": "Code Runner",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "filesystem.read",
+      "process.spawn"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "0ad1255b5458f1b83ba68ff2ad871c498befd847e684a260b7c806daee862a10",
+    "path": "installed\\code-runner"
+  },
+  "browser-pilot": {
+    "name": "Browser Pilot",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "clipboard",
+      "network",
+      "ui.extension"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "82d385dcb54007b4afe9ff5c429ff7ec2282b1ce4ea3ecf409f59d9ac3524d28",
+    "path": "installed\\browser-pilot"
+  },
+  "hf-model-ctl": {
+    "name": "HF Model Control",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "filesystem.read",
+      "filesystem.write",
+      "network",
+      "process.spawn"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "6d100cd62298e095392beb8db64c5f4de9775e420c5f2f7c8f2fb01bf6d02eb0",
+    "path": "installed\\hf-model-ctl"
+  },
+  "patch-forge": {
+    "name": "Patch Forge",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "filesystem.read",
+      "filesystem.write",
+      "process.spawn"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "e8290e6de0df43647fbd2599ba8c33713fd80bb44c594df67590da14c0508d6b",
+    "path": "installed\\patch-forge"
+  },
+  "git-ops": {
+    "name": "Git Ops",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "filesystem.read",
+      "process.spawn"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "159045651c88dfcb0930ab1cc951b11c9f4a4180a1fa462e8631bd65e3cc5677",
+    "path": "installed\\git-ops"
+  },
+  "log-sleuth": {
+    "name": "Log Sleuth",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "filesystem.read",
+      "process.spawn"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "fb9a96866c525f4173f7dfd6f83b78578975603a19a28bd75af2fce7f7ed8cec",
+    "path": "installed\\log-sleuth"
+  },
+  "prompt-lab": {
+    "name": "Prompt Lab",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "model.invoke",
+      "ui.extension"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "8f84b128170c2503b627188ab6c7cadf8d97165b6d4b65f813b54c132c971458",
+    "path": "installed\\prompt-lab"
+  },
+  "workspace-guard": {
+    "name": "Workspace Guard",
+    "version": "0.1.0",
+    "state": "ENABLED",
+    "permissions": [
+      "filesystem.read",
+      "filesystem.write",
+      "settings.read"
+    ],
+    "entrypoint": "entrypoint.py",
+    "sha256": "d6e787322283a8e8e06964d2ab1fb5147a3456dbd8289af41ba6a949c3a48bb1",
+    "path": "installed\\workspace-guard"
+  }
+}

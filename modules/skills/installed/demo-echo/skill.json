@@ -1,0 +1,12 @@
+{
+  "localcomet.skill": "1.0",
+  "id": "demo-echo",
+  "name": "Demo Echo",
+  "version": "0.1.0",
+  "description": "Demo skill for skills.invoke verification.",
+  "author": "LocalComet",
+  "entrypoint": "entrypoint.py",
+  "permissions": ["ui.extension"],
+  "capabilities": ["echo"],
+  "dependencies": []
+}

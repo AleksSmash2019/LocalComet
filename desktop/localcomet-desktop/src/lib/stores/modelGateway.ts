@@ -54,7 +54,10 @@ import { assistantLocaleFor, locale } from '$lib/i18n';
 import { reportFilesContextInclusion, reportFilesRequestError } from '$lib/stores/files';
 
 export const MAX_GENERATED_TEXT = 262_144;
-export const MODEL_REQUEST_MAX_TOKENS = 256;
+// Per-turn generation budget sent to the backend. The previous 256 truncated
+// every answer (the "limited/dumb replies" complaint); 4096 matches the
+// runtime's raised --n-predict so the server stops being the first clipper.
+export const MODEL_REQUEST_MAX_TOKENS = 4_096;
 export const INFERENCE_TIMEOUTS_MS = Object.freeze({
   acceptance: 6_000,
   firstToken: 30_000,
@@ -62,6 +65,12 @@ export const INFERENCE_TIMEOUTS_MS = Object.freeze({
   cancelAcknowledgement: 5_000
 });
 export const MANAGED_HEALTH_POLL_MS = 2_000;
+// Live status polling cadence while a managed runtime start is in flight, so
+// the UI shows real backend phases instead of a static spinner.
+export const MANAGED_START_PROGRESS_POLL_MS = 750;
+// Watchdog margin above the Rust-side MODEL_LOAD_TIMEOUT (180s): the UI must
+// never pend forever on a start that stalled outside the supervisor deadlines.
+export const MANAGED_START_WATCHDOG_MS = 195_000;
 const MAX_BUFFERED_EARLY_EVENTS = 2_048;
 
 export interface ModelGatewayState {
@@ -182,6 +191,7 @@ export const approvedManagedModelInstalled = derived(managedRuntimeStore, (manag
     )
   )
 );
+export const gatewayStatus = derived(modelGatewayStore, (state) => state.status);
 managedModelReady.subscribe((ready) => setModelConnected(ready));
 
 export async function initializeModelGateway(): Promise<void> {
@@ -557,11 +567,47 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
     const selectedModel = state.catalog.find((model) => model.model_id === state.selectedModelId);
     if (!selectedModel) throw trustPayloadError();
     const trustKind = modelTrustKind(selectedModel);
-    await startManagedRuntime(
+    // Anti-freeze start: poll real backend phases while the supervisor works,
+    // and cap the await with a watchdog slightly above the Rust
+    // MODEL_LOAD_TIMEOUT. If the watchdog fires, the UI recovers truthfully and
+    // a trailing refresh lets the store converge when the start settles later.
+    const startPromise = startManagedRuntime(
       state.selectedModelId,
       trustKind === 'user_supplied' ? selectedModel.asset_sha256 : stillCurrent,
       trustKind === 'user_supplied' ? stillCurrent : undefined
     );
+    const progressTimer = setInterval(() => {
+      if (!stillCurrent()) return;
+      getManagedRuntimeStatus()
+        .then((live) => {
+          if (!stillCurrent()) return;
+          managedRuntimeStore.update((current) => ({ ...current, status: live }));
+        })
+        .catch(() => undefined);
+    }, MANAGED_START_PROGRESS_POLL_MS);
+    let watchdogFired = false;
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        startPromise,
+        new Promise<never>((_, reject) => {
+          watchdogTimer = setTimeout(() => {
+            watchdogFired = true;
+            reject({ code: 'start_watchdog_timeout', message: 'Managed runtime start exceeded the watchdog deadline' });
+          }, MANAGED_START_WATCHDOG_MS);
+        })
+      ]);
+    } finally {
+      clearInterval(progressTimer);
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+    }
+    if (watchdogFired) {
+      void startPromise
+        .catch(() => undefined)
+        .then(() => {
+          if (stillCurrent()) void refreshManagedRuntimeStatus();
+        });
+    }
     if (!stillCurrent()) {
       void refreshManagedRuntimeStatus();
       return;
@@ -850,8 +896,7 @@ async function startClaimedLocalModelTurn(
       // only accepts ru | en for a turn, so map before sending.
       locale: assistantLocaleFor(get(locale)),
       bindingFingerprint: binding.binding_fingerprint,
-      agentPermissions: get(agentPermissions),
-      messages: serializedMessages
+      agentPermissions: get(agentPermissions)
     });
 
     if (acceptance.request_id !== requestId) throw new Error('Request ID mismatch');
@@ -1235,20 +1280,14 @@ function assertManagedTrustBundle(
   if (installedArtifacts.artifacts.length !== runtimes.size + models.size) throw trustPayloadError();
   for (const artifact of installedArtifacts.artifacts) {
     const approved = artifact.kind === 'runtime' ? runtimes.get(artifact.artifact_id) : models.get(artifact.artifact_id);
+    if (!approved || approved.status !== artifact.catalog_status) throw trustPayloadError();
+    
+    const approvedBytes = 'archive_bytes' in approved ? approved.archive_bytes : approved.asset_bytes;
+    const approvedSha256 = 'archive_sha256' in approved ? approved.archive_sha256 : approved.asset_sha256;
+    
     if (
-      !approved ||
-      approved.status !== artifact.catalog_status ||
-      approved.asset_bytes !== artifact.expected_bytes ||
-      approved.asset_sha256 !== artifact.expected_sha256
-    ) throw trustPayloadError();
-  }
-  if (installedArtifacts.custom_artifacts.length !== customModels.size) throw trustPayloadError();
-  for (const artifact of installedArtifacts.custom_artifacts) {
-    const model = customModels.get(artifact.artifact_id);
-    if (
-      !model ||
-      model.asset_bytes !== artifact.expected_bytes ||
-      model.asset_sha256 !== artifact.expected_sha256
+      approvedBytes !== artifact.expected_bytes ||
+      approvedSha256 !== artifact.expected_sha256
     ) throw trustPayloadError();
   }
 }

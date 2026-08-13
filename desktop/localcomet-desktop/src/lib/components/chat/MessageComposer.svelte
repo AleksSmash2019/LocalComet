@@ -145,15 +145,28 @@
   }
 
   .composer {
-    min-height: 52px;
     display: flex;
     align-items: flex-end;
-    gap: 8px;
-    border: 1px solid var(--lc-line);
-    border-radius: 26px; /* Pill shape */
-    padding: 6px 8px;
-    background: var(--lc-panel);
+    gap: 12px;
+    border: 1px solid color-mix(in srgb, var(--lc-line) 60%, transparent);
+    border-radius: 26px;
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--lc-panel-soft) 40%, transparent);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     box-shadow: var(--lc-shadow-e1);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+
+  .composer:hover:not(:focus-within) {
+    background: color-mix(in srgb, var(--lc-panel-soft) 55%, transparent);
+    border-color: color-mix(in srgb, var(--lc-line) 90%, transparent);
+  }
+
+  .composer:focus-within {
+    border-color: color-mix(in srgb, var(--lc-accent) 60%, transparent);
+    background: color-mix(in srgb, var(--lc-panel-soft) 75%, transparent);
+    box-shadow: 0 0 0 3px var(--lc-accent-dim), var(--lc-shadow-e2);
   }
 
   .composer-icon-button {
@@ -168,11 +181,13 @@
     color: var(--lc-muted);
     cursor: pointer;
     margin-bottom: 2px;
+    transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
   }
 
   .composer-icon-button:hover {
-    background: var(--lc-panel-soft);
+    background: color-mix(in srgb, var(--lc-panel-soft) 80%, transparent);
     color: var(--lc-text);
+    transform: translateY(-1px);
   }
 
   .send-button.pill-send {
@@ -190,14 +205,15 @@
     flex: 1;
     min-width: 0;
     min-height: 24px;
-    max-height: 200px;
-    margin-bottom: 8px;
+    max-height: 240px;
+    margin-bottom: 6px;
+    margin-top: 6px;
     padding: 0;
     border: none;
     background: transparent;
     color: var(--lc-text);
-    font-size: 15px;
-    line-height: 1.5;
+    font-size: 15.5px;
+    line-height: 1.6;
     resize: none;
     outline: none;
   }
@@ -225,6 +241,13 @@
     font-size: 14px;
     font-weight: 650;
     cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .send-button:not(:disabled):hover {
+    transform: scale(1.05);
+    background: var(--lc-accent-strong);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--lc-accent) 40%, transparent);
   }
 
   .send-button:disabled {

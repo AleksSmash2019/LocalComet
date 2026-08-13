@@ -1,0 +1,1 @@
+{"localcomet.skill": "1.0", "id": "prompt-lab", "name": "Prompt Lab", "version": "0.1.0", "description": "Prompt engineering: templates, A/B prompts, evaluation harness.", "author": "LocalComet", "entrypoint": "entrypoint.py", "permissions": ["model.invoke", "ui.extension"], "capabilities": ["prompt.template", "prompt.evaluate", "prompt.compare"], "dependencies": []}

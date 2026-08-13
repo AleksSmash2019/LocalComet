@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { t } from '$lib/i18n';
-  import { downloadArbitraryHuggingFaceArtifact } from '$lib/stores/artifactAcquisition';
-  import { listHuggingFaceRepoFiles, searchHuggingFaceModels } from '$lib/bridge/modelGateway';
+  import { managedRuntimeStore } from '$lib/stores/modelGateway';
+  import { cancelHfDownload, hfDownloads, startHfDownload } from '$lib/stores/hfDownloads';
+  import { listHuggingFaceRepoFiles, searchHuggingFaceModels, listApprovedDownloadableArtifacts } from '$lib/bridge/modelGateway';
+  import type { ApprovedDownloadableArtifact, ArtifactDownloadState } from '$lib/types/modelGateway';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
 
   interface HfModel {
@@ -24,12 +27,35 @@
     error: string | null;
   }
 
-  let query = '';
-  let results: HfModel[] = [];
-  let searching = false;
-  let searchError: string | null = null;
-  let expandedRepos: Record<string, ExpandedRepo> = {};
-  let downloadingUrls: Record<string, 'pending' | 'started' | 'error'> = {};
+  let query = $state('');
+  let results = $state<HfModel[]>([]);
+  let searching = $state(false);
+  let searchError = $state<string | null>(null);
+  let expandedRepos = $state<Record<string, ExpandedRepo>>({});
+  let approvedArtifacts = $state<readonly ApprovedDownloadableArtifact[]>([]);
+  let approvedArtifactsLoading = $state(false);
+  let approvedArtifactsError = $state<string | null>(null);
+
+  async function loadApprovedArtifacts(): Promise<void> {
+    approvedArtifactsLoading = true;
+    approvedArtifactsError = null;
+    try {
+      approvedArtifacts = await listApprovedDownloadableArtifacts();
+    } catch (err) {
+      approvedArtifactsError = err instanceof Error ? err.message : String(err);
+      approvedArtifacts = [];
+    } finally {
+      approvedArtifactsLoading = false;
+    }
+  }
+
+  function startApprovedDownload(artifactId: string): void {
+    void startHfDownload(`approved::${artifactId}`, 'approved', artifactId);
+  }
+
+  function cancelDownload(cellKey: string): void {
+    void cancelHfDownload(cellKey);
+  }
 
   async function search(): Promise<void> {
     const trimmed = query.trim();
@@ -92,18 +118,9 @@
     return `https://huggingface.co/${modelId}/resolve/main/${filename}`;
   }
 
-  async function startDownload(modelId: string, filename: string): Promise<void> {
+  function startDownload(modelId: string, filename: string): void {
     const url = buildDownloadUrl(modelId, filename);
-    downloadingUrls = { ...downloadingUrls, [url]: 'pending' };
-    try {
-      downloadingUrls = { ...downloadingUrls, [url]: 'started' };
-      await downloadArbitraryHuggingFaceArtifact(url);
-      const copy = { ...downloadingUrls };
-      delete copy[url];
-      downloadingUrls = copy;
-    } catch {
-      downloadingUrls = { ...downloadingUrls, [url]: 'error' };
-    }
+    void startHfDownload(`${modelId}::${filename}`, 'url', url);
   }
 
   function formatSize(bytes: number | undefined): string {
@@ -123,6 +140,51 @@
     const match = filename.match(/[_.-](Q\d[_A-Z0-9]+|F16|F32|BF16|IQ\d[_A-Z0-9]*)/i);
     return match ? match[1].toUpperCase() : '';
   }
+
+  function formatDownloadState(state: ArtifactDownloadState | null, percent: number | null): string {
+    if (!state) return '';
+    const expected = Number(state.expected_bytes ?? 0);
+    const received = Number(state.received_bytes ?? 0);
+    const displayPercent = percent ?? (expected > 0 ? Math.min(100, Math.max(0, (received / expected) * 100)) : null);
+    const stage = stageKey(state.lifecycle);
+    if (expected <= 0) {
+      const base = formatSize(received);
+      return stage ? `${$t(stage)}: ${base}` : base;
+    }
+    const sizes = `${formatSize(received)} / ${formatSize(expected)} · ${displayPercent !== null ? displayPercent.toFixed(1) : '—'} %`;
+    return stage ? `${$t(stage)}: ${sizes}` : sizes;
+  }
+
+  function stageKey(lc: ArtifactDownloadState['lifecycle']): string | null {
+    switch (lc) {
+      case 'awaiting_confirmation':
+        return 'hf.stage.awaiting_confirmation';
+      case 'checking_disk':
+        return 'hf.stage.checking_disk';
+      case 'cancelling':
+        return 'hf.stage.cancelling';
+      case 'verifying_size':
+        return 'hf.stage.verifying_size';
+      case 'verifying_hash':
+        return 'hf.stage.verifying_hash';
+      case 'validating_artifact':
+        return 'hf.stage.validating_artifact';
+      case 'installing':
+        return 'hf.stage.installing';
+      default:
+        return null;
+    }
+  }
+
+  function isInstalledArtifact(artifactId: string): boolean {
+    return $managedRuntimeStore.installedArtifacts.some(
+      (a) => a.artifact_id === artifactId && a.installation_status === 'valid'
+    );
+  }
+
+  onMount(() => {
+    void loadApprovedArtifacts();
+  });
 </script>
 
 <div class="hf-browser">
@@ -154,6 +216,87 @@
       <span>{searchError}</span>
     </div>
   {/if}
+
+  <section class="hf-approved">
+    <div class="hf-approved-header">
+      <strong>{$t('hf.approved_title')}</strong>
+      <button type="button" class="hf-search-btn" onclick={() => void loadApprovedArtifacts()} disabled={approvedArtifactsLoading}>
+        {#if approvedArtifactsLoading}
+          {$t('hf.loading')}
+        {:else}
+          {$t('hf.refresh')}
+        {/if}
+      </button>
+    </div>
+    {#if approvedArtifactsError}
+      <div class="hf-error">
+        <StatusBadge label={$t('hf.error')} tone="danger" />
+        <span>{approvedArtifactsError}</span>
+      </div>
+    {/if}
+    {#if approvedArtifacts.length > 0}
+      <div class="hf-approved-list">
+        {#each approvedArtifacts as item (item.artifact_id)}
+          {@const cellKey = `approved::${item.artifact_id}`}
+          {@const entry = $hfDownloads[cellKey]}
+          {@const active = entry?.phase === 'pending' || entry?.phase === 'running'}
+          <div class="hf-approved-item">
+            <div class="hf-approved-info">
+              <span class="hf-file-name" title={item.artifact_id}>{item.display_name}</span>
+              <span class="hf-quant-badge">{item.kind}</span>
+              {#if isInstalledArtifact(item.artifact_id) && !active && entry?.phase !== 'completed'}
+                <span class="hf-installed-badge" title={$t('hf.installed')}>✓</span>
+              {/if}
+            </div>
+            <div class="hf-download-cell">
+              {#if entry?.phase === 'completed'}
+                <span class="hf-installed-label">✓ {$t('hf.installed')}</span>
+              {:else}
+                <button
+                  type="button"
+                  class="hf-download-btn"
+                  disabled={active}
+                  onclick={() => void startApprovedDownload(item.artifact_id)}
+                >
+                  {#if active}
+                    {$t('hf.downloading')}
+                  {:else if entry?.phase === 'failed' || entry?.phase === 'cancelled'}
+                    {$t('hf.retry')}
+                  {:else}
+                    {$t('hf.download')}
+                  {/if}
+                </button>
+                {#if active}
+                  <div class="hf-download-progress">
+                    <div class="hf-download-progress-track">
+                      <div
+                        class="hf-download-progress-fill"
+                        style="width: {Math.min(100, Math.max(0, (Number(entry?.state?.received_bytes ?? 0) / Number(entry?.state?.expected_bytes ?? 1)) * 100))}%"
+                      ></div>
+                    </div>
+                    <div class="hf-download-progress-text">{formatDownloadState(entry?.state ?? null, entry?.percent ?? null)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    class="hf-cancel-btn"
+                    onclick={() => void cancelDownload(cellKey)}
+                    title={$t('hf.cancel_title')}
+                  >✕</button>
+                {/if}
+              {/if}
+              {#if entry?.phase === 'failed' || entry?.phase === 'cancelled'}
+                <div class="hf-download-error">
+                  {entry?.error ?? entry?.state?.error_code ?? (entry?.phase === 'cancelled' ? $t('hf.cancelled') : $t('hf.failed'))}
+                </div>
+              {:else if entry?.error}
+                <div class="hf-download-error">{entry.error}</div>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </section>
 
   {#if results.length > 0}
     <div class="hf-results">
@@ -190,26 +333,58 @@
                   </thead>
                   <tbody>
                     {#each expandedRepos[model.id].siblings as file (file.rfilename)}
-                      {@const url = buildDownloadUrl(model.id, file.rfilename)}
+                      {@const cellKey = `${model.id}::${file.rfilename}`}
+                      {@const entry = $hfDownloads[cellKey]}
+                      {@const active = entry?.phase === 'pending' || entry?.phase === 'running'}
                       <tr>
                         <td class="hf-file-name" title={file.rfilename}>{file.rfilename}</td>
                         <td><span class="hf-quant-badge">{extractQuant(file.rfilename) || '—'}</span></td>
                         <td class="hf-file-size">{formatSize(file.size)}</td>
                         <td>
-                          <button
-                            type="button"
-                            class="hf-download-btn"
-                            disabled={downloadingUrls[url] !== undefined}
-                            onclick={() => void startDownload(model.id, file.rfilename)}
-                          >
-                            {#if downloadingUrls[url] === 'started'}
-                              {$t('hf.downloading')}
-                            {:else if downloadingUrls[url] === 'error'}
-                              {$t('hf.retry')}
+                          <div class="hf-download-cell">
+                            {#if entry?.phase === 'completed'}
+                              <span class="hf-installed-label">✓ {$t('hf.installed')}</span>
                             {:else}
-                              {$t('hf.download')}
+                              <button
+                                type="button"
+                                class="hf-download-btn"
+                                disabled={active}
+                                onclick={() => void startDownload(model.id, file.rfilename)}
+                              >
+                                {#if active}
+                                  {$t('hf.downloading')}
+                                {:else if entry?.phase === 'failed' || entry?.phase === 'cancelled'}
+                                  {$t('hf.retry')}
+                                {:else}
+                                  {$t('hf.download')}
+                                {/if}
+                              </button>
+                              {#if active}
+                                <div class="hf-download-progress">
+                                  <div class="hf-download-progress-track">
+                                    <div
+                                      class="hf-download-progress-fill"
+                                      style="width: {Math.min(100, Math.max(0, (Number(entry?.state?.received_bytes ?? 0) / Number(entry?.state?.expected_bytes ?? 1)) * 100))}%"
+                                    ></div>
+                                  </div>
+                                  <div class="hf-download-progress-text">{formatDownloadState(entry?.state ?? null, entry?.percent ?? null)}</div>
+                                </div>
+                                <button
+                                  type="button"
+                                  class="hf-cancel-btn"
+                                  onclick={() => void cancelDownload(cellKey)}
+                                  title={$t('hf.cancel_title')}
+                                >✕</button>
+                              {/if}
                             {/if}
-                          </button>
+                            {#if entry?.phase === 'failed' || entry?.phase === 'cancelled'}
+                              <div class="hf-download-error">
+                                {entry?.error ?? entry?.state?.error_code ?? (entry?.phase === 'cancelled' ? $t('hf.cancelled') : $t('hf.failed'))}
+                              </div>
+                            {:else if entry?.error}
+                              <div class="hf-download-error">{entry.error}</div>
+                            {/if}
+                          </div>
                         </td>
                       </tr>
                     {/each}
@@ -475,5 +650,70 @@
     padding: var(--lc-space-6) 0;
     color: var(--lc-faint);
     font-size: 0.86rem;
+  }
+
+  .hf-download-cell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--lc-space-2);
+    min-width: 220px;
+  }
+
+  .hf-download-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .hf-download-progress-track {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(61, 220, 132, 0.12);
+    overflow: hidden;
+  }
+
+  .hf-download-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--lc-accent);
+    transition: width 0.2s ease;
+  }
+
+  .hf-download-progress-text {
+    font-size: 0.7rem;
+    color: var(--lc-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hf-download-error {
+    font-size: 0.7rem;
+    color: var(--lc-danger);
+    word-break: break-word;
+  }
+
+  .hf-cancel-btn {
+    align-self: center;
+    background: rgba(220, 20, 60, 0.1);
+    color: var(--lc-danger);
+    border: 1px solid var(--lc-danger);
+    border-radius: 999px;
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .hf-installed-badge {
+    color: var(--lc-accent);
+    font-weight: 700;
+    font-size: 0.86rem;
+  }
+
+  .hf-installed-label {
+    color: var(--lc-accent);
+    font-family: var(--lc-mono);
+    font-size: 0.76rem;
+    font-weight: 700;
   }
 </style>

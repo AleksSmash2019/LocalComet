@@ -1,0 +1,1 @@
+{"localcomet.skill": "1.0", "id": "code-runner", "name": "Code Runner", "version": "0.1.0", "description": "Run safe shell commands, tests, linters, show git status.", "author": "LocalComet", "entrypoint": "entrypoint.py", "permissions": ["filesystem.read", "process.spawn"], "capabilities": ["shell.run", "test.run", "git.status"], "dependencies": []}

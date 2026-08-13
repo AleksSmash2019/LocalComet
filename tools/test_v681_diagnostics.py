@@ -29,9 +29,22 @@ def _paths_under(root: Path) -> dict[str, int]:
     if not root.exists():
         return {}
     result: dict[str, int] = {}
-    for path in root.rglob("*"):
-        if path.is_file() and "__pycache__" not in path.parts:
-            result[path.relative_to(root).as_posix()] = path.stat().st_size
+    # Gate/build infrastructure directories (artifacts/, target/, node_modules/
+    # ...) churn by design during gate runs and are not source; an import side
+    # effect cannot hide there. Pruning them also shrinks the walk massively.
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if not (Path(dirpath) / d).is_symlink()
+            and d not in (".git", "__pycache__", "artifacts", "target", "node_modules", ".svelte-kit")
+        ]
+        for entry_name in dirnames + filenames:
+            path = Path(dirpath) / entry_name
+            if path.is_file() and not set(path.parts).intersection(
+                (".git", "__pycache__", "artifacts", "target", "node_modules", ".svelte-kit")
+            ):
+                result[path.relative_to(root).as_posix()] = path.stat().st_size
     return result
 
 

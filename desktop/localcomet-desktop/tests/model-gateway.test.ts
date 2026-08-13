@@ -168,8 +168,7 @@ describe('Local Model Gateway frontend', () => {
       fileIds: [],
       locale: 'ru',
       bindingFingerprint: FINGERPRINT,
-      agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false },
-      messages: []
+      agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }
     });
     expect(Object.keys(invokeCalls.at(-1)?.args ?? {}).sort()).toEqual([
       'agentPermissions',
@@ -178,7 +177,6 @@ describe('Local Model Gateway frontend', () => {
       'fileIds',
       'locale',
       'maxTokens',
-      'messages',
       'modelId',
       'prompt',
       'requestId',

@@ -13,21 +13,25 @@ mod ipc;
 mod knowledge;
 mod managed_runtime;
 mod single_instance;
+mod skills;
 mod startup;
 mod supervisor;
 mod windows_job;
 mod workspace;
 
 use approval_commands::{
-    execute_approved, request_approval, run_tool_call, set_workspace, ApprovalState,
+    execute_approved, request_approval, resolve_tool_approval, run_tool_call, set_workspace,
+    ApprovalState,
 };
 use artifact_acquisition::{
     cancel_artifact_download, get_artifact_download_state, list_approved_downloadable_artifacts,
     remove_managed_model, start_approved_artifact_download, ArtifactAcquisitionManager,
 };
 use artifact_trust::{
+    get_model_storage_info, import_custom_model, managed_artifact_trust_bundle,
     managed_artifact_validation_status, managed_installed_artifacts, managed_model_catalog,
-    managed_model_readiness, managed_runtime_catalog, ArtifactTrustService,
+    managed_model_readiness, managed_runtime_catalog, open_model_storage_folder,
+    ArtifactTrustService,
 };
 use control_plane::{
     control_plane_bootstrap, control_plane_cancel_turn, control_plane_close_session,
@@ -48,6 +52,7 @@ use managed_runtime::{
     managed_runtime_logs, managed_runtime_start, managed_runtime_status, managed_runtime_stop,
     ManagedRuntimeSupervisor,
 };
+use skills::{skills_disable, skills_enable, skills_install, skills_list, skills_uninstall};
 use std::sync::Arc;
 use std::time::Duration;
 use supervisor::{DesktopSidecarSupervisor, SupervisorError};
@@ -86,6 +91,8 @@ pub fn run() {
     };
 
     let run_result = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             startup::record(startup::StartupPhase::BackendStart, "begin", "LC_START_100");
             let local_data_dir = match app.path().local_data_dir() {
@@ -183,7 +190,7 @@ pub fn run() {
             ))));
             app.manage(Arc::new(ManagedRuntimeSupervisor::new(artifact_trust)));
             app.manage(SelectedFilesManager::default());
-            app.manage(ApprovalState::default());
+            app.manage(ApprovalState::new(app.handle().clone()));
             let Some(window) = app.get_webview_window("main") else {
                 let _ = supervisor.shutdown();
                 startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_201");
@@ -241,6 +248,10 @@ pub fn run() {
             managed_runtime_catalog,
             managed_model_catalog,
             managed_installed_artifacts,
+            managed_artifact_trust_bundle,
+            get_model_storage_info,
+            open_model_storage_folder,
+            import_custom_model,
             managed_artifact_validation_status,
             managed_model_readiness,
             list_approved_downloadable_artifacts,
@@ -258,11 +269,17 @@ pub fn run() {
             forget_selected_file,
             request_approval,
             execute_approved,
+            resolve_tool_approval,
             run_tool_call,
             scan_hardware,
             hf_search_models,
             hf_list_repo_files,
-            set_workspace
+            set_workspace,
+            skills_list,
+            skills_install,
+            skills_enable,
+            skills_disable,
+            skills_uninstall
         ])
         .run(tauri::generate_context!());
 

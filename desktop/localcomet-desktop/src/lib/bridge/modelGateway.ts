@@ -13,6 +13,7 @@ import type {
   GatewayCatalog,
   HarnessId,
   ManagedArtifactValidationSummary,
+  ManagedArtifactTrustBundle,
   ManagedCatalogIdentity,
   ManagedInstalledArtifacts,
   ManagedModelCatalog,
@@ -103,6 +104,10 @@ export async function getManagedModelCatalog(): Promise<ManagedModelCatalog> {
 
 export async function getManagedInstalledArtifacts(): Promise<ManagedInstalledArtifacts> {
   return validateManagedInstalledArtifacts(await invokeExact('managed_installed_artifacts'));
+}
+
+export async function getManagedArtifactTrustBundle(): Promise<ManagedArtifactTrustBundle> {
+  return validateManagedArtifactTrustBundle(await invokeExact('managed_artifact_trust_bundle'));
 }
 
 export async function listApprovedDownloadableArtifacts(): Promise<readonly ApprovedDownloadableArtifact[]> {
@@ -202,6 +207,10 @@ export async function removeManagedModel(modelId: string): Promise<ManagedModelR
   return { model_id: requestedId, removed: true };
 }
 
+export async function importCustomModel(sourcePath: string, filename: string): Promise<string> {
+  return await invokeExact<string>('import_custom_model', { sourcePath, filename });
+}
+
 export async function getManagedArtifactValidationStatus(artifactId: string): Promise<ManagedArtifactValidationSummary> {
   const requestedId = validateArtifactId(artifactId);
   const result = validateManagedArtifactValidationSummary(
@@ -269,7 +278,6 @@ export async function startModelTurn(args: {
   locale: AssistantLocale;
   bindingFingerprint: string;
   agentPermissions: { files: boolean; shell: boolean; computerUse: boolean; tools: boolean; internet: boolean };
-  messages?: readonly unknown[];
 }): Promise<ModelTurnStartResponse> {
   const requestId = validateTurnId(args.requestId);
   const chatSessionId = validateChatSessionId(args.chatSessionId);
@@ -288,8 +296,7 @@ export async function startModelTurn(args: {
       fileIds,
       locale: validateLocale(args.locale),
       bindingFingerprint: validateFingerprint(args.bindingFingerprint),
-      agentPermissions: args.agentPermissions,
-      messages: args.messages ? JSON.parse(JSON.stringify(args.messages)) : []
+      agentPermissions: args.agentPermissions
     })
   );
   if (
@@ -490,6 +497,19 @@ function validateManagedInstalledArtifacts(value: unknown): ManagedInstalledArti
   validateUnique(customArtifacts.map((artifact) => artifact.artifact_id));
   validateUnique([...artifacts, ...customArtifacts].map((artifact) => artifact.artifact_id));
   return { ...identity, artifacts, custom_artifacts: customArtifacts };
+}
+
+function validateManagedArtifactTrustBundle(value: unknown): ManagedArtifactTrustBundle {
+  const object = expectExactRecord(value, [
+    'runtime_catalog',
+    'model_catalog',
+    'installed_artifacts'
+  ]);
+  return {
+    runtime_catalog: validateManagedRuntimeCatalog(object.runtime_catalog),
+    model_catalog: validateManagedModelCatalog(object.model_catalog),
+    installed_artifacts: validateManagedInstalledArtifacts(object.installed_artifacts)
+  };
 }
 
 function validateApprovedDownloadableArtifact(value: unknown): ApprovedDownloadableArtifact {
@@ -989,19 +1009,22 @@ function validateApprovedRuntime(value: unknown): ApprovedRuntimeSummary {
   if (
     object.platform !== 'windows' ||
     object.architecture !== 'x86-64' ||
-    object.variant !== 'cpu' ||
+    (object.variant !== 'cpu' && object.variant !== 'vulkan') ||
     object.archive_format !== 'zip' ||
     object.permitted_bind_scope !== 'loopback-only' ||
     object.supported_api_protocol !== 'openai-compatible-v1' ||
     object.public_distribution !== false
   ) throw invalid();
+  // The approved catalog ships both CPU and Vulkan runtimes; the variant is
+  // validated above and passed through instead of being pinned to 'cpu'.
+  const variant = object.variant === 'vulkan' ? ('vulkan' as const) : ('cpu' as const);
   return {
     runtime_id: validateArtifactId(String(object.runtime_id)),
     provider: safeText(object.provider, 256),
     release_tag: safeText(object.release_tag, 256),
     platform: 'windows',
     architecture: 'x86-64',
-    variant: 'cpu',
+    variant,
     upstream_repository: safeText(object.upstream_repository, 256),
     upstream_revision: safeText(object.upstream_revision, 256),
     asset_filename: safeFilename(object.asset_filename),
@@ -1266,7 +1289,10 @@ function validateChatSessionId(value: unknown): string {
 }
 
 function validateMaxTokens(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > 512) throw invalid();
+  // Raised from 512: the managed runtime now runs with --n-predict 4096 and
+  // the external OpenAI-compatible provider (e.g. LM Studio) never had this
+  // ceiling; 8192 leaves headroom for both.
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > 8192) throw invalid();
   return value;
 }
 
@@ -1293,7 +1319,9 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function invalid(): SanitizedGatewayError {
-  return { code: 'invalid_payload', message: 'Invalid Local Model Gateway payload' };
+  const stack = new Error().stack || '';
+  const caller = stack.split('\\n').slice(2, 5).join(' -> ');
+  return { code: 'invalid_payload', message: `Payload Error: ${caller}` };
 }
 
 function sanitize(value: string): string {

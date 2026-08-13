@@ -2,12 +2,14 @@
   import { onMount } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
+  import DownloadProgress from '$lib/components/model/DownloadProgress.svelte';
   import {
     confirmBinding,
     connectSelectedManagedModel,
     discoverModels,
     inferenceBusy,
     managedConnectionBusy,
+    managedModelReady,
     managedRuntimeStore,
     modelGatewayStore,
     probeGateway,
@@ -16,11 +18,17 @@
     setGatewayPortText,
     setManagedHarness,
     setManagedSelectedModel,
-    setSelectedModel,
-    startSelectedManagedRuntime,
-    stopSelectedManagedRuntime
+    setSelectedModel
   } from '$lib/stores/modelGateway';
-  import { closeModelSetup, modelSetupDrawerOpen, modelSetupMode } from '$lib/stores/shellStore';
+  import { closeModelSetup, modelSetupDrawerOpen, modelSetupMode, setActiveWorkspace, openSettings } from '$lib/stores/shellStore';
+
+  import {
+    acquisitionBusy,
+    artifactAcquisitionStore,
+    cancelApprovedArtifactDownload,
+    downloadAndSetupManagedModel,
+    initializeArtifactAcquisition
+  } from '$lib/stores/artifactAcquisition';
   import type { HarnessId } from '$lib/types/modelGateway';
   import { t } from '$lib/i18n';
 
@@ -37,10 +45,13 @@
   $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
   $: managedSelectedModel = $managedRuntimeStore.catalog.find((m) => m.model_id === $managedRuntimeStore.selectedModelId);
   $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === managedSelectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
-  $: canStartManaged = !$inferenceBusy && !$managedConnectionBusy && Boolean(managedSelectedModel) && managedModelLaunchable && (managedState === 'Stopped' || managedState === 'Failed');
-  $: canStopManaged = !$inferenceBusy && !$managedConnectionBusy && (managedState === 'Ready' || managedState === 'Starting' || managedState === 'Validating' || managedState === 'Failed');
   $: canBindManaged = !$inferenceBusy && !$managedConnectionBusy && managedModelLaunchable && ['Stopped', 'Failed', 'Ready'].includes(managedState) && Boolean($managedRuntimeStore.selectedModelId);
   $: managedTone = managedState === 'Ready' ? 'ready' : managedState === 'Failed' ? 'danger' : managedState === 'Starting' || managedState === 'Validating' || managedState === 'Stopping' ? 'info' : 'disabled';
+  $: managedSetupRunning = $artifactAcquisitionStore.setup.lifecycle === 'running' || $acquisitionBusy;
+  $: approvedSetupModels = $artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model' && artifact.trust_kind === 'approved_catalog');
+  $: setupTargetModel = approvedSetupModels.find((artifact) => artifact.artifact_id === $managedRuntimeStore.selectedModelId) ?? approvedSetupModels[0] ?? null;
+  $: canSetupManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModel);
+  $: activeDownload = Object.values($artifactAcquisitionStore.downloads).find(d => !['cancelled', 'completed', 'failed'].includes(d.lifecycle)) ?? null;
 
   function onPortInput(event: Event) {
     const value = (event.currentTarget as HTMLInputElement).value;
@@ -74,14 +85,6 @@
     await confirmBinding();
   }
 
-  async function onStartManaged() {
-    await startSelectedManagedRuntime();
-  }
-
-  async function onStopManaged() {
-    await stopSelectedManagedRuntime();
-  }
-
   async function onConfirmManagedBinding() {
     const connected = await connectSelectedManagedModel();
     if (connected) {
@@ -89,12 +92,19 @@
     }
   }
 
-  async function onRefreshManaged() {
-    await refreshManagedRuntimeStatus();
+  async function onGoToHfCatalog() {
+    setActiveWorkspace('hf_browser');
+    closeModelSetup();
+  }
+
+  function onOpenModelSettings() {
+    closeModelSetup();
+    openSettings('models');
   }
 
   onMount(() => {
     portInput = $modelGatewayStore.portText;
+    void initializeArtifactAcquisition();
   });
 
   // Close drawer on Escape handled by shellStore
@@ -111,29 +121,12 @@
       </button>
     </header>
 
-    <div class="drawer-tabs" role="tablist" aria-label={$t('setup.title')}>
-      <button
-        type="button"
-        role="tab"
-        class:active={$modelSetupMode === 'external'}
-        aria-selected={$modelSetupMode === 'external'}
-        onclick={() => modelSetupMode.set('external')}
-      >
-        {$t('setup.external_tab')}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        class:active={$modelSetupMode === 'managed'}
-        aria-selected={$modelSetupMode === 'managed'}
-        onclick={() => modelSetupMode.set('managed')}
-      >
-        {$t('setup.managed_tab')}
-      </button>
-    </div>
-
     {#if $modelSetupMode === 'external'}
       <div class="drawer-content" role="tabpanel" aria-label={$t('setup.external_tab')}>
+        <button class="text-button back-button" onclick={() => modelSetupMode.set('managed')}>
+          <Icon name="chevron_left" size={16} />
+          <span>Назад</span>
+        </button>
         <section class="setup-section" aria-labelledby="external-title">
           <h3 id="external-title">{$t('setup.external_tab')}</h3>
           <p class="section-desc">{$t('setup.external_desc')}</p>
@@ -222,94 +215,151 @@
         </section>
       </div>
     {:else}
-      <div class="drawer-content" role="tabpanel" aria-label={$t('setup.managed_tab')}>
+      <div class="drawer-content managed-view" role="tabpanel" aria-label={$t('setup.managed_tab')}>
         <section class="setup-section" aria-labelledby="managed-title">
-          <h3 id="managed-title">Runtime LocalComet</h3>
-          <p class="section-desc">{$t('setup.managed_desc')}</p>
-
-          <div class="managed-status-grid">
-            <div class="status-row">
-              <span class="status-label">{$t('setup.runtime_status')}</span>
-              <StatusBadge label={managedState === 'NotInstalled' ? $t('setup.not_installed') : managedState} tone={managedTone} />
-            </div>
-            <div class="status-row">
-              <span class="status-label">{$t('setup.runtime_version')}</span>
-              <span class="status-value mono">{$managedRuntimeStore.status?.runtime_version ?? $t('setup.not_checked')}</span>
-            </div>
-            <div class="status-row">
-              <span class="status-label">{$t('setup.runtime_model')}</span>
-              <span class="status-value">{managedSelectedModel?.display_name ?? $t('setup.not_selected')}</span>
-            </div>
-            <div class="status-row">
-              <span class="status-label">{$t('setup.runtime_inference')}</span>
-              <span class="status-value">{$managedRuntimeStore.status?.inference_ready && $managedRuntimeStore.status?.model_state === 'Ready' ? $t('setup.connected') : $t('setup.needs_binding')}</span>
-            </div>
-          </div>
 
           {#if managedState === 'NotInstalled'}
-            <div class="empty-state">
-              <p class="empty-title">{$t('setup.runtime_not_installed')}</p>
-              <p class="empty-desc">{$t('setup.install_available')}</p>
+            <div class="hero-empty-state">
+              <div class="hero-icon">
+                <Icon name="spark" size={48} />
+              </div>
+              <p class="empty-title">Встроенный искусственный интеллект</p>
+              <p class="empty-desc">LocalComet может работать полностью автономно. Скачайте встроенный движок, чтобы общаться с нейросетями без интернета.</p>
+              
+              {#if managedSetupRunning}
+                <DownloadProgress
+                  title={$t('models.setup_progress')}
+                  detail={activeDownload ? `${(activeDownload.received_bytes / 1024 / 1024).toFixed(1)} / ${(activeDownload.expected_bytes / 1024 / 1024).toFixed(1)} MiB` : 'Пожалуйста, подождите...'}
+                  percent={activeDownload?.percent ?? null}
+                  onCancel={activeDownload ? () => void cancelApprovedArtifactDownload(activeDownload.artifact_id) : null}
+                />
+              {:else}
+                <div class="setup-actions">
+                  <button
+                    type="button"
+                    class="primary-button hero-button"
+                    aria-label="Из каталога HF"
+                    disabled={!canSetupManaged}
+                    onclick={onGoToHfCatalog}
+                  >
+                    <Icon name="search" size={24} />
+                    <div class="hero-btn-text">
+                      <span class="btn-title">Из каталога HF</span>
+                      <span class="btn-sub">Найти модель</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button hero-button"
+                    aria-label="Загрузить локальную модель gguf"
+                    onclick={onOpenModelSettings}
+                  >
+                    <Icon name="folder" size={24} />
+                    <div class="hero-btn-text">
+                      <span class="btn-title">Свой .gguf</span>
+                      <span class="btn-sub">Локальный файл</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button hero-button"
+                    aria-label="Внешний сервер"
+                    onclick={() => modelSetupMode.set('external')}
+                  >
+                    <Icon name="plug" size={24} />
+                    <div class="hero-btn-text">
+                      <span class="btn-title">Внешний сервер</span>
+                      <span class="btn-sub">Подключить API</span>
+                    </div>
+                  </button>
+                </div>
+              {/if}
             </div>
           {:else}
-            <div class="action-row">
-              <button type="button" disabled={$inferenceBusy} onclick={onRefreshManaged}>
-                <Icon name="refresh" size={16} />
-                <span>{$t('setup.refresh')}</span>
-              </button>
-              <button type="button" disabled={!canStartManaged} onclick={onStartManaged}>
-                <Icon name="play" size={16} />
-                <span>{$t('setup.start_runtime')}</span>
-              </button>
-              <button type="button" disabled={!canStopManaged} onclick={onStopManaged}>
-                <Icon name="stop" size={16} />
-                <span>{$t('setup.stop_runtime')}</span>
-              </button>
+            {#if $managedRuntimeStore.catalog.length > 1}
+              <label class="form-field">
+                <span>Выбор модели</span>
+                <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
+                  <option value="">{$t('setup.select_local_model')}</option>
+                  {#each $managedRuntimeStore.catalog as model}
+                    <option value={model.model_id}>{model.display_name}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+
+            <div class="hero-empty-state connected-state">
+              <div class="hero-icon ready-icon">
+                <Icon name="check" size={48} />
+              </div>
+              <p class="empty-title">ИИ готов к работе</p>
+              <p class="empty-desc">Встроенный движок установлен и готов к запуску.</p>
+
+              {#if managedSetupRunning}
+                <DownloadProgress
+                  title={$t('models.setup_progress')}
+                  detail={activeDownload ? `${(activeDownload.received_bytes / 1024 / 1024).toFixed(1)} / ${(activeDownload.expected_bytes / 1024 / 1024).toFixed(1)} MiB` : 'Пожалуйста, подождите...'}
+                  percent={activeDownload?.percent ?? null}
+                  onCancel={activeDownload ? () => void cancelApprovedArtifactDownload(activeDownload.artifact_id) : null}
+                />
+              {:else}
+                <div class="setup-actions">
+                  <button
+                    type="button"
+                    class="primary-button hero-button run-model-btn"
+                    aria-label="Запустить ИИ"
+                    disabled={!canBindManaged}
+                    onclick={onConfirmManagedBinding}
+                  >
+                    <Icon name="play" size={24} />
+                    <div class="hero-btn-text">
+                      <span class="btn-title">{$t($managedConnectionBusy ? 'chat.model_connecting' : 'setup.connect')}</span>
+                      <span class="btn-sub">Запустить выбранную</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button hero-button"
+                    aria-label="Из каталога HF"
+                    onclick={onGoToHfCatalog}
+                  >
+                    <Icon name="search" size={24} />
+                    <div class="hero-btn-text">
+                      <span class="btn-title">Из каталога HF</span>
+                      <span class="btn-sub">Найти модель</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button hero-button"
+                    aria-label="Загрузить локальную модель gguf"
+                    onclick={onOpenModelSettings}
+                  >
+                    <Icon name="folder" size={24} />
+                    <div class="hero-btn-text">
+                      <span class="btn-title">Свой .gguf</span>
+                      <span class="btn-sub">Локальный файл</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button hero-button"
+                    aria-label="Внешний сервер"
+                    onclick={() => modelSetupMode.set('external')}
+                  >
+                    <Icon name="plug" size={24} />
+                    <div class="hero-btn-text">
+                      <span class="btn-title">Внешний сервер</span>
+                      <span class="btn-sub">Подключить API</span>
+                    </div>
+                  </button>
+                </div>
+              {/if}
             </div>
 
-            <label class="form-field">
-              <span>{$t('setup.runtime_model')}</span>
-              <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
-                <option value="">{$t('setup.select_local_model')}</option>
-                {#each $managedRuntimeStore.catalog as model}
-                  <option value={model.model_id}>{model.display_name} ({Math.round(model.asset_bytes / 1024 / 1024)} MiB)</option>
-                {/each}
-              </select>
-            </label>
-
-            <label class="form-field">
-              <span>{$t('setup.response_mode')}</span>
-              <select disabled={$inferenceBusy} value={$managedRuntimeStore.harnessId} onchange={onManagedHarnessChange}>
-                <option value="minimal">{$t('setup.no_system_instruction')}</option>
-                <option value="native-localcomet">{$t('setup.safe_mode')}</option>
-              </select>
-              <p class="field-hint">{harnessDescription($managedRuntimeStore.harnessId)}</p>
-            </label>
-
-            <button
-              type="button"
-              class="primary-button full-width"
-              disabled={!canBindManaged}
-              onclick={onConfirmManagedBinding}
-            >
-              <Icon name="link" size={16} />
-              <span>{$t($managedConnectionBusy ? 'chat.model_connecting' : 'setup.connect')}</span>
-            </button>
-
             {#if $managedConnectionBusy}
-              <p class="connection-progress" role="status">{$t('chat.model_loading_detail')}</p>
+              <p class="connection-progress hero-progress" role="status">{$t('chat.model_loading_detail')}</p>
             {/if}
-
-            {#if $managedRuntimeStore.binding}
-              <div class="fingerprint">
-                <span>{$t('setup.binding_id')}</span>
-                <code>{$managedRuntimeStore.binding.binding_fingerprint}</code>
-              </div>
-            {/if}
-          {/if}
-
-          {#if $managedRuntimeStore.lastError}
-            <p class="error" role="status">{$managedRuntimeStore.lastError.message}</p>
           {/if}
         </section>
       </div>
@@ -334,93 +384,95 @@
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(12px);
+    animation: fadeIn 0.4s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   .drawer-panel {
     position: relative;
-    width: min(480px, 100vw);
+    width: min(540px, 100vw);
     height: 100%;
     max-height: 100vh;
-    background: var(--lc-bg-elevated);
-    border-left: var(--border-thin);
+    background: rgba(18, 20, 24, 0.85);
+    backdrop-filter: blur(32px);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: var(--lc-shadow);
+    box-shadow: -20px 0 60px rgba(0, 0, 0, 0.6);
+    animation: slideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes slideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
   }
 
   .drawer-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--lc-space-4);
-    border-bottom: var(--border-thin);
+    padding: 24px 32px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   .drawer-header h2 {
     margin: 0;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
+    background: linear-gradient(90deg, #fff 0%, #a1a1aa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.01em;
   }
 
   .icon-button {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     display: grid;
     place-items: center;
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-panel-solid);
-    color: var(--lc-muted);
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    color: #a1a1aa;
     cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .icon-button:hover {
-    background: var(--lc-panel-soft);
-    border-color: var(--lc-line);
-    color: var(--lc-text);
-  }
-
-  .drawer-tabs {
-    display: flex;
-    border-bottom: var(--border-thin);
-    background: var(--lc-panel-solid);
-  }
-
-  .drawer-tabs button {
-    flex: 1;
-    padding: var(--lc-space-3) var(--lc-space-4);
-    border: none;
-    background: transparent;
-    color: var(--lc-muted);
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-  }
-
-  .drawer-tabs button:hover {
-    color: var(--lc-text);
-    background: var(--lc-panel-soft);
-  }
-
-  .drawer-tabs button.active {
-    color: var(--lc-accent);
-    border-bottom-color: var(--lc-accent);
-    background: var(--lc-accent-dim);
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    transform: rotate(90deg) scale(1.1);
   }
 
   .drawer-content {
     flex: 1;
     overflow-y: auto;
-    padding: var(--lc-space-4);
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .drawer-content::-webkit-scrollbar {
+    width: 6px;
+  }
+  .drawer-content::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+    border-radius: 10px;
   }
 
   .setup-section {
-    display: grid;
-    gap: var(--lc-space-4);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
   }
 
   .setup-section h3 {
@@ -431,110 +483,134 @@
 
   .section-desc {
     margin: 0;
-    color: var(--lc-muted);
-    font-size: 13px;
+    color: #a1a1aa;
+    font-size: 14px;
+    line-height: 1.5;
   }
 
-  .step-indicator {
-    display: flex;
-    gap: var(--lc-space-2);
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--lc-faint);
-    font-family: var(--lc-mono);
-  }
-
-  .step-indicator span {
-    padding: var(--lc-space-1) var(--lc-space-2);
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-panel-soft);
-  }
-
-  .step-indicator span.active {
-    color: var(--lc-accent);
-    background: var(--lc-accent-dim);
-    border-color: var(--lc-line-strong);
-  }
-
+  /* Form Fields */
   .form-field {
     display: grid;
-    gap: var(--lc-space-1);
+    gap: 8px;
     min-width: 0;
   }
 
   .form-field span {
-    color: var(--lc-muted);
-    font-size: 12px;
-    font-weight: 700;
+    color: #a1a1aa;
+    font-size: 13px;
+    font-weight: 600;
   }
 
   .form-field input,
   .form-field select {
-    min-height: 36px;
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-panel-soft);
-    color: var(--lc-text);
+    min-height: 44px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    color: #fff;
     font: inherit;
-    padding: 0 var(--lc-space-3);
+    padding: 0 16px;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  }
+  
+  .form-field input:focus,
+  .form-field select:focus {
+    outline: none;
+    background: rgba(0,0,0,0.4);
+    border-color: rgba(34, 197, 94, 0.5);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
   }
 
   .form-field input[aria-invalid="true"] {
-    border-color: var(--lc-danger);
+    border-color: rgba(239, 68, 68, 0.5);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
   }
 
   .field-hint {
     margin: 0;
-    color: var(--lc-faint);
-    font-size: 11px;
-    line-height: 1.4;
+    color: #71717a;
+    font-size: 12px;
+    line-height: 1.5;
   }
 
+  /* Buttons */
   .action-row {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--lc-space-2);
+    gap: 12px;
   }
 
   .action-row button {
     display: inline-flex;
     align-items: center;
-    gap: var(--lc-space-2);
-    min-height: 36px;
-    padding: 0 var(--lc-space-3);
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-panel-solid);
-    color: var(--lc-text);
-    font-weight: 700;
-    font-size: 12px;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    color: #e4e4e7;
+    font-weight: 600;
+    font-size: 13px;
     cursor: pointer;
+    transition: all 0.2s ease;
   }
 
   .action-row button:hover:not(:disabled) {
-    background: var(--lc-panel-soft);
-    border-color: var(--lc-line);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
   }
 
   .action-row button:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 
+  /* Step Indicator */
+  .step-indicator {
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #52525b;
+    font-family: ui-monospace, monospace;
+    margin-bottom: 8px;
+  }
+
+  .step-indicator span {
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.3s;
+  }
+
+  .step-indicator span.active {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.1);
+  }
+
+  /* Primary Button */
   .primary-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--lc-space-2);
-    min-height: 40px;
-    padding: 0 var(--lc-space-4);
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 24px;
     border: none;
-    border-radius: var(--lc-radius-sm);
-    background: var(--lc-accent);
-    color: var(--lc-logo-cut);
+    border-radius: 12px;
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    color: #fff;
     font-weight: 800;
-    font-size: 13px;
+    font-size: 14px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
     cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .primary-button.full-width {
@@ -542,102 +618,235 @@
   }
 
   .primary-button:hover:not(:disabled) {
-    background: var(--lc-accent-strong);
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px) scale(1.02);
+  }
+
+  .primary-button:active:not(:disabled) {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3);
   }
 
   .primary-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    background: #3f3f46;
+    box-shadow: none;
   }
 
-  .fingerprint {
-    display: grid;
-    gap: var(--lc-space-1);
-    padding-top: var(--lc-space-2);
-    border-top: var(--border-thin);
-    color: var(--lc-muted);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .fingerprint code {
-    overflow-wrap: anywhere;
-    font-family: var(--lc-mono);
-    font-size: 11px;
-  }
-
-  .error {
-    margin: 0;
-    color: var(--lc-danger);
-    font-weight: 700;
-    font-size: 12px;
-  }
-
-  .connection-progress {
-    margin: 0;
-    color: var(--lc-muted);
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  .managed-status-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--lc-space-2) var(--lc-space-4);
-  }
-
-  .status-row {
+  /* Hero AI State */
+  .managed-view {
     display: flex;
     flex-direction: column;
-    gap: var(--lc-space-1);
+    justify-content: flex-start;
   }
-
-  .status-label {
-    color: var(--lc-muted);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .status-value {
-    color: var(--lc-text);
-    font-size: 13px;
-  }
-
-  .status-value.mono {
-    font-family: var(--lc-mono);
-  }
-
-  .empty-state {
-    display: grid;
-    gap: var(--lc-space-2);
-    padding: var(--lc-space-6) var(--lc-space-4);
+  
+  .hero-empty-state {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     text-align: center;
-    border: var(--border-thin);
-    border-radius: var(--lc-radius-md);
-    background: var(--lc-panel-soft);
+    padding: 48px 32px;
+    background: linear-gradient(145deg, rgba(34, 197, 94, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+    backdrop-filter: blur(12px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    margin-bottom: 32px;
+    overflow: hidden;
+  }
+
+  .hero-empty-state::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at center, rgba(34, 197, 94, 0.1) 0%, transparent 60%);
+    animation: rotateSlow 20s linear infinite;
+    z-index: -1;
+  }
+
+  @keyframes rotateSlow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .hero-empty-state.connected-state {
+    background: linear-gradient(145deg, rgba(34, 197, 94, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+    border-color: rgba(34, 197, 94, 0.2);
+  }
+
+  @keyframes pulseGlow {
+    0% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.2), inset 0 0 15px rgba(34, 197, 94, 0.1); transform: scale(1); }
+    50% { box-shadow: 0 0 40px rgba(34, 197, 94, 0.4), inset 0 0 25px rgba(34, 197, 94, 0.2); transform: scale(1.05); }
+    100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.2), inset 0 0 15px rgba(34, 197, 94, 0.1); transform: scale(1); }
+  }
+
+  .hero-icon {
+    display: grid;
+    place-items: center;
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.05));
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #4ade80;
+    margin-bottom: 24px;
+    animation: pulseGlow 4s infinite ease-in-out;
+  }
+
+  .ready-icon {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(34, 197, 94, 0.1));
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    color: #4ade80;
   }
 
   .empty-title {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--lc-text);
+    font-size: 24px;
+    font-weight: 800;
+    margin-bottom: 12px;
+    background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0.7));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
   }
 
   .empty-desc {
-    margin: 0;
-    color: var(--lc-muted);
-    font-size: 12px;
+    color: #a1a1aa;
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 32px;
+    max-width: 90%;
   }
 
+  .setup-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .run-model-btn {
+    grid-column: 1 / -1;
+  }
+
+  .hero-button {
+    height: auto;
+    padding: 20px 16px;
+    font-size: 15px;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    text-align: center;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .primary-button.hero-button {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  
+  .secondary-button.hero-button {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.02) 100%);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #4ade80;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+
+  .secondary-button.hero-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.05) 100%);
+    border-color: rgba(34, 197, 94, 0.6);
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 8px 24px rgba(34, 197, 94, 0.25), inset 0 0 16px rgba(34, 197, 94, 0.15);
+    color: #86efac;
+  }
+
+  .secondary-button.hero-button:active:not(:disabled) {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.4);
+  }
+  
+  .secondary-button.hero-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.05);
+    color: #71717a;
+  }
+
+  .hero-btn-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .btn-title {
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .btn-sub {
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.8;
+  }
+
+  /* Errors & Diagnostics */
+  .fingerprint {
+    display: grid;
+    gap: 4px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    color: #a1a1aa;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .fingerprint code {
+    background: rgba(0,0,0,0.3);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: #d4d4d8;
+    word-break: break-all;
+  }
+
+  .back-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    color: #a1a1aa;
+    margin-bottom: 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.2s, transform 0.2s;
+    padding: 0;
+  }
+
+  .back-button:hover {
+    color: #fff;
+    transform: translateX(-4px);
+  }
+  
   @media (max-width: 680px) {
     .drawer-panel {
       width: 100vw;
       border-left: none;
-    }
-
-    .managed-status-grid {
-      grid-template-columns: 1fr;
+      border-radius: 0;
     }
   }
 </style>

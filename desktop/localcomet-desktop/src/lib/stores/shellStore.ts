@@ -11,7 +11,7 @@ export const MAX_DRAFT_LENGTH = 12000;
 export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 
 export type WorkspaceMode = 'chat' | 'review' | 'setup' | 'modelfit' | 'hf_browser';
-export type SettingsSection = 'interface' | 'models' | 'permissions' | 'observability' | 'about';
+export type SettingsSection = 'interface' | 'models' | 'skills' | 'permissions' | 'observability' | 'about';
 
 let messageCounter = 0;
 const initialUiPreferences = loadUiPreferences();
@@ -168,9 +168,10 @@ export function appendAssistantChunk(requestId: string, chunk: string): boolean 
   chatMessages.update((messages) => messages.map((message) => {
     if (message.role !== 'assistant' || message.requestId !== requestId || isTerminalMessage(message.state)) return message;
     appended = true;
+    const alreadyFull = message.body.length >= MAX_ASSISTANT_MESSAGE_LENGTH;
     return {
       ...message,
-      body: `${message.body}${chunk}`.slice(0, MAX_ASSISTANT_MESSAGE_LENGTH),
+      body: alreadyFull ? message.body : `${message.body}${chunk}`.slice(0, MAX_ASSISTANT_MESSAGE_LENGTH),
       state: 'streaming'
     };
   }));

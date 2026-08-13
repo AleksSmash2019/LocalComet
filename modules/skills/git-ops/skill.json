@@ -1,0 +1,1 @@
+{"localcomet.skill": "1.0", "id": "git-ops", "name": "Git Ops", "version": "0.1.0", "description": "Git operations: status, log, branch, diff, commit info.", "author": "LocalComet", "entrypoint": "entrypoint.py", "permissions": ["filesystem.read", "process.spawn"], "capabilities": ["git.status", "git.log", "git.branch", "git.diff"], "dependencies": []}

@@ -31,7 +31,15 @@ class RealSidecarGateTests(unittest.TestCase):
         self.assertEqual(status, 1)
 
     def test_command_exactly_filters_real_sidecar_supervisor_tests(self) -> None:
-        result = subprocess.CompletedProcess(["cargo", "test"], 0, stdout="", stderr="")
+        # A real filtered run always prints a "running N tests" header; an empty
+        # stdout is the false-green shape the gate now rejects, so the fixture
+        # has to look like cargo actually ran something.
+        result = subprocess.CompletedProcess(
+            ["cargo", "test"],
+            0,
+            stdout="running 2 tests\ntest result: ok. 2 passed; 0 failed; 0 ignored\n",
+            stderr="",
+        )
         status, command = self.run_gate(result)
         self.assertEqual(status, 0)
         self.assertEqual(
@@ -50,12 +58,24 @@ class RealSidecarGateTests(unittest.TestCase):
         result = subprocess.CompletedProcess(
             ["cargo", "test"],
             0,
-            stdout="test result: ok. 1 passed; 0 failed; 0 ignored\n"
-            "test result: ok. 2 passed; 0 failed; 0 ignored\n",
+            stdout="running 1 test\ntest result: ok. 1 passed; 0 failed; 0 ignored\n"
+            "running 2 tests\ntest result: ok. 2 passed; 0 failed; 0 ignored\n",
             stderr="",
         )
         status, _ = self.run_gate(result)
         self.assertEqual(status, 0)
+
+    def test_filter_matching_nothing_fails_require_mode(self) -> None:
+        # cargo exits 0 when a filter matches no test, so without this check a
+        # renamed or deleted real-sidecar test would read as a passing gate.
+        result = subprocess.CompletedProcess(
+            ["cargo", "test"],
+            0,
+            stdout="running 0 tests\ntest result: ok. 0 passed; 0 failed; 0 ignored\n",
+            stderr="",
+        )
+        status, _ = self.run_gate(result)
+        self.assertEqual(status, 1)
 
     def test_missing_environment_panic_still_fails_require_mode(self) -> None:
         result = subprocess.CompletedProcess(

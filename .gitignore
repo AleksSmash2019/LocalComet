@@ -49,3 +49,11 @@ auth.json
 
 # added 2026-08-03: IDE workspace config is developer-local, not project source
 /.idea/
+
+# added 2026-08-10: agent/tool runtime artifacts and excluded repo files
+/.agents/
+/.claude/
+/.freebuff/
+/skills-lock.json
+/run_7_cycles.py
+/nul

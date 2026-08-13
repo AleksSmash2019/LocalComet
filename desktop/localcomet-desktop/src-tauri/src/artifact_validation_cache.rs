@@ -45,6 +45,7 @@ pub(crate) struct ValidatedHash {
 #[derive(Debug)]
 pub(crate) struct ArtifactValidationCache {
     path: PathBuf,
+    operations: Mutex<()>,
     entries: Mutex<Vec<ArtifactValidationCacheEntry>>,
 }
 
@@ -56,6 +57,7 @@ impl ArtifactValidationCache {
         entries.retain(|entry| entry.catalog_digest == catalog_digest);
         let cache = Self {
             path,
+            operations: Mutex::new(()),
             entries: Mutex::new(entries),
         };
         if original_len != cache.entries().len() {
@@ -75,6 +77,7 @@ impl ArtifactValidationCache {
     where
         F: FnOnce(&Path) -> Result<String, E>,
     {
+        let _operation = self.operation();
         let identity = file_identity(path);
         if !force_full_validation {
             if let Some(identity) = identity.as_ref() {
@@ -121,6 +124,7 @@ impl ArtifactValidationCache {
     }
 
     pub(crate) fn invalidate_path(&self, path: &Path) {
+        let _operation = self.operation();
         let Some(path_canonical) = canonical_path_for_cache(path) else {
             return;
         };
@@ -136,6 +140,12 @@ impl ArtifactValidationCache {
 
     fn entries(&self) -> std::sync::MutexGuard<'_, Vec<ArtifactValidationCacheEntry>> {
         self.entries
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn operation(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.operations
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -254,6 +264,8 @@ mod tests {
     use sha2::{Digest, Sha256};
     use std::fs::{File, FileTimes};
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{mpsc, Arc};
+    use std::thread;
     use std::time::Duration;
 
     static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -306,6 +318,61 @@ mod tests {
             .expect("cache hit");
         assert_eq!(second.source, ValidationSource::Cached);
         assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn concurrent_validation_hashes_once_and_reuses_completed_entry() {
+        let workspace = TestWorkspace::new();
+        let file = workspace.0.join("model.gguf");
+        fs::write(&file, b"GGUF-cache").expect("write fixture");
+        let expected = hash(&file).expect("hash fixture");
+        let cache = Arc::new(ArtifactValidationCache::new(&workspace.0, "catalog-a"));
+        let (first_entered_tx, first_entered_rx) = mpsc::channel();
+        let (release_first_tx, release_first_rx) = mpsc::channel();
+
+        let first_cache = Arc::clone(&cache);
+        let first_file = file.clone();
+        let first_expected = expected.clone();
+        let first = thread::spawn(move || {
+            first_cache.hash_or_reuse(&first_file, &first_expected, "catalog-a", false, |path| {
+                first_entered_tx.send(()).expect("signal first hasher");
+                release_first_rx.recv().expect("release first hasher");
+                hash(path)
+            })
+        });
+        first_entered_rx.recv().expect("first hasher entered");
+
+        let second_cache = Arc::clone(&cache);
+        let second_file = file.clone();
+        let second_expected = expected.clone();
+        let (second_started_tx, second_started_rx) = mpsc::channel();
+        let (second_entered_tx, second_entered_rx) = mpsc::channel();
+        let second = thread::spawn(move || {
+            second_started_tx.send(()).expect("signal second thread");
+            second_cache.hash_or_reuse(&second_file, &second_expected, "catalog-a", false, |path| {
+                second_entered_tx.send(()).expect("signal second hasher");
+                hash(path)
+            })
+        });
+        second_started_rx.recv().expect("second thread started");
+        let second_entered_before_release = second_entered_rx.recv_timeout(Duration::from_secs(1));
+
+        release_first_tx.send(()).expect("release first validation");
+        let first_result = first
+            .join()
+            .expect("join first validation")
+            .expect("first hash");
+        let second_result = second
+            .join()
+            .expect("join second validation")
+            .expect("second cache hit");
+
+        assert!(
+            second_entered_before_release.is_err(),
+            "concurrent validation invoked the hasher twice"
+        );
+        assert_eq!(first_result.source, ValidationSource::Hashed);
+        assert_eq!(second_result.source, ValidationSource::Cached);
     }
 
     #[test]

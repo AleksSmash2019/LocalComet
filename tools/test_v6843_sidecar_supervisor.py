@@ -340,16 +340,30 @@ def run_runtime_transcript() -> None:
     check(hello_reply[0]["payload"]["role"] == "python_core", "desktop hello reply role invalid")
 
     now[0] += 1.25
-    health = runtime.handle_message(make_request("desk-health-1", "app.health", {}))
+    health_request_id = "hreq_" + "a" * 32
+    health = runtime.handle_message(
+        make_request(
+            health_request_id,
+            "app.health",
+            {
+                "type": "health.check",
+                "protocolVersion": 1,
+                "requestId": health_request_id,
+                "generationId": 1,
+                "startupNonce": "scn_" + "b" * 64,
+                "runtimeInstanceId": "rti_" + "c" * 32,
+                "sentAtUnixMs": 1000,
+            },
+        )
+    )
     check(len(health) == 1, "health should return one response")
     check(health[0]["type"] == "response", "health did not return response")
-    check(health[0]["reply_to"] == "desk-health-1", "health reply_to mismatch")
-    check(health[0]["payload"]["status"] == "ok", "health status not ok")
-    check(health[0]["payload"]["uptime_ms"] >= 1250, "health uptime missing")
-    check("protocol_version" in health[0]["payload"], "health protocol version missing")
-    check("seen_message_ids" in health[0]["payload"], "health duplicate cache metric missing")
-    check("knowledge.review.list" in health[0]["payload"]["capabilities"], "health review list capability missing")
-    check("knowledge.review.get" in health[0]["payload"]["capabilities"], "health review get capability missing")
+    check(health[0]["reply_to"] == health_request_id, "health reply_to mismatch")
+    check(health[0]["payload"]["type"] == "health.status", "health status type wrong")
+    check(health[0]["payload"]["requestId"] == health_request_id, "health request id not echoed")
+    check(health[0]["payload"]["protocolVersion"] == 1, "health protocol version wrong")
+    check(health[0]["payload"]["generationId"] == 1, "health generation id not echoed")
+    check(health[0]["payload"]["status"] == "ready", "health status not ready")
 
     empty_reviews = runtime.handle_message(
         make_request(
@@ -459,9 +473,19 @@ def run_runtime_transcript() -> None:
         check(replies[0]["payload"]["code"] == "unsupported_method", f"{method} wrong error code")
         check(replies[0]["reply_to"] == f"desk-block-{index}", f"{method} reply_to mismatch")
 
-    first = runtime.handle_message(make_request("desk-dup-1", "app.health", {}))
-    duplicate = runtime.handle_message(make_request("desk-dup-1", "app.health", {}))
-    check(first[0]["payload"]["status"] == "ok", "first duplicate probe should succeed")
+    dup_health_id = "hreq_" + "d" * 32
+    dup_health_payload = {
+        "type": "health.check",
+        "protocolVersion": 1,
+        "requestId": dup_health_id,
+        "generationId": 1,
+        "startupNonce": "scn_" + "e" * 64,
+        "runtimeInstanceId": "rti_" + "f" * 32,
+        "sentAtUnixMs": 1001,
+    }
+    first = runtime.handle_message(make_request(dup_health_id, "app.health", dup_health_payload))
+    duplicate = runtime.handle_message(make_request(dup_health_id, "app.health", dup_health_payload))
+    check(first[0]["type"] == "response", "first duplicate probe should succeed")
     check(duplicate[0]["payload"]["code"] == "duplicate_message_id", "duplicate id was not rejected")
 
     bounded = DesktopSidecarRuntime(session_nonce="2" * 24, monotonic=monotonic)
@@ -470,7 +494,7 @@ def run_runtime_transcript() -> None:
         bounded.handle_message(make_request(f"id-{index:03d}", "app.health", {}))
     check(bounded.seen_id_count == MAX_SEEN_MESSAGE_IDS, "duplicate cache exceeded bound")
     evicted = bounded.handle_message(make_request("id-000", "app.health", {}))
-    check(evicted[0]["payload"]["status"] == "ok", "old duplicate id was not evicted")
+    check(evicted[0]["payload"].get("code") != "duplicate_message_id", "old duplicate id was not evicted")
 
     shutdown = runtime.handle_message(make_request("desk-shutdown-1", "app.shutdown", {}))
     check(len(shutdown) == 2, "shutdown should return response and goodbye")
@@ -546,12 +570,30 @@ def run_runner_transcript() -> None:
         hello_reply = decode_from_stream(process.stdout)
         check(hello_reply["type"] == "hello", "runner desktop hello reply missing")
 
-        process.stdin.write(encode_frame(make_request("desk-health-runner", "app.health", {})))
+        runner_health_id = "hreq_" + "0" * 32
+        process.stdin.write(
+            encode_frame(
+                make_request(
+                    runner_health_id,
+                    "app.health",
+                    {
+                        "type": "health.check",
+                        "protocolVersion": 1,
+                        "requestId": runner_health_id,
+                        "generationId": 1,
+                        "startupNonce": "scn_" + "1" * 64,
+                        "runtimeInstanceId": "rti_" + "2" * 32,
+                        "sentAtUnixMs": 1002,
+                    },
+                )
+            )
+        )
         process.stdin.flush()
         health = decode_from_stream(process.stdout)
         check(health["type"] == "response", "runner health did not return response")
-        check(health["reply_to"] == "desk-health-runner", "runner health reply_to mismatch")
-        check(health["payload"]["status"] == "ok", "runner health status wrong")
+        check(health["reply_to"] == runner_health_id, "runner health reply_to mismatch")
+        check(health["payload"]["type"] == "health.status", "runner health payload type wrong")
+        check(health["payload"]["status"] in ("ready", "degraded"), "runner health status wrong")
 
         process.stdin.write(
             encode_frame(
@@ -839,8 +881,14 @@ def run_manifest_checks() -> None:
 def run_repo_guard_checks() -> None:
     for path_text, expected in FORBIDDEN_HASHES.items():
         check(sha256(ROOT / path_text) == expected, f"forbidden v6.84.1 file changed: {path_text}")
-    check(not (DESKTOP / "node_modules").exists(), "source repo node_modules exists")
-    check(not (DESKTOP / "src-tauri" / "target").exists(), "source repo Cargo target exists")
+    tracked_artifacts = subprocess.run(
+        ["git", "ls-files", "--", "desktop/localcomet-desktop/node_modules", "desktop/localcomet-desktop/src-tauri/target"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    check(tracked_artifacts == "", "source repo build artifacts tracked in git")
     check(not (ROOT / "Projects" / "BrowserProfile").exists() or (ROOT / "Projects" / "BrowserProfile").is_dir(), "BrowserProfile guard path invalid")
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=ROOT, text=True, capture_output=True, check=True)
     check(staged.stdout.strip() == "", "staged files are not empty")

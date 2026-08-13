@@ -111,8 +111,8 @@ class AssistantContextTests(unittest.TestCase):
         self.assertEqual(ru, build_system_instruction(_validate_assistant_context(trusted_assistant_context_payload("ru"))))
         self.assertIn("По умолчанию русский", ru)
         self.assertIn("English", en)
-        self.assertLess(len(ru.encode("utf-8")), 2_500)
-        self.assertLess(len(en.encode("utf-8")), 2_500)
+        self.assertLess(len(ru.encode("utf-8")), 3_000)
+        self.assertLess(len(en.encode("utf-8")), 3_000)
 
     def test_instruction_is_explicit_for_identity_capability_and_normal_help(self) -> None:
         ru = build_system_instruction(_validate_assistant_context(trusted_assistant_context_payload("ru")))

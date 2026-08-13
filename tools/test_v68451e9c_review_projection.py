@@ -8,6 +8,7 @@ from dataclasses import FrozenInstanceError, fields, is_dataclass, replace
 import difflib
 import inspect
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -18,8 +19,10 @@ import unittest
 from unittest import mock
 
 sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, os.fspath(ROOT))
 
-import modules
+import modules  # noqa: E402
 from modules.knowledge_change_proposal_ru import ProposalOperation
 from modules.knowledge_change_review_ru import (
     ConflictCode,

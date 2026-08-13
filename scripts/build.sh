@@ -19,6 +19,8 @@ python3 tests/test_trust_chain_invariants.py
 python3 scripts/check_command_parity.py
 python3 scripts/check_tool_risk_registry.py
 python3 scripts/check_ui_fake_state.py
+python3 scripts/check_bundle_parity.py
+python3 scripts/check_real_sidecar_tests.py
 
 step 3 "Evidence provenance"
 python3 scripts/refresh_evidence.py
@@ -32,10 +34,12 @@ step 4 "Rust: fmt + clippy + tests"
   cargo test --release
 )
 
-step 5 "Frontend: npm ci + build"
+step 5 "Frontend: npm ci + check + test + build"
 (
   cd desktop/localcomet-desktop
   npm ci
+  npm run check
+  npm test
   npm run build
 )
 

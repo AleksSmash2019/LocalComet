@@ -95,7 +95,7 @@ class FakeProvider(BaseHTTPRequestHandler):
             set(body) != {"max_tokens", "messages", "model", "stream", "temperature"}
             or body["stream"] is not True
             or body["temperature"] != 0
-            or not 1 <= body["max_tokens"] <= 512
+            or not 1 <= body["max_tokens"] <= 8192
         ):
             self.send_response(400)
             self.end_headers()
