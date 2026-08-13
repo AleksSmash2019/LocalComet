@@ -65,6 +65,7 @@ fn is_non_workspace_operation(tool: &str) -> bool {
             | "runtime.start"
             | "runtime.stop"
             | "model.binding.set"
+            | "import_custom_model"
     )
 }
 
