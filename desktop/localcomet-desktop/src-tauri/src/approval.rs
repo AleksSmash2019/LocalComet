@@ -203,6 +203,7 @@ pub fn command_family_for_tool(tool: &str) -> Option<CommandFamily> {
         "files.write" | "files.create_folder" => Some(CommandFamily::ToolFilesystemWrite),
         "files.delete" => Some(CommandFamily::ToolFilesystemDelete),
         "computer_use" => Some(CommandFamily::ComputerUse),
+        "import_custom_model" => Some(CommandFamily::ArtifactDownload),
         _ => None,
     }
 }

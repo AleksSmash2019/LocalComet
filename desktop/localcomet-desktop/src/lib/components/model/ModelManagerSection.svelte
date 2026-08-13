@@ -181,7 +181,7 @@
         {$t('models.refresh')}
       </button>
       <button type="button" disabled={actionPending} onclick={handleImportGguf}>
-        {$t('models.import_gguf', { default: 'Import .gguf' })}
+        {$t('models.import_gguf')}
       </button>
     </div>
   </div>

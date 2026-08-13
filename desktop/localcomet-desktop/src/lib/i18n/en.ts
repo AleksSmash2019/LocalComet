@@ -393,6 +393,7 @@ export const en: TranslationMap = {
 
   // Approved local model manager
   'models.title': 'Models',
+  'models.import_gguf': 'Import .gguf',
   'models.boundary': 'Use approved catalog models or explicitly confirmed user-supplied GGUF models. The assistant itself does not gain internet access.',
   'models.refresh': 'Refresh',
   'models.engine': 'Local engine',

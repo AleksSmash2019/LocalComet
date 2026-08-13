@@ -185,7 +185,8 @@ pub(crate) fn risk_level_for_tool(tool: &str) -> Result<RiskLevel, BridgeError> 
         | "artifact.download"
         | "runtime.start"
         | "runtime.stop"
-        | "model.binding.set" => Ok(RiskLevel::Guarded),
+        | "model.binding.set"
+        | "import_custom_model" => Ok(RiskLevel::Guarded),
         "files.delete" | "artifact.remove" | "shell" | "computer_use" | "skills.invoke" => {
             Ok(RiskLevel::Dangerous)
         }
