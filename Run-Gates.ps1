@@ -46,7 +46,14 @@ if ($env:LOCALCOMET_TEST_PYTHON) { $Python = $env:LOCALCOMET_TEST_PYTHON }
 
 # Excluded from tools discovery: requires external OpenAI credentials,
 # so it is not a deterministic local gate. Run it manually when configured.
-$ToolsExclude = @('test_gpt_bridge.py')
+# We also exclude the 4 main-style v684 gates here since we explicitly run them below.
+$ToolsExclude = @(
+    'test_gpt_bridge.py',
+    'test_v6841_desktop_ipc.py',
+    'test_v6842_desktop_shell.py',
+    'test_v6843_sidecar_supervisor.py',
+    'test_v6844_control_plane.py'
+)
 # Excluded from check discovery: env-gated below, not part of default discovery.
 $CheckExclude = @('check_real_sidecar_tests.py')
 
@@ -99,6 +106,12 @@ if (Test-Path $toolsDir) {
         }
     }
 }
+
+# 5a. Orphan v6.84.x main-style gates
+Add-Gate 'tools: test_v6841_desktop_ipc.py' $RepoRoot $Python @('tools/test_v6841_desktop_ipc.py') $false
+Add-Gate 'tools: test_v6842_desktop_shell.py' $RepoRoot $Python @('tools/test_v6842_desktop_shell.py') $false
+Add-Gate 'tools: test_v6843_sidecar_supervisor.py' $RepoRoot $Python @('tools/test_v6843_sidecar_supervisor.py') $false
+Add-Gate 'tools: test_v6844_control_plane.py' $RepoRoot $Python @('tools/test_v6844_control_plane.py') $false
 
 # 6. CLI smoke
 Add-Gate 'smoke_test --mode=cli' $RepoRoot $Python @('scripts/smoke_test.py','--mode=cli') $false

@@ -22,6 +22,6 @@ Close the sidecar startup/readiness and IPC-health trust gap.
 3. supervisor.rs: Updated start() to allocate new generation with CSPRNG nonce and runtime instance ID
 4. ipc.rs: Added reject_duplicate_keys (duplicate JSON key rejection), MAX_HEALTH_JSON_DEPTH, parse_health_frame
 5. security/contracts/sidecar_health_malformed_frames_v1.json: Shared malformed-frame corpus (15 cases)
-6. tools/test_p0c_sidecar_health.py: 37 Python P0-C tests
+6. tools/test_p0c_sidecar_health_protocol_unit.py: 37 Python P0-C tests
 7. tests/p0c-sidecar-health.test.ts: 10 frontend P0-C tests
 8. supervisor.rs: 36 Rust P0-C tests

@@ -211,7 +211,7 @@
     "tools/test_gpt_bridge.py",
     "tools/test_p0a_legacy_quarantine.py",
     "tools/test_p0c_r1_sidecar_health.py",
-    "tools/test_p0c_sidecar_health.py",
+    "tools/test_p0c_sidecar_health_protocol_unit.py",
     "tools/test_t13_injection_and_approval.py",
     "tools/test_tool_risk_rust_parity.py",
     "tools/test_up00_unready_sidecar.py",

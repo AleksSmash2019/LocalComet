@@ -1299,14 +1299,14 @@ mod tests {
             dispatcher: None,
         };
         let input = json!({"source_path": "model.gguf", "filename": "model.gguf"});
-        
+
         let envelope = request_approval_inner(
             &approval_state,
             "import_custom_model".to_string(),
             input.clone(),
         )
         .expect("request_approval should succeed with no workspace");
-        
+
         assert_eq!(envelope.tool, "import_custom_model");
         assert_eq!(envelope.command_family, CommandFamily::ArtifactDownload);
         assert_eq!(envelope.risk_level, RiskLevel::Guarded);
@@ -1320,7 +1320,7 @@ mod tests {
             &envelope.call_id,
         )
         .expect("validate_approval_token should succeed");
-        
+
         assert_eq!(grant.workspace, NON_WORKSPACE_SENTINEL);
     }
 

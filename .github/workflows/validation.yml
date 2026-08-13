@@ -25,6 +25,14 @@ jobs:
         run: python scripts/check_command_parity.py
       - name: Gate - Tool Risk Registry
         run: python scripts/check_tool_risk_registry.py
+      - name: Gate - v6841 Desktop IPC
+        run: python tools/test_v6841_desktop_ipc.py
+      - name: Gate - v6842 Desktop Shell
+        run: python tools/test_v6842_desktop_shell.py
+      - name: Gate - v6843 Sidecar Supervisor
+        run: python tools/test_v6843_sidecar_supervisor.py
+      - name: Gate - v6844 Control Plane
+        run: python tools/test_v6844_control_plane.py
 
   rust:
     name: Rust (test + clippy + fmt)
