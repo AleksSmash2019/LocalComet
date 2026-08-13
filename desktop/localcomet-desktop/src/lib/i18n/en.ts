@@ -94,6 +94,7 @@ export const en: TranslationMap = {
   'approval.error_grant_expired': 'The grant expired — please approve the action again',
   'approval.error_policy_blocked': 'Action is outside the confirmed workspace',
   'approval.error_generic': 'The action could not be executed',
+  'approval.warning_destructive': 'This action is destructive and may result in data loss.',
 
   // Files
   'files.title': 'Files',

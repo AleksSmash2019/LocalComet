@@ -42,6 +42,14 @@ SOURCE_GLOBS = [
     "app.py",
     "LocalComet_Control_Panel.py",
     "LocalComet_Patch_Panel.py",
+    "localcomet_runtime_manifest.json",
+    "desktop/localcomet-desktop/src-tauri/resources/localcomet/approved-artifacts.v1.json",
+    "desktop/localcomet-desktop/package.json",
+    "desktop/localcomet-desktop/tsconfig.json",
+    "desktop/localcomet-desktop/svelte.config.js",
+    "desktop/localcomet-desktop/vite.config.ts",
+    "desktop/localcomet-desktop/vitest.config.ts",
+    "third_party/llama.cpp/LICENSE-MIT.txt",
 ]
 
 EXCLUDE_PARTS = {"__pycache__", "node_modules", ".git", "target", ".svelte-kit", "build"}
@@ -86,14 +94,29 @@ def run_and_save(name: str, cmd: list[str], digest: str) -> int:
     )
     body = (result.stdout or "") + (result.stderr or "")
     body_sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    platform_str = f"{platform.system()} {platform.machine()} python={sys.version.split()[0]}"
+    cmd_str = ' '.join(cmd)
+    
+    # Bind all fields together with an HMAC using the tree digest as the key
+    import hmac
+    mac = hmac.new(digest.encode("utf-8"), digestmod=hashlib.sha256)
+    mac.update(cmd_str.encode("utf-8"))
+    mac.update(str(result.returncode).encode("utf-8"))
+    mac.update(body_sha.encode("utf-8"))
+    mac.update(timestamp.encode("utf-8"))
+    mac.update(platform_str.encode("utf-8"))
+    signature = mac.hexdigest()
+
     header = (
-        f"# command: {' '.join(cmd)}\n"
+        f"# command: {cmd_str}\n"
         f"# exit_code: {result.returncode}\n"
         f"# tree_digest: {digest}\n"
         f"# body_sha256: {body_sha}\n"
-        f"# timestamp: {datetime.datetime.now(datetime.timezone.utc).isoformat()}\n"
-        f"# platform: {platform.system()} {platform.machine()} python={sys.version.split()[0]}\n"
+        f"# timestamp: {timestamp}\n"
+        f"# platform: {platform_str}\n"
         f"# source_files: {len(source_files())}\n"
+        f"# evidence_signature: {signature}\n"
         "---\n"
     )
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)

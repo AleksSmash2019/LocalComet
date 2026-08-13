@@ -2007,10 +2007,7 @@ pub async fn managed_artifact_trust_bundle(
     tauri::async_runtime::spawn_blocking(move || {
         let start = std::time::Instant::now();
         let result = state.artifact_trust_bundle();
-        eprintln!(
-            "[TBDEBUG] bundle={}",
-            serde_json::to_string(&result).unwrap_or_default()
-        );
+
         let dur_ms = start.elapsed().as_millis();
         if perf_logging_enabled() {
             eprintln!("[PERF] cmd=managed_artifact_trust_bundle dur_ms={dur_ms}");
@@ -3565,28 +3562,75 @@ impl<'de> Visitor<'de> for UniqueValueVisitor {
 #[tauri::command]
 pub async fn import_custom_model(
     state: tauri::State<'_, Arc<ArtifactTrustService>>,
+    approval_state: tauri::State<'_, Arc<crate::ApprovalState>>,
     source_path: String,
     filename: String,
+    token: String,
+    approval_id: String,
+    call_id: String,
 ) -> Result<String, String> {
     let source = std::path::PathBuf::from(&source_path);
     if !source.exists() {
         return Err("Source file does not exist".to_string());
     }
 
+    crate::approval_commands::validate_approval_token(
+        &approval_state,
+        "import_custom_model",
+        &serde_json::json!({
+            "source_path": source_path,
+            "filename": filename
+        }),
+        &token,
+        &approval_id,
+        &call_id,
+    )
+    .map_err(|e| e.code.to_string())?;
+
+    let safe_filename = std::path::Path::new(&filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("Invalid filename")?
+        .to_string();
+
     let roots = state.roots();
     let ts = now_unix_ms();
-    let dest_filename = format!("{}-{}", ts, filename);
+    let uuid = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
+        .to_string();
+    let dest_filename = format!("{}-{}-{}", ts, uuid, safe_filename);
     let dest_path = roots.model_root.join(&dest_filename);
 
     let state_clone = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        std::fs::copy(&source, &dest_path).map_err(|e| e.to_string())?;
-        let bytes = std::fs::metadata(&dest_path)
-            .map_err(|e| e.to_string())?
-            .len();
-        let sha256 = sha256_file(&dest_path).map_err(|e| e.code().to_string())?;
+        let source_url = format!(
+            "https://huggingface.co/local/import/resolve/main/{}",
+            dest_filename
+        );
+        if let Err(e) = crate::artifact_trust::validate_custom_huggingface_url(&source_url) {
+            return Err(e.code().to_string());
+        }
 
-        let model_id = format!("custom-{}", ts);
+        std::fs::copy(&source, &dest_path).map_err(|e| e.to_string())?;
+
+        let bytes = match std::fs::metadata(&dest_path) {
+            Ok(meta) => meta.len(),
+            Err(e) => {
+                let _ = std::fs::remove_file(&dest_path);
+                return Err(e.to_string());
+            }
+        };
+        let sha256 = match crate::artifact_trust::sha256_file(&dest_path) {
+            Ok(hash) => hash,
+            Err(e) => {
+                let _ = std::fs::remove_file(&dest_path);
+                return Err(e.code().to_string());
+            }
+        };
+
+        let model_id = format!("custom-{}", uuid);
 
         let mut compatible_runtime_ids = Vec::new();
         for runtime in &state_clone.catalog.runtimes {
@@ -3595,11 +3639,8 @@ pub async fn import_custom_model(
 
         let model = CustomModelArtifact {
             model_id: model_id.clone(),
-            display_name: filename.clone(),
-            source_url: format!(
-                "https://huggingface.co/local/import/resolve/main/{}",
-                dest_filename
-            ),
+            display_name: safe_filename.clone(),
+            source_url,
             source_repository: "local/import".to_string(),
             source_revision: "main".to_string(),
             asset_filename: dest_filename.clone(),
@@ -3609,9 +3650,11 @@ pub async fn import_custom_model(
             managed_relative_path: dest_filename,
         };
 
-        state_clone
-            .register_custom_model_after_validation(model)
-            .map_err(|e| e.code().to_string())?;
+        if let Err(e) = state_clone.register_custom_model_after_validation(model) {
+            let _ = std::fs::remove_file(&dest_path);
+            return Err(e.code().to_string());
+        }
+
         Ok(model_id)
     })
     .await

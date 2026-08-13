@@ -238,7 +238,6 @@ def run_full_flow():
     else:
         print("    Post-cancel recovery: TIMEOUT")
     
-    # 10. Summary
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
@@ -250,6 +249,13 @@ def run_full_flow():
     print(f"Post-cancel recovery: PASS")
     print(f"Streaming: PASS ({delta_count} delta events)")
     print(f"Terminal outcomes: 1")
+    
+    assert preview_result['state'] == 'COMPLETED', f"Expected COMPLETED, got {preview_result['state']}"
+    assert decide_result['state'] == 'INJECTED', f"Expected INJECTED, got {decide_result['state']}"
+    assert relevance in ("SEMANTICALLY_RELEVANT", "PARTIALLY_RELEVANT"), f"Model answer irrelevant: {relevance}"
+    assert len(capture.final_text) > 0, "Expected non-empty model output"
+    assert cancel_result.get('status') == 'ok', "Cancellation failed"
+    assert delta_count > 0, "No streaming delta events received"
     
     return True
 

@@ -92,6 +92,23 @@ def main() -> int:
                 f"FAIL: STALE: {path.name} tree_digest {header['tree_digest'][:16]}... "
                 f"!= current {live_digest[:16]}..."
             )
+            continue
+            
+        if "evidence_signature" in header:
+            import hmac
+            mac = hmac.new(header["tree_digest"].encode("utf-8"), digestmod=hashlib.sha256)
+            mac.update(header.get("command", "").encode("utf-8"))
+            mac.update(header.get("exit_code", "").encode("utf-8"))
+            mac.update(header.get("body_sha256", "").encode("utf-8"))
+            mac.update(header.get("timestamp", "").encode("utf-8"))
+            mac.update(header.get("platform", "").encode("utf-8"))
+            expected_sig = mac.hexdigest()
+            if header["evidence_signature"] != expected_sig:
+                problems += 1
+                print(f"FAIL: TAMPERED: {path.name} evidence_signature mismatch")
+        else:
+            problems += 1
+            print(f"FAIL: MISSING_SIGNATURE: {path.name}")
 
     if problems:
         print(f"\n{problems} provenance problem(s) across {len(evidence_files)} file(s)")

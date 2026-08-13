@@ -131,6 +131,25 @@
     return ['cancelled', 'completed', 'failed'].includes(download.lifecycle);
   }
 
+  async function handleImportGguf() {
+    try {
+      const file = await open({
+        multiple: false,
+        filters: [{ name: 'GGUF Models', extensions: ['gguf'] }]
+      });
+      if (typeof file === 'string') {
+        const filename = file.split(/[\\/]/).pop() || 'model.gguf';
+        actionPending = true;
+        await importCustomModel(file, filename);
+        await refreshManagedRuntimeStatus();
+      }
+    } catch (err) {
+      console.error('Import failed', err);
+    } finally {
+      actionPending = false;
+    }
+  }
+
   function formatBytes(value: number): string {
     return `${(value / 1024 / 1024).toFixed(value >= 1024 * 1024 * 1024 ? 0 : 1)} MiB`;
   }
@@ -157,9 +176,14 @@
       <h3 id="settings-models">{$t('models.title')}</h3>
       <p>{$t('models.boundary')}</p>
     </div>
-    <button type="button" class="refresh" disabled={$acquisitionBusy} onclick={() => void refreshManagedRuntimeStatus()}>
-      {$t('models.refresh')}
-    </button>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" class="refresh" disabled={$acquisitionBusy} onclick={() => void refreshManagedRuntimeStatus()}>
+        {$t('models.refresh')}
+      </button>
+      <button type="button" disabled={actionPending} onclick={handleImportGguf}>
+        {$t('models.import_gguf', { default: 'Import .gguf' })}
+      </button>
+    </div>
   </div>
 
   <div class="artifact-card">

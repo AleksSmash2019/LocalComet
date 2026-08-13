@@ -57,3 +57,4 @@ auth.json
 /skills-lock.json
 /run_7_cycles.py
 /nul
+.monoide/

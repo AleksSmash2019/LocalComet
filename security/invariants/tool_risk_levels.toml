@@ -118,3 +118,9 @@ name = "skills.invoke"
 risk_level = "dangerous"
 requires_approval = true
 implementation = "modules/tool_execution_ru.py::_skills_invoke -> modules/skills/skills_invoker.py::invoke_skill (spawns skill entrypoint, no shell=True, 180s timeout, bounded output)"
+
+[[tools]]
+name = "import_custom_model"
+risk_level = "guarded"
+requires_approval = true
+implementation = "src-tauri::import_custom_model"

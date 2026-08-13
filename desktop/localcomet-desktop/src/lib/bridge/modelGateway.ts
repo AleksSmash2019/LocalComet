@@ -208,7 +208,14 @@ export async function removeManagedModel(modelId: string): Promise<ManagedModelR
 }
 
 export async function importCustomModel(sourcePath: string, filename: string): Promise<string> {
-  return await invokeExact<string>('import_custom_model', { sourcePath, filename });
+  const envelope = await requestApproval('import_custom_model', { source_path: sourcePath, filename });
+  return await invokeExact<string>('import_custom_model', { 
+    sourcePath, 
+    filename,
+    token: envelope.token,
+    approvalId: envelope.approvalId,
+    callId: envelope.callId
+  });
 }
 
 export async function getManagedArtifactValidationStatus(artifactId: string): Promise<ManagedArtifactValidationSummary> {

@@ -94,6 +94,7 @@ export const ru: TranslationMap = {
   'approval.error_grant_expired': 'Разрешение истекло — подтвердите действие заново',
   'approval.error_policy_blocked': 'Действие за пределами подтверждённой рабочей области',
   'approval.error_generic': 'Не удалось выполнить действие',
+  'approval.warning_destructive': 'Это действие деструктивно и может привести к потере данных.',
 
   // Files
   'files.title': 'Файлы',
