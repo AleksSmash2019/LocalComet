@@ -84,10 +84,12 @@ impl ArtifactValidationCache {
                 if let Some(entry) = self.entries().iter().find(|entry| {
                     entry.cache_format_version == CACHE_FORMAT_VERSION
                         && entry.catalog_digest == catalog_digest
-                        && entry.path_canonical == identity.path_canonical
+                        && entry
+                            .path_canonical
+                            .eq_ignore_ascii_case(&identity.path_canonical)
                         && entry.file_size == identity.file_size
                         && entry.mtime_unix_nanos == identity.mtime_unix_nanos
-                        && entry.expected_sha256 == expected_sha256
+                        && entry.expected_sha256.eq_ignore_ascii_case(expected_sha256)
                 }) {
                     return Ok(ValidatedHash {
                         observed_sha256: entry.observed_sha256.clone(),

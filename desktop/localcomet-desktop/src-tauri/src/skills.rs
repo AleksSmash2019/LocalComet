@@ -18,8 +18,11 @@ fn run_skills_cli(app: &AppHandle, action: &str, args: &[&str]) -> Result<SkillR
 
     // Find the skills_cli.py script
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    // Because cwd is desktop/localcomet-desktop during dev
-    let mut cli_path = cwd.join("../../scripts/skills_cli.py");
+    let mut cli_path = cwd.join("../../../scripts/skills_cli.py");
+    if !cli_path.exists() {
+        // Fallback for release build or tests where cwd might be different
+        cli_path = cwd.join("../../scripts/skills_cli.py");
+    }
     if !cli_path.exists() {
         // Fallback for release build if needed
         cli_path = cwd.join("scripts/skills_cli.py");

@@ -264,6 +264,7 @@
     "scripts/generate_runtime_manifest.py",
     "scripts/manual_model_gateway.py",
     "scripts/refresh_evidence.py",
+    "scripts/skills_cli.py",
     "scripts/smoke_test.py",
     "tools/__init__.py",
     "tools/build_up00_windows_installer.py",

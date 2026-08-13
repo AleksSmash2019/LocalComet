@@ -2239,6 +2239,8 @@ def build_tool_schemas(for_tools: tuple[str, ...] | None = None) -> list[dict[st
                 properties[field_name] = {"type": "array", "items": {"type": "number"}} # For coordinate
             else:
                 properties[field_name] = {"type": _TYPE_TO_JSON.get(expected_type, "string")}
+                if name == "computer_use" and field_name == "action":
+                    properties[field_name]["enum"] = ["open_app", "open_folder", "click", "double_click", "type", "paste", "key", "hotkey", "scroll", "wait", "drag", "screenshot"]
         schemas.append(
             {
                 "type": "function",
