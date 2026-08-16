@@ -62,7 +62,7 @@ def _sandbox_env() -> dict[str, str]:
 
 
 def _executable_for_entrypoint(entrypoint: Path) -> list[str]:
-    if sys.platform == "win32" and entrypoint.suffix.lower() == ".py":
+    if entrypoint.suffix.lower() == ".py":
         return [sys.executable, str(entrypoint)]
     return [str(entrypoint)]
 

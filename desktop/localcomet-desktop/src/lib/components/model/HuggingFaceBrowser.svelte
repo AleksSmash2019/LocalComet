@@ -479,7 +479,7 @@
     gap: var(--lc-space-2);
     padding: var(--lc-space-3);
     border-radius: var(--lc-radius-sm);
-    background: rgba(240, 96, 96, 0.1);
+    background: color-mix(in srgb, var(--lc-danger) 12%, transparent);
     color: var(--lc-danger);
     font-size: 0.82rem;
   }
@@ -591,7 +591,7 @@
 
   .hf-file-table td {
     padding: var(--lc-space-2);
-    border-bottom: 1px solid rgba(36, 52, 44, 0.36);
+    border-bottom: 1px solid var(--lc-line);
     vertical-align: middle;
   }
 
@@ -609,7 +609,7 @@
     display: inline-block;
     padding: 1px 6px;
     border-radius: var(--lc-radius-sm);
-    background: rgba(61, 220, 132, 0.08);
+    background: var(--lc-accent-dim);
     color: var(--lc-accent);
     font-family: var(--lc-mono);
     font-size: 0.72rem;
@@ -668,7 +668,7 @@
   .hf-download-progress-track {
     height: 6px;
     border-radius: 999px;
-    background: rgba(61, 220, 132, 0.12);
+    background: color-mix(in srgb, var(--lc-accent) 15%, transparent);
     overflow: hidden;
   }
 
@@ -693,7 +693,7 @@
 
   .hf-cancel-btn {
     align-self: center;
-    background: rgba(220, 20, 60, 0.1);
+    background: color-mix(in srgb, var(--lc-danger) 15%, transparent);
     color: var(--lc-danger);
     border: 1px solid var(--lc-danger);
     border-radius: 999px;

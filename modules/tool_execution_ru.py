@@ -29,7 +29,7 @@ from modules.workspace_policy import WorkspacePolicy, WorkspacePolicyError
 MAX_TOOL_FILE_BYTES = 1_000_000
 
 SUPPORTED_TOOLS = frozenset(
-    ("files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch", "skills.invoke")
+    ("files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch", "skills.invoke", "system.time")
 )
 
 
@@ -481,7 +481,18 @@ def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
         return _web_fetch(policy, tool, input_obj)
     if tool == "skills.invoke":
         return _skills_invoke(policy, tool, input_obj)
+    if tool == "system.time":
+        return _system_time(policy, tool, input_obj)
     raise ToolExecutionError(
         "unsupported_method",
         f"tool not implemented: {tool}",
     )
+
+def _system_time(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
+    import datetime
+    now = datetime.datetime.now().astimezone()
+    return {
+        "tool": tool,
+        "time": now.isoformat(),
+        "human_readable": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+    }

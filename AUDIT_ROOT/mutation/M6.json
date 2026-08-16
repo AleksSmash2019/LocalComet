@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M6",
+  "invariant": "bounded pipe write",
+  "file": "desktop/localcomet-desktop/src-tauri/src/windows_job.rs",
+  "test": "cargo test bounded_writer_times_out_when_pipe_never_accepts_data --lib",
+  "expected_reason": "non-reading pipe write must hit the timeout guard, not silently succeed",
+  "original_sha256": "04503bce40533c73f7fa9c09fd7de163f08c000c38d8dfb9b7282f1462073dcd",
+  "original_occurrences": 1,
+  "started_at": "2026-08-15T22:19:50.910317+00:00",
+  "mutation_sha256": "230327b965d9c50acce699304473402669d01b6229f1de38308215b68f11b523",
+  "red_exit_code": 101,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "04503bce40533c73f7fa9c09fd7de163f08c000c38d8dfb9b7282f1462073dcd",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:20:00.652791+00:00"
+}

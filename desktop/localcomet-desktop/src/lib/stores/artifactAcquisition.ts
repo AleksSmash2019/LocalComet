@@ -1,8 +1,9 @@
-import { derived, get, writable } from 'svelte/store';
+﻿import { derived, get, writable } from 'svelte/store';
 import {
   cancelArtifactDownload,
   getArtifactDownloadState,
   getManagedModelCatalog,
+  getManagedModelReadiness,
   listApprovedDownloadableArtifacts,
   normalizeGatewayError,
   removeManagedModel,
@@ -112,41 +113,9 @@ export async function cancelApprovedArtifactDownload(artifactId: string): Promis
 
 export async function setUpLocalAi(): Promise<boolean> {
   const artifacts = get(artifactAcquisitionStore).artifacts;
-  const runtime = artifacts.find((artifact) => artifact.kind === 'runtime');
   const model = artifacts.find((artifact) => artifact.kind === 'model' && artifact.trust_kind === 'approved_catalog');
-  if (!runtime || !model) return false;
-  artifactAcquisitionStore.update((state) => ({
-    ...state,
-    setup: { lifecycle: 'running', artifact_id: null },
-    lastError: null
-  }));
-  for (const artifact of [runtime, model]) {
-    artifactAcquisitionStore.update((state) => ({
-      ...state,
-      setup: { lifecycle: 'running', artifact_id: artifact.artifact_id }
-    }));
-    if (isInstalled(artifact.artifact_id)) continue;
-    const terminal = await downloadApprovedArtifact(artifact.artifact_id);
-    if (terminal?.lifecycle !== 'completed') {
-      artifactAcquisitionStore.update((state) => ({
-        ...state,
-        setup: {
-          lifecycle: terminal?.lifecycle === 'cancelled' ? 'cancelled' : 'failed',
-          artifact_id: artifact.artifact_id
-        }
-      }));
-      return false;
-    }
-    await refreshManagedRuntimeStatus();
-  }
-  await setManagedSelectedModel(model.artifact_id);
-  const connected = await connectSelectedManagedModel();
-  artifactAcquisitionStore.update((state) => ({
-    ...state,
-    setup: { lifecycle: connected ? 'completed' : 'failed', artifact_id: model.artifact_id },
-    lastError: connected ? null : get(managedRuntimeStore).lastError
-  }));
-  return connected;
+  if (!model) return false;
+  return setUpManagedArtifactsForModel(artifacts, model);
 }
 
 export async function removeApprovedManagedModel(modelId: string): Promise<boolean> {
@@ -162,7 +131,7 @@ export async function removeApprovedManagedModel(modelId: string): Promise<boole
   }
 }
 
-export async function setUpManagedModel(modelId: string): Promise<boolean> {
+export async function setUpManagedModel(modelId: string, runtimeId?: string): Promise<boolean> {
   const artifacts = get(artifactAcquisitionStore).artifacts;
   const model = artifacts.find((candidate) => candidate.artifact_id === modelId);
   if (!model) return false;
@@ -177,7 +146,15 @@ export async function downloadAndSetupManagedModel(modelId: string): Promise<boo
 }
 
 async function setUpManagedArtifactsForModel(artifacts: readonly ManagedDownloadableArtifact[], model: ManagedDownloadableArtifact): Promise<boolean> {
-  const runtime = artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog');
+  const readiness = await getManagedModelReadiness(model.artifact_id).catch(() => null);
+  const vulkanRuntime = artifacts.find(
+    (artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog' && artifact.artifact_id === 'llama-cpp-windows-x86-64-vulkan-bootstrap'
+  );
+  const selectedRuntime = readiness?.selected_runtime_id
+    ? artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog' && artifact.artifact_id === readiness.selected_runtime_id)
+    : null;
+  const fallbackRuntime = artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog');
+  const runtime = selectedRuntime ?? vulkanRuntime ?? fallbackRuntime;
   if (!runtime || model.kind !== 'model' || (model.trust_kind === 'user_supplied' && !isInstalled(model.artifact_id))) return false;
   artifactAcquisitionStore.update((state) => ({
     ...state,

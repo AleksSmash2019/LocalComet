@@ -25,6 +25,7 @@ import {
   refreshManagedRuntimeStatus,
   resetModelGatewayStore,
   setManagedSelectedModel,
+  setManagedPreferredRuntime,
   startSelectedManagedRuntime
 } from '../src/lib/stores/modelGateway';
 import {
@@ -35,9 +36,11 @@ import {
 import type { ArtifactInstallationStatus, ManagedRuntimeStatus } from '../src/lib/types/modelGateway';
 
 const RUNTIME_ID = 'llama-cpp-windows-x86-64-cpu-bootstrap';
+const GPU_RUNTIME_ID = 'llama-cpp-windows-x86-64-vulkan-bootstrap';
 const MODEL_ID = 'qwen2.5-1.5b-instruct-q4-k-m';
 const CATALOG_DIGEST = 'a'.repeat(64);
 const RUNTIME_SHA256 = 'b'.repeat(64);
+const GPU_RUNTIME_SHA256 = '6'.repeat(64);
 const MODEL_SHA256 = 'c'.repeat(64);
 const RUNTIME_BYTES = 1_000_000;
 const MODEL_BYTES = 2_000_000;
@@ -105,6 +108,24 @@ function runtimeFixture() {
     license_id: 'MIT',
     public_distribution: false,
     status: 'approved_internal_bootstrap'
+  };
+}
+
+function gpuRuntimeFixture() {
+  return {
+    ...runtimeFixture(),
+    runtime_id: GPU_RUNTIME_ID,
+    variant: 'vulkan',
+    asset_filename: 'llama-b6000-bin-win-vulkan-x64.zip',
+    asset_sha256: GPU_RUNTIME_SHA256
+  };
+}
+
+function gpuRuntimeValidationFixture() {
+  return {
+    ...validationFixture(GPU_RUNTIME_ID, 'runtime'),
+    artifact_id: GPU_RUNTIME_ID,
+    expected_sha256: GPU_RUNTIME_SHA256
   };
 }
 
@@ -264,6 +285,7 @@ function runtimeStatusFixture(): ManagedRuntimeStatus {
     state: 'Stopped',
     installation: 'Installed',
     runtime_version: 'b6000',
+    runtime_id: null,
     runtime_instance_id: null,
     runtime_instance_fingerprint: null,
     model_id: null,
@@ -271,7 +293,8 @@ function runtimeStatusFixture(): ManagedRuntimeStatus {
     binding_fingerprint: null,
     model_state: 'Unavailable',
     inference_ready: false,
-    last_error: null
+    last_error: null,
+    loading_phase: null
   };
 }
 
@@ -297,6 +320,7 @@ function installResponses(): void {
       provider_id: 'managed-llama-cpp',
       model_id: MODEL_ID,
       model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+      runtime_id: RUNTIME_ID,
       runtime_instance_id: 'd'.repeat(32),
       runtime_instance_fingerprint: 'e'.repeat(64)
     },
@@ -322,6 +346,30 @@ describe('managed artifact trust frontend contract', () => {
     resetModelGatewayStore();
     resetArtifactAcquisitionStore();
     installResponses();
+  });
+
+  it('ignores the expected empty-selection runtime error without hiding the model catalog', async () => {
+    responses.managed_runtime_status = () => {
+      throw { code: 'runtime_unavailable', message: 'No managed model is selected' };
+    };
+
+    await refreshManagedRuntimeStatus();
+
+    expect(get(managedRuntimeStore).selectedModelId).toBe('');
+    expect(get(managedRuntimeStore).catalog).toHaveLength(1);
+    expect(get(managedRuntimeStore).lastError).toBeNull();
+  });
+
+  it('suppresses the expected empty-selection status error', async () => {
+    responses.managed_runtime_status = {
+      ...runtimeStatusFixture(),
+      last_error: 'No managed model is selected'
+    };
+
+    await refreshManagedRuntimeStatus();
+
+    expect(get(managedRuntimeStore).selectedModelId).toBe('');
+    expect(get(managedRuntimeStore).lastError).toBeNull();
   });
 
   it('uses only the fixed read-only trust commands and stable artifact IDs', async () => {
@@ -563,10 +611,12 @@ describe('managed artifact trust frontend contract', () => {
         provider_id: 'managed-llama-cpp',
         model_id: MODEL_ID,
         model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+        runtime_id: RUNTIME_ID,
         runtime_instance_id: 'd'.repeat(32),
         runtime_instance_fingerprint: 'e'.repeat(64)
       };
     };
+    responses.managed_runtime_start_trusted = responses.managed_runtime_start;
 
     const first = connectSelectedManagedModel();
     const second = connectSelectedManagedModel();
@@ -576,7 +626,7 @@ describe('managed artifact trust frontend contract', () => {
     expect(get(managedRuntimeStore).status?.state).toBe('Stopped');
     await expect(first).resolves.toBe(true);
     expect(get(managedConnectionBusy)).toBe(false);
-    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start')).toHaveLength(1);
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(1);
     expect(invokeCalls.filter((call) => call.command === 'model_binding_set')).toHaveLength(1);
   });
 
@@ -811,6 +861,51 @@ describe('managed artifact trust frontend contract', () => {
     }));
     await setManagedSelectedModel('');
     expect(get(managedRuntimeStore).status).toBeNull();
+  });
+
+  it('propagates the explicitly selected GPU runtime through approval and start', async () => {
+    responses.managed_runtime_catalog = {
+      ...runtimeCatalogFixture(),
+      runtimes: [runtimeFixture(), gpuRuntimeFixture()]
+    };
+    responses.managed_model_catalog = {
+      ...modelCatalogFixture(),
+      models: [{ ...modelFixture(), compatible_runtime_ids: [RUNTIME_ID, GPU_RUNTIME_ID] }]
+    };
+    responses.managed_installed_artifacts = {
+      ...installedArtifactsFixture(),
+      artifacts: [
+        ...installedArtifactsFixture().artifacts,
+        gpuRuntimeValidationFixture()
+      ]
+    };
+    responses.managed_model_readiness = readinessFixture({
+      compatible_runtime_ids: [RUNTIME_ID, GPU_RUNTIME_ID],
+      selected_runtime_id: RUNTIME_ID
+    });
+
+    await refreshManagedRuntimeStatus();
+    await setManagedSelectedModel(MODEL_ID);
+    setManagedPreferredRuntime(GPU_RUNTIME_ID);
+    invokeCalls = [];
+
+    await startSelectedManagedRuntime();
+
+    expect(invokeCalls).toEqual(expect.arrayContaining([
+      {
+        command: 'managed_model_readiness',
+        args: { modelId: MODEL_ID }
+      },
+      {
+        command: 'managed_runtime_start_trusted',
+        args: {
+          modelId: MODEL_ID,
+          runtimeId: GPU_RUNTIME_ID,
+          ctxSizeOverride: null,
+          gpuLayersOverride: null
+        }
+      }
+    ]));
   });
 
   it('rechecks readiness before start and never launches a non-ready model', async () => {

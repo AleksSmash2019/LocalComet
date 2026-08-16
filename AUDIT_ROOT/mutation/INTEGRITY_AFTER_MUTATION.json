@@ -1,0 +1,10 @@
+{
+  "created_at": "2026-08-15T22:20:32.666321+00:00",
+  "protocol": "prompt-v3-15.6",
+  "status": "PASS",
+  "mutations_completed": 10,
+  "mutations_expected": 10,
+  "all_rollbacks_verified": true,
+  "all_red": true,
+  "all_green_after_rollback": true
+}

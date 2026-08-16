@@ -3,13 +3,52 @@
   import { chatMessages, composerDraft, openModelSetup, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import {
     inferenceBusy,
+    inferenceRequestStore,
     managedModelReady,
     managedRuntimeStore,
     retryLocalModelTurn
   } from '$lib/stores/modelGateway';
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
-  import { t } from '$lib/i18n';
+  import { locale, t } from '$lib/i18n';
+  import Icon from '$lib/components/common/Icon.svelte';
   import ToolCallCard from './ToolCallCard.svelte';
+  import CodeBlock from './CodeBlock.svelte';
+
+  interface ContentBlock {
+    type: 'text' | 'code';
+    text?: string;
+    code?: string;
+    language?: string;
+  }
+
+  function parseMessageBlocks(body: string): ContentBlock[] {
+    if (!body) return [];
+    const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+    const blocks: ContentBlock[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = codeBlockRegex.exec(body)) !== null) {
+      if (match.index > lastIndex) {
+        const textSegment = body.slice(lastIndex, match.index);
+        if (textSegment.trim() || textSegment.length > 0) {
+          blocks.push({ type: 'text', text: textSegment });
+        }
+      }
+      blocks.push({
+        type: 'code',
+        language: match[1] || 'text',
+        code: match[2].trimEnd()
+      });
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < body.length) {
+      blocks.push({ type: 'text', text: body.slice(lastIndex) });
+    }
+
+    return blocks.length > 0 ? blocks : [{ type: 'text', text: body }];
+  }
   import ApprovalCard from './ApprovalCard.svelte';
 
   /**
@@ -40,8 +79,47 @@
       ? 'chat.model_loading_detail'
       : 'chat.model_unavailable_detail';
 
+  let copiedMessageId: string | null = null;
+  let copyTimeout: any = null;
+
+  async function copyMessageBody(id: string, text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+      copiedMessageId = id;
+      if (copyTimeout) clearTimeout(copyTimeout);
+      copyTimeout = setTimeout(() => {
+        copiedMessageId = null;
+      }, 2000);
+    } catch {
+      // ignore clipboard error
+    }
+  }
+
   function stateKey(state: string): string {
     return `chat.state_${state}`;
+  }
+
+  import { onDestroy } from 'svelte';
+  import { voiceMode } from '$lib/stores/shellStore';
+
+  let lastSpokenRequestId: string | null = null;
+
+  onDestroy(() => {
+    if (copyTimeout) {
+      clearTimeout(copyTimeout);
+      copyTimeout = null;
+    }
+  });
+  $: {
+    if ($voiceMode && $inferenceRequestStore.lifecycle === 'completed' && $inferenceRequestStore.requestId && $inferenceRequestStore.requestId !== lastSpokenRequestId) {
+      lastSpokenRequestId = $inferenceRequestStore.requestId;
+      const lastMessage = $chatMessages.find(m => m.requestId === lastSpokenRequestId && m.role === 'assistant');
+      if (lastMessage && lastMessage.body) {
+        const utterance = new SpeechSynthesisUtterance(lastMessage.body);
+        utterance.lang = $locale === 'ru' ? 'ru-RU' : 'en-US';
+        window.speechSynthesis.speak(utterance);
+      }
+    }
   }
 </script>
 
@@ -89,7 +167,33 @@
               <span class="demo-badge">{$t('chat.demo')}</span>
             {/if}
           </div>
-          <p>{message.body}</p>
+          {#if message.role === 'user'}
+            <p>{message.body}</p>
+          {:else}
+            {#each parseMessageBlocks(message.body) as block}
+              {#if block.type === 'code'}
+                <div class="code-wrapper">
+                  <CodeBlock block={{ filename: block.language ?? 'code', language: block.language ?? 'text', code: block.code ?? '' }} />
+                </div>
+              {:else if block.text}
+                <p>{block.text}</p>
+              {/if}
+            {/each}
+          {/if}
+          <div class="message-actions">
+            <button
+              type="button"
+              class="msg-action-btn"
+              title={copiedMessageId === message.id ? $t('chat.copied') : $t('chat.copy')}
+              aria-label={$t('chat.copy')}
+              onclick={() => copyMessageBody(message.id, message.body)}
+            >
+              <Icon name={copiedMessageId === message.id ? 'check' : 'copy'} size={14} />
+              {#if copiedMessageId === message.id}
+                <span class="copied-hint">{$t('chat.copied')}</span>
+              {/if}
+            </button>
+          </div>
           {#if message.toolCalls}
             <div class="tool-calls-container">
               {#each message.toolCalls as tool}
@@ -209,6 +313,12 @@
     line-height: 1.625;
   }
 
+  .code-wrapper {
+    margin: 8px 0;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
   .user .bubble {
     border-color: transparent;
     background: var(--lc-accent);
@@ -269,6 +379,43 @@
   .retry-button:disabled {
     color: var(--lc-faint);
     cursor: not-allowed;
+  }
+
+  .message-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+  }
+
+  .bubble:hover .message-actions {
+    opacity: 1;
+  }
+
+  .msg-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    opacity: 0.6;
+    padding: 2px 6px;
+    border-radius: var(--lc-radius-sm);
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.15s ease;
+  }
+
+  .msg-action-btn:hover {
+    opacity: 1;
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+
+  .copied-hint {
+    font-size: 11px;
+    font-weight: 500;
   }
 
   @keyframes message-in {

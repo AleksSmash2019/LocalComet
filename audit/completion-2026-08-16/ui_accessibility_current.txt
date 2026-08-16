@@ -1,0 +1,2 @@
+TYPE=ControlType.Pane|NAME=localhost:1420|ID=|ENABLED=True|OFFSCREEN=False
+TYPE=ControlType.Pane|NAME=localhost:1420 — веб-содержимое|ID=|ENABLED=True|OFFSCREEN=False

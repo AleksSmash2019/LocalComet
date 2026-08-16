@@ -3,6 +3,7 @@
 
   export let title: string;
   export let detail: string = '';
+  export let phase: string = '';
   export let percent: number | null = null;
   export let onCancel: (() => void) | null = null;
 </script>
@@ -13,6 +14,9 @@
       <strong>{title}</strong>
       {#if detail}
         <span class="progress-detail">{detail}</span>
+      {/if}
+      {#if phase}
+        <span class="progress-phase">{phase}</span>
       {/if}
     </div>
     {#if percent !== null}
@@ -39,14 +43,14 @@
 
 <style>
   .premium-progress-panel {
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
+    background: var(--lc-panel);
+    border: 1px solid var(--lc-line);
+    border-radius: var(--radius-3);
     padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--lc-shadow-e2);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     position: relative;
@@ -71,25 +75,38 @@
   .progress-text strong {
     font-size: 14px;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--lc-text);
     letter-spacing: 0.02em;
   }
 
   .progress-detail {
     font-size: 13px;
-    color: #94a3b8;
+    color: var(--lc-muted);
+  }
+
+  .progress-phase {
+    font-size: 12px;
+    color: var(--lc-accent-strong);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    animation: phasePulse 2s ease-in-out infinite;
+  }
+
+  @keyframes phasePulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
   }
 
   .progress-percent {
     font-size: 16px;
     font-weight: 700;
-    color: #10b981;
+    color: var(--lc-accent);
     font-variant-numeric: tabular-nums;
   }
 
   .progress-track {
     height: 6px;
-    background: rgba(255, 255, 255, 0.05);
+    background: color-mix(in srgb, var(--lc-line) 50%, transparent);
     border-radius: 6px;
     position: relative;
     overflow: visible;
@@ -97,7 +114,7 @@
 
   .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #34d399, #10b981);
+    background: linear-gradient(90deg, var(--lc-accent-strong), var(--lc-accent));
     border-radius: 6px;
     transition: width 0.3s ease-out;
     position: relative;
@@ -114,7 +131,7 @@
     top: 0;
     left: 0;
     height: 100%;
-    background: #10b981;
+    background: var(--lc-accent);
     filter: blur(8px);
     opacity: 0.6;
     border-radius: 6px;
@@ -132,11 +149,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
-    color: #f87171;
+    background: color-mix(in srgb, var(--lc-danger) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lc-danger) 25%, transparent);
+    color: var(--lc-danger);
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-1);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -144,9 +161,9 @@
   }
 
   .cancel-btn:hover {
-    background: rgba(239, 68, 68, 0.2);
-    border-color: rgba(239, 68, 68, 0.4);
-    color: #fca5a5;
+    background: color-mix(in srgb, var(--lc-danger) 22%, transparent);
+    border-color: color-mix(in srgb, var(--lc-danger) 45%, transparent);
+    color: var(--lc-text);
   }
 
   @keyframes indeterminate {

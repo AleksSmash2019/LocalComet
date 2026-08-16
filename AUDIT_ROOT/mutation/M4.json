@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M4",
+  "invariant": "approval binding",
+  "file": "desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs",
+  "test": "cargo test runtime_start_approval_binds_explicit_runtime_id_into_digest --lib",
+  "expected_reason": "approval must bind the selected runtime_id",
+  "original_sha256": "0158bb6b7de4c049168413a194fcb31d92ca9438cc70db3ecc01ff3b05b51b74",
+  "original_occurrences": 2,
+  "started_at": "2026-08-15T22:18:00.865010+00:00",
+  "mutation_sha256": "375ed480e1386db09f663b3a32a79dd5c2ad0e350d26f7f15653d2e0db8f5dbc",
+  "red_exit_code": 101,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "0158bb6b7de4c049168413a194fcb31d92ca9438cc70db3ecc01ff3b05b51b74",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:18:08.694340+00:00"
+}

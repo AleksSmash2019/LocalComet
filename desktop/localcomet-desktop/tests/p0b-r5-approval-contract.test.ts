@@ -162,7 +162,7 @@ describe('p0b-r5-approval-contract', () => {
     approvalResponse = validEnvelope('runtime.start');
     protectedResponse = {
       state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
-      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
     };
     await startManagedRuntime('qwen2.5-1.5b-instruct-q4-k-m');
     const protectedCall = invokeCalls.find((c) => c.command === 'managed_runtime_start');
@@ -173,6 +173,36 @@ describe('p0b-r5-approval-contract', () => {
     expect((invokeCalls.find((c) => c.command === 'request_approval')?.args?.input as Record<string, unknown>)).not.toHaveProperty('custom_sha256');
   });
 
+  it('p0b_r5_trusted_runtime_start_skips_approval_and_uses_server_guarded_command', async () => {
+    const { startManagedRuntimeTrusted } = await import('../src/lib/bridge/modelGateway');
+    protectedResponse = {
+      state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
+      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+    };
+    await startManagedRuntimeTrusted('qwen2.5-1.5b-instruct-q4-k-m');
+    expect(invokeCalls.map((call) => call.command)).toEqual(['managed_runtime_start_trusted']);
+    expect(invokeCalls[0]?.args).toEqual({
+      modelId: 'qwen2.5-1.5b-instruct-q4-k-m',
+      ctxSizeOverride: null,
+      gpuLayersOverride: null
+    });
+  });
+
+  it('p0b_r5_trusted_runtime_start_skips_approval_and_uses_server_guarded_command', async () => {
+    const { startManagedRuntimeTrusted } = await import('../src/lib/bridge/modelGateway');
+    protectedResponse = {
+      state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
+      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+    };
+    await startManagedRuntimeTrusted('qwen2.5-1.5b-instruct-q4-k-m');
+    expect(invokeCalls.map((call) => call.command)).toEqual(['managed_runtime_start_trusted']);
+    expect(invokeCalls[0]?.args).toEqual({
+      modelId: 'qwen2.5-1.5b-instruct-q4-k-m',
+      ctxSizeOverride: null,
+      gpuLayersOverride: null
+    });
+  });
+
   it('p0b_r5_custom_runtime_start_binds_digest_to_approval_and_execution', async () => {
     const { startManagedRuntime } = await import('../src/lib/bridge/modelGateway');
     const modelId = 'custom-owner-repo-model-1234567890ab';
@@ -180,7 +210,7 @@ describe('p0b-r5-approval-contract', () => {
     approvalResponse = validEnvelope('runtime.start');
     protectedResponse = {
       state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
-      model_id: modelId, model_display_name: 'Custom model', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+      model_id: modelId, model_display_name: 'Custom model', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
     };
 
     await startManagedRuntime(modelId, customSha256);
@@ -195,7 +225,7 @@ describe('p0b-r5-approval-contract', () => {
           token: sharedFixture.token,
           approvalId: sharedFixture.approvalId,
           callId: sharedFixture.callId
-        }
+        , ctxSizeOverride: null, gpuLayersOverride: null }
       }
     ]);
   });
@@ -275,7 +305,7 @@ describe('p0b-r5-approval-contract', () => {
     approvalResponse = validEnvelope('runtime.start');
     protectedResponse = {
       state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
-      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
     };
     await startManagedRuntime('qwen2.5-1.5b-instruct-q4-k-m');
     approvalResponse = validEnvelope('runtime.stop');
@@ -326,4 +356,43 @@ describe('p0b-r5-approval-contract', () => {
     expect(approvalInput.artifact_id).toBe('llama-cpp-windows-x86-64-cpu-bootstrap');
     expect(executionCall?.args?.artifactId).toBe('llama-cpp-windows-x86-64-cpu-bootstrap');
   });
+  it('p0b_r5_frontend_rejects_snake_case_aliases', () => {
+    const envelope = validEnvelope();
+    const { approvalId: _, ...withoutApprovalId } = envelope;
+    expect(() => validateApprovalEnvelope({ ...withoutApprovalId, approval_id: envelope.approvalId }, 'artifact.download')).toThrow();
+    expect(() => validateApprovalEnvelope({ ...envelope, risk_level: envelope.riskLevel }, 'artifact.download')).toThrow();
+  });
+
+  it('p0b_r5_frontend_rejects_unknown_risk_and_command_family', () => {
+    expect(() => validateApprovalEnvelope({ ...validEnvelope(), riskLevel: 'critical' }, 'artifact.download')).toThrow();
+    expect(() => validateApprovalEnvelope({ ...validEnvelope(), commandFamily: 'tool_filesystem_execute' }, 'artifact.download')).toThrow();
+  });
+
+  it('p0b_r5_execute_approved_forwards_exact_boundary_and_rejects_tool_mismatch', async () => {
+    const { executeApproved } = await import('../src/lib/bridge/approval');
+    const input = { artifact_id: 'llama-cpp-windows-x86-64-cpu-bootstrap' };
+    protectedResponse = { grant_id: 'grant-1', tool: 'artifact.remove', workspace: 'workspace', session: 'session' };
+
+    await expect(executeApproved(
+      sharedFixture.token,
+      sharedFixture.approvalId,
+      sharedFixture.callId,
+      'artifact.download',
+      input
+    )).rejects.toMatchObject({ code: 'invalid_payload' });
+
+    expect(invokeCalls).toEqual([
+      {
+        command: 'execute_approved',
+        args: {
+          token: sharedFixture.token,
+          approvalId: sharedFixture.approvalId,
+          callId: sharedFixture.callId,
+          tool: 'artifact.download',
+          input
+        }
+      }
+    ]);
+  });
+
 });

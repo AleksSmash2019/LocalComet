@@ -28,7 +28,7 @@
     sidebarExpanded,
     themeMode
   } from '$lib/stores/shellStore';
-  import { controlPlaneBridgeState, initializeControlPlaneBridge, shutdownControlPlaneBridge } from '$lib/stores/controlPlane';
+  import { initializeControlPlaneBridge, shutdownControlPlaneBridge } from '$lib/stores/controlPlane';
   import { initializeModelGateway, shutdownModelGateway } from '$lib/stores/modelGateway';
   import { initializeArtifactAcquisition, resetArtifactAcquisitionStore } from '$lib/stores/artifactAcquisition';
   import { initializeKnowledgePreviewEvents, shutdownKnowledgePreviewEvents } from '$lib/stores/knowledgePreview';
@@ -43,8 +43,6 @@
   let followTranscript = true;
   let transcriptRevision = 0;
   
-  let controlPlaneLabel: string = '';
-  let controlPlaneTone: 'ready' | 'info' | 'danger' | 'disabled' | 'unknown' = 'unknown';
 
   $: document.documentElement.lang = $locale;
 
@@ -164,26 +162,6 @@
     };
   });
 
-  $: controlPlaneLabel =
-    $controlPlaneBridgeState === 'READY'
-      ? $t('diag.control_plane_connected')
-      : $controlPlaneBridgeState === 'CONNECTING'
-        ? $t('diag.control_plane_starting')
-        : $controlPlaneBridgeState === 'UNAVAILABLE'
-          ? $t('diag.control_plane_unavailable')
-          : $controlPlaneBridgeState === 'ERROR'
-            ? $t('diag.control_plane_error')
-            : $t('diag.control_plane_unknown');
-  $: controlPlaneTone =
-    $controlPlaneBridgeState === 'READY'
-      ? 'ready'
-      : $controlPlaneBridgeState === 'CONNECTING'
-        ? 'info'
-        : $controlPlaneBridgeState === 'ERROR'
-          ? 'danger'
-          : $controlPlaneBridgeState === 'UNAVAILABLE'
-            ? 'disabled'
-            : 'unknown';
 </script>
 
 <div class="app-shell" data-theme={resolvedTheme}>
@@ -193,7 +171,7 @@
   >
     {$activeWorkspace === 'review' ? $t('review.skip_link') : $activeWorkspace === 'setup' ? $t('onboarding.skip_link') : $t('common.skip_link')}
   </a>
-  <ConversationSidebar {controlPlaneLabel} {controlPlaneTone} />
+  <ConversationSidebar />
 
   <div
     class:focused-mode={$activeWorkspace !== 'chat'}

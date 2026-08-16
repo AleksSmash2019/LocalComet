@@ -52,13 +52,13 @@ describe('approvalStore', () => {
     requestApprovalForTool('files.write', { path: 'a.txt' });
     mockedInvoke.mockImplementation(async (command: string, args?: unknown) => {
       if (command === 'request_approval') return envelopeFor((args as { tool: string }).tool);
-      if (command === 'run_tool_call') return { tool: 'files.write', path: '/w/a.txt' };
+      if (command === 'execute_approved') return { grant_id: 'grant_1', tool: 'files.write', workspace: 'w', session: 's' };
       throw new Error('unexpected command ' + command);
     });
     await confirmApproval();
     const commands = mockedInvoke.mock.calls.map((call) => call[0]);
-    expect(commands).toEqual(['request_approval', 'run_tool_call']);
-    expect(mockedInvoke).toHaveBeenLastCalledWith('run_tool_call', {
+    expect(commands).toEqual(['request_approval', 'execute_approved']);
+    expect(mockedInvoke).toHaveBeenLastCalledWith('execute_approved', {
       tool: 'files.write',
       input: { path: 'a.txt' },
       token: TOKEN,

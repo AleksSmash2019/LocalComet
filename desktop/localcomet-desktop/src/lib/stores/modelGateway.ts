@@ -14,8 +14,10 @@ import {
   probeModelGateway,
   setModelBinding,
   startManagedRuntime,
+  startManagedRuntimeTrusted,
   startModelTurn,
   stopManagedRuntime,
+  stopManagedRuntimeTrusted,
   subscribeModelGatewayEvents
 } from '$lib/bridge/modelGateway';
 import type {
@@ -68,9 +70,12 @@ export const MANAGED_HEALTH_POLL_MS = 2_000;
 // Live status polling cadence while a managed runtime start is in flight, so
 // the UI shows real backend phases instead of a static spinner.
 export const MANAGED_START_PROGRESS_POLL_MS = 750;
-// Watchdog margin above the Rust-side MODEL_LOAD_TIMEOUT (180s): the UI must
-// never pend forever on a start that stalled outside the supervisor deadlines.
-export const MANAGED_START_WATCHDOG_MS = 195_000;
+// Watchdog margin above the Rust-side MODEL_LOAD_TIMEOUT. The supervisor now
+// scales the load deadline dynamically up to 600s for large models, so the UI
+// watchdog caps the await slightly above that ceiling. If the watchdog fires,
+// the UI recovers truthfully while the trailing status refresh converges the
+// store once the backend start settles.
+export const MANAGED_START_WATCHDOG_MS = 615_000;
 const MAX_BUFFERED_EARLY_EVENTS = 2_048;
 
 export interface ModelGatewayState {
@@ -98,6 +103,7 @@ export interface ManagedRuntimePanelState {
   readonly status: ManagedRuntimeStatus | null;
   readonly catalogIdentity: ManagedCatalogIdentity | null;
   readonly runtimeCatalog: readonly ApprovedRuntimeSummary[];
+  readonly preferredRuntimeId?: string | null;
   readonly catalog: readonly (ManagedModelSummary | ApprovedModelSummary)[];
   readonly installedArtifacts: readonly ManagedArtifactValidationSummary[];
   readonly readiness: ManagedRuntimePanelReadiness | null;
@@ -129,6 +135,7 @@ const initialManagedState: ManagedRuntimePanelState = {
   status: null,
   catalogIdentity: null,
   runtimeCatalog: [],
+  preferredRuntimeId: null,
   catalog: [],
   installedArtifacts: [],
   readiness: null,
@@ -159,6 +166,7 @@ const initialInferenceState: InferenceRequestState = {
 };
 
 let unsubscribeEvents: (() => void) | null = null;
+let unsubscribeManagedModelReady: (() => void) | null = null;
 let initialized = false;
 let initializationPromise: Promise<void> | null = null;
 let eventSubscriptionPromise: Promise<void> | null = null;
@@ -192,9 +200,11 @@ export const approvedManagedModelInstalled = derived(managedRuntimeStore, (manag
   )
 );
 export const gatewayStatus = derived(modelGatewayStore, (state) => state.status);
-managedModelReady.subscribe((ready) => setModelConnected(ready));
 
 export async function initializeModelGateway(): Promise<void> {
+  if (!unsubscribeManagedModelReady) {
+    unsubscribeManagedModelReady = managedModelReady.subscribe((ready) => setModelConnected(ready));
+  }
   if (initialized) return;
   if (initializationPromise) return initializationPromise;
   const generation = subscriptionGeneration;
@@ -231,6 +241,8 @@ export function shutdownModelGateway(): void {
   subscriptionGeneration += 1;
   unsubscribeEvents?.();
   unsubscribeEvents = null;
+  unsubscribeManagedModelReady?.();
+  unsubscribeManagedModelReady = null;
   eventSubscriptionPromise = null;
   initializationPromise = null;
   stopManagedHealthMonitor();
@@ -450,6 +462,19 @@ export async function setManagedSelectedModel(modelId: string): Promise<void> {
   }
 }
 
+export function setManagedPreferredRuntime(runtimeId: string): void {
+  const state = get(managedRuntimeStore);
+  const runtime = state.runtimeCatalog.find((candidate) => candidate.runtime_id === runtimeId);
+  if (!runtime) return;
+  managedRuntimeStore.update((current) => ({
+    ...current,
+    preferredRuntimeId: runtimeId,
+    binding: null,
+    lastError: null
+  }));
+  clearManagedGatewayBinding();
+}
+
 export function setManagedHarness(harnessId: HarnessId): void {
   const previousHarnessId = get(managedRuntimeStore).harnessId;
   managedRuntimeStore.update((state) => ({
@@ -462,8 +487,15 @@ export function setManagedHarness(harnessId: HarnessId): void {
 
 export async function refreshManagedRuntimeStatus(): Promise<void> {
   try {
+    const previous = get(managedRuntimeStore);
     const [status, runtimeCatalog, modelCatalog, installedArtifacts, logs] = await Promise.all([
-      getManagedRuntimeStatus(),
+      getManagedRuntimeStatus().catch((error) => {
+        const normalized = normalizeGatewayError(error);
+        if (!previous.selectedModelId && /No managed model is selected/i.test(normalized.message)) {
+          return null;
+        }
+        throw error;
+      }),
       getManagedRuntimeCatalog(),
       getManagedModelCatalog(),
       getManagedInstalledArtifacts(),
@@ -478,20 +510,19 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
       ...installedArtifacts.artifacts,
       ...installedArtifacts.custom_artifacts
     ];
-    const previous = get(managedRuntimeStore);
     const selectedModelId = models.some((model) => model.model_id === previous.selectedModelId)
       ? previous.selectedModelId
       : '';
     const selectedModel = models.find((model) => model.model_id === selectedModelId);
     const bindingTrusted =
-      status.state === 'Ready' &&
-      status.model_state === 'Ready' &&
-      status.inference_ready &&
+      status?.state === 'Ready' &&
+      status?.model_state === 'Ready' &&
+      status?.inference_ready &&
       previous.binding !== null &&
       previous.binding.provider_id === 'managed-llama-cpp' &&
       previous.binding.harness_id === previous.harnessId &&
       previous.binding.model_id === selectedModelId &&
-      previous.binding.runtime_instance_id === status.runtime_instance_id &&
+      previous.binding.runtime_instance_id === status?.runtime_instance_id &&
       selectedModel !== undefined &&
       isInstalledLaunchable(selectedModel, runtimeCatalog.runtimes, validations);
     managedRuntimeStore.update((state) => ({
@@ -509,8 +540,8 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
     }));
     if (!bindingTrusted) clearManagedGatewayBinding();
     if (selectedModelId) await setManagedSelectedModel(selectedModelId);
-    const runtimeError = status.last_error;
-    if (runtimeError) {
+    const runtimeError = status?.last_error;
+    if (runtimeError && !(!selectedModelId && /No managed model is selected/i.test(runtimeError))) {
       managedRuntimeStore.update((state) => ({
         ...state,
         lastError: { code: 'runtime_unavailable', message: runtimeError }
@@ -541,12 +572,43 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
   try {
     const readiness = precomputedReadiness ?? await readManagedModelReadiness(state.selectedModelId);
     if (!stillCurrent()) return;
-    if (!readiness.launchable) {
+    const selectedModel = state.catalog.find((model) => model.model_id === state.selectedModelId);
+    if (!readiness.launchable || !selectedModel) {
+      const error = {
+        code: 'model_not_ready',
+        message: 'The selected model is not ready to launch'
+      };
       managedRuntimeStore.update((current) => ({
         ...current,
         readiness,
         binding: null,
-        lastError: { code: 'model_not_ready', message: 'Managed model and runtime artifacts are not ready' }
+        lastError: error
+      }));
+      clearManagedGatewayBinding();
+      return;
+    }
+    const requestedRuntimeId = state.preferredRuntimeId ?? readiness.selected_runtime_id;
+    if (!requestedRuntimeId) {
+      const error = { code: 'runtime_not_selected', message: 'No compute engine is selected' };
+      managedRuntimeStore.update((current) => ({ ...current, readiness, binding: null, lastError: error }));
+      clearManagedGatewayBinding();
+      return;
+    }
+    const requestedRuntime = state.runtimeCatalog.find((runtime) => runtime.runtime_id === requestedRuntimeId);
+    const requestedRuntimeInstalled = state.installedArtifacts.some((artifact) =>
+      artifact.kind === 'runtime' && artifact.artifact_id === requestedRuntimeId && artifact.installation_status === 'valid'
+    );
+    const requestedRuntimeCompatible = selectedModel?.compatible_runtime_ids.includes(requestedRuntimeId) === true;
+    if (!requestedRuntime || !requestedRuntimeInstalled || !requestedRuntimeCompatible) {
+      const error = {
+        code: 'runtime_not_ready',
+        message: 'The selected compute engine is not installed or is incompatible with the model'
+      };
+      managedRuntimeStore.update((current) => ({
+        ...current,
+        readiness,
+        binding: null,
+        lastError: error
       }));
       clearManagedGatewayBinding();
       return;
@@ -564,18 +626,26 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
       lastError: null
     }));
     clearManagedGatewayBinding();
-    const selectedModel = state.catalog.find((model) => model.model_id === state.selectedModelId);
     if (!selectedModel) throw trustPayloadError();
     const trustKind = modelTrustKind(selectedModel);
+    const trustedStartEligible = trustKind === 'approved_catalog'
+      && readiness.model_trust_kind === 'approved_catalog'
+      && readiness.model_status === 'valid'
+      && readiness.runtime_status === 'valid'
+      && readiness.compatibility === 'compatible'
+      && readiness.launchable === true;
     // Anti-freeze start: poll real backend phases while the supervisor works,
     // and cap the await with a watchdog slightly above the Rust
     // MODEL_LOAD_TIMEOUT. If the watchdog fires, the UI recovers truthfully and
     // a trailing refresh lets the store converge when the start settles later.
-    const startPromise = startManagedRuntime(
-      state.selectedModelId,
-      trustKind === 'user_supplied' ? selectedModel.asset_sha256 : stillCurrent,
-      trustKind === 'user_supplied' ? stillCurrent : undefined
-    );
+    const startPromise = trustedStartEligible
+      ? startManagedRuntimeTrusted(state.selectedModelId, stillCurrent, requestedRuntimeId)
+      : startManagedRuntime(
+        state.selectedModelId,
+        trustKind === 'user_supplied' ? selectedModel.asset_sha256 : stillCurrent,
+        trustKind === 'user_supplied' ? stillCurrent : undefined,
+        requestedRuntimeId
+      );
     const progressTimer = setInterval(() => {
       if (!stillCurrent()) return;
       getManagedRuntimeStatus()
@@ -620,9 +690,11 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
     managedRuntimeStore.update((current) => ({
       ...current,
       status,
-      lastError: status.last_error
-        ? { code: 'runtime_unavailable', message: status.last_error }
-        : null
+      lastError:
+        status.last_error &&
+        !(!current.selectedModelId && /No managed model is selected/i.test(status.last_error))
+          ? { code: 'runtime_unavailable', message: status.last_error }
+          : null
     }));
   } catch (error) {
     if (!stillCurrent()) {
@@ -636,6 +708,19 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
 }
 
 export async function stopSelectedManagedRuntime(): Promise<void> {
+  const stateBeforeStop = get(managedRuntimeStore);
+  const activeModelId = stateBeforeStop.status?.model_id ?? stateBeforeStop.selectedModelId;
+  const activeModel = stateBeforeStop.catalog.find((model) => model.model_id === activeModelId);
+  const trustedStopEligible = activeModel !== undefined
+    && modelTrustKind(activeModel) === 'approved_catalog'
+    && stateBeforeStop.installedArtifacts.some((artifact) =>
+      artifact.kind === 'model' && artifact.artifact_id === activeModelId && artifact.installation_status === 'valid'
+    )
+    && activeModel.compatible_runtime_ids.some((runtimeId) =>
+      stateBeforeStop.installedArtifacts.some((artifact) =>
+        artifact.kind === 'runtime' && artifact.artifact_id === runtimeId && artifact.installation_status === 'valid'
+      )
+    );
   managedRuntimeStore.update((state) => ({
     ...state,
     status: state.status ? {
@@ -648,7 +733,11 @@ export async function stopSelectedManagedRuntime(): Promise<void> {
   }));
   clearManagedGatewayBinding();
   try {
-    await stopManagedRuntime();
+    if (trustedStopEligible) {
+      await stopManagedRuntimeTrusted();
+    } else {
+      await stopManagedRuntime();
+    }
   } catch (error) {
     managedRuntimeStore.update((state) => ({ ...state, lastError: normalizeGatewayError(error) }));
   }
@@ -875,15 +964,16 @@ async function startClaimedLocalModelTurn(
 
   try {
     const messages = get(chatMessages);
-    const serializedMessages = messages.map((message) => ({
-      role: message.role,
-      body: message.body,
-      requestId: message.requestId,
-      conversationId: message.conversationId,
-      state: message.state,
-      error: message.error,
-      toolCalls: message.toolCalls
-    }));
+    const toolsEnabled = get(agentPermissions).tools;
+    const initialSeedIds = new Set(['seed-user', 'seed-assistant']);
+    const nonSeedMessages = messages.filter((m) => !initialSeedIds.has(m.id));
+    const recentMessages = nonSeedMessages.slice(-4);
+    const serializedMessages = recentMessages.map((message) => {
+      if (message.role === 'assistant' && toolsEnabled && message.toolCalls && message.toolCalls.length > 0) {
+        return { role: message.role, content: message.body || '', tool_calls: message.toolCalls };
+      }
+      return { role: message.role, content: message.body || '' };
+    });
     const acceptance = await startModelTurn({
       requestId,
       chatSessionId,
@@ -896,7 +986,8 @@ async function startClaimedLocalModelTurn(
       // only accepts ru | en for a turn, so map before sending.
       locale: assistantLocaleFor(get(locale)),
       bindingFingerprint: binding.binding_fingerprint,
-      agentPermissions: get(agentPermissions)
+      agentPermissions: get(agentPermissions),
+      messages: serializedMessages
     });
 
     if (acceptance.request_id !== requestId) throw new Error('Request ID mismatch');

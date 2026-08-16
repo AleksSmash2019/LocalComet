@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M8",
+  "invariant": "readiness correlation",
+  "file": "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+  "test": "cargo test p0c_ready_requires_correlated_response --lib",
+  "expected_reason": "readiness must bind both outer request and reply_to to the pending health request",
+  "original_sha256": "9ed4c0a797f7c9f589169415f0c3f4967785c4e6b1719e436ef04a3cae52da3f",
+  "original_occurrences": 1,
+  "started_at": "2026-08-15T22:20:23.786122+00:00",
+  "mutation_sha256": "543d3aba4a4c4bff2f4cb9b47fd457605f980201fc44c3e78526ccceccce2b03",
+  "red_exit_code": 101,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "9ed4c0a797f7c9f589169415f0c3f4967785c4e6b1719e436ef04a3cae52da3f",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:20:31.483175+00:00"
+}

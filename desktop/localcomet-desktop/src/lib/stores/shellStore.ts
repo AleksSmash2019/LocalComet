@@ -22,6 +22,9 @@ function cloneMessages(): MockMessage[] {
 
 export const themeMode = writable<ThemeMode>(initialUiPreferences.theme);
 export const agentPermissions = writable<AgentPermissions>(initialUiPreferences.agentPermissions);
+export const voiceMode = writable<boolean>(initialUiPreferences.voiceMode);
+export const ctxSizeOverride = writable<number | null>(initialUiPreferences.ctxSizeOverride);
+export const gpuLayersOverride = writable<number | null>(initialUiPreferences.gpuLayersOverride);
 export const activeWorkspace = writable<WorkspaceMode>('chat');
 export const sidebarExpanded = writable(true);
 export const inspectorVisible = writable(initialUiPreferences.diagnosticsPanel === 'open');
@@ -95,6 +98,22 @@ export function setDiagnosticsPanelOpen(open: boolean): void {
 
 export function closeDiagnosticsPanel(): void {
   setDiagnosticsPanelOpen(false);
+}
+
+export function setVoiceMode(enabled: boolean): void {
+  if (typeof enabled !== 'boolean') return;
+  voiceMode.set(enabled);
+  updateUiPreferences({ voiceMode: enabled });
+}
+
+export function setCtxSizeOverride(value: number | null): void {
+  ctxSizeOverride.set(value);
+  updateUiPreferences({ ctxSizeOverride: value });
+}
+
+export function setGpuLayersOverride(value: number | null): void {
+  gpuLayersOverride.set(value);
+  updateUiPreferences({ gpuLayersOverride: value });
 }
 
 export function setSelectedModel(model: ModelOption): void {
@@ -188,6 +207,27 @@ export function setAssistantToolCalls(requestId: string, toolCalls: import('$lib
       ...message,
       toolCalls,
       state: 'streaming'
+    };
+  }));
+  return updated;
+}
+
+export function updateAssistantToolResult(requestId: string, toolIndex: number, status: 'PASS' | 'FAIL' | 'SKIPPED' | 'WAITING', result: string): boolean {
+  if (!/^[0-9a-f]{24}$/.test(requestId)) return false;
+  let updated = false;
+  chatMessages.update((messages) => messages.map((message) => {
+    if (message.role !== 'assistant' || message.requestId !== requestId || !message.toolCalls) return message;
+    if (toolIndex < 0 || toolIndex >= message.toolCalls.length) return message;
+    updated = true;
+    const newToolCalls = [...message.toolCalls];
+    newToolCalls[toolIndex] = {
+      ...newToolCalls[toolIndex],
+      status,
+      result
+    };
+    return {
+      ...message,
+      toolCalls: newToolCalls
     };
   }));
   return updated;

@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M7",
+  "invariant": "liveness detection",
+  "file": "desktop/localcomet-desktop/src-tauri/src/supervisor.rs",
+  "test": "set LOCALCOMET_TEST_PROJECT_ROOT=C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean&&set LOCALCOMET_TEST_PYTHON=C:\\Users\\DNS\\AppData\\Local\\Python\\bin\\python.exe&&set LOCALCOMET_REQUIRE_REAL_SIDECAR=1&&cargo test real_sidecar_liveness_restarts_after_process_kill --lib -- --nocapture",
+  "expected_reason": "killed sidecar must be detected and recovered or failed closed",
+  "original_sha256": "9ed4c0a797f7c9f589169415f0c3f4967785c4e6b1719e436ef04a3cae52da3f",
+  "original_occurrences": 1,
+  "started_at": "2026-08-15T22:20:00.653379+00:00",
+  "mutation_sha256": "6c4cbec3db49aa775bd755b35a51983f744a0dee541998a8b0d700e117d3a1df",
+  "red_exit_code": 101,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "9ed4c0a797f7c9f589169415f0c3f4967785c4e6b1719e436ef04a3cae52da3f",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:20:23.785407+00:00"
+}

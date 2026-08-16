@@ -19,6 +19,7 @@ import type {
   ManagedModelCatalog,
   ManagedModelRemovalResult,
   ManagedRuntimeCatalog,
+  ManagedRuntimeCapability,
   ManagedRuntimeLogs,
   ManagedRuntimeStartResponse,
   ManagedRuntimeStatus,
@@ -34,6 +35,7 @@ import type {
 } from '$lib/types/modelGateway';
 import { CONTROL_PLANE_EVENT_CHANNEL } from './controlPlane';
 import { requestApproval } from './approval';
+import { loadUiPreferences } from '$lib/stores/uiPreferences';
 import type { FileContextInclusion, FilesContextReport } from '$lib/types/files';
 
 type InvokeArgs = Readonly<Record<string, unknown>>;
@@ -239,30 +241,61 @@ export async function getManagedModelReadiness(modelId: string): Promise<ModelRe
 export async function startManagedRuntime(
   modelId: string,
   customSha256OrIsCurrent?: string | (() => boolean),
-  maybeIsCurrent?: () => boolean
+  maybeIsCurrent?: () => boolean,
+  runtimeId?: string
 ): Promise<ManagedRuntimeStartResponse> {
   const requestedId = validateArtifactId(modelId);
+  const requestedRuntimeId = runtimeId === undefined ? undefined : validateArtifactId(runtimeId);
   const customSha256 = typeof customSha256OrIsCurrent === 'string'
     ? validateHash(customSha256OrIsCurrent)
     : null;
   const isCurrent = typeof customSha256OrIsCurrent === 'function'
     ? customSha256OrIsCurrent
     : maybeIsCurrent;
-  const approvalInput = customSha256 === null
-    ? { model_id: requestedId }
-    : { model_id: requestedId, custom_sha256: customSha256 };
+  const approvalInput = {
+    ...(customSha256 === null ? { model_id: requestedId } : { model_id: requestedId, custom_sha256: customSha256 }),
+    ...(requestedRuntimeId === undefined ? {} : { runtime_id: requestedRuntimeId })
+  };
   const envelope = await requestApproval('runtime.start', approvalInput);
   if (isCurrent && !isCurrent()) {
     throw { code: 'stale_request', message: 'Managed runtime start request is no longer current' };
   }
-  const invokeArgs: Record<string, string> = {
+  const prefs = loadUiPreferences();
+  const invokeArgs: Record<string, string | number | null> = {
     modelId: requestedId,
     token: envelope.token,
     approvalId: envelope.approvalId,
     callId: envelope.callId
   };
   if (customSha256 !== null) invokeArgs.customSha256 = customSha256;
+  if (requestedRuntimeId !== undefined) invokeArgs.runtimeId = requestedRuntimeId;
+  invokeArgs.ctxSizeOverride = prefs.ctxSizeOverride;
+  invokeArgs.gpuLayersOverride = prefs.gpuLayersOverride;
   return validateManagedStart(await invokeExact('managed_runtime_start', invokeArgs));
+}
+
+export async function startManagedRuntimeTrusted(
+  modelId: string,
+  isCurrent?: () => boolean,
+  runtimeId?: string
+): Promise<ManagedRuntimeStartResponse> {
+  const requestedId = validateArtifactId(modelId);
+  const requestedRuntimeId = runtimeId === undefined ? undefined : validateArtifactId(runtimeId);
+  if (isCurrent && !isCurrent()) {
+    throw { code: 'stale_request', message: 'Managed runtime trusted start request is no longer current' };
+  }
+  const prefs = loadUiPreferences();
+  const invokeArgs: Record<string, string | number | null> = {
+    modelId: requestedId,
+    ctxSizeOverride: prefs.ctxSizeOverride,
+    gpuLayersOverride: prefs.gpuLayersOverride
+  };
+  if (requestedRuntimeId !== undefined) invokeArgs.runtimeId = requestedRuntimeId;
+  return validateManagedStart(await invokeExact('managed_runtime_start_trusted', invokeArgs));
+}
+
+export async function stopManagedRuntimeTrusted(): Promise<void> {
+  await invokeExact('managed_runtime_stop_trusted', {});
 }
 
 export async function stopManagedRuntime(): Promise<void> {
@@ -272,6 +305,12 @@ export async function stopManagedRuntime(): Promise<void> {
 
 export async function getManagedRuntimeLogs(): Promise<ManagedRuntimeLogs> {
   return validateManagedLogs(await invokeExact('managed_runtime_logs'));
+}
+
+export async function getManagedRuntimeCapability(runtimeId: string, modelId?: string): Promise<ManagedRuntimeCapability> {
+  return validateManagedCapability(
+    await invokeExact('managed_runtime_capability', { runtimeId: validateArtifactId(runtimeId), modelId: modelId === undefined ? null : validateArtifactId(modelId) })
+  );
 }
 
 export async function startModelTurn(args: {
@@ -285,6 +324,7 @@ export async function startModelTurn(args: {
   locale: AssistantLocale;
   bindingFingerprint: string;
   agentPermissions: { files: boolean; shell: boolean; computerUse: boolean; tools: boolean; internet: boolean };
+  messages: unknown[];
 }): Promise<ModelTurnStartResponse> {
   const requestId = validateTurnId(args.requestId);
   const chatSessionId = validateChatSessionId(args.chatSessionId);
@@ -303,7 +343,8 @@ export async function startModelTurn(args: {
       fileIds,
       locale: validateLocale(args.locale),
       bindingFingerprint: validateFingerprint(args.bindingFingerprint),
-      agentPermissions: args.agentPermissions
+      agentPermissions: args.agentPermissions,
+      messages: args.messages
     })
   );
   if (
@@ -418,6 +459,7 @@ function validateManagedStatus(value: unknown): ManagedRuntimeStatus {
     'state',
     'installation',
     'runtime_version',
+    'runtime_id',
     'runtime_instance_id',
     'runtime_instance_fingerprint',
     'model_id',
@@ -425,7 +467,8 @@ function validateManagedStatus(value: unknown): ManagedRuntimeStatus {
     'binding_fingerprint',
     'model_state',
     'inference_ready',
-    'last_error'
+    'last_error',
+    'loading_phase'
   ]);
   if (object.engine !== 'llama.cpp') throw invalid();
   return {
@@ -433,6 +476,7 @@ function validateManagedStatus(value: unknown): ManagedRuntimeStatus {
     state: exactString(object.state, ['NotInstalled', 'Stopped', 'Validating', 'Starting', 'Ready', 'Stopping', 'Failed']),
     installation: exactString(object.installation, ['Installed', 'Not installed']),
     runtime_version: nullableSafeText(object.runtime_version, 96),
+    runtime_id: object.runtime_id === null ? null : validateArtifactId(String(object.runtime_id)),
     runtime_instance_id: nullablePattern(object.runtime_instance_id, /^[0-9a-f]{32}$/),
     runtime_instance_fingerprint: nullableHash(object.runtime_instance_fingerprint),
     model_id: object.model_id === null ? null : validateArtifactId(String(object.model_id)),
@@ -440,7 +484,8 @@ function validateManagedStatus(value: unknown): ManagedRuntimeStatus {
     binding_fingerprint: nullableHash(object.binding_fingerprint),
     model_state: exactString(object.model_state, ['Unavailable', 'Validating', 'Loading', 'Ready', 'Failed', 'Unloading']),
     inference_ready: exactBoolean(object.inference_ready),
-    last_error: nullableSafeText(object.last_error, 240)
+    last_error: nullableSafeText(object.last_error, 240),
+    loading_phase: nullableSafeText(object.loading_phase, 240)
   };
 }
 
@@ -776,6 +821,7 @@ function validateManagedStart(value: unknown): ManagedRuntimeStartResponse {
     'provider_id',
     'model_id',
     'model_display_name',
+    'runtime_id',
     'runtime_instance_id',
     'runtime_instance_fingerprint'
   ]);
@@ -787,6 +833,7 @@ function validateManagedStart(value: unknown): ManagedRuntimeStartResponse {
     provider_id: 'managed-llama-cpp',
     model_id: validateArtifactId(String(object.model_id)),
     model_display_name: safeText(object.model_display_name, 192),
+    runtime_id: validateArtifactId(String(object.runtime_id)),
     runtime_instance_id: patternString(object.runtime_instance_id, /^[0-9a-f]{32}$/),
     runtime_instance_fingerprint: validateHash(object.runtime_instance_fingerprint)
   };
@@ -797,6 +844,27 @@ function validateManagedLogs(value: unknown): ManagedRuntimeLogs {
   return {
     stdout_tail: boundedArray(object.stdout_tail, 200).map((line) => safeTextAllowEmpty(line, 2_048)),
     stderr_tail: boundedArray(object.stderr_tail, 200).map((line) => safeTextAllowEmpty(line, 2_048))
+  };
+}
+
+function validateManagedCapability(value: unknown): ManagedRuntimeCapability {
+  const object = expectExactRecord(value, [
+    'runtime_id',
+    'available',
+    'safe_to_start',
+    'reason_code',
+    'fallback_runtime_ids',
+    'device_summary'
+  ]);
+  const reasonCode = object.reason_code === null ? null : safeText(object.reason_code, 64);
+  if (reasonCode === '') throw invalid();
+  return {
+    runtime_id: validateArtifactId(String(object.runtime_id)),
+    available: exactBoolean(object.available),
+    safe_to_start: exactBoolean(object.safe_to_start),
+    reason_code: reasonCode,
+    fallback_runtime_ids: boundedArray(object.fallback_runtime_ids, 8).map((id) => validateArtifactId(String(id))),
+    device_summary: object.device_summary === null ? null : safeText(object.device_summary, 96)
   };
 }
 

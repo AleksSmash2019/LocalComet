@@ -17,7 +17,7 @@
   $: state = status?.state ?? 'NotInstalled';
   $: selectedModel = $managedRuntimeStore.catalog.find((model) => model.model_id === $managedRuntimeStore.selectedModelId);
   $: modelLaunchable = $managedRuntimeStore.readiness?.model_id === selectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
-  $: canStart = !$inferenceBusy && Boolean(selectedModel) && modelLaunchable && (state === 'Stopped' || state === 'Failed');
+  $: canStart = !$inferenceBusy && Boolean(selectedModel) && modelLaunchable && (state === 'Stopped' || state === 'Failed' || (state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId));
   $: canStop = !$inferenceBusy && (state === 'Ready' || state === 'Starting' || state === 'Validating' || state === 'Failed');
   $: canBind = !$inferenceBusy && state === 'Ready' && status?.model_state === 'Ready' && status?.inference_ready === true && status?.model_id === $managedRuntimeStore.selectedModelId && modelLaunchable && Boolean(status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
   $: tone = state === 'Ready' ? 'ready' : state === 'Failed' ? 'danger' : state === 'Starting' || state === 'Validating' || state === 'Stopping' ? 'info' : 'disabled';
@@ -40,13 +40,14 @@
     <TelemetryRow label="Engine" value="llama.cpp" mono />
     <TelemetryRow label="Managed Runtime" value={status?.installation ?? 'Not installed'} tone={state === 'NotInstalled' ? 'disabled' : 'ready'} />
     <TelemetryRow label="Runtime Version" value={status?.runtime_version ?? 'Not validated'} tone="disabled" mono />
+    <TelemetryRow label="Runtime" value={status?.runtime_id ?? 'Not selected'} tone={status?.runtime_id ? 'ready' : 'disabled'} mono />
     <TelemetryRow label="Model State" value={status?.model_state ?? 'Unavailable'} tone={status?.model_state === 'Ready' ? 'ready' : 'disabled'} />
     <TelemetryRow label="Inference" value={status?.inference_ready ? 'Ready' : 'Unavailable'} tone={status?.inference_ready ? 'ready' : 'disabled'} />
   </div>
 
   <div class="managed-controls">
     <button type="button" disabled={$inferenceBusy} onclick={() => void refreshManagedRuntimeStatus()}>Refresh</button>
-    <button type="button" disabled={!canStart} onclick={() => void startSelectedManagedRuntime()}>Start Runtime</button>
+    <button type="button" disabled={!canStart} onclick={() => void startSelectedManagedRuntime()}>{state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId ? 'Switch Model' : 'Start Runtime'}</button>
     <button type="button" disabled={!canStop} onclick={() => void stopSelectedManagedRuntime()}>Stop Runtime</button>
   </div>
 

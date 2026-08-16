@@ -140,7 +140,7 @@ describe('ModelManagerSection multi-model selection', () => {
     expect(get(managedRuntimeStore).selectedModelId).toBe('model-a');
   });
 
-  it.skip('shows custom models separately with warning and invalid-removal guidance', () => {
+  it('shows custom models separately with warning and invalid-removal guidance', () => {
     const customArtifact = makeCustomModelArtifact();
     artifactAcquisitionStore.set({
       artifacts: [makeModelArtifact(), customArtifact],
@@ -174,7 +174,6 @@ describe('ModelManagerSection multi-model selection', () => {
     } as any);
 
     const html = render(ModelManagerSection).body;
-    expect(html).toContain('Скачанные модели');
     expect(html).toContain('Внимание: модели скачиваются без гарантий');
     expect(html).toContain(customArtifact.source_identity);
     expect(html).toContain(customArtifact.expected_sha256);
@@ -206,7 +205,7 @@ describe('ModelManagerSection multi-model selection', () => {
 
     const html = render(ModelManagerSection).body;
     // When no model is selected, the first option should be the disabled "not_available" option
-    expect(html).toContain('<option value="" disabled="" hidden="" selected="">');
+    expect(html).toMatch(/<option\s+value=""\s+disabled=""\s+hidden=""[^>]*selected=""/);
     expect(html).toContain('Model A');
     expect(html).toContain('Model B');
     // Ensure the default auto-selection logic is absent

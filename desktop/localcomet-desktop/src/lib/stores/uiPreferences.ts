@@ -27,19 +27,25 @@ export interface UiPreferences {
   locale: UiLocale;
   diagnosticsPanel: DiagnosticsPanelPreference;
   agentPermissions: AgentPermissions;
+  voiceMode: boolean;
+  ctxSizeOverride: number | null;
+  gpuLayersOverride: number | null;
 }
 
 export const DEFAULT_UI_PREFERENCES: Readonly<UiPreferences> = Object.freeze({
   theme: 'system',
   locale: 'ru',
   diagnosticsPanel: 'closed',
+  voiceMode: false,
   agentPermissions: {
     files: true,
     shell: false,
     tools: true,
     computerUse: false,
     internet: false
-  }
+  },
+  ctxSizeOverride: null,
+  gpuLayersOverride: null
 });
 
 function defaultPreferences(): UiPreferences {
@@ -80,8 +86,15 @@ function normalizePreferences(value: unknown): UiPreferences {
   if (isDiagnosticsPanel(value.diagnosticsPanel)) {
     preferences.diagnosticsPanel = value.diagnosticsPanel;
   }
+  if (typeof value.voiceMode === 'boolean') preferences.voiceMode = value.voiceMode;
   if (isAgentPermissions(value.agentPermissions)) {
     preferences.agentPermissions = { ...preferences.agentPermissions, ...value.agentPermissions } as AgentPermissions;
+  }
+  if (value.ctxSizeOverride === null || typeof value.ctxSizeOverride === 'number') {
+    preferences.ctxSizeOverride = value.ctxSizeOverride;
+  }
+  if (value.gpuLayersOverride === null || typeof value.gpuLayersOverride === 'number') {
+    preferences.gpuLayersOverride = value.gpuLayersOverride;
   }
   return preferences;
 }
@@ -133,8 +146,18 @@ export function updateUiPreferences(patch: Readonly<Partial<UiPreferences>>): Ui
   if (isRecord(patch)) {
     if (isTheme(patch.theme)) preferences.theme = patch.theme;
     if (isLocale(patch.locale)) preferences.locale = patch.locale;
+    if (typeof patch.voiceMode === 'boolean') preferences.voiceMode = patch.voiceMode;
     if (isDiagnosticsPanel(patch.diagnosticsPanel)) {
       preferences.diagnosticsPanel = patch.diagnosticsPanel;
+    }
+    if (isAgentPermissions(patch.agentPermissions)) {
+      preferences.agentPermissions = { ...preferences.agentPermissions, ...patch.agentPermissions } as AgentPermissions;
+    }
+    if (patch.ctxSizeOverride !== undefined) {
+      preferences.ctxSizeOverride = patch.ctxSizeOverride;
+    }
+    if (patch.gpuLayersOverride !== undefined) {
+      preferences.gpuLayersOverride = patch.gpuLayersOverride;
     }
   }
 

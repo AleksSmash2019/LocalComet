@@ -227,7 +227,7 @@
     width: 44px;
     height: 24px;
     border-radius: 12px;
-    background: var(--lc-border);
+    background: var(--lc-line-strong);
     border: none;
     cursor: pointer;
     transition: background 0.3s ease;
@@ -237,7 +237,7 @@
   }
 
   .toggle-switch.on {
-    background: var(--lc-primary);
+    background: var(--lc-accent);
   }
 
   .knob {
@@ -246,7 +246,7 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--lc-text);
     box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
   }
@@ -256,7 +256,7 @@
   }
 
   .toggle-switch:focus-visible {
-    outline: 2px solid var(--lc-primary);
+    outline: 2px solid var(--lc-accent);
     outline-offset: 2px;
   }
 </style>

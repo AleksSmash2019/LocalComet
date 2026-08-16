@@ -5,6 +5,7 @@ interface MockRuntimeStatus {
   state: string;
   installation: string;
   runtime_version: string | null;
+  runtime_id: string | null;
   runtime_instance_id: string | null;
   runtime_instance_fingerprint: string | null;
   model_id: string | null;
@@ -12,6 +13,7 @@ interface MockRuntimeStatus {
   binding_fingerprint: string | null;
   model_state: string;
   inference_ready: boolean;
+  loading_phase: string | null;
   last_error: string | null;
 }
 
@@ -21,6 +23,7 @@ let statusResponse: MockRuntimeStatus = {
   state: 'Stopped',
   installation: 'Installed',
   runtime_version: 'v6.84.3',
+  runtime_id: null,
   runtime_instance_id: null,
   runtime_instance_fingerprint: null,
   model_id: null,
@@ -28,6 +31,7 @@ let statusResponse: MockRuntimeStatus = {
   binding_fingerprint: null,
   model_state: 'Unavailable',
   inference_ready: false,
+  loading_phase: null,
   last_error: null
 };
 
@@ -50,6 +54,7 @@ beforeEach(() => {
     state: 'Stopped',
     installation: 'Installed',
     runtime_version: 'v6.84.3',
+    runtime_id: null,
     runtime_instance_id: null,
     runtime_instance_fingerprint: null,
     model_id: null,
@@ -57,6 +62,7 @@ beforeEach(() => {
     binding_fingerprint: null,
     model_state: 'Unavailable',
     inference_ready: false,
+  loading_phase: null,
     last_error: null
   };
 });
@@ -86,7 +92,8 @@ describe('p0c-sidecar-health', () => {
   });
 
   it('p0c_frontend_exit_clears_ready', async () => {
-    statusResponse = { ...statusResponse, state: 'Failed', model_state: 'Failed', inference_ready: false, last_error: 'managed runtime exited' };
+    statusResponse = { ...statusResponse, state: 'Failed', model_state: 'Failed', inference_ready: false,
+  loading_phase: null, last_error: 'managed runtime exited' };
     const { getManagedRuntimeStatus } = await import('../src/lib/bridge/modelGateway');
     const status = await getManagedRuntimeStatus();
     expect(status.state).toBe('Failed');
@@ -94,7 +101,8 @@ describe('p0c-sidecar-health', () => {
   });
 
   it('p0c_frontend_restart_clears_previous_ready', async () => {
-    statusResponse = { ...statusResponse, state: 'Stopped', model_state: 'Unavailable', inference_ready: false, runtime_instance_id: null };
+    statusResponse = { ...statusResponse, state: 'Stopped', model_state: 'Unavailable', inference_ready: false,
+  loading_phase: null, runtime_instance_id: null };
     const { getManagedRuntimeStatus } = await import('../src/lib/bridge/modelGateway');
     const status = await getManagedRuntimeStatus();
     expect(status.state).toBe('Stopped');

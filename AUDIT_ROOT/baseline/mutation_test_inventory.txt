@@ -1,0 +1,279 @@
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:974:    fn replay_is_rejected() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1378:    fn wrong_digest_rejects_without_consuming_token() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1518:        let wrong_digest = canonical_input_digest(&json!({"path": "other.txt"}));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1548:                &wrong_digest,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2021:    fn p0b_r2_replay_distinguished_from_unknown() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2048:        let replay_err = registry
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2060:        assert!(matches!(replay_err, ApprovalError::AlreadyConsumed));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2658:    fn p0b_concurrent_replay_registry_remains_consistent() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3507:        let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3518:            replay.is_err(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3600:        let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3610:        let error = replay.expect_err("replay must fail");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:928:    fn p0b_replay_rejected() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:947:        let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:958:            replay,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1373:        let replay = validate_approval_token(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1381:        let error = replay.expect_err("replay must be rejected");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:230:                artifact_id: runtime.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1271:        ApprovedDownloadArtifact::Runtime(runtime) => &runtime.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1797:    const TEST_RUNTIME_ID: &str = "test-runtime";
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1844:            runtime_id: TEST_RUNTIME_ID.into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1856:                artifact_id: TEST_RUNTIME_ID.into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1865:                managed_relative_destination: TEST_RUNTIME_ID.into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1872:            managed_relative_path: TEST_RUNTIME_ID.into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1927:            compatible_runtime_ids: vec![TEST_RUNTIME_ID.into()],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2544:            .approved_download_artifact(TEST_RUNTIME_ID)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2555:        let job_id = register_job(&manager, TEST_RUNTIME_ID, expected_bytes, expected_bytes);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2573:        assert_eq!(events[0]["artifact_id"], TEST_RUNTIME_ID);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2599:            .approved_download_artifact(TEST_RUNTIME_ID)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2601:        let job_id = register_job(&manager, TEST_RUNTIME_ID, 7, 7);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2623:        let job_id = register_job(&manager, TEST_RUNTIME_ID, 7, 7);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2637:            .approved_download_artifact(TEST_RUNTIME_ID)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2639:        let job_id = register_job(&manager, TEST_RUNTIME_ID, 7, 3);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2667:        assert_eq!(events[0]["artifact_id"], TEST_RUNTIME_ID);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2733:            .start(TEST_RUNTIME_ID, false)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2736:        let package = trust.roots().runtime_root.join(TEST_RUNTIME_ID);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2741:            .approved_download_artifact(TEST_RUNTIME_ID)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2758:            .start(TEST_RUNTIME_ID, true)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2788:            TEST_RUNTIME_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2797:                .insert(TEST_RUNTIME_ID.into(), job_id.clone());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2808:            .start(TEST_RUNTIME_ID, true)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:2823:            .contains_key(TEST_RUNTIME_ID));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:49:const CUSTOM_MODEL_RUNTIME_ID: &str = "llama-cpp-windows-x86-64-cpu-bootstrap";
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:50:const VULKAN_MODEL_RUNTIME_ID: &str = "llama-cpp-windows-x86-64-vulkan-bootstrap";
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:131:    pub runtime_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:172:    pub compatible_runtime_ids: Vec<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:217:    pub compatible_runtime_ids: Vec<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:229:    pub compatible_runtime_ids: Vec<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:248:            compatible_runtime_ids: self.compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:371:    pub runtime_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:404:    pub compatible_runtime_ids: Vec<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:424:    pub compatible_runtime_ids: Vec<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:441:            compatible_runtime_ids: model.compatible_runtime_ids.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:537:    pub compatible_runtime_ids: Vec<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:538:    pub selected_runtime_id: Option<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:572:    pub runtime_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:592:    pub runtime_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:625:    fn compatible_runtime_ids(&self) -> &[String] {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:627:            Self::Approved(model) => &model.compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:628:            Self::Custom(model) => &model.compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:863:            .find(|runtime| runtime.runtime_id == artifact_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:890:            .find(|runtime| runtime.runtime_id == artifact_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1012:                    runtime_id: runtime.runtime_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1067:                    compatible_runtime_ids: model.compatible_runtime_ids.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1153:            .find(|runtime| runtime.runtime_id == artifact_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1193:        runtime_id: Option<&str>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1196:        let runtime_id = match runtime_id {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1200:                    .compatible_runtime_ids()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1205:                        "runtime_id_not_compatible",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1220:            ManagedModelArtifact::Approved(_) => match &runtime_id {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1221:                Some(runtime_id) => Ok(serde_json::json!({
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1223:                    "runtime_id": runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1241:                match &runtime_id {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1242:                    Some(runtime_id) => Ok(serde_json::json!({
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1245:                        "runtime_id": runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1271:        let mut selected_runtime_id = None;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1275:            .compatible_runtime_ids()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1279:        runtime_candidates.sort_by_key(|id| if *id == VULKAN_MODEL_RUNTIME_ID { 0 } else { 1 });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1280:        for runtime_id in runtime_candidates {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1285:                .find(|runtime| runtime.runtime_id == runtime_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1293:                selected_runtime_id = Some(runtime.runtime_id.clone());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1307:        if selected_runtime_id.is_none() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1308:            let mut preferred_runtime_id: Option<String> = None;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1310:                .compatible_runtime_ids()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1312:                .any(|id| id == VULKAN_MODEL_RUNTIME_ID)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1314:                preferred_runtime_id = Some(VULKAN_MODEL_RUNTIME_ID.to_string());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1316:                .compatible_runtime_ids()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1318:                .any(|id| id == CUSTOM_MODEL_RUNTIME_ID)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1320:                preferred_runtime_id = Some(CUSTOM_MODEL_RUNTIME_ID.to_string());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1322:            if let Some(pref) = preferred_runtime_id {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1323:                selected_runtime_id = Some(pref);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1328:        let incompatible_runtime_installed = selected_runtime_id.is_none()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1331:                    .compatible_runtime_ids()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1333:                    .any(|runtime_id| runtime_id == &runtime.runtime_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1336:        let compatibility = if selected_runtime_id.is_some() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1345:            InstallationStatus::Valid if selected_runtime_id.is_some() => {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1366:                compatible_runtime_ids: model.compatible_runtime_ids().to_vec(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1367:                selected_runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1389:        runtime_id: Option<&str>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1393:            return self.resolve_launch_with_runtime(model_id, runtime_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1395:        self.resolve_launch_inner(model_id, custom_sha256, runtime_id, true)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1401:        runtime_id: Option<&str>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1403:        self.resolve_launch_inner(model_id, None, runtime_id, false)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1413:        runtime_id: &str,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1419:            .find(|runtime| runtime.runtime_id == runtime_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1422:                    "invalid_runtime_id",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1437:            runtime_id: runtime.runtime_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1448:        runtime_id: Option<&str>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1476:        let requested_runtime = match runtime_id {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1479:                    .compatible_runtime_ids()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1492:                    .find(|runtime| runtime.runtime_id == candidate)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1521:                let runtime_id = readiness.selected_runtime_id.ok_or_else(|| {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1528:                    .find(|runtime| runtime.runtime_id == runtime_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1644:            runtime_id: runtime.runtime_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1672:            &runtime.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2387:        compatible_runtime_ids: vec![
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2388:            CUSTOM_MODEL_RUNTIME_ID.to_string(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2389:            VULKAN_MODEL_RUNTIME_ID.to_string(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2572:        && stored.first().map(String::as_str) == Some(CUSTOM_MODEL_RUNTIME_ID)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2573:        && source.last().map(String::as_str) == Some(VULKAN_MODEL_RUNTIME_ID)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2601:                .any(|approved| approved.runtime_id == model.model_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2616:                &source.compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2617:                &model.compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2633:                .compatible_runtime_ids
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2635:                .map(|runtime_id| runtime_id.as_str()),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2637:        for runtime_id in &model.compatible_runtime_ids {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2641:                .any(|runtime| &runtime.runtime_id == runtime_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2801:            .map(|runtime| runtime.runtime_id.as_str()),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2804:    let runtime_ids: BTreeSet<&str> = catalog
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2807:        .map(|runtime| runtime.runtime_id.as_str())
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2816:        validate_artifact_id(&runtime.runtime_id)?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2817:        if !artifact_ids.insert(runtime.runtime_id.as_str()) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:2851:                artifact_id: &runtime.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3059:            || model.compatible_runtime_ids.is_empty()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3068:                .compatible_runtime_ids
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3070:                .map(|runtime_id| runtime_id.as_str()),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3072:        for runtime_id in &model.compatible_runtime_ids {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3073:            validate_artifact_id(runtime_id)?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3074:            if !runtime_ids.contains(runtime_id.as_str()) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3903:        let mut compatible_runtime_ids = Vec::new();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3905:            compatible_runtime_ids.push(runtime.runtime_id.clone());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3917:            compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3994:    fn test_runtime(runtime_id: &str, managed_path: &str) -> ApprovedRuntimeArtifact {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3996:            runtime_id: runtime_id.into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4004:            asset_filename: format!("{runtime_id}.zip"),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4008:                artifact_id: runtime_id.into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4011:                primary_url: format!("https://example.test/{runtime_id}.zip"),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4013:                expected_filename: format!("{runtime_id}.zip"),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4049:    fn test_model(compatible_runtime_ids: Vec<String>) -> ApprovedModelArtifact {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4079:            compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4171:                test_runtime(CUSTOM_MODEL_RUNTIME_ID, CUSTOM_MODEL_RUNTIME_ID),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4172:                test_runtime(VULKAN_MODEL_RUNTIME_ID, VULKAN_MODEL_RUNTIME_ID),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4174:            models: vec![test_model(vec![CUSTOM_MODEL_RUNTIME_ID.into()])],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4220:            source.compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4222:                CUSTOM_MODEL_RUNTIME_ID.to_string(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4223:                VULKAN_MODEL_RUNTIME_ID.to_string()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4305:        // strict compatible_runtime_ids equality, silently dropping every
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4323:        manifest["models"][0]["compatible_runtime_ids"] =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4324:            serde_json::json!([CUSTOM_MODEL_RUNTIME_ID]);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4334:            loaded.compatible_runtime_ids,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4335:            vec![CUSTOM_MODEL_RUNTIME_ID.to_string()]
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4340:        tampered["models"][0]["compatible_runtime_ids"] =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4341:            serde_json::json!([VULKAN_MODEL_RUNTIME_ID]);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4369:            serde_json::to_vec(&vec![test_model(vec![CUSTOM_MODEL_RUNTIME_ID.into()])])
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4478:    fn runtime_start_approval_binds_explicit_runtime_id_into_digest() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4501:                    .map(|model| model.compatible_runtime_ids.contains(&runtime.runtime_id))
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4507:                .runtime_start_approval_input("test-model", None, Some(&compatible.runtime_id))
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4511:                "runtime_id": compatible.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4662:                    m.model_id, m.compatible_runtime_ids
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4666:                eprintln!("DIAG runtime {} variant={}", r.runtime_id, r.variant);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4677:        assert_eq!(runtime.runtime_id, "llama-cpp-windows-x86-64-cpu-bootstrap");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4701:            gpu_runtime.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4908:        catalog.runtimes[0].runtime_id = "../runtime".into();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:4949:        catalog.models[0].compatible_runtime_ids = vec!["unknown-runtime".into()];
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:5273:        catalog.models[0].compatible_runtime_ids = vec!["aaa-compatible-runtime".into()];
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:5294:    fn resolved_launch_holds_model_and_runtime_identity_guards() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:5380:            service.catalog.runtimes[0].runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:5403:        assert_eq!(launch.runtime_id, "llama-cpp-windows-x86-64-cpu-bootstrap");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\control_plane.rs:2165:    let (runtime_instance_id, _attach_fingerprint) = runtime.active_runtime_identity(model_id)?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\control_plane.rs:8992:        // Replay of the same accepted terminal must be rejected without mutation.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\control_plane.rs:8993:        b10_reject(&mut entry_a, &terminal, "terminal replay");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:26://! LOCALCOMET_LIVE_RUNTIME_ID    optional, default llama-cpp-windows-x86-64-cpu-bootstrap
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:83:        let runtime_id = env_or_warn("LOCALCOMET_LIVE_RUNTIME_ID")
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:87:                Some((project_root, python, model_root, model_id, runtime_id))
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:361:        let Some((project_root, python, model_root, model_id, runtime_id)) = live_env() else {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:373:            .runtime_capability(&runtime_id, Some(&model_id))
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:375:        assert_eq!(capability.runtime_id, runtime_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:386:            Some(&runtime_id),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:411:            first.runtime_id, runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:412:            "start response must bind runtime_id"
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:418:        assert_eq!(status.runtime_id.as_deref(), Some(runtime_id.as_str()));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:430:                Some(&runtime_id),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:500:                Some(&runtime_id),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:543:        let Some((project_root, python, model_root, _model_id, _runtime_id)) = live_env() else {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:564:        let runtime_id = custom
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:565:            .compatible_runtime_ids
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:573:            .runtime_start_approval_input(&custom_model_id, Some(&custom_sha256), Some(&runtime_id))
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:580:                "runtime_id": runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:595:            Some(runtime_id.clone()),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:634:        // then prove single-use: a replay of the exact same approval material
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:647:        let replay = crate::approval_commands::validate_approval_token(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:657:        .expect_err("approval replay must be rejected");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:658:        assert_eq!(replay.code, "approval_token_consumed");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:678:            Some(runtime_id.clone()),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:687:        assert_eq!(started.runtime_id, runtime_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:87:    pub runtime_id: Option<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:105:    pub runtime_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:157:    runtime_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:317:            runtime_id: active.map(|item| item.runtime_id.clone()),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:351:    /// `fallback_runtime_ids` lists the model's other compatible engines
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:355:        runtime_id: &str,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:358:        if runtime_id.is_empty()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:359:            || runtime_id.len() > 96
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:360:            || runtime_id.chars().any(char::is_whitespace)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:372:        let target = self.artifacts.runtime_probe_target(runtime_id)?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:374:            &target.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:381:            capability.fallback_runtime_ids = readiness
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:382:                .compatible_runtime_ids
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:384:                .filter(|candidate| candidate.as_str() != runtime_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:395:        runtime_id: Option<&str>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:398:            .runtime_start_approval_input(model_id, custom_sha256, runtime_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:405:        runtime_id: Option<&str>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:407:        let _ = self.runtime_start_approval_input(model_id, None, runtime_id)?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:442:        let _ = self.runtime_start_approval_input(&model_id, None, status.runtime_id.as_deref())?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:467:    pub(crate) fn active_runtime_identity(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:490:        runtime_id: Option<&str>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:506:            runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:650:        runtime_id: Option<&str>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:659:                .resolve_launch_for_start(model_id, custom_sha256, runtime_id)?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:677:        if launch.runtime_id.contains("vulkan") {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:693:            launch.runtime_id, launch.runtime_release_tag, runtime_instance_id
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:706:            runtime_id: launch.runtime_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:763:                    launch.runtime_id.contains("vulkan"),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:845:                    runtime_id: launch.runtime_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:873:                runtime_id: launch.runtime_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:888:                &format!("started runtime={}", launch.runtime_id),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1136:/// active_runtime_identity.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1283:        runtime.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1432:    pub runtime_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1436:    pub fallback_runtime_ids: Vec<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1459:    runtime_id: &str,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1467:        runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1476:    runtime_id: &str,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1481:    let cache_key = device_probe_cache_key(runtime_id, release_tag, executable);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1546:    runtime_id: &str,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1551:    let accelerated = runtime_id.contains("vulkan");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1552:    let outcome = cached_device_probe(runtime_id, release_tag, package_dir, executable);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1554:        runtime_id: runtime_id.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1558:        fallback_runtime_ids: Vec::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1592:        &launch.runtime_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2526:    runtime_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2531:        runtime.runtime_capability(&runtime_id, model_id.as_deref())
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2548:    runtime_id: Option<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2555:    if runtime_id.as_ref().is_some_and(|value| {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2560:    runtime.ensure_trusted_model_start(&model_id, runtime_id.as_deref())?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2567:            runtime_id.as_deref(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2590:    runtime_id: Option<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2600:    if runtime_id.as_ref().is_some_and(|value| {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2608:        runtime_id.as_deref(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2624:            runtime_id.as_deref(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2740:            runtime_id: "llama-cpp-windows-x86-64-vulkan-bootstrap".into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2744:            fallback_runtime_ids: vec!["llama-cpp-windows-x86-64-cpu-bootstrap".into()],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2751:            value["runtime_id"],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2758:            value["fallback_runtime_ids"],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2915:            runtime_id: "llama-cpp-windows-x86-64-cpu-bootstrap".into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:3005:            runtime_id: Some("llama-cpp-windows-x86-64-vulkan-bootstrap".into()),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:3021:            value["runtime_id"],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:3027:    fn start_response_serializes_runtime_id() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:3028:        // Defect caught: dropping runtime_id from the start response would let
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:3037:            runtime_id: "llama-cpp-windows-x86-64-cpu-bootstrap".into(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:3043:            value["runtime_id"],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:3092:    fn active_runtime_identity_fails_closed_without_an_active_runtime() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:3099:            .active_runtime_identity("approved-model")
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1790:    fn real_sidecar_nonreading_pipe_write_is_bounded_and_releases_supervisor() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1866:    fn p0c_ready_requires_correlated_response() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2772:    fn real_sidecar_liveness_restarts_after_process_kill() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\windows_job.rs:296:        let job = create_single_process_kill_on_close_job()?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\windows_job.rs:405:        let job = create_single_process_kill_on_close_job()?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\windows_job.rs:501:    fn create_single_process_kill_on_close_job() -> io::Result<OwnedHandle> {

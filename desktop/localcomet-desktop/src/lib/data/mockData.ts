@@ -21,7 +21,7 @@ export interface MockMessage {
 export interface ToolCallMock {
   operation: string;
   target: string;
-  status: 'PASS' | 'WAITING' | 'SKIPPED';
+  status: 'PASS' | 'WAITING' | 'SKIPPED' | 'FAIL';
   elapsed: string;
   detail: string;
   result: string;

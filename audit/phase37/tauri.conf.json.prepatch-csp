@@ -1,0 +1,70 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LocalComet",
+  "mainBinaryName": "LocalComet",
+  "version": "6.84.6",
+  "identifier": "com.localcomet.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "LocalComet",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1000,
+        "minHeight": 700,
+        "resizable": true,
+        "maximizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "center": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' 'unsafe-inline' data: blob: asset: https: http://localhost:1420 http://127.0.0.1:1420; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost https: http: http://localhost:1420 http://127.0.0.1:1420 ws: wss: ws://localhost:1420 ws://127.0.0.1:1420; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/localcomet-core"
+    ],
+    "resources": {
+      "binaries/app/": "app/",
+      "binaries/DLLs/": "DLLs/",
+      "binaries/LICENSE.python.txt": "LICENSE.python.txt",
+      "binaries/python3.dll": "python3.dll",
+      "binaries/python314.dll": "python314.dll",
+      "binaries/python314.zip": "python314.zip",
+      "binaries/runtime-manifest.tsv": "runtime-manifest.tsv",
+      "binaries/up00-runtime-manifest.json": "up00-runtime-manifest.json",
+      "binaries/vcruntime140.dll": "vcruntime140.dll",
+      "binaries/vcruntime140_1.dll": "vcruntime140_1.dll"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "skip"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "compression": "lzma",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installerHooks": "nsis/installer-hooks.nsh"
+      }
+    }
+  }
+}

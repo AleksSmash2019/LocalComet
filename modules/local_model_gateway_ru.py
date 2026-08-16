@@ -65,6 +65,7 @@ TURN_START_PAYLOAD_KEYS = frozenset(
         "prompt",
         "assistant_context",
         "binding_fingerprint",
+        "messages",
     )
 )
 
@@ -395,6 +396,7 @@ class LocalModelGateway:
             "prompt": normalized_prompt,
             "assistant_context": trusted_assistant_context_payload("ru"),
             "binding_fingerprint": fingerprint,
+            "messages": [],
         }
 
     def probe(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -480,6 +482,7 @@ class LocalModelGateway:
                 "submitted_at_unix_ms": int(time.time() * 1000),
                 "max_tokens": DEFAULT_MAX_TOKENS,
                 "assistant_context": trusted_assistant_context_payload("ru"),
+                "messages": [],
                 **typed_payload,
             }
         return self._start_turn(
@@ -1110,8 +1113,10 @@ class HarnessAdapter:
                 {"role": "system", "content": build_system_instruction(assistant_context)},
                 *history,
             )
-            if messages[-1].get("role") != "user" or messages[-1].get("content") != prompt:
-                raise GatewayError("invalid_payload", "history must end with the current user prompt")
+            # If the last message is a user prompt, it must match the provided prompt.
+            # Otherwise (e.g. continuing after a tool call), we don't strictly require it.
+            if messages[-1].get("role") == "user" and messages[-1].get("content") != prompt:
+                raise GatewayError("invalid_payload", "history ending in user prompt must match the current user prompt")
         else:
             messages = (
                 {"role": "system", "content": build_system_instruction(assistant_context)},
@@ -1911,14 +1916,23 @@ def _validate_turn_request(
     )
     max_tokens = _validate_max_tokens(payload.get("max_tokens"))
     prompt = _validate_prompt(payload.get("prompt"), limits)
-    if not prompt.strip():
+    raw_messages = payload.get("messages", ())
+    if not prompt.strip() and not raw_messages:
         raise GatewayError("invalid_payload", "prompt must not be empty")
     assistant_context = _validate_assistant_context(payload.get("assistant_context"))
     binding_fingerprint = _validate_fingerprint(payload.get("binding_fingerprint"))
     if binding_fingerprint != binding.fingerprint:
         raise GatewayError("invalid_payload", "binding fingerprint mismatch")
-    messages = ()
+
+    tools_enabled = bool(assistant_context.tools)
+    raw_messages = payload.get("messages", ())
+    if not isinstance(raw_messages, (list, tuple)):
+        raise GatewayError("invalid_payload", "messages must be an array")
+    messages = tuple(raw_messages)
+    _validate_messages(messages, limits, tools_enabled=tools_enabled)
+
     tools = ()
+
     return TurnRequest(
         request_id=request_id,
         turn_id=request_id,
@@ -2199,10 +2213,11 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "files.create_folder": {"required": ("path",), "properties": {"path": str}},
     "files.delete": {"required": ("path",), "properties": {"path": str}},
     "shell": {"required": ("command",), "properties": {"command": str}},
-    "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str}},
+    "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str, "target": str}},
     "web.search": {"required": ("query",), "properties": {"query": str}},
     "web.fetch": {"required": ("url",), "properties": {"url": str}},
     "skills.invoke": {"required": ("skill_id",), "properties": {"skill_id": str, "arguments": list}},
+    "system.time": {"required": (), "properties": {}},
 }
 
 _TOOL_DESCRIPTIONS: dict[str, str] = {
@@ -2215,7 +2230,8 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "web.search": "Web search (guarded). Required: query (<=200 chars). Returns up to 5 results {url,title,snippet}. Rate-limited, cached 10m. Use for fresh news/facts when local knowledge is stale.",
     "web.fetch": "Web fetch (guarded). Required: url (https:// or http://, <=2000 chars). Fetches and strips HTML to ~8k text, cached 10m. Use to read a page found via web.search.",
     "skills.invoke": "Skill invocation (dangerous). Required: skill_id (installed+enabled skill). Optional: arguments (object or array, passed verbatim as JSON). Spawns the skill entrypoint with no shell, 180s timeout, bounded output. Dangerous: user approval is required before execution.",
-    "computer_use": "Desktop Computer Use. Actions are allowlisted only. Valid action values: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait, drag. Use text for type/paste/key/hotkey payload and optional coordinate [x,y] as advisory hint (0-1000 normalized or pixel advisory; for small targets zoom/enable_zoom and retry with precise targeting). Dangerous: user approval is required before execution. Delegated to the local allowlisted executor; free-form OS commands are rejected. After each computer_use step, call screenshot, evaluate outcome, retry if not achieved (Anthropic best-practice self-correction loop).",
+    "computer_use": "Desktop Computer Use. Actions are allowlisted only. Valid action values: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait, drag. Use target for app/folder/element identifiers, text for type/paste/key/hotkey payload, and optional coordinate [x,y] as advisory hint (0-1000 normalized or pixel advisory; for small targets zoom/enable_zoom and retry with precise targeting). Dangerous: user approval is required before execution. Delegated to the local allowlisted executor; free-form OS commands are rejected. After each computer_use step, call screenshot, evaluate outcome, retry if not achieved (Anthropic best-practice self-correction loop).",
+    "system.time": "Get the current system time and date. Takes no arguments.",
 }
 
 

@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M3",
+  "invariant": "approval single-use",
+  "file": "desktop/localcomet-desktop/src-tauri/src/approval.rs",
+  "test": "cargo test replay_is_rejected --lib",
+  "expected_reason": "replayed approval must return AlreadyConsumed",
+  "original_sha256": "1bf6d273f7cb43badab87c27d2073d7237413e4f69725206c55c5160fbb4a988",
+  "original_occurrences": 1,
+  "started_at": "2026-08-15T22:17:53.392157+00:00",
+  "mutation_sha256": "980d77365f4002d86a3f4f947a509e546494f35dfd017fcf7a232569069928e4",
+  "red_exit_code": 101,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "1bf6d273f7cb43badab87c27d2073d7237413e4f69725206c55c5160fbb4a988",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:18:00.863959+00:00"
+}

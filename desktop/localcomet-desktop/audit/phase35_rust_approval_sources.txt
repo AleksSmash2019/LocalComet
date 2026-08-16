@@ -1,0 +1,353 @@
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:7:const APPROVAL_ID_PREFIX: &str = "appr_";
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:31:pub approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:120:let request_id = generate_approval_id();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:187:pub approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:294:/// approval_id/call_id can be derived from the token itself.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:320:let approval_id = generate_approval_id();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:323:approval_id: approval_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:335:approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:377:pub fn execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:383:approval_id: &str,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:392:if !validate_approval_id_syntax(approval_id) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:452:.approval_id
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:454:.ct_eq(approval_id.as_bytes())
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:496:approval_id: entry.scope.approval_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:611:pub approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:650:hasher.update(identity.approval_id.as_bytes());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:742:pub approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:778:pub fn validate_approval_id_syntax(id: &str) -> bool {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:780:&& id.starts_with(APPROVAL_ID_PREFIX)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:848:pub fn generate_approval_id() -> String {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:870:const TEST_APPROVAL_ID: &str = "appr_00000000000000000000000000000000";
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:881:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:901:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:942:fn execute_approved_succeeds_with_matching_scope() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:953:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:958:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:963:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:985:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:990:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:995:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1002:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1007:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1024:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1062:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1067:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1072:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1095:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1100:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1105:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1126:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1131:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1136:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1171:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1181:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1190:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1195:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1209:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1214:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1235:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1240:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1245:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1263:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1268:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1307:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1312:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1317:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1343:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1348:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1353:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1362:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1367:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1391:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1396:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1401:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1410:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1415:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1437:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1442:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1447:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1456:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1461:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1483:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1498:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1503:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1526:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1531:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1536:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1545:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1550:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1559:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1564:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1573:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1578:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1587:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1592:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1607:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1612:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1635:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1645:registry.lock().unwrap().execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1650:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1683:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1688:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1693:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1707:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1712:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1717:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1727:fn p0b_r2_approval_id_match_succeeds() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1738:approval_id: "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1743:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1754:assert_eq!(grant.approval_id, "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1758:fn p0b_r2_approval_id_mismatch_rejected() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1769:approval_id: "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1774:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1789:fn p0b_r2_token_survives_wrong_approval_id() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1800:approval_id: "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1805:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1819:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1846:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1851:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1856:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1877:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1882:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1887:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1908:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1913:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1918:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1939:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1944:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1949:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1970:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1975:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1980:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2001:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2006:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2011:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2032:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2037:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2042:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2049:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2054:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2063:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2068:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2089:approval_id: TEST_APPROVAL_ID.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2094:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2099:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2108:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2113:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2155:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2160:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2184:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2189:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2213:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2218:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2227:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2232:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2260:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2265:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2312:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2317:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2341:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2346:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2370:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2375:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2399:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2404:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2413:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2418:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2446:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2451:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2475:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2480:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2487:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2492:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2507:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2512:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2537:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2542:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2574:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2579:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2597:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2602:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2610:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2615:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2623:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2628:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2679:registry.lock().unwrap().execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2684:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2730:fn p0b_r5_generate_approval_id_format() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2731:let id = generate_approval_id();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2752:let approval_id = generate_approval_id();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2754:assert_ne!(token, approval_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2756:assert_ne!(approval_id, call_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2758:assert!(approval_id.starts_with("appr_"));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2787:fn p0b_r5_validate_approval_id_syntax_valid() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2788:let id = generate_approval_id();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2789:assert!(validate_approval_id_syntax(&id));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2793:fn p0b_r5_validate_approval_id_syntax_invalid() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2794:assert!(!validate_approval_id_syntax("test-approval-id"));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2795:assert!(!validate_approval_id_syntax("appr_short"));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2796:assert!(!validate_approval_id_syntax(&format!(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2800:assert!(!validate_approval_id_syntax(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2856:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2867:assert!(validate_approval_id_syntax(&envelope.approval_id));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2887:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2921:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2936:approval_id: generate_approval_id(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2949:assert!(json_val.get("approval_id").is_none());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3013:fn p0b_r5_execute_approved_validates_approval_id_syntax() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3027:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3042:fn p0b_r5_execute_approved_validates_call_id_syntax() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3056:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3061:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3097:approval_id: "appr_00000000000000000000000000000000".to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3122:fn p0b_r5_token_approval_id_call_id_unique_per_request() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3133:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3147:assert_ne!(e1.approval_id, e2.approval_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3175:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3188:assert_eq!(stored.approval_id, envelope.approval_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3205:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3250:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3261:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3266:&envelope.approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3276:fn p0b_r5_no_allow_execute_approved_in_capabilities() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3285:fn p0b_r5_no_allow_execute_approved_in_permissions() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3294:fn p0b_r5_no_user_decision_in_request_approval() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3298:"user_decision parameter must be removed from request_approval"
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3420:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3425:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3435:fn p0b_r6_model_binding_requires_approval_id() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3438:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3448:assert!(result.is_err(), "empty approval_id must be rejected");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3455:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3460:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3507:let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3512:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3543:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3548:&envelope.approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3589:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3594:&envelope.approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3600:let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3605:&envelope.approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3622:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3627:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3660:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3665:&envelope.approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:39:approval_id: Option<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:48:approval_id.ok_or_else(|| {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:49:BridgeError::new("approval_required", "tool execution requires approval_id")
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:82:ApprovalError::ApprovalIdMismatch => "approval_identity_mismatch",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:233:/// sentinel scope instead). Returns the plain token string; approval_id and
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:236:pub fn request_approval(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:258:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:276:fn request_approval_inner(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:298:approval_id: String::new(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:322:/// bypass around execute_approved.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:324:pub fn execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:329:approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:343:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:348:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:366:fn execute_approved_inner(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:371:approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:385:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:390:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:412:/// the token via `execute_approved`. The approval_id and call_id are derived
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:422:approval_id: &str,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:436:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:441:approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:456:/// one-time approval token that is consumed atomically via `execute_approved`
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:461:pub fn run_tool_call(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:467:approval_id: Option<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:471:run_tool_call_inner(&state, &bridge, tool, input, token, approval_id, call_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:475:fn run_tool_call_inner(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:481:approval_id: Option<String>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:490:let approval_fields = require_approval_fields(risk_level, token, approval_id, call_id)?;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:503:let approval_id_ref = approval_fields
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:505:.map(|(_, approval_id, _)| approval_id.as_str())
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:517:approval_id: approval_id_ref.to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:528:let (token, approval_id, call_id) = approval_fields
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:531:match registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:536:approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:638:generate_approval_id, generate_call_id, generate_token, validate_approval_id_syntax,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:643:const TEST_APPROVAL_ID: &str = "appr_00000000000000000000000000000000";
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:754:let approval_id = generate_approval_id();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:763:approval_id: approval_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:769:(token, approval_id, call_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:776:fn p0b_run_tool_call_rejected_when_disabled() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:794:fn p0b_execute_approved_cannot_dispatch() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:797:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:799:let result = execute_approved_inner(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:804:approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:893:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:897:let mismatch = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:902:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:913:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:918:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:931:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:936:.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:941:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:947:let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:952:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:970:let result_lcap = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:975:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:985:let result_apt = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:990:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1015:approval_id: TEST_APPROVAL_ID.to_string(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1024:reg.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1029:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1039:reg.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1044:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1063:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1070:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1080:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1087:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1097:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1104:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1114:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1121:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1131:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1138:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1151:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1156:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1167:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1172:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1190:let result = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1195:TEST_APPROVAL_ID,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1207:fn p0b_r5_request_approval_returns_envelope() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1209:let envelope = request_approval_inner(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1218:assert!(validate_approval_id_syntax(&envelope.approval_id));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1226:fn p0b_r5_request_approval_rejected_by_prompt() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1238:let result = request_approval_inner(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1258:let (token, approval_id, call_id) = {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1262:let approval_id = generate_approval_id();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1271:approval_id: approval_id.clone(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1277:(token, approval_id, call_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1284:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1303:let envelope = request_approval_inner(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1308:.expect("request_approval should succeed with no workspace");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1319:&envelope.approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1331:let (token, approval_id, call_id) =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1338:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1348:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1359:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1369:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1378:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1191:approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1202:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1215:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1253:approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_acquisition.rs:1263:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3686:approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:3702:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\control_plane.rs:2262:approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\control_plane.rs:2290:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:23:execute_approved, request_approval, resolve_tool_approval, run_tool_call, set_workspace,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:271:request_approval,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:272:execute_approved,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:274:run_tool_call,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2191:approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2205:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2229:approval_id: String,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2237:&approval_id,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\workspace.rs:200:approval_id: "appr_00000000000000000000000000000000".to_owned(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\workspace.rs:215:.execute_approved(

@@ -350,6 +350,7 @@ def _typed_turn_request(
         "prompt": prompt,
         "assistant_context": trusted_assistant_context_payload("ru"),
         "binding_fingerprint": binding_fingerprint,
+        "messages": [],
     }
 
 

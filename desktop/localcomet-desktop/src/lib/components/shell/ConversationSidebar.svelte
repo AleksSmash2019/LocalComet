@@ -1,13 +1,9 @@
 <script lang="ts">
   import Icon from '$lib/components/common/Icon.svelte';
   import LocalCometLogo from '$lib/components/common/LocalCometLogo.svelte';
-  import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import { conversationStore, createConversation, selectConversation } from '$lib/stores/conversationStore';
   import { activeWorkspace, closeSettings, openSettings, setActiveWorkspace, settingsPanelOpen, sidebarExpanded } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
-
-  export let controlPlaneLabel: string = '';
-  export let controlPlaneTone: 'ready' | 'info' | 'danger' | 'disabled' | 'unknown' = 'unknown';
 
   type Translate = (key: string) => string;
 
@@ -38,7 +34,7 @@
         class:active={$activeWorkspace === 'chat' && !$settingsPanelOpen}
         onclick={openChat}
       >
-        <span class="nav-dot"></span>
+        <Icon name="chat" size={16} />
         {$t('nav.chat')}
       </button>
       <button
@@ -49,7 +45,7 @@
         class:active={$activeWorkspace === 'hf_browser' && !$settingsPanelOpen}
         onclick={() => setActiveWorkspace('hf_browser')}
       >
-        <span class="nav-dot"></span>
+        <Icon name="hf" size={16} />
         {$t('nav.hf_browser')}
       </button>
       <button
@@ -123,16 +119,6 @@
       {$t('nav.settings')}
     </button>
 
-    <!--
-      AppShell already derived this label and tone from the live bridge state and
-      passed them in, but nothing rendered them: svelte-check reported both as
-      unused exports. The value is truthful (it comes from controlPlaneStore, not
-      a placeholder), so it is shown rather than deleted. Collapsed sidebar keeps
-      only the dot, which StatusDot labels for screen readers.
-    -->
-    <div class="control-plane-status" class:collapsed={!$sidebarExpanded}>
-      <StatusBadge label={controlPlaneLabel} tone={controlPlaneTone} />
-    </div>
   </div>
 </aside>
 
@@ -207,22 +193,6 @@
     background: linear-gradient(90deg, var(--lc-accent-dim) 0%, transparent 100%);
     color: var(--lc-text);
     box-shadow: inset 3px 0 0 var(--lc-accent);
-  }
-
-  .nav-dot {
-    width: 6px;
-    height: 12px;
-    border-radius: 3px;
-    background: var(--lc-accent);
-    margin-left: 2px;
-    opacity: 0.3;
-    transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .nav-button.active .nav-dot {
-    opacity: 1;
-    transform: scaleY(1.2);
-    box-shadow: 0 0 8px color-mix(in srgb, var(--lc-accent) 50%, transparent);
   }
 
   .new-conversation-button {
@@ -305,17 +275,6 @@
     flex-direction: column;
     padding: 16px;
     gap: 12px;
-  }
-
-  .control-plane-status {
-    display: flex;
-    min-width: 0;
-    font-size: 11px;
-  }
-
-  /* Collapsed rail: keep the coloured dot, drop the text so it cannot clip. */
-  .control-plane-status.collapsed :global(.status-badge span) {
-    display: none;
   }
 
   @media (max-width: 920px) {

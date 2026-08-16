@@ -1,0 +1,151 @@
+ M .github/workflows/validation.yml
+ M AGENTS.md
+ M desktop/localcomet-desktop/package-lock.json
+ M desktop/localcomet-desktop/package.json
+ M desktop/localcomet-desktop/src-tauri/Cargo.toml
+ M desktop/localcomet-desktop/src-tauri/src/artifact_trust.rs
+ M desktop/localcomet-desktop/src-tauri/src/control_plane.rs
+ M desktop/localcomet-desktop/src-tauri/src/lib.rs
+ M desktop/localcomet-desktop/src-tauri/src/managed_runtime.rs
+ M desktop/localcomet-desktop/src-tauri/src/skills.rs
+ M desktop/localcomet-desktop/src-tauri/src/supervisor.rs
+ M desktop/localcomet-desktop/src-tauri/tauri.conf.json
+ M desktop/localcomet-desktop/src/lib/bridge/modelGateway.ts
+ M desktop/localcomet-desktop/src/lib/components/chat/ApprovalCard.svelte
+ M desktop/localcomet-desktop/src/lib/components/chat/MessageComposer.svelte
+ M desktop/localcomet-desktop/src/lib/components/chat/MessageList.svelte
+ M desktop/localcomet-desktop/src/lib/components/chat/ToolCallCard.svelte
+ M desktop/localcomet-desktop/src/lib/components/common/Icon.svelte
+ M desktop/localcomet-desktop/src/lib/components/model/DownloadProgress.svelte
+ M desktop/localcomet-desktop/src/lib/components/model/HuggingFaceBrowser.svelte
+ M desktop/localcomet-desktop/src/lib/components/model/ManagedRuntimePanel.svelte
+ M desktop/localcomet-desktop/src/lib/components/model/ModelManagerSection.svelte
+ M desktop/localcomet-desktop/src/lib/components/model/ModelSetupDrawer.svelte
+ M desktop/localcomet-desktop/src/lib/components/onboarding/OnboardingScreen.svelte
+ M desktop/localcomet-desktop/src/lib/components/shell/AppShell.svelte
+ M desktop/localcomet-desktop/src/lib/components/shell/ApprovalModal.svelte
+ M desktop/localcomet-desktop/src/lib/components/shell/ChatHeader.svelte
+ M desktop/localcomet-desktop/src/lib/components/shell/ConversationSidebar.svelte
+ M desktop/localcomet-desktop/src/lib/components/shell/PermissionsSection.svelte
+ M desktop/localcomet-desktop/src/lib/data/mockData.ts
+ M desktop/localcomet-desktop/src/lib/i18n/en.ts
+ M desktop/localcomet-desktop/src/lib/i18n/ru.ts
+ M desktop/localcomet-desktop/src/lib/stores/approvalStore.ts
+ M desktop/localcomet-desktop/src/lib/stores/artifactAcquisition.ts
+ M desktop/localcomet-desktop/src/lib/stores/modelGateway.ts
+ M desktop/localcomet-desktop/src/lib/stores/shellStore.ts
+ M desktop/localcomet-desktop/src/lib/stores/uiPreferences.ts
+ M desktop/localcomet-desktop/src/lib/types/modelGateway.ts
+ M desktop/localcomet-desktop/static/modelfit.html
+ M desktop/localcomet-desktop/tests/approval.test.ts
+ M desktop/localcomet-desktop/tests/assistant-usability.test.ts
+ M desktop/localcomet-desktop/tests/chat-reliability.test.ts
+ M desktop/localcomet-desktop/tests/componentSmoke.test.ts
+ M desktop/localcomet-desktop/tests/language.test.ts
+ M desktop/localcomet-desktop/tests/managed-artifacts.test.ts
+ M desktop/localcomet-desktop/tests/model-gateway.test.ts
+ M desktop/localcomet-desktop/tests/model-manager-selection.test.ts
+ M desktop/localcomet-desktop/tests/p0b-r5-approval-contract.test.ts
+ M desktop/localcomet-desktop/tests/p0c-sidecar-health.test.ts
+ M desktop/localcomet-desktop/tests/shellStore.test.ts
+ M desktop/localcomet-desktop/tests/uiPreferences.test.ts
+ M docs/CHANGELOG_MVP.md
+ M modules/debug_package_ru.py
+ M modules/local_model_gateway_ru.py
+ M modules/skills/installed/code-runner/entrypoint.py
+ M modules/skills/installed/git-ops/entrypoint.py
+ M modules/skills/installed/hf-model-ctl/entrypoint.py
+ M modules/skills/skills_archive.py
+ M modules/skills/skills_invoker.py
+ M modules/tool_execution_ru.py
+ M requirements.txt
+ M scripts/check_real_sidecar_tests.py
+ M security/invariants/tool_risk_levels.toml
+ M tools/test_adr015_tool_parsing.py
+ M tools/test_tool_risk_rust_parity.py
+ M tools/test_up05_wp01_model_chat_backend.py
+ M tools/test_v6801_audit_bundle.py
+ M tools/test_v6802_bundle_security.py
+ M tools/test_v68451e5_knowledge_control_plane.py
+ M tools/test_v68451e6_knowledge_injection.py
+ M tools/test_v6845_model_gateway.py
+?? 15_qwen_inference_response.png
+?? AUDIT_ROOT/
+?? audit/100-checks-console-2026-08-14.txt
+?? audit/100-checks-report-2026-08-14.json
+?? audit/ModelManagerSection.svelte.phase36.prepatch5.bak
+?? audit/capture_window.ps1
+?? audit/cdp_capture_screenshot.mjs
+?? audit/cdp_click_button.mjs
+?? audit/cdp_click_install_engine.mjs
+?? audit/cdp_click_models_hf.mjs
+?? audit/cdp_click_settings_exact.mjs
+?? audit/cdp_click_settings_models.mjs
+?? audit/cdp_click_text.mjs
+?? audit/cdp_download_vulkan_runtime.mjs
+?? audit/cdp_dump_full_body.mjs
+?? audit/cdp_dump_settings_controls.mjs
+?? audit/cdp_dump_vulkan_state.mjs
+?? audit/cdp_fill_and_send.mjs
+?? audit/cdp_find_text.mjs
+?? audit/cdp_localcomet_e2e.mjs
+?? audit/cdp_vulkan_download_status.mjs
+?? audit/click_localcomet.ps1
+?? audit/e2e_screens/
+?? audit/e2e_ui_controls.txt
+?? audit/get_localcomet_rect.ps1
+?? audit/inspect_localcomet_ui.ps1
+?? audit/inspect_webview_processes.ps1
+?? audit/live_model_state.json
+?? audit/managed-artifacts.test.ts.phase36.prepatch.bak
+?? audit/managed-artifacts.test.ts.phase36.prepatch2.bak
+?? audit/managed-artifacts.test.ts.phase36.prepatch3.bak
+?? audit/modelGateway.ts.phase36.prepatch.bak
+?? audit/modelGateway.ts.phase36.prepatch2.bak
+?? audit/modelGateway.ts.phase36.prepatch3.bak
+?? audit/modelGateway.ts.phase36.prepatch4.bak
+?? audit/open_models_inspect.json
+?? audit/patch_cpu_gpu_frontend.ps1
+?? audit/phase26_gpu_frontend.txt
+?? audit/phase26_gpu_hits.txt
+?? audit/phase26_models_controls.json
+?? audit/phase26_models_full_dom.json
+?? audit/phase26_models_inspect.txt
+?? audit/phase26_runtime_frontend.txt
+?? audit/phase26_settings_controls.json
+?? audit/phase26_settings_inspect.txt
+?? audit/phase26_settings_models_tab_dom.json
+?? audit/phase26_settings_vulkan_dom.json
+?? audit/phase26_vulkan_trace.txt
+?? audit/phase27_after_label.png
+?? audit/phase29_settings.png
+?? audit/phase31_gray_badge.png
+?? audit/phase31_gray_badge_localcomet.png
+?? audit/phase35_functional_cpu.json
+?? audit/phase35_process_cmdlines.csv
+?? audit/phase37/
+?? audit/phase38/
+?? audit/recover_cpu_gpu_build.ps1
+?? audit/run_100_checks_2026_08_14.py
+?? desktop/localcomet-desktop/audit/
+?? desktop/localcomet-desktop/src-tauri/src/live_e2e.rs
+?? desktop/localcomet-desktop/src/lib/components/shell/AppShell.svelte.phase31.bak
+?? desktop/localcomet-desktop/src/lib/components/shell/ChatHeader.svelte.phase31.bak
+?? desktop/localcomet-desktop/src/lib/components/shell/ConversationSidebar.svelte.phase31.bak
+?? desktop/localcomet-desktop/src/lib/i18n/en.ts.phase27.bak
+?? desktop/localcomet-desktop/src/lib/i18n/en.ts.phase31.bak
+?? desktop/localcomet-desktop/src/lib/i18n/ru.ts.phase27.bak
+?? desktop/localcomet-desktop/src/lib/i18n/ru.ts.phase31.bak
+?? desktop/localcomet-desktop/src/lib/stores/approvalStore.ts.phase35.bak
+?? desktop/localcomet-desktop/src/lib/stores/modelGateway.ts.phase36.prepatch.bak
+?? desktop/localcomet-desktop/tests/approval.test.ts.phase35.bak
+?? desktop/localcomet-desktop/tests/componentSmoke.test.ts.phase31.bak
+?? desktop/localcomet-desktop/tests/managed-artifacts.test.ts.phase27.bak
+?? docs/adr/ADR-016-major-increment-selection.md
+?? modules/browser_safety_policy.py
+?? modules/screen_context_policy.py
+?? modules/workspace_memory_ru.py
+?? mypy.ini
+?? tests/test_skill_entrypoints_security.py
+?? tools/test_phase_e_safety.py
+?? tools/test_workspace_memory_ru.py

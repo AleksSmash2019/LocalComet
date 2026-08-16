@@ -340,6 +340,7 @@ def test_single_active_and_cancellation_cleanup() -> None:
             "prompt": "hello",
             "assistant_context": trusted_assistant_context_payload("en"),
             "binding_fingerprint": binding["binding_fingerprint"],
+            "messages": [],
         }
         started = gateway.start_turn(request, lambda m, t, s, p: events.append((m, str(p.get("state")))))
         second = {**request, "request_id": "e" * 24, "prompt": "again"}

@@ -156,12 +156,17 @@ def extract_archive(archive_path: Path, dest_dir: Path) -> list[str]:
 
 
 def _extract_zip(data: bytes, dest_dir: Path, written: list[str]) -> None:
+    resolved_dest = dest_dir.resolve()
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         for info in zf.infolist():
             rel = _safe_member_name(info.filename)
             if info.is_dir():
                 continue
-            target = dest_dir / rel
+            target = (dest_dir / rel).resolve()
+            if not target.is_relative_to(resolved_dest):
+                raise SkillError(SkillErrorCode.ARCHIVE_TRAVERSAL, "extraction path escapes target directory")
+            if target.is_symlink():
+                raise SkillError(SkillErrorCode.ARCHIVE_SYMLINK_DENIED, "symlink destination in extraction is denied")
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as dst:
                 dst.write(src.read())
@@ -169,12 +174,17 @@ def _extract_zip(data: bytes, dest_dir: Path, written: list[str]) -> None:
 
 
 def _extract_targz(data: bytes, dest_dir: Path, written: list[str]) -> None:
+    resolved_dest = dest_dir.resolve()
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
         for m in tf.getmembers():
             rel = _safe_member_name(m.name)
             if not m.isfile():
                 continue
-            target = dest_dir / rel
+            target = (dest_dir / rel).resolve()
+            if not target.is_relative_to(resolved_dest):
+                raise SkillError(SkillErrorCode.ARCHIVE_TRAVERSAL, "extraction path escapes target directory")
+            if target.is_symlink():
+                raise SkillError(SkillErrorCode.ARCHIVE_SYMLINK_DENIED, "symlink destination in extraction is denied")
             target.parent.mkdir(parents=True, exist_ok=True)
             f = tf.extractfile(m)
             if f is None:

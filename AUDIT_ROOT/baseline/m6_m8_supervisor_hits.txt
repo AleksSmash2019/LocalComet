@@ -1,0 +1,47 @@
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:36:    ExitedBeforeReady,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:45:            Self::ExitedBeforeReady => write!(formatter, "sidecar exited before readiness"),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:228:    pub restart_ready_timeout: Duration,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:240:            restart_ready_timeout: Duration::from_secs(8),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:354:        SupervisorError::ExitedBeforeReady => HEALTH_ERR_PROCESS_EXITED,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:365:    Ready,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:556:    if !matches!(status, "starting" | "ready" | "degraded" | "stopping") {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:770:    pub fn start_and_wait_ready(&self, timeout: Duration) -> Result<(), SupervisorError> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:777:        let result = self.wait_for_ready(timeout);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:790:    fn wait_for_ready(&self, timeout: Duration) -> Result<(), SupervisorError> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:794:                return Err(SupervisorError::ExitedBeforeReady);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:802:                return Err(SupervisorError::ExitedBeforeReady);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1029:            let healthy = readiness.state == SidecarReadinessState::Ready
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1072:        if self.wait_for_ready(policy.restart_ready_timeout).is_err() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1450:                                != Some("ready")
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1455:                                // atomic one-time completion, then READY.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1463:                                        readiness.state = SidecarReadinessState::Ready;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1756:            .start_and_wait_ready(Duration::from_secs(5))
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1771:        let runner = root.join("tools/test_up00_unready_sidecar.py");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1782:            .start_and_wait_ready(Duration::from_millis(150))
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1794:        let runner = root.join("tools/test_up00_unready_sidecar.py");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1858:    fn p0c_process_spawn_state_is_not_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1861:        assert_ne!(readiness.state, SidecarReadinessState::Ready);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1866:    fn p0c_ready_requires_correlated_response() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1875:            SidecarReadinessState::Ready
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2000:    fn p0c_process_exit_clears_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2004:            "process exit must immediately clear READY state"
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2009:    fn p0c_stop_clears_ready_before_wait() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2306:            "runtimeInstanceId": "rti_cccccccccccccccccccccccccccccccc", "status": "ready",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2321:    fn p0c_r1_valid_response_reaches_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2327:            SidecarReadinessState::Ready
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2451:            readiness.state = SidecarReadinessState::Ready;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2514:    fn p0c_r1_exit_invalidates_generation_and_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2535:    fn p0c_r1_outer_id_mismatch_does_not_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2545:    fn p0c_r1_reply_to_mismatch_does_not_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2555:    fn p0c_r1_status_must_be_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2565:    fn p0c_r1_tool_execution_true_does_not_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2578:    fn p0c_r1_wrong_generation_does_not_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2588:    fn p0c_r1_wrong_runtime_does_not_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2601:    fn p0c_r1_negative_timestamp_does_not_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2611:    fn p0c_r1_protocol_mismatch_does_not_ready() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2683:        // addendum already documents the supersession.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2780:            restart_ready_timeout: Duration::from_secs(3),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2790:            .start_and_wait_ready(Duration::from_secs(5))
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2814:            let healthy = readiness.state == SidecarReadinessState::Ready;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2835:        let runner = root.join("tools/test_up00_unready_sidecar.py");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2848:            restart_ready_timeout: Duration::from_millis(300),

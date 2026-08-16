@@ -14,17 +14,35 @@
   }
 
   let unlisten: UnlistenFn | undefined;
+  let destroyed = false;
   let currentRequest: ApprovalRequestPayload | null = null;
   let resolving = false;
 
-  onMount(async () => {
-    unlisten = await listen<ApprovalRequestPayload>('request_tool_approval', (event) => {
+  onMount(() => {
+    let active = true;
+    listen<ApprovalRequestPayload>('request_tool_approval', (event) => {
       currentRequest = event.payload;
+    }).then((unlistenFn) => {
+      if (!active || destroyed) {
+        unlistenFn();
+      } else {
+        unlisten = unlistenFn;
+      }
+    }).catch((err) => {
+      console.error('Failed to register tool approval listener:', err);
     });
+
+    return () => {
+      active = false;
+    };
   });
 
   onDestroy(() => {
-    if (unlisten) unlisten();
+    destroyed = true;
+    if (unlisten) {
+      unlisten();
+      unlisten = undefined;
+    }
   });
 
   async function resolve(decision: 'approve' | 'reject') {
@@ -53,6 +71,18 @@
   function toSnakeCase(str: string): string {
     return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`).replace(/^_/, '');
   }
+
+  function formatTargetSummary(summary: string): string {
+    try {
+      const parsed = JSON.parse(summary);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return JSON.stringify(parsed, null, 2);
+      }
+      return summary;
+    } catch {
+      return summary;
+    }
+  }
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape' && currentRequest && !resolving) resolve('reject'); }} />
@@ -67,9 +97,9 @@
           <dt>{$t('approval.risk')}</dt>
           <dd class="risk-{currentRequest.risk_level}">{$t(getRiskKey(currentRequest.risk_level))}</dd>
         </div>
-        <div>
+        <div class="target-section">
           <dt>{$t('approval.target')}</dt>
-          <dd>{currentRequest.target_summary}</dd>
+          <dd class="target-summary">{formatTargetSummary(currentRequest.target_summary)}</dd>
         </div>
         <div>
           <dt>{$t('approval.side_effects')}</dt>
@@ -144,14 +174,24 @@
     color: var(--color-text);
   }
 
-  .risk-read_only { color: var(--color-info, #3498db); }
-  .risk-guarded { color: var(--color-warning, #f39c12); }
-  .risk-dangerous { color: var(--color-danger, #e74c3c); font-weight: bold; }
+  .target-summary {
+    white-space: pre-wrap;
+    font-family: monospace;
+    background: rgba(255, 255, 255, 0.05);
+    padding: var(--lc-space-2);
+    border-radius: var(--lc-radius-sm);
+    word-break: break-all;
+    margin-top: 4px;
+  }
+
+  .risk-read_only { color: var(--lc-info); }
+  .risk-guarded { color: var(--lc-warning); }
+  .risk-dangerous { color: var(--lc-danger); font-weight: bold; }
 
   .warning-banner {
-    background: rgba(231, 76, 60, 0.1);
-    border-left: 4px solid var(--color-danger, #e74c3c);
-    color: var(--color-danger, #e74c3c);
+    background: color-mix(in srgb, var(--lc-danger) 12%, transparent);
+    border-left: 4px solid var(--lc-danger);
+    color: var(--lc-danger);
     padding: var(--lc-space-2);
     margin-bottom: var(--lc-space-4);
     font-size: 13px;

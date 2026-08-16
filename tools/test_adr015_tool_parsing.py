@@ -53,12 +53,12 @@ class ToolRegistryTests(unittest.TestCase):
     def test_registry_has_exactly_five_files_tools(self) -> None:
         self.assertEqual(
             set(TOOL_REGISTRY),
-            {"files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch", "skills.invoke"},
+            {"files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch", "skills.invoke", "system.time"},
         )
 
     def test_build_tool_schemas_is_openai_function_format(self) -> None:
         schemas = build_tool_schemas()
-        self.assertEqual(len(schemas), 10)
+        self.assertEqual(len(schemas), 11)
         for schema in schemas:
             self.assertEqual(schema["type"], "function")
             fn = schema["function"]
@@ -150,6 +150,7 @@ class ValidateToolCallTests(unittest.TestCase):
             "web.search": {"query": "rust tauri"},
             "web.fetch": {"url": "https://example.com"},
             "skills.invoke": {"skill_id": "demo-echo", "arguments": ["a", 1]},
+            "system.time": {},
         }
         self.assertEqual(set(valid_arguments), set(TOOL_REGISTRY))
         for name, arguments in valid_arguments.items():
@@ -616,6 +617,7 @@ class ToolCallIntegrationTests(unittest.TestCase):
             "prompt": "hello",
             "assistant_context": trusted_assistant_context_payload("ru", False, tools),
             "binding_fingerprint": binding_fingerprint,
+            "messages": [],
         }
 
     def _run_turn(self, gateway: LocalModelGateway, request: dict, timeout: float = 6.0) -> list:
@@ -1178,6 +1180,7 @@ class CrossLayerParityTests(unittest.TestCase):
                     "ru", False, tuple(enabled["permittedTools"])
                 ),
                 "binding_fingerprint": binding["binding_fingerprint"],
+            "messages": [],
             }
             try:
                 events = ToolCallIntegrationTests._run_turn(self, gateway, request)

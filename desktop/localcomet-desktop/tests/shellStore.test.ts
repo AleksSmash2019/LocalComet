@@ -75,6 +75,9 @@ describe('shell stores', () => {
       theme: 'light',
       locale: 'ru',
       diagnosticsPanel: 'closed',
+      voiceMode: false,
+      ctxSizeOverride: null,
+      gpuLayersOverride: null,
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });

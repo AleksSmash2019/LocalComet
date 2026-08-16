@@ -19,12 +19,13 @@
     managedRuntimeStore,
     refreshManagedRuntimeStatus,
     setManagedSelectedModel,
+    setManagedPreferredRuntime,
     stopSelectedManagedRuntime
   } from '$lib/stores/modelGateway';
-  import { importCustomModel } from '$lib/bridge/modelGateway';
+  import { getManagedRuntimeCapability, importCustomModel } from '$lib/bridge/modelGateway';
   import { open } from '@tauri-apps/plugin-dialog';
   import { t } from '$lib/i18n';
-  import type { ApprovedDownloadableArtifact, ManagedDownloadableArtifact } from '$lib/types/modelGateway';
+  import type { ApprovedDownloadableArtifact, ManagedDownloadableArtifact, ManagedRuntimeCapability } from '$lib/types/modelGateway';
   import Icon from '$lib/components/common/Icon.svelte';
 
   // The separate "Hugging Face" settings tab was removed: the approved catalog
@@ -42,14 +43,21 @@
   let selectedModelId = $managedRuntimeStore.selectedModelId;
 
 
-  $: runtime = $managedRuntimeStore.runtimeCatalog?.[0] ?? null;
   $: runtimes = $managedRuntimeStore.runtimeCatalog ?? [];
+  $: selectedRuntimeId = $managedRuntimeStore.preferredRuntimeId
+    ?? $managedRuntimeStore.readiness?.selected_runtime_id
+    ?? runtimes.find((candidate) => candidate.variant === 'cpu')?.runtime_id
+    ?? runtimes[0]?.runtime_id
+    ?? '';
+  $: runtime = runtimes.find((candidate) => candidate.runtime_id === selectedRuntimeId) ?? runtimes[0] ?? null;
   $: modelArtifacts = $artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model');
   $: approvedModelArtifacts = modelArtifacts.filter((artifact): artifact is ApprovedDownloadableArtifact => artifact.trust_kind === 'approved_catalog');
   $: customModelArtifacts = modelArtifacts.filter((artifact) => artifact.trust_kind === 'user_supplied');
   $: selectedModelArtifact = modelArtifacts.find((artifact) => artifact.artifact_id === selectedModelId) ?? null;
-  $: runtimeArtifact = $artifactAcquisitionStore.artifacts.find((artifact): artifact is ApprovedDownloadableArtifact => artifact.kind === 'runtime') ?? null;
-  $: runtimeInstalled = runtimes.some((item) => installationState(item.runtime_id) === 'valid');
+  $: runtimeArtifact = selectedRuntimeId
+    ? $artifactAcquisitionStore.artifacts.find((artifact): artifact is ApprovedDownloadableArtifact => artifact.kind === 'runtime' && artifact.artifact_id === selectedRuntimeId) ?? null
+    : null;
+  $: runtimeInstalled = selectedRuntimeId !== '' && installationState(selectedRuntimeId) === 'valid';
   $: modelInstalled = selectedModelArtifact ? installationState(selectedModelArtifact.artifact_id) === 'valid' : false;
   $: customModelInvalid = selectedModelArtifact?.trust_kind === 'user_supplied' && !modelInstalled;
   $: runtimeDownload = runtimeArtifact ? $artifactAcquisitionStore.downloads[runtimeArtifact.artifact_id] ?? null : null;
@@ -58,9 +66,50 @@
   $: modelCanBeRemoved = selectedModelArtifact !== null && (modelInstalled || selectedModelArtifact.trust_kind === 'user_supplied');
   $: canRemove = modelCanBeRemoved && !activeDownload && !['Ready', 'Starting', 'Validating', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '');
 
+  // Stepper state: 4 steps — Engine, Model, Launch, Connected
+  $: runtimeDownloading = runtimeDownload && !isTerminal(runtimeDownload);
+  $: modelDownloading = modelDownload && !isTerminal(modelDownload);
+  $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
+  $: managedModelState = $managedRuntimeStore.status?.model_state ?? 'Unavailable';
+  $: runtimeRunning = ['Starting', 'Validating', 'Ready', 'Stopping'].includes(managedState);
+
+  type StepStatus = 'pending' | 'active' | 'done';
+  $: stepEngine = (runtimeInstalled ? 'done' : runtimeDownloading ? 'active' : 'pending') as StepStatus;
+  $: stepModel = (modelInstalled ? 'done' : !runtimeInstalled ? 'pending' : modelDownloading ? 'active' : 'pending') as StepStatus;
+  $: stepLaunch = ($managedModelReady ? 'done' : !modelInstalled ? 'pending' : runtimeRunning || $managedConnectionBusy ? 'active' : 'pending') as StepStatus;
+  $: stepConnected = ($managedModelReady ? 'done' : 'pending') as StepStatus;
+
+  // Synthesized loading phase from existing state+model_state (no Rust changes needed)
+  $: synthesizedPhase = (() => {
+    if (managedState === 'Validating') return $t('models.phase.validating_runtime');
+    if (managedState === 'Starting' && managedModelState === 'Validating') return $t('models.phase.validating_runtime');
+    if (managedState === 'Starting' && managedModelState === 'Loading') return $t('models.phase.loading_model');
+    if (managedState === 'Starting') return $t('models.phase.gpu_init');
+    if (managedState === 'Ready' && !$managedRuntimeStore.status?.inference_ready) return $t('models.phase.connecting');
+    if (managedState === 'Stopping') return $t('models.phase.stopping');
+    return '';
+  })();
+
   onMount(() => {
     void initializeArtifactAcquisition();
   });
+
+  // Backend-derived device capability for the selected engine variant. A
+  // failed probe renders nothing: absence of data is never presented as
+  // availability or unavailability (INV-UI-001).
+  let capability: ManagedRuntimeCapability | null = null;
+
+  async function refreshCapability(runtimeId: string): Promise<void> {
+    capability = null;
+    if (runtimeId === '' || installationState(runtimeId) !== 'valid') return;
+    try {
+      capability = await getManagedRuntimeCapability(runtimeId, selectedModelId || undefined);
+    } catch {
+      capability = null;
+    }
+  }
+
+  $: if (selectedRuntimeId) void refreshCapability(selectedRuntimeId);
 
   function installationState(artifactId: string): string {
     return $managedRuntimeStore.installedArtifacts.find((artifact) => artifact.artifact_id === artifactId)?.installation_status ?? 'not_installed';
@@ -77,7 +126,7 @@
       if (modelId) {
         actionPending = true;
         try {
-          await setUpManagedModel(modelId);
+          await setUpManagedModel(modelId, selectedRuntimeId || undefined);
         } finally {
           actionPending = false;
         }
@@ -125,6 +174,11 @@
     const value = (event.currentTarget as HTMLSelectElement).value;
     selectedModelId = value;
     void setManagedSelectedModel(value);
+  }
+
+  function onRuntimeChange(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    setManagedPreferredRuntime(value);
   }
 
   function isTerminal(download: { readonly lifecycle: string }): boolean {
@@ -186,6 +240,101 @@
     </div>
   </div>
 
+  <!-- Setup Stepper -->
+  <div class="setup-stepper" role="progressbar" aria-label={$t('models.setup_progress')}>
+    <div class="stepper-step" class:done={stepEngine === 'done'} class:active={stepEngine === 'active'}>
+      <div class="step-dot">{stepEngine === 'done' ? '✓' : '1'}</div>
+      <div class="step-label">{$t('models.step.engine')}</div>
+      <div class="step-status">
+        {#if runtimeDownloading && runtimeDownload}
+          {$t('models.step.downloading')} {runtimeDownload.percent ?? 0}%
+        {:else if runtimeInstalled}
+          {$t('models.step.installed')}
+        {:else}
+          {$t('models.step.not_installed')}
+        {/if}
+      </div>
+      {#if runtimeDownloading && runtimeDownload}
+        <div class="step-progress-track"><div class="step-progress-fill" style="width: {runtimeDownload.percent ?? 0}%;"></div></div>
+      {/if}
+    </div>
+    <div class="stepper-connector" class:done={stepEngine === 'done'}></div>
+    <div class="stepper-step" class:done={stepModel === 'done'} class:active={stepModel === 'active'}>
+      <div class="step-dot">{stepModel === 'done' ? '✓' : '2'}</div>
+      <div class="step-label">{$t('models.step.model')}</div>
+      <div class="step-status">
+        {#if modelDownloading && modelDownload}
+          {$t('models.step.downloading')} {modelDownload.percent ?? 0}%
+        {:else if modelInstalled}
+          {$t('models.step.installed')}
+        {:else}
+          {$t('models.step.not_installed')}
+        {/if}
+      </div>
+      {#if modelDownloading && modelDownload}
+        <div class="step-progress-track"><div class="step-progress-fill" style="width: {modelDownload.percent ?? 0}%;"></div></div>
+      {/if}
+    </div>
+    <div class="stepper-connector" class:done={stepModel === 'done'}></div>
+    <div class="stepper-step" class:done={stepLaunch === 'done'} class:active={stepLaunch === 'active'}>
+      <div class="step-dot">{stepLaunch === 'done' ? '✓' : '3'}</div>
+      <div class="step-label">{$t('models.step.launch')}</div>
+      <div class="step-status">
+        {#if stepLaunch === 'active'}
+          {synthesizedPhase || $t('models.step.starting')}
+        {:else if stepLaunch === 'done'}
+          {$t('models.step.ready')}
+        {:else}
+          {$t('models.step.waiting')}
+        {/if}
+      </div>
+      {#if stepLaunch === 'active'}
+        <div class="step-progress-track"><div class="step-progress-fill indeterminate"></div></div>
+      {/if}
+    </div>
+    <div class="stepper-connector" class:done={stepLaunch === 'done'}></div>
+    <div class="stepper-step" class:done={stepConnected === 'done'} class:active={false}>
+      <div class="step-dot">{stepConnected === 'done' ? '✓' : '4'}</div>
+      <div class="step-label">{$t('models.step.connected')}</div>
+      <div class="step-status">
+        {#if $managedModelReady}
+          {$t('models.step.ready')}
+        {:else}
+          {$t('models.step.waiting')}
+        {/if}
+      </div>
+    </div>
+  </div>
+
+  <!-- Active operation progress (prominent, above cards) -->
+  {#if activeDownload}
+    <DownloadProgress
+      title={$t('models.current_download')}
+      detail={`${displayState(activeDownload.lifecycle)} - ${(activeDownload.received_bytes / 1024 / 1024).toFixed(1)} / ${(activeDownload.expected_bytes / 1024 / 1024).toFixed(1)} MiB`}
+      percent={activeDownload.percent ?? null}
+      phase={displayState(activeDownload.lifecycle)}
+      onCancel={() => void cancelApprovedArtifactDownload(activeDownload.artifact_id)}
+    />
+  {/if}
+  {#if $artifactAcquisitionStore.setup.lifecycle === 'running' && !activeDownload}
+    <DownloadProgress
+      title={$t('models.setup_progress')}
+      detail={$t('models.connecting')}
+      phase={synthesizedPhase}
+      percent={null}
+      onCancel={null}
+    />
+  {/if}
+  {#if $managedConnectionBusy}
+    <DownloadProgress
+      title={$t('models.connecting')}
+      detail={$managedRuntimeStore.status?.loading_phase || $t('chat.model_loading_detail')}
+      phase={synthesizedPhase}
+      percent={null}
+      onCancel={null}
+    />
+  {/if}
+
   <div class="artifact-card">
     <div class="artifact-heading">
       <div>
@@ -212,6 +361,34 @@
         </div>
       {/each}
     </dl>
+    <label class="runtime-selector">
+      <span>{$t('models.engine_variant')}</span>
+      <select
+        value={selectedRuntimeId}
+        disabled={$managedConnectionBusy || ['Ready', 'Starting', 'Validating', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '')}
+        onchange={onRuntimeChange}
+      >
+        {#each runtimes as item}
+          <option value={item.runtime_id}>{$t(`models.variant.${item.variant}`)} · {displayState(installationState(item.runtime_id))}</option>
+        {/each}
+      </select>
+      <small>{$t('models.engine_variant_hint')}</small>
+    </label>
+    {#if capability}
+      <p class="runtime-capability" class:capability-unavailable={!capability.available}>
+        {#if capability.available}
+          {capability.device_summary ?? $t('models.capability.available')}
+        {:else}
+          {$t('models.capability.unavailable')}{capability.reason_code ? ` (${capability.reason_code})` : ''}
+          {#if capability.fallback_runtime_ids.length}
+            {$t('models.capability.fallback')}: {capability.fallback_runtime_ids.join(', ')}
+          {/if}
+        {/if}
+      </p>
+    {/if}
+    {#if $managedRuntimeStore.status?.state === 'Ready'}
+      <p class="runtime-selector-hint">{$t('models.engine_requires_disconnect')}</p>
+    {/if}
   </div>
 
   <div class="artifact-card">
@@ -245,6 +422,12 @@
         <div><dt>{$t('models.download')}</dt><dd>{displayState(modelDownload.lifecycle)} {modelDownload.percent === null ? '' : `${modelDownload.percent}%`}</dd></div>
       {/if}
     </dl>
+    {#if selectedModelArtifact?.trust_kind === 'user_supplied'}
+      <p class="custom-model-warning">{$t('models.custom_warning')}</p>
+      {#if customModelInvalid}
+        <p class="custom-model-invalid">{$t('models.custom_invalid')}</p>
+      {/if}
+    {/if}
   </div>
 
   <div class="catalog-card">
@@ -276,31 +459,6 @@
   </div>
 
 
-  {#if activeDownload}
-    <DownloadProgress
-      title={$t('models.current_download')}
-      detail={`${displayState(activeDownload.lifecycle)} - ${(activeDownload.received_bytes / 1024 / 1024).toFixed(1)} / ${(activeDownload.expected_bytes / 1024 / 1024).toFixed(1)} MiB`}
-      percent={activeDownload.percent ?? null}
-      onCancel={() => void cancelApprovedArtifactDownload(activeDownload.artifact_id)}
-    />
-  {/if}
-  {#if $artifactAcquisitionStore.setup.lifecycle === 'running' && !activeDownload}
-    <DownloadProgress
-      title={$t('models.setup_progress')}
-      detail={$t('models.connecting')}
-      percent={null}
-      onCancel={null}
-    />
-  {/if}
-  {#if $managedConnectionBusy}
-    <DownloadProgress
-      title={$t('models.connecting')}
-      detail={$t('chat.model_loading_detail')}
-      percent={null}
-      onCancel={null}
-    />
-  {/if}
-
   <div class="actions" aria-label={$t('models.actions')}>
     {#if selectedModelArtifact && (!runtimeInstalled || !modelInstalled) && !activeDownload && !customModelInvalid}
       <button type="button" class="primary" disabled={actionPending} onclick={requestSetup}>{$t('models.setup')}</button>
@@ -325,7 +483,7 @@
   {#if $artifactAcquisitionStore.lastError}
     <p class="error" role="status">{$t('models.download_error')}: {$artifactAcquisitionStore.lastError.message}</p>
   {/if}
-  {#if $managedRuntimeStore.lastError && $managedRuntimeStore.lastError.code !== 'invalid_payload'}
+  {#if $managedRuntimeStore.lastError && $managedRuntimeStore.lastError.code !== 'invalid_payload' && $managedRuntimeStore.lastError.message !== 'No managed model is selected'}
     <p class="error" role="status">{$managedRuntimeStore.lastError.message}</p>
   {/if}
 
@@ -349,21 +507,29 @@
 <style>
   .models-section { display: grid; gap: var(--lc-space-3); }
   .section-heading, .artifact-heading, .confirmation-actions { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--lc-space-2); }
-  .section-heading p, .hint { margin: var(--lc-space-1) 0 0; color: var(--lc-muted); font-size: 11px; line-height: 1.45; }
+  .section-heading p { margin: var(--lc-space-1) 0 0; color: var(--lc-muted); font-size: 11px; line-height: 1.45; }
   .artifact-card, .confirmation { display: grid; gap: var(--lc-space-2); border: var(--border-thin); border-radius: var(--lc-radius-sm); padding: var(--lc-space-3); background: var(--lc-panel-soft); }
   .artifact-kind { display: block; color: var(--lc-muted); font-size: 10px; font-weight: 760; letter-spacing: .05em; text-transform: uppercase; }
   strong { font-size: 12px; overflow-wrap: anywhere; }
   dl { display: grid; gap: var(--lc-space-1); margin: 0; }
   dl div { display: flex; justify-content: space-between; gap: var(--lc-space-2); font-size: 11px; }
   .runtime-variants { padding-top: var(--lc-space-2); border-top: var(--border-thin); }
+  .runtime-selector { display: grid; gap: 6px; padding-top: var(--lc-space-2); border-top: var(--border-thin); }
+  .runtime-selector > span { color: var(--lc-muted); font-size: 11px; font-weight: 700; }
+  .runtime-selector select { width: 100%; min-width: 0; }
+  .runtime-selector small, .runtime-selector-hint { margin: 0; color: var(--lc-muted); font-size: 10px; line-height: 1.4; }
+  .runtime-capability { margin: 0; color: var(--lc-muted); font-size: 10px; line-height: 1.4; font-family: var(--lc-mono); overflow-wrap: anywhere; }
+  .runtime-capability.capability-unavailable { color: var(--lc-danger); font-weight: 700; }
   dt { color: var(--lc-muted); }
   dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
   .actions { display: flex; flex-wrap: wrap; gap: var(--lc-space-2); }
   button { min-height: 34px; border: var(--border-thin); border-radius: var(--lc-radius-sm); padding: 0 var(--lc-space-3); background: var(--lc-panel-solid); color: var(--lc-text); font-size: 12px; font-weight: 760; cursor: pointer; }
   button:disabled { color: var(--lc-faint); cursor: not-allowed; }
-  .primary { border-color: var(--lc-accent); background: var(--lc-accent); color: #071009; }
+  .primary { border-color: var(--lc-accent); background: var(--lc-accent); color: var(--lc-logo-cut); }
   .danger { color: var(--lc-danger); }
   .error { margin: 0; color: var(--lc-danger); font-size: 11px; }
+  .custom-model-warning { margin: 0; padding-top: var(--lc-space-2); border-top: var(--border-thin); color: var(--lc-muted); font-size: 11px; }
+  .custom-model-invalid { margin: 0; color: var(--lc-danger); font-size: 11px; font-weight: 700; }
   .confirmation { background: var(--lc-bg-elevated); box-shadow: var(--lc-shadow); }
   .confirmation h4, .confirmation p { margin: 0; }
   .confirmation ul { display: grid; gap: var(--lc-space-1); margin: 0; padding-left: 18px; font-size: 11px; overflow-wrap: anywhere; }
@@ -376,4 +542,115 @@
   .catalog-item.selected { border-color: var(--lc-accent); }
   .catalog-main { display: flex; align-items: center; justify-content: space-between; gap: var(--lc-space-2); }
   .catalog-empty { color: var(--lc-muted); font-size: 12px; }
+
+  /* Setup Stepper */
+  .setup-stepper {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    padding: var(--lc-space-3);
+    border: var(--border-thin);
+    border-radius: var(--lc-radius-sm);
+    background: var(--lc-panel-soft);
+  }
+  .stepper-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    position: relative;
+  }
+  .step-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 800;
+    border: 2px solid var(--lc-border);
+    background: var(--lc-panel-solid);
+    color: var(--lc-muted);
+    transition: all 0.3s ease;
+  }
+  .stepper-step.done .step-dot {
+    border-color: var(--lc-accent);
+    background: var(--lc-accent);
+    color: var(--lc-logo-cut);
+  }
+  .stepper-step.active .step-dot {
+    border-color: var(--lc-accent);
+    color: var(--lc-accent);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--lc-accent) 40%, transparent);
+    animation: stepPulse 2s ease-in-out infinite;
+  }
+  @keyframes stepPulse {
+    0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--lc-accent) 20%, transparent); }
+    50% { box-shadow: 0 0 16px color-mix(in srgb, var(--lc-accent) 50%, transparent); }
+  }
+  .step-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--lc-muted);
+    text-align: center;
+  }
+  .stepper-step.done .step-label,
+  .stepper-step.active .step-label {
+    color: var(--lc-text);
+  }
+  .step-status {
+    font-size: 9px;
+    color: var(--lc-muted);
+    text-align: center;
+    line-height: 1.3;
+    min-height: 12px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .stepper-step.active .step-status {
+    color: var(--lc-accent);
+    font-weight: 600;
+  }
+  .stepper-step.done .step-status {
+    color: var(--lc-accent);
+  }
+  .stepper-connector {
+    width: 24px;
+    min-width: 16px;
+    height: 2px;
+    background: var(--lc-border);
+    margin-top: 14px;
+    transition: background 0.3s ease;
+  }
+  .stepper-connector.done {
+    background: var(--lc-accent);
+  }
+  .step-progress-track {
+    width: 80%;
+    height: 3px;
+    background: color-mix(in srgb, var(--lc-accent) 15%, transparent);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .step-progress-fill {
+    height: 100%;
+    background: var(--lc-accent);
+    border-radius: 3px;
+    transition: width 0.3s ease-out;
+  }
+  .step-progress-fill.indeterminate {
+    width: 30%;
+    animation: stepIndeterminate 1.5s infinite ease-in-out;
+  }
+  @keyframes stepIndeterminate {
+    0% { margin-left: -30%; }
+    100% { margin-left: 100%; }
+  }
 </style>

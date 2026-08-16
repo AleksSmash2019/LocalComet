@@ -1,0 +1,82 @@
+87:    pub runtime_id: Option<String>,
+105:    pub runtime_id: String,
+157:    runtime_id: String,
+317:            runtime_id: active.map(|item| item.runtime_id.clone()),
+351:    /// `fallback_runtime_ids` lists the model's other compatible engines
+355:        runtime_id: &str,
+358:        if runtime_id.is_empty()
+359:            || runtime_id.len() > 96
+360:            || runtime_id.chars().any(char::is_whitespace)
+372:        let target = self.artifacts.runtime_probe_target(runtime_id)?;
+374:            &target.runtime_id,
+381:            capability.fallback_runtime_ids = readiness
+382:                .compatible_runtime_ids
+384:                .filter(|candidate| candidate.as_str() != runtime_id)
+391:    pub(crate) fn runtime_start_approval_input(
+395:        runtime_id: Option<&str>,
+398:            .runtime_start_approval_input(model_id, custom_sha256, runtime_id)
+405:        runtime_id: Option<&str>,
+407:        let _ = self.runtime_start_approval_input(model_id, None, runtime_id)?;
+439:        // Bind the approval input to the runtime that is actually active so a
+442:        let _ = self.runtime_start_approval_input(&model_id, None, status.runtime_id.as_deref())?;
+467:    pub(crate) fn active_runtime_identity(
+490:        runtime_id: Option<&str>,
+506:            runtime_id,
+650:        runtime_id: Option<&str>,
+659:                .resolve_launch_for_start(model_id, custom_sha256, runtime_id)?;
+677:        if launch.runtime_id.contains("vulkan") {
+693:            launch.runtime_id, launch.runtime_release_tag, runtime_instance_id
+706:            runtime_id: launch.runtime_id.clone(),
+763:                    launch.runtime_id.contains("vulkan"),
+845:                    runtime_id: launch.runtime_id.clone(),
+873:                runtime_id: launch.runtime_id.clone(),
+888:                &format!("started runtime={}", launch.runtime_id),
+1136:/// active_runtime_identity.
+1274:// the pinned runtime bytes on every resolve_launch_for_start.
+1283:        runtime.runtime_id,
+1432:    pub runtime_id: String,
+1436:    pub fallback_runtime_ids: Vec<String>,
+1459:    runtime_id: &str,
+1467:        runtime_id,
+1476:    runtime_id: &str,
+1481:    let cache_key = device_probe_cache_key(runtime_id, release_tag, executable);
+1546:    runtime_id: &str,
+1551:    let accelerated = runtime_id.contains("vulkan");
+1552:    let outcome = cached_device_probe(runtime_id, release_tag, package_dir, executable);
+1554:        runtime_id: runtime_id.to_owned(),
+1558:        fallback_runtime_ids: Vec::new(),
+1592:        &launch.runtime_id,
+2526:    runtime_id: String,
+2531:        runtime.runtime_capability(&runtime_id, model_id.as_deref())
+2548:    runtime_id: Option<String>,
+2555:    if runtime_id.as_ref().is_some_and(|value| {
+2560:    runtime.ensure_trusted_model_start(&model_id, runtime_id.as_deref())?;
+2567:            runtime_id.as_deref(),
+2587:    approval: State<'_, crate::approval_commands::ApprovalState>,
+2590:    runtime_id: Option<String>,
+2592:    approval_id: String,
+2600:    if runtime_id.as_ref().is_some_and(|value| {
+2605:    let input = runtime.runtime_start_approval_input(
+2608:        runtime_id.as_deref(),
+2610:    crate::approval_commands::validate_approval_token(
+2611:        &approval,
+2615:        &approval_id,
+2624:            runtime_id.as_deref(),
+2656:    approval: State<'_, crate::approval_commands::ApprovalState>,
+2658:    approval_id: String,
+2661:    crate::approval_commands::validate_approval_token(
+2662:        &approval,
+2666:        &approval_id,
+2740:            runtime_id: "llama-cpp-windows-x86-64-vulkan-bootstrap".into(),
+2744:            fallback_runtime_ids: vec!["llama-cpp-windows-x86-64-cpu-bootstrap".into()],
+2751:            value["runtime_id"],
+2758:            value["fallback_runtime_ids"],
+2915:            runtime_id: "llama-cpp-windows-x86-64-cpu-bootstrap".into(),
+3005:            runtime_id: Some("llama-cpp-windows-x86-64-vulkan-bootstrap".into()),
+3021:            value["runtime_id"],
+3027:    fn start_response_serializes_runtime_id() {
+3028:        // Defect caught: dropping runtime_id from the start response would let
+3037:            runtime_id: "llama-cpp-windows-x86-64-cpu-bootstrap".into(),
+3043:            value["runtime_id"],
+3092:    fn active_runtime_identity_fails_closed_without_an_active_runtime() {
+3099:            .active_runtime_identity("approved-model")

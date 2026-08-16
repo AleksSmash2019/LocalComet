@@ -82,7 +82,7 @@
   .checks > div { min-width: 0; justify-content: space-between; gap: var(--lc-space-2); border: var(--border-thin); border-radius: var(--lc-radius-sm); padding: var(--lc-space-3); background: var(--lc-panel-soft); font-size: 12px; font-weight: 700; }
   .actions { flex-wrap: wrap; justify-content: center; gap: var(--lc-space-2); }
   .actions button { display: inline-flex; align-items: center; gap: var(--lc-space-2); }
-  .primary { border-color: var(--lc-accent); background: var(--lc-accent); color: #071009; font-weight: 800; }
+  .primary { border-color: var(--lc-accent); background: var(--lc-accent); color: var(--lc-logo-cut); font-weight: 800; }
   .boundary { max-width: 620px; color: var(--lc-faint); font-size: 11px; line-height: 1.5; text-align: center; }
   @media (max-width: 620px) { .checks { grid-template-columns: 1fr; } .section-heading { align-items: flex-start; } }
 </style>

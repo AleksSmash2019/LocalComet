@@ -1,0 +1,240 @@
+﻿    session_id: String,
+}
+
+impl ApprovalRegistry {
+    pub fn new() -> Self {
+        let mut session_bytes = [0u8; 16];
+        getrandom::getrandom(&mut session_bytes)
+            .expect("OS CSPRNG unavailable for session generation");
+        Self {
+            entries: HashMap::new(),
+            consumed: HashMap::new(),
+            consumed_order: VecDeque::new(),
+            idempotency: IdempotencyRegistry::new(),
+            session_id: hex_encode(&session_bytes),
+        }
+    }
+
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    /// Issue a token with a freshly generated random identity. Retained as the
+    /// general issuance API; the command layer uses `issue_with_token` so that
+    /// approval_id/call_id can be derived from the token itself.
+    #[allow(dead_code)]
+    pub fn issue(&mut self, scope: ApprovalScope) -> Result<String, ApprovalError> {
+        self.issue_inner(generate_approval_token(), scope, DEFAULT_TTL)
+    }
+
+    #[allow(dead_code)]
+    pub fn issue_with_token(
+        &mut self,
+        token: String,
+        scope: ApprovalScope,
+    ) -> Result<String, ApprovalError> {
+        self.issue_inner(token, scope, DEFAULT_TTL)
+    }
+
+    pub fn request_with_prompt(
+        &mut self,
+        scope: ApprovalScope,
+        descriptor: &ApprovalDescriptor,
+        prompt: &dyn ApprovalPrompt,
+    ) -> Result<ApprovalEnvelope, ApprovalError> {
+        match prompt.decide(descriptor) {
+            Err(_) => Err(ApprovalError::PromptUnavailable),
+            Ok(ApprovalDecision::Reject) => Err(ApprovalError::Rejected),
+            Ok(ApprovalDecision::Approve) => {
+                let token = generate_token();
+                let approval_id = generate_approval_id();
+                let call_id = generate_call_id();
+                let scope = ApprovalScope {
+                    approval_id: approval_id.clone(),
+                    call_id: call_id.clone(),
+                    ..scope
+                };
+                self.issue_inner(token.clone(), scope, DEFAULT_TTL)?;
+                let expires_at_unix_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64
+                    + DEFAULT_TTL.as_millis() as u64;
+                Ok(ApprovalEnvelope {
+                    token,
+                    approval_id,
+                    call_id,
+                    tool: descriptor.tool.clone(),
+                    risk_level: descriptor.risk_level,
+                    command_family: descriptor.command_family,
+                    expires_at_unix_ms,
+                })
+            }
+        }
+    }
+
+    fn issue_inner(
+        &mut self,
+        token: String,
+        scope: ApprovalScope,
+        ttl: Duration,
+    ) -> Result<String, ApprovalError> {
+        self.entries
+            .retain(|_, entry| entry.issued_at.elapsed() <= entry.ttl);
+        self.sweep_consumed();
+
+        if self.entries.len() >= MAX_ACTIVE_TOKENS {
+            return Err(ApprovalError::RegistryFull);
+        }
+
+        let mut nonce = [0u8; 16];
+        getrandom::getrandom(&mut nonce).expect("OS CSPRNG unavailable for nonce generation");
+
+        self.entries.insert(
+            token.clone(),
+            ApprovalEntry {
+                scope,
+                nonce,
+                issued_at: Instant::now(),
+                ttl,
+            },
+        );
+
+        Ok(token)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn execute_approved(
+        &mut self,
+        token: &str,
+        tool: &str,
+        input_digest: &[u8; 32],
+        workspace: &str,
+        approval_id: &str,
+        call_id: &str,
+        risk_level: RiskLevel,
+        command_family: CommandFamily,
+    ) -> Result<ExecutionGrant, ApprovalError> {
+        if !validate_token_syntax(token) {
+            return Err(ApprovalError::InvalidToken);
+        }
+
+        if !validate_approval_id_syntax(approval_id) {
+            return Err(ApprovalError::ApprovalIdMismatch);
+        }
+
+        if !validate_call_id_syntax(call_id) {
+            return Err(ApprovalError::CallIdMismatch);
+        }
+
+        let token_digest = token_tombstone_digest(token);
+        if let Some(consumed_at) = self.consumed.get(&token_digest) {
+            if consumed_at.elapsed() <= TOMBSTONE_TTL {
+                return Err(ApprovalError::AlreadyConsumed);
+            }
+            self.consumed.remove(&token_digest);
+        }
+
+        let expired = match self.entries.get(token) {
+            None => return Err(ApprovalError::TokenNotFound),
+            Some(entry) => entry.issued_at.elapsed() > entry.ttl,
+        };
+        if expired {
+            self.entries.remove(token);
+            return Err(ApprovalError::Expired);
+        }
+
+        let entry = self
+            .entries
+            .get(token)
+            .expect("token presence checked above");
+        let scope = &entry.scope;
+
+        if scope.tool.as_bytes().ct_eq(tool.as_bytes()).unwrap_u8() != 1 {
+            return Err(ApprovalError::ToolMismatch);
+        }
+
+        if scope.input_digest.ct_eq(input_digest).unwrap_u8() != 1 {
+            return Err(ApprovalError::InputDigestMismatch);
+        }
+
+        if scope
+            .workspace
+            .as_bytes()
+            .ct_eq(workspace.as_bytes())
+            .unwrap_u8()
+            != 1
+        {
+            return Err(ApprovalError::WorkspaceMismatch);
+        }
+
+        if scope
+            .session
+            .as_bytes()
+            .ct_eq(self.session_id.as_bytes())
+            .unwrap_u8()
+            != 1
+        {
+            return Err(ApprovalError::SessionMismatch);
+        }
+
+        if scope
+            .approval_id
+            .as_bytes()
+            .ct_eq(approval_id.as_bytes())
+            .unwrap_u8()
+            != 1
+        {
+            return Err(ApprovalError::ApprovalIdMismatch);
+        }
+
+        if scope
+            .call_id
+            .as_bytes()
+            .ct_eq(call_id.as_bytes())
+            .unwrap_u8()
+            != 1
+        {
+            return Err(ApprovalError::CallIdMismatch);
+        }
+
+        if scope.risk_level != risk_level {
+            return Err(ApprovalError::RiskMismatch);
+        }
+
+        if scope.command_family != command_family {
+            return Err(ApprovalError::FamilyMismatch);
+        }
+
+        let entry = self
+            .entries
+            .remove(token)
+            .expect("token presence checked above");
+        self.record_consumed(token_digest);
+
+        let mut grant_id = [0u8; 16];
+        getrandom::getrandom(&mut grant_id).expect("OS CSPRNG unavailable for grant generation");
+
+        Ok(ExecutionGrant {
+            grant_id: hex_encode(&grant_id),
+            tool: entry.scope.tool.clone(),
+            input_digest: *input_digest,
+            workspace: workspace.to_owned(),
+            session: self.session_id.clone(),
+            nonce: entry.nonce,
+            valid_until: Instant::now() + GRANT_TTL,
+            approval_id: entry.scope.approval_id.clone(),
+            call_id: entry.scope.call_id.clone(),
+        })
+    }
+
+    pub fn invalidate_workspace(&mut self, old_workspace: &str) {
+        self.entries
+            .retain(|_, entry| entry.scope.workspace != old_workspace);
+    }
+
+    fn record_consumed(&mut self, token_digest: [u8; 32]) {
+        self.consumed.insert(token_digest, Instant::now());
+        self.consumed_order.push_back(token_digest);
+        if self.consumed.len() > MAX_CONSUMED_TOMBSTONES {
+            if let Some(oldest) = self.consumed_order.pop_front() {

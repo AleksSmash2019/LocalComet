@@ -1,0 +1,101 @@
+{"total": 100, "pass": 75, "fail": 10, "timeout": 0, "error": 15}
+PASS    01 AGENTS instructions exist
+PASS    02 frontend package manifest exists
+PASS    03 frontend lockfile exists
+PASS    04 Rust manifest exists
+PASS    05 Rust lockfile exists
+PASS    06 Python requirements exist
+PASS    07 Tauri config exists
+PASS    08 TypeScript config exists
+PASS    09 Svelte config exists
+PASS    10 Vite config exists
+FAIL    11 cycle gate uses current frontend test count
+PASS    12 cycle gate has no stale 384 threshold
+ERROR   13 removed MCP launcher is not referenced by scripts
+PASS    14 English locale exists
+PASS    15 Russian locale exists
+FAIL    16 approval component exists
+PASS    17 model gateway bridge exists
+PASS    18 supervisor source exists
+FAIL    19 release-only stale DebugPython is absent
+PASS    20 no literal FIXME in first-party source
+PASS    21 Python compile gate
+PASS    22 command parity gate
+PASS    23 bundle parity gate
+PASS    24 i18n parity gate
+PASS    25 fake UI state gate
+PASS    26 mock data import gate
+PASS    27 tool risk registry gate
+PASS    28 evidence provenance gate
+PASS    29 historical evidence gate
+FAIL    30 real sidecar enforcement gate
+PASS    31 ADR015 parser tests
+PASS    32 legacy quarantine tests
+PASS    33 sidecar health contract tests
+PASS    34 sidecar health protocol unit tests
+PASS    35 injection approval tests
+PASS    36 unready sidecar tests
+PASS    37 assistant context tests
+PASS    38 security negative tests
+PASS    39 model chat backend tests
+PASS    40 managed runtime tests
+PASS    41 v677 regression tests
+PASS    42 v678 router registry tests
+PASS    43 v679 retention tests
+PASS    44 diagnostics tests
+PASS    45 task planner tests
+PASS    46 autonomy policy tests
+PASS    47 action executor tests
+PASS    48 tool execution tests
+PASS    49 control plane tests
+PASS    50 sidecar supervisor tests
+PASS    51 model gateway tests
+PASS    52 desktop IPC tests
+PASS    53 desktop shell tests
+PASS    54 evidence injection tests
+PASS    55 knowledge adapter tests
+PASS    56 knowledge control plane tests
+PASS    57 knowledge change proposal tests
+PASS    58 knowledge review tests
+PASS    59 human review decision tests
+PASS    60 review projection tests
+ERROR   61 Svelte type check
+ERROR   62 frontend unit test suite
+ERROR   63 frontend production build
+ERROR   64 npm dependency tree
+ERROR   65 npm production audit
+ERROR   66 frontend coverage gate
+ERROR   67 frontend language tests
+ERROR   68 frontend shell store tests
+ERROR   69 frontend model gateway tests
+ERROR   70 frontend managed artifacts tests
+PASS    71 Rust formatting
+PASS    72 Rust debug unit tests
+FAIL    73 Rust release unit tests
+PASS    74 Rust clippy warnings as errors
+PASS    75 Rust release build
+PASS    76 Rust duplicate dependency graph
+PASS    77 desktop IPC source compile
+PASS    78 tool risk Rust parity
+PASS    79 Tauri desktop native integration
+PASS    80 release manifest integrity
+PASS    81 seven cycle end-to-end gate
+PASS    82 reproducibility suite
+PASS    83 audit bundle creation
+PASS    84 bundle security suite
+PASS    85 start-localcomet launcher tests
+PASS    86 development launcher tests
+PASS    87 UTF-8 SSE decoder tests
+PASS    88 knowledge preview tests
+PASS    89 knowledge producer tests
+PASS    90 knowledge command center tests
+PASS    91 Python dependency audit
+FAIL    92 project doctor
+FAIL    93 Rust dependency audit availability
+FAIL    94 Python first-party mypy gate
+ERROR   95 Python lint gate availability
+ERROR   96 Python formatter gate availability
+ERROR   97 complexity gate availability
+ERROR   98 Windows bundle command
+FAIL    99 git whitespace integrity
+FAIL    100 release-oriented preflight

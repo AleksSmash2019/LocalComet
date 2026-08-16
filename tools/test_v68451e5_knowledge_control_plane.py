@@ -521,7 +521,7 @@ class KnowledgeControlPlaneTests(unittest.TestCase):
 
     def test_58_tauri_only_adds_fixed_read_only_review_commands(self) -> None:
         rust = (ROOT / "desktop/localcomet-desktop/src-tauri/src/control_plane.rs").read_text(encoding="utf-8")
-        production_rust = rust.split("#[cfg(test)]", 1)[0]
+        production_rust = rust.rsplit("#[cfg(test)]", 1)[0]
         self.assertEqual(18, rust.count("#[tauri::command]"))
         self.assertIn("knowledge_review_list", production_rust)
         self.assertIn("knowledge_review_get", production_rust)

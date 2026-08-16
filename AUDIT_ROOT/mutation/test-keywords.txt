@@ -1,0 +1,104 @@
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:974:    fn replay_is_rejected() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1378:    fn wrong_digest_rejects_without_consuming_token() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1518:        let wrong_digest = canonical_input_digest(&json!({"path": "other.txt"}));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1548:                &wrong_digest,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2021:    fn p0b_r2_replay_distinguished_from_unknown() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2048:        let replay_err = registry
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2060:        assert!(matches!(replay_err, ApprovalError::AlreadyConsumed));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2658:    fn p0b_concurrent_replay_registry_remains_consistent() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3507:        let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3518:            replay.is_err(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3600:        let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3610:        let error = replay.expect_err("replay must fail");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:928:    fn p0b_replay_rejected() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:947:        let replay = registry.execute_approved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:958:            replay,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1373:        let replay = validate_approval_token(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1381:        let error = replay.expect_err("replay must be rejected");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\artifact_trust.rs:1205:                        "runtime_id_not_compatible",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\control_plane.rs:8992:        // Replay of the same accepted terminal must be rejected without mutation.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\control_plane.rs:8993:        b10_reject(&mut entry_a, &terminal, "terminal replay");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:61:use supervisor::{DesktopSidecarSupervisor, LivenessPolicy, SupervisorError};
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:179:            let _ = supervisor.spawn_liveness_monitor(LivenessPolicy::default());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:634:        // then prove single-use: a replay of the exact same approval material
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:647:        let replay = crate::approval_commands::validate_approval_token(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:657:        .expect_err("approval replay must be rejected");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\live_e2e.rs:658:        assert_eq!(replay.code, "approval_token_consumed");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:224:pub struct LivenessPolicy {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:234:impl Default for LivenessPolicy {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:266:    liveness_trigger: AtomicBool,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:269:    liveness: Mutex<LivenessInner>,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:273:struct LivenessInner {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:340:pub const HEALTH_ERR_LIVENESS_TIMEOUT: &str = "sidecar_liveness_timeout";
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:780:            // liveness monitor.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:782:            let mut liveness = self.shared.liveness.lock().expect("liveness lock poisoned");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:783:            liveness.consecutive_failed_restarts = 0;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:784:            liveness.last_restart_code = None;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:785:            liveness.last_restart_unix_ms = None;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:857:                    // Arm the restart budget so the liveness monitor replaces the
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:916:    pub fn spawn_liveness_monitor(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:918:        policy: LivenessPolicy,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:922:            .name("localcomet-sidecar-liveness".into())
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:924:                let forced = this.shared.liveness_trigger.swap(false, Ordering::SeqCst);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:925:                if !this.liveness_tick(policy) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:932:            .expect("failed to spawn sidecar liveness monitor thread")
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:936:    pub fn request_liveness_check(&self) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:937:        self.shared.liveness_trigger.store(true, Ordering::SeqCst);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:940:    fn liveness_tick(&self, policy: LivenessPolicy) -> bool {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:990:                    .unwrap_or(HEALTH_ERR_LIVENESS_TIMEOUT);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1009:            self.restart_under_transition(policy, HEALTH_ERR_LIVENESS_TIMEOUT);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1014:    fn probe_and_wait(&self, policy: LivenessPolicy) -> bool {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1044:    fn restart_under_transition(&self, policy: LivenessPolicy, failure_code: &'static str) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1054:        self.fail_pending(failure_code, "sidecar liveness failure; restarting");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1078:            let mut liveness = self.shared.liveness.lock().expect("liveness lock poisoned");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1079:            liveness.consecutive_failed_restarts = 0;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1080:            liveness.last_restart_code = None;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1085:        let mut liveness = self.shared.liveness.lock().expect("liveness lock poisoned");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1086:        liveness.consecutive_failed_restarts += 1;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1087:        liveness.last_restart_unix_ms = Some(unix_time_ms());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1088:        liveness.last_restart_code = Some(failure_code);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1115:            let mut liveness = self.shared.liveness.lock().expect("liveness lock poisoned");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1116:            liveness.last_restart_code = Some(code);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1122:            .liveness
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1124:            .expect("liveness lock poisoned")
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1131:            .liveness
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1133:            .expect("liveness lock poisoned")
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1137:    fn restart_attempt_allowed(&self, policy: LivenessPolicy) -> bool {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1138:        let mut liveness = self.shared.liveness.lock().expect("liveness lock poisoned");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1140:        if let Some(last) = liveness.last_restart_unix_ms {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1142:                liveness.consecutive_failed_restarts = 0;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1143:                liveness.last_restart_code = None;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1146:        liveness.consecutive_failed_restarts < policy.max_restart_attempts
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1149:    fn backoff_elapsed(&self, policy: LivenessPolicy) -> bool {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1150:        let liveness = self.shared.liveness.lock().expect("liveness lock poisoned");
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1151:        match liveness.last_restart_unix_ms {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1154:                let attempts = u64::from(liveness.consecutive_failed_restarts.max(1));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1192:        // Signal the liveness monitor before taking the transition lock so an
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1378:                // The liveness monitor terminates and replaces the process.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:1866:    fn p0c_ready_requires_correlated_response() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2687:    fn p0c_liveness_policy_defaults_are_bounded() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2688:        let policy = LivenessPolicy::default();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2696:    fn p0c_liveness_restart_machinery_is_wired_into_supervisor() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2698:        assert!(source.contains("spawn_liveness_monitor"));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2709:    fn liveness_probe_and_wait_fails_closed_without_process() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2712:        assert!(!supervisor.probe_and_wait(LivenessPolicy::default()));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2717:    fn liveness_restart_attempt_gate_counts_failures_and_resets_after_window() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2719:        let policy = LivenessPolicy {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2722:            ..LivenessPolicy::default()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2727:            .liveness
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2734:            .liveness
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2745:    fn liveness_backoff_grows_with_attempt_count() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2747:        let policy = LivenessPolicy {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2750:            ..LivenessPolicy::default()
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2753:            let mut liveness = supervisor.shared.liveness.lock().unwrap();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2754:            liveness.consecutive_failed_restarts = 2;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2755:            liveness.last_restart_unix_ms = Some(unix_time_ms());
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2760:            .liveness
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2772:    fn real_sidecar_liveness_restarts_after_process_kill() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2776:        let policy = LivenessPolicy {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2807:        let _ = Arc::clone(&supervisor).spawn_liveness_monitor(policy);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2808:        supervisor.request_liveness_check();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2831:    fn real_sidecar_liveness_gives_up_after_max_failed_restarts() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2844:        let policy = LivenessPolicy {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2858:        let _ = Arc::clone(&supervisor).spawn_liveness_monitor(policy);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\supervisor.rs:2859:        supervisor.request_liveness_check();

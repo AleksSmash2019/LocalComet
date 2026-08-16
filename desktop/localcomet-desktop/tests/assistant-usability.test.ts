@@ -19,6 +19,7 @@ function status(state: 'NotInstalled' | 'Starting' | 'Ready', modelState: 'Unava
     state,
     installation: state === 'NotInstalled' ? 'Not installed' as const : 'Installed' as const,
     runtime_version: state === 'NotInstalled' ? null : 'b10068',
+    runtime_id: state === 'NotInstalled' ? null : 'llama-cpp-windows-x86-64-cpu-bootstrap',
     runtime_instance_id: state === 'Ready' ? INSTANCE_ID : null,
     runtime_instance_fingerprint: state === 'Ready' ? 'e'.repeat(64) : null,
     model_id: state === 'Ready' ? MODEL_ID : null,
@@ -26,7 +27,8 @@ function status(state: 'NotInstalled' | 'Starting' | 'Ready', modelState: 'Unava
     binding_fingerprint: state === 'Ready' ? 'f'.repeat(64) : null,
     model_state: modelState,
     inference_ready: state === 'Ready',
-    last_error: null
+    last_error: null,
+    loading_phase: null
   };
 }
 

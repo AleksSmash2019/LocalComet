@@ -45,17 +45,20 @@ use files::{
     files_capability_status, forget_selected_file, list_selected_files, preview_selected_file,
     select_files, SelectedFilesManager,
 };
+#[cfg(all(test, debug_assertions))]
+mod live_e2e;
 use hardware::scan_hardware;
 use hf_catalog::{hf_list_repo_files, hf_search_models};
 use knowledge::{knowledge_turn_decide, knowledge_turn_preview};
 use managed_runtime::{
-    managed_runtime_logs, managed_runtime_start, managed_runtime_status, managed_runtime_stop,
-    ManagedRuntimeSupervisor,
+    managed_runtime_capability, managed_runtime_logs, managed_runtime_start,
+    managed_runtime_start_trusted, managed_runtime_status, managed_runtime_stop,
+    managed_runtime_stop_trusted, ManagedRuntimeSupervisor,
 };
 use skills::{skills_disable, skills_enable, skills_install, skills_list, skills_uninstall};
 use std::sync::Arc;
 use std::time::Duration;
-use supervisor::{DesktopSidecarSupervisor, SupervisorError};
+use supervisor::{DesktopSidecarSupervisor, LivenessPolicy, SupervisorError};
 use tauri::Manager;
 
 const BACKEND_READINESS_TIMEOUT: Duration = Duration::from_secs(8);
@@ -173,6 +176,7 @@ pub fn run() {
                 "LC_START_100",
             );
             bridge.emit_sidecar_status();
+            let _ = supervisor.spawn_liveness_monitor(LivenessPolicy::default());
             let snapshot = supervisor.snapshot();
             let _ = (
                 snapshot.running,
@@ -245,6 +249,7 @@ pub fn run() {
             knowledge_review_refresh,
             knowledge_review_decision_create,
             managed_runtime_status,
+            managed_runtime_capability,
             managed_runtime_catalog,
             managed_model_catalog,
             managed_installed_artifacts,
@@ -260,7 +265,9 @@ pub fn run() {
             cancel_artifact_download,
             remove_managed_model,
             managed_runtime_start,
+            managed_runtime_start_trusted,
             managed_runtime_stop,
+            managed_runtime_stop_trusted,
             managed_runtime_logs,
             files_capability_status,
             select_files,

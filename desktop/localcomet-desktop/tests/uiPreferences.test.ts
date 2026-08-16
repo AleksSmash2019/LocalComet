@@ -34,7 +34,8 @@ describe('UI preferences', () => {
   it('uses a versioned key and complete safe defaults', () => {
     expect(UI_PREFERENCES_KEY).toBe('localcomet.ui.preferences.v1');
     expect(loadUiPreferences()).toEqual(DEFAULT_UI_PREFERENCES);
-    expect(Object.keys(loadUiPreferences())).toEqual(['theme', 'locale', 'diagnosticsPanel', 'agentPermissions']);
+    expect(Object.keys(loadUiPreferences())).toEqual(['theme', 'locale', 'diagnosticsPanel',
+      'voiceMode', 'agentPermissions', 'ctxSizeOverride', 'gpuLayersOverride']);
   });
 
   it('loads only valid fields and ignores unknown fields', () => {
@@ -42,6 +43,9 @@ describe('UI preferences', () => {
       theme: 'dark',
       locale: 'en',
       diagnosticsPanel: 'open',
+      voiceMode: false,
+      ctxSizeOverride: null,
+      gpuLayersOverride: null,
       repositoryPath: 'C:\\private',
       futureField: true
     }));
@@ -49,6 +53,9 @@ describe('UI preferences', () => {
       theme: 'dark',
       locale: 'en',
       diagnosticsPanel: 'open',
+      voiceMode: false,
+      ctxSizeOverride: null,
+      gpuLayersOverride: null,
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
@@ -63,6 +70,9 @@ describe('UI preferences', () => {
       theme: 'system',
       locale: 'en',
       diagnosticsPanel: 'closed',
+      voiceMode: false,
+      ctxSizeOverride: null,
+      gpuLayersOverride: null,
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
@@ -80,6 +90,9 @@ describe('UI preferences', () => {
       theme: 'system',
       locale: 'en',
       diagnosticsPanel: 'closed',
+      voiceMode: false,
+      ctxSizeOverride: null,
+      gpuLayersOverride: null,
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(localStorage.getItem(UI_PREFERENCES_KEY)).toBeNull();
@@ -99,12 +112,18 @@ describe('UI preferences', () => {
       theme: 'dark',
       locale: 'en',
       diagnosticsPanel: 'open',
+      voiceMode: false,
+      ctxSizeOverride: null,
+      gpuLayersOverride: null,
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
       theme: 'dark',
       locale: 'en',
       diagnosticsPanel: 'open',
+      voiceMode: false,
+      ctxSizeOverride: null,
+      gpuLayersOverride: null,
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
@@ -127,13 +146,19 @@ describe('UI preferences', () => {
       theme: 'light',
       locale: 'ru',
       diagnosticsPanel: 'open',
+      voiceMode: false,
+      ctxSizeOverride: null,
+      gpuLayersOverride: null,
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(Object.keys(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}'))).toEqual([
       'theme',
       'locale',
       'diagnosticsPanel',
-      'agentPermissions'
+      'voiceMode',
+      'agentPermissions',
+      'ctxSizeOverride',
+      'gpuLayersOverride'
     ]);
   });
 

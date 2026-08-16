@@ -162,19 +162,19 @@
   }
 
   .eyebrow.computer-use {
-    color: #15803d;
-    background: #dcfce7;
+    color: var(--lc-accent-strong);
+    background: var(--lc-accent-dim);
     border-radius: 999px;
     padding: 1px 6px;
   }
 
   .status-dot.computer-use {
-    background: #22c55e;
+    background: var(--lc-accent);
   }
 
   .status-pill.computer-use {
-    background: #bbf7d0;
-    border: 1px solid #86efac;
+    background: var(--lc-accent-dim);
+    border: 1px solid color-mix(in srgb, var(--lc-accent) 40%, transparent);
     border-radius: 999px;
   }
 

@@ -17,10 +17,13 @@
   } from '$lib/stores/modelGateway';
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
   import { includedFileIds, addFiles } from '$lib/stores/files';
+  import { voiceMode, setVoiceMode } from '$lib/stores/shellStore';
 
   let textarea: HTMLTextAreaElement;
   let restoreComposerFocus = false;
   let previouslyGenerating = false;
+  let isListening = false;
+  let recognition: any = null;
 
   $: isGenerating = ['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle);
   $: canSend = $managedModelReady && Boolean($composerDraft.trim()) && !isGenerating;
@@ -33,6 +36,39 @@
       void restoreFocusAfterRequest();
     }
     previouslyGenerating = generatingNow;
+  }
+
+  function toggleVoiceMode() {
+    setVoiceMode(!$voiceMode);
+  }
+
+  function startListening() {
+    if (isListening) {
+      recognition?.stop();
+      isListening = false;
+      return;
+    }
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert($t('chat.speech_unsupported'));
+      return;
+    }
+    recognition = new SpeechRecognition();
+    recognition.lang = 'ru-RU';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onresult = (event: any) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        transcript += event.results[i][0].transcript;
+      }
+      setComposerDraft(transcript);
+      resizeDraftBox();
+    };
+    recognition.onerror = () => { isListening = false; };
+    recognition.onend = () => { isListening = false; };
+    recognition.start();
+    isListening = true;
   }
 
   async function restoreFocusAfterRequest(): Promise<void> {
@@ -98,6 +134,10 @@
         <Icon name="attach" size={20} />
       </button>
 
+      <button type="button" class="composer-icon-button" aria-label={$t('chat.voice_output')} title={$t('chat.voice_output')} onclick={toggleVoiceMode} style="color: {$voiceMode ? 'var(--lc-accent)' : 'var(--lc-muted)'}; margin-right: 8px;">
+        <Icon name="audio" size={20} />
+      </button>
+
       <label class="sr-only" for="composer-draft">{$t('chat.type_message')}</label>
       <textarea
         id="composer-draft"
@@ -116,6 +156,18 @@
 
       <button
         type="button"
+        class="composer-icon-button"
+        class:recording={isListening}
+        aria-label={$t('chat.voice_input')}
+        title={$t('chat.voice_input')}
+        onclick={startListening}
+        style="color: {isListening ? 'var(--lc-danger)' : 'var(--lc-muted)'}; margin-right: 4px;"
+      >
+        <Icon name="microphone" size={20} />
+      </button>
+
+      <button
+        type="button"
         class="send-button pill-send"
         aria-label={$t(isGenerating ? 'chat.stop' : 'chat.send')}
         title={$t(isGenerating ? 'chat.stop' : 'chat.send')}
@@ -125,6 +177,11 @@
         <Icon name={isGenerating ? 'stop' : 'send'} size={18} />
       </button>
     </div>
+    {#if $composerDraft.length > 500}
+      <div class="char-counter" class:warn={$composerDraft.length > 10000}>
+        {$composerDraft.length} / 12000
+      </div>
+    {/if}
     {#if $inferenceRequestStore.lastError}
       <p class="request-error" role="status">{$t(requestErrorKey)}</p>
     {/if}
@@ -190,6 +247,22 @@
     transform: translateY(-1px);
   }
 
+  .composer-icon-button.recording {
+    animation: pulse-mic 1.5s infinite ease-in-out;
+  }
+
+  @keyframes pulse-mic {
+    0%, 100% {
+      transform: scale(1);
+      background: color-mix(in srgb, var(--lc-danger) 15%, transparent);
+    }
+    50% {
+      transform: scale(1.15);
+      background: color-mix(in srgb, var(--lc-danger) 30%, transparent);
+      box-shadow: 0 0 10px color-mix(in srgb, var(--lc-danger) 40%, transparent);
+    }
+  }
+
   .send-button.pill-send {
     width: 36px;
     height: 36px;
@@ -237,7 +310,7 @@
     border: 0;
     border-radius: var(--lc-radius-sm);
     background: var(--lc-accent);
-    color: #071009;
+    color: var(--lc-logo-cut);
     font-size: 14px;
     font-weight: 650;
     cursor: pointer;
@@ -260,6 +333,20 @@
     color: var(--lc-danger);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .char-counter {
+    text-align: right;
+    font-size: 11px;
+    color: var(--lc-faint);
+    font-family: var(--lc-mono);
+    margin-top: 4px;
+    padding-right: 12px;
+  }
+
+  .char-counter.warn {
+    color: var(--lc-warning);
+    font-weight: 600;
   }
 
   .composer-wrap :global(.files-panel) {

@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M1",
+  "invariant": "trust boundary",
+  "file": "desktop/localcomet-desktop/src-tauri/src/control_plane.rs",
+  "test": "cargo test assistant_context_is_trusted_typed_and_fail_closed --lib",
+  "expected_reason": "frontend/backend trust capability contract must remain deny-by-default",
+  "original_sha256": "f97af78a55fe43b9aad1b8693e1d22e99cbc63c524eb6e1cdfea9ae425efe133",
+  "original_occurrences": 3,
+  "started_at": "2026-08-15T22:17:38.027125+00:00",
+  "mutation_sha256": "efe7a7a98a8d064f2d0d497df79ec6d74de6ad57d1f7366321d6831087cee29a",
+  "red_exit_code": 101,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "f97af78a55fe43b9aad1b8693e1d22e99cbc63c524eb6e1cdfea9ae425efe133",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:17:45.688609+00:00"
+}

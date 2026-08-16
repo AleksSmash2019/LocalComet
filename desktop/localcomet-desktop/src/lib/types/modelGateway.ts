@@ -138,6 +138,7 @@ export interface ManagedRuntimeStatus {
   readonly state: ManagedRuntimeState;
   readonly installation: 'Installed' | 'Not installed';
   readonly runtime_version: string | null;
+  readonly runtime_id: string | null;
   readonly runtime_instance_id: string | null;
   readonly runtime_instance_fingerprint: string | null;
   readonly model_id: string | null;
@@ -146,6 +147,7 @@ export interface ManagedRuntimeStatus {
   readonly model_state: ManagedModelState;
   readonly inference_ready: boolean;
   readonly last_error: string | null;
+  readonly loading_phase: string | null;
 }
 
 export interface InferenceRequestState {
@@ -389,6 +391,7 @@ export interface ManagedRuntimeStartResponse {
   readonly provider_id: 'managed-llama-cpp';
   readonly model_id: string;
   readonly model_display_name: string;
+  readonly runtime_id: string;
   readonly runtime_instance_id: string;
   readonly runtime_instance_fingerprint: string;
 }
@@ -396,4 +399,13 @@ export interface ManagedRuntimeStartResponse {
 export interface ManagedRuntimeLogs {
   readonly stdout_tail: readonly string[];
   readonly stderr_tail: readonly string[];
+}
+
+export interface ManagedRuntimeCapability {
+  readonly runtime_id: string;
+  readonly available: boolean;
+  readonly safe_to_start: boolean;
+  readonly reason_code: string | null;
+  readonly fallback_runtime_ids: readonly string[];
+  readonly device_summary: string | null;
 }

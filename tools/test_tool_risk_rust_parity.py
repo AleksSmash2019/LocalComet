@@ -170,9 +170,9 @@ def check_model_tool_registry() -> list[str]:
             f"python_only={sorted(python_set - rust_set)}"
         )
 
-    if len(rust_tools) != 10:
+    if len(rust_tools) != 11:
         errors.append(
-            f"B3F: Rust REGISTERED_MODEL_TOOLS cardinality is {len(rust_tools)}, expected 10"
+            f"B3F: Rust REGISTERED_MODEL_TOOLS cardinality is {len(rust_tools)}, expected 11"
         )
 
     with TOML_PATH.open("rb") as handle:
@@ -364,8 +364,9 @@ def main() -> int:
         for error in errors:
             print(f"FAIL: {error}")
         return 1
+    rust_tool_count = len(extract_rust_model_registry(CONTROL_PLANE_PATH.read_text(encoding="utf-8")) or [])
     print(f"OK: Rust risk_level_for_tool matches tool_risk_levels.toml ({len(tools)} tools)")
-    print("OK: Rust REGISTERED_MODEL_TOOLS matches Python TOOL_REGISTRY (10 tools)")
+    print(f"OK: Rust REGISTERED_MODEL_TOOLS matches Python TOOL_REGISTRY ({rust_tool_count} tools)")
     print("OK: R4 execution coverage confirmed via SUPPORTED_TOOLS")
     print("OK: parser self-tests passed")
     return 0

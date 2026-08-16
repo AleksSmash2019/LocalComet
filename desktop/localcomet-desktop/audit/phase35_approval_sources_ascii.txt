@@ -1,0 +1,484 @@
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:3:export type ApprovalRiskLevel = 'read_only' | 'guarded' | 'dangerous';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:4:export type ApprovalCommandFamily = 'artifact_download' | 'artifact_remove' | 'runtime_start' | 'runtime_stop' | 'model_binding_set' | 'tool_filesystem_read' | 'tool_filesystem_write' | 'tool_filesystem_delete' | 'computer_use';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:6:export interface ApprovalEnvelope {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:8:approvalId: string;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:11:riskLevel: ApprovalRiskLevel;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:12:commandFamily: ApprovalCommandFamily;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:35:const APPROVAL_ID_RE = /^appr_[0-9a-f]{32}$/;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:38:const COMMAND_FAMILIES: readonly string[] = ['artifact_download', 'artifact_remove', 'runtime_start', 'runtime_stop', 'model_binding_set', 'tool_filesystem_read', 'tool_filesystem_write', 'tool_filesystem_delete', 'computer_use'];
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:40:export function validateApprovalEnvelope(raw: unknown, expectedTool: string): ApprovalEnvelope {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:42:throw { code: 'invalid_payload', message: 'Approval envelope must be an object' };
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:46:if (keys.includes('approval_id') || keys.includes('call_id') || keys.includes('risk_level') || keys.includes('command_family') || keys.includes('expires_at_unix_ms')) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:47:throw { code: 'invalid_payload', message: 'Approval envelope uses snake_case aliases' };
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:50:throw { code: 'invalid_payload', message: 'Invalid approval token' };
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:52:if (typeof record.approvalId !== 'string' || !APPROVAL_ID_RE.test(record.approvalId)) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:53:throw { code: 'invalid_payload', message: 'Invalid approval ID' };
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:59:throw { code: 'invalid_payload', message: 'Unexpected tool in approval envelope' };
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:71:throw { code: 'invalid_payload', message: 'Approval envelope expired' };
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:75:approvalId: record.approvalId,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:78:riskLevel: record.riskLevel as ApprovalRiskLevel,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:79:commandFamily: record.commandFamily as ApprovalCommandFamily,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:84:export async function requestApproval(tool: string, input: unknown): Promise<ApprovalEnvelope> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:85:const raw = await invoke<ApprovalEnvelope>('request_approval', { tool, input });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:86:return validateApprovalEnvelope(raw, tool);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:89:export async function executeApproved(
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:91:approvalId: string,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:96:const grant = await invoke<ExecutionGrant>('execute_approved', {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:98:approvalId,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:131:envelope?: Pick<ApprovalEnvelope, 'token' | 'approvalId' | 'callId'>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:137:approvalId: envelope?.approvalId ?? null,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledge.ts:129:if (object.decision_source !== undefined && object.decision_source !== 'USER_APPROVAL') throw invalid();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:490:['APPROVE', 'REJECT', 'REQUEST_CHANGES'] as const,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:500:if (decision === 'APPROVE' && object.changeIdentity === null) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:501:invalid('Approval requires a change identity');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:617:'grants_automatic_approval_authority'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:634:['APPROVE', 'REJECT', 'REQUEST_CHANGES'] as const,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:642:if (status === 'BLOCKED' && decision === 'APPROVE') {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:643:invalid('BLOCKED review cannot be approved');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:645:if (decision === 'APPROVE' && object.change_identity === null) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:646:invalid('Approval requires a change identity');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:682:'grants_automatic_approval_authority'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:4:ApprovedModelSummary,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:5:ApprovedRuntimeSummary,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:7:ApprovedDownloadableArtifact,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:36:import { requestApproval } from './approval';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:65:const envelope = await requestApproval('model.binding.set', {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:80:approvalId: envelope.approvalId,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:114:export async function listApprovedDownloadableArtifacts(): Promise<readonly ApprovedDownloadableArtifact[]> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:115:const result = await invokeExact<unknown>('list_approved_downloadable_artifacts');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:116:return boundedArray(result, 32).map(validateApprovedDownloadableArtifact);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:119:export async function startApprovedArtifactDownload(artifactId: string): Promise<ArtifactDownloadState> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:121:const envelope = await requestApproval('artifact.download', { artifact_id: requestedId });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:123:await invokeExact('start_approved_artifact_download', { artifactId: requestedId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId })
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:131:const envelope = await requestApproval('artifact.download', { custom_url: customUrl });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:133:await invokeExact('start_approved_artifact_download', {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:136:approvalId: envelope.approvalId,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:202:const envelope = await requestApproval('artifact.remove', { model_id: requestedId });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:204:await invokeExact('remove_managed_model', { modelId: requestedId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId }),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:212:const envelope = await requestApproval('import_custom_model', { source_path: sourcePath, filename });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:217:approvalId: envelope.approvalId,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:254:const approvalInput = {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:258:const envelope = await requestApproval('runtime.start', approvalInput);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:266:approvalId: envelope.approvalId,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:273:return validateManagedStart(await invokeExact('managed_runtime_start', invokeArgs));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:277:const envelope = await requestApproval('runtime.stop', {});
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:278:await invokeExact('managed_runtime_stop', { token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:462:const runtimes = boundedArray(object.runtimes, 32).map(validateApprovedRuntime);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:487:const models = boundedArray(object.models, 32).map(validateApprovedModel);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:534:function validateApprovedDownloadableArtifact(value: unknown): ApprovedDownloadableArtifact {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:545:'user_confirmation_required',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:552:object.trust_kind !== 'approved_catalog' ||
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:553:object.user_confirmation_required !== true ||
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:561:trust_kind: 'approved_catalog',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:568:user_confirmation_required: true,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:589:'awaiting_confirmation',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:772:model_trust_kind: exactString(object.model_trust_kind, ['approved_catalog', 'user_supplied']),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1008:function validateApprovedRuntime(value: unknown): ApprovedRuntimeSummary {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1037:// The approved catalog ships both CPU and Vulkan runtimes; the variant is
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1061:function validateApprovedModel(value: unknown): ApprovedModelSummary {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1150:if (object.schema_version !== 1 || object.catalog_id !== 'localcomet-approved-artifacts') throw invalid();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1153:catalog_id: 'localcomet-approved-artifacts',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1159:function validateCatalogStatus(value: unknown): 'approved_internal_bootstrap' {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1160:return exactString(value, ['approved_internal_bootstrap']);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:3:import { approvalStore, confirmApproval, rejectApproval } from '$lib/stores/approvalStore';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:4:import type { ApprovalRiskLevel } from '$lib/bridge/approval';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:7:approval_required: 'approval.error_approval_required',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:8:grant_expired: 'approval.error_grant_expired',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:9:policy_blocked: 'approval.error_policy_blocked'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:12:const RISK_LABELS: Record<ApprovalRiskLevel, string> = {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:13:read_only: 'approval.risk_read_only',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:14:guarded: 'approval.risk_guarded',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:15:dangerous: 'approval.risk_dangerous'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:25:return $t('approval.target_unknown');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:29:if (!expiresAtUnixMs) return $t('approval.expiry_unknown');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:38:return $t('approval.risk_unknown');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:41:$: state = $approvalStore;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:45:? 'approval.requesting'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:47:? 'approval.executing'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:48:: 'approval.pending';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:49:$: errorKey = state.errorCode ? (ERROR_KEYS[state.errorCode] ?? 'approval.error_generic') : null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:50:$: approval = state.pending?.envelope ?? null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:52:async function onConfirm(): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:53:await confirmApproval();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:56:rejectApproval();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:61:<article class="approval card-surface" aria-label={$t('approval.section_aria')}>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:62:<div class="approval-summary">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:64:<h2>{$t('approval.tool')}: {state.pending.tool}</h2>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:67:<dt>{$t('approval.risk')}</dt>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:68:<dd>{describeRisk(approval?.riskLevel)}</dd>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:71:<dt>{$t('approval.target')}</dt>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:75:<dt>{$t('approval.side_effects')}</dt>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:76:<dd>{approval ? $t(`approval.side_effects.${approval.commandFamily}`) : $t('approval.side_effects_unknown')}</dd>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:79:<dt>{$t('approval.expires')}</dt>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:80:<dd>{describeExpiry(approval?.expiresAtUnixMs)}</dd>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:84:<p class="approval-error">{$t(errorKey)}</p>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:87:<div class="approval-actions">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:88:<button type="button" disabled={busy} onclick={onConfirm} aria-label={$t('approval.confirm')}>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:89:{$t('approval.confirm')}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:91:<button type="button" disabled={busy} onclick={onReject} aria-label={$t('approval.reject')}>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:92:{$t('approval.reject')}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:97:<p class="approval-empty">{$t('approval.no_pending')}</p>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:101:.approval {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:114:.approval-error {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:119:.approval-empty {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\ApprovalCard.svelte:124:.approval-actions {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\MessageComposer.svelte:10:approvedManagedModelInstalled,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\MessageList.svelte:52:import ApprovalCard from './ApprovalCard.svelte';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\chat\MessageList.svelte:224:<ApprovalCard />
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\knowledge\KnowledgePreviewPanel.svelte:24:<section class="preview-panel" aria-label={$t('knowledge.approval_label')} aria-live="polite">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:6:import { listHuggingFaceRepoFiles, searchHuggingFaceModels, listApprovedDownloadableArtifacts } from '$lib/bridge/modelGateway';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:7:import type { ApprovedDownloadableArtifact, ArtifactDownloadState } from '$lib/types/modelGateway';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:35:let approvedArtifacts = $state<readonly ApprovedDownloadableArtifact[]>([]);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:36:let approvedArtifactsLoading = $state(false);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:37:let approvedArtifactsError = $state<string | null>(null);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:39:async function loadApprovedArtifacts(): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:40:approvedArtifactsLoading = true;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:41:approvedArtifactsError = null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:43:approvedArtifacts = await listApprovedDownloadableArtifacts();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:45:approvedArtifactsError = err instanceof Error ? err.message : String(err);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:46:approvedArtifacts = [];
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:48:approvedArtifactsLoading = false;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:52:function startApprovedDownload(artifactId: string): void {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:53:void startHfDownload(`approved::${artifactId}`, 'approved', artifactId);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:160:case 'awaiting_confirmation':
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:161:return 'hf.stage.awaiting_confirmation';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:186:void loadApprovedArtifacts();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:220:<section class="hf-approved">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:221:<div class="hf-approved-header">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:222:<strong>{$t('hf.approved_title')}</strong>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:223:<button type="button" class="hf-search-btn" onclick={() => void loadApprovedArtifacts()} disabled={approvedArtifactsLoading}>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:224:{#if approvedArtifactsLoading}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:231:{#if approvedArtifactsError}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:234:<span>{approvedArtifactsError}</span>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:237:{#if approvedArtifacts.length > 0}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:238:<div class="hf-approved-list">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:239:{#each approvedArtifacts as item (item.artifact_id)}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:240:{@const cellKey = `approved::${item.artifact_id}`}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:243:<div class="hf-approved-item">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:244:<div class="hf-approved-info">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:259:onclick={() => void startApprovedDownload(item.artifact_id)}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:5:confirmManagedBinding,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:70:<button type="button" disabled={!canBind} onclick={() => void confirmManagedBinding()}>Confirm Binding</button>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelGatewayPanel.svelte:6:confirmBinding,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelGatewayPanel.svelte:86:<button type="button" disabled={!canBind} onclick={() => void confirmBinding()}>Confirm Binding</button>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelGatewayPanel.svelte:101:placeholder={$modelGatewayStore.binding ? 'Send one text-only local prompt...' : 'Confirm a binding before starting a real turn'}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:8:cancelApprovedArtifactDownload,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:9:downloadApprovedArtifact,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:11:removeApprovedManagedModel,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:28:import type { ApprovedDownloadableArtifact, ManagedDownloadableArtifact } from '$lib/types/modelGateway';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:31:// The separate "Hugging Face" settings tab was removed: the approved catalog
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:35:type Confirmation =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:37:| { readonly action: 'download'; readonly artifacts: readonly ApprovedDownloadableArtifact[] }
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:41:let confirmation: Confirmation | null = null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:54:$: approvedModelArtifacts = modelArtifacts.filter((artifact): artifact is ApprovedDownloadableArtifact => artifact.trust_kind === 'approved_catalog');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:58:? $artifactAcquisitionStore.artifacts.find((artifact): artifact is ApprovedDownloadableArtifact => artifact.kind === 'runtime' && artifact.artifact_id === selectedRuntimeId) ?? null
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:107:if (artifacts.length === 2 && (!customModelInvalid || selectedModelArtifact?.trust_kind === 'approved_catalog')) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:120:async function requestDownload(artifact: ApprovedDownloadableArtifact): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:123:await downloadApprovedArtifact(artifact.artifact_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:130:confirmation = { action: 'remove', artifacts: [artifact] };
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:133:async function confirm(): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:134:const selected = confirmation;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:135:confirmation = null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:139:await removeApprovedManagedModel(selected.artifacts[0].artifact_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:299:onCancel={() => void cancelApprovedArtifactDownload(activeDownload.artifact_id)}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:407:<span class="artifact-kind">{$t('models.approved_catalog')}</span>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:408:<strong>{$t('models.approved_catalog_title')}</strong>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:410:<span class="catalog-count">{approvedModelArtifacts.length} {$t('models.approved_catalog_count')}</span>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:413:{#each approvedModelArtifacts as artifact}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:427:<li class="catalog-empty">{$t('models.approved_catalog_empty')}</li>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:440:{#if selectedModelArtifact?.trust_kind === 'approved_catalog' && !modelInstalled && !activeDownload}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:461:{#if confirmation}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:462:<div class="confirmation" role="alertdialog" aria-modal="true" aria-labelledby="models-confirmation-title">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:463:<h4 id="models-confirmation-title">{$t('models.remove_confirm_title')}</h4>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:464:<p>{$t('models.remove_confirm_detail')}</p>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:466:{#each confirmation.artifacts as artifact}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:470:<div class="confirmation-actions">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:471:<button type="button" onclick={() => (confirmation = null)}>{$t('models.cancel')}</button>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:472:<button type="button" class="danger primary" onclick={() => void confirm()}>{$t('models.confirm')}</button>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:480:.section-heading, .artifact-heading, .confirmation-actions { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--lc-space-2); }
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:482:.artifact-card, .confirmation { display: grid; gap: var(--lc-space-2); border: var(--border-thin); border-radius: var(--lc-radius-sm); padding: var(--lc-space-3); background: var(--lc-panel-soft); }
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:502:.confirmation { background: var(--lc-bg-elevated); box-shadow: var(--lc-shadow); }
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:503:.confirmation h4, .confirmation p { margin: 0; }
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:504:.confirmation ul { display: grid; gap: var(--lc-space-1); margin: 0; padding-left: 18px; font-size: 11px; overflow-wrap: anywhere; }
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:8:confirmBinding,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:29:cancelApprovedArtifactDownload,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:52:$: approvedSetupModels = $artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model' && artifact.trust_kind === 'approved_catalog');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:53:$: setupTargetModel = approvedSetupModels.find((artifact) => artifact.artifact_id === $managedRuntimeStore.selectedModelId) ?? approvedSetupModels[0] ?? null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:99:async function onConfirmBinding() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:100:await confirmBinding();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:103:async function onConfirmManagedBinding() {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:227:onclick={onConfirmBinding}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:264:onCancel={activeDownload ? () => void cancelApprovedArtifactDownload(activeDownload.artifact_id) : null}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:273:onclick={onConfirmManagedBinding}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:346:onCancel={activeDownload ? () => void cancelApprovedArtifactDownload(activeDownload.artifact_id) : null}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:355:onclick={onConfirmManagedBinding}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\DecisionConfirmationDialog.svelte:19:export let onConfirm: () => void | Promise<void> = () => {};
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\DecisionConfirmationDialog.svelte:76:if (!submitting) void onConfirm();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\DecisionConfirmationDialog.svelte:203:{submitting ? $t('review.decision.submitting') : $t('review.decision.confirm')}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:3:import DecisionConfirmationDialog from './DecisionConfirmationDialog.svelte';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:7:confirmDecision,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:23:$: approveDisabled =
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:39:async function confirm(): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:40:await confirmDecision(review);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:72:class="approve-button"
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:73:disabled={approveDisabled}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:74:aria-disabled={approveDisabled}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:76:? $t('review.decision.blocked_approval')
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:79:: $t('review.decision.approve')}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:80:onclick={(event) => requestIntent('APPROVE', event)}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:83:{$t('review.decision.approve')}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:114:<p class="blocked-note">{$t('review.decision.blocked_approval')}</p>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:156:<DecisionConfirmationDialog
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:169:onConfirm={confirm}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\review\ReviewDecisionPanel.svelte:258:.approve-button {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:7:interface ApprovalRequestPayload {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:18:let currentRequest: ApprovalRequestPayload | null = null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:23:listen<ApprovalRequestPayload>('request_tool_approval', (event) => {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:32:console.error('Failed to register tool approval listener:', err);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:48:async function resolve(decision: 'approve' | 'reject') {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:52:await invoke('resolve_tool_approval', {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:57:console.error(`Failed to resolve tool approval as ${decision}:`, err);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:65:if (risk === 'read_only') return 'approval.risk_read_only';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:66:if (risk === 'guarded') return 'approval.risk_guarded';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:67:if (risk === 'dangerous') return 'approval.risk_dangerous';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:68:return 'approval.risk_unknown';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:92:<div class="modal-content card-surface" role="dialog" aria-modal="true" aria-labelledby="approval-title">
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:93:<h2 id="approval-title">{$t('approval.tool')}: {currentRequest.tool}</h2>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:97:<dt>{$t('approval.risk')}</dt>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:101:<dt>{$t('approval.target')}</dt>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:105:<dt>{$t('approval.side_effects')}</dt>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:106:<dd>{$t(`approval.side_effects.${toSnakeCase(currentRequest.side_effect_category)}`)}</dd>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:112:?? {$t('approval.warning_destructive')}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:118:{$t('approval.reject')}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:120:<button type="button" class="btn-approve" disabled={resolving} onclick={() => resolve('approve')}>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:121:{$t('approval.confirm')}
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:231:.btn-approve {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ApprovalModal.svelte:236:.btn-approve:hover:not(:disabled) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\AppShell.svelte:5:import ApprovalModal from './ApprovalModal.svelte';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\AppShell.svelte:221:<ApprovalModal />
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\ChatHeader.svelte:5:import { approvedManagedModelInstalled, connectSelectedManagedModel, gatewayStatus, inferenceRequestStore, managedConnectionBusy, managedModelReady, managedRuntimeStore } from '$lib/stores/modelGateway';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\components\shell\SettingsPanel.svelte:206:<li>{$t('capability.approved_model_setup')}</li>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\data\mockData.ts:42:export interface ApprovalMock {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\data\mockData.ts:109:export const approvalCard: ApprovalMock = {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:37:'chat.model_unavailable_detail': 'LocalComet uses a local model. The assistant has basic Computer Use and shell access, but no internet or arbitrary file access. Connect an approved local model to begin.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:39:'chat.model_loading_detail': 'LocalComet is validating the managed runtime and loading the approved model. Sending remains disabled until readiness is confirmed.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:69:// Approval
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:70:'approval.section_aria': 'Action approval',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:71:'approval.confirm': 'Confirm',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:72:'approval.reject': 'Reject',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:73:'approval.pending': 'Pending approval',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:74:'approval.requesting': 'Requesting approval:',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:75:'approval.executing': 'Executing:',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:76:'approval.no_pending': 'No pending approvals',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:77:'approval.tool': 'Tool',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:78:'approval.risk': 'Risk',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:79:'approval.target': 'Target',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:80:'approval.side_effects': 'Side effects',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:81:'approval.expires': 'Expires',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:82:'approval.target_unknown': 'Unknown target',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:83:'approval.risk_unknown': 'Unknown risk',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:84:'approval.expiry_unknown': 'Unknown expiry',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:85:'approval.side_effects_unknown': 'Unknown side effects',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:86:'approval.risk_read_only': 'Read only',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:87:'approval.risk_guarded': 'Guarded',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:88:'approval.risk_dangerous': 'Dangerous',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:89:'approval.side_effects.artifact_download': 'Downloads a local artifact',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:90:'approval.side_effects.artifact_remove': 'Removes a local artifact',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:91:'approval.side_effects.runtime_start': 'Starts a managed runtime',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:92:'approval.side_effects.runtime_stop': 'Stops a managed runtime',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:93:'approval.side_effects.model_binding_set': 'Updates model binding',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:94:'approval.side_effects.tool_filesystem_read': 'Reads files in the workspace',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:95:'approval.side_effects.tool_filesystem_write': 'Writes files in the workspace',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:96:'approval.side_effects.tool_filesystem_delete': 'Deletes files in the workspace',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:97:'approval.side_effects.computer_use': 'Controls windows, clicks and typing on this computer',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:98:'approval.error_approval_required': 'This action requires approval',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:99:'approval.error_grant_expired': 'The grant expired - please approve the action again',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:100:'approval.error_policy_blocked': 'Action is outside the confirmed workspace',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:101:'approval.error_generic': 'The action could not be executed',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:102:'approval.warning_destructive': 'This action is destructive and may result in data loss.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:149:'knowledge.approval_label': 'Project Knowledge approval preview',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:191:'setup.external_diagnostics_only': 'External loopback binding is diagnostics-only. Chat requires the approved managed model.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:347:'permissions.internet_desc': 'web.search and web.fetch. Cached 10m, 10kB limit. Requires approval.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:350:'permissions.computer_use_desc': 'Allow the model to control windows, clicks and typing. Requires approval.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:356:'capability.approved_model_setup': 'Approved local model setup',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:374:'onboarding.local_boundary': 'Local by default. Downloads require confirmation.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:379:'onboarding.catalog': 'Approved catalog',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:381:'onboarding.model': 'Approved model',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:403:// Approved local model manager
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:406:'models.boundary': 'Use approved catalog models or explicitly confirmed user-supplied GGUF models. The assistant itself does not gain internet access.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:438:'models.confirm_title': 'Confirm local AI setup',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:439:'models.remove_confirm_title': 'Confirm model removal',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:440:'models.confirm_detail': 'This downloads the listed internal bootstrap artifacts to LocalComet-managed storage.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:441:'models.remove_confirm_detail': 'This removes only the selected managed model. Chats, settings, the runtime, and your own files are not removed.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:443:'models.confirm_boundary': 'The model remains local. This action does not give the assistant internet access.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:444:'models.confirm': 'Confirm',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:445:'models.approved_catalog': 'Approved catalog',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:446:'models.approved_catalog_title': 'All available models',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:447:'models.approved_catalog_count': 'entries',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:448:'models.approved_catalog_empty': 'No approved models yet',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:459:'models.state.awaiting_confirmation': 'Awaiting confirmation',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:533:'hf.stage.awaiting_confirmation': 'Awaiting confirmation',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:540:'hf.approved_title': 'Recommended artifacts',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:549:'risk.guarded': 'Requires approval',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:672:"review.decision.title": "Decision confirmation",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:675:"review.decision.unavailable": "Decision artifact integration is not available in this stage. APPROVE, REJECT, and REQUEST CHANGES are disabled for real artifacts.",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:678:"review.decision.approve": "APPROVE",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:681:"review.decision.dialog_title": "Confirm fixture decision intent",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:688:"review.decision.confirm": "Confirm fixture intent",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:689:"review.decision.blocked_approval": "APPROVE is unavailable for a BLOCKED review.",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:692:"review.decision.hard_stop_detail": "Confirmation ends at a fixture-only UI result. No authoritative decision artifact is created.",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:693:"review.decision.real_hard_stop_detail": "A genuine e9c decision artifact may be created, but no authoritative action occurs. The Vault remains unchanged; publication, persistence, merge, execution, and automatic approval remain unavailable.",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:727:"review.decision.dialog_description_real": "Confirm the exact proposal, review, change, and Vault-revision binding before creating session-only e9c evidence.",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\en.ts:735:"review.decision.real_hard_stop": "A genuine immutable e9c decision artifact was returned to the UI. HARD STOP - the Vault was not modified and no publication, persistence, merge, execution, or automatic approval occurred.",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\locales.ts:7:* deeper operational surfaces (model manager, diagnostics, approvals). The
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:69:// Approval
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:70:'approval.section_aria': 'Подтверждение действия',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:71:'approval.confirm': 'Подтвердить',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:72:'approval.reject': 'Отклонить',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:73:'approval.pending': 'Ожидает подтверждения',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:74:'approval.requesting': 'Запрашивается разрешение:',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:75:'approval.executing': 'Выполняется:',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:76:'approval.no_pending': 'Нет запросов на подтверждение',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:77:'approval.tool': 'Инструмент',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:78:'approval.risk': 'Риск',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:79:'approval.target': 'Цель',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:80:'approval.side_effects': 'Побочные эффекты',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:81:'approval.expires': 'Истекает',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:82:'approval.target_unknown': 'Неизвестная цель',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:83:'approval.risk_unknown': 'Неизвестный риск',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:84:'approval.expiry_unknown': 'Неизвестное время истечения',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:85:'approval.side_effects_unknown': 'Неизвестные побочные эффекты',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:86:'approval.risk_read_only': 'Только чтение',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:87:'approval.risk_guarded': 'Ограниченный',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:88:'approval.risk_dangerous': 'Опасный',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:89:'approval.side_effects.artifact_download': 'Загружает локальный артефакт',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:90:'approval.side_effects.artifact_remove': 'Удаляет локальный артефакт',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:91:'approval.side_effects.runtime_start': 'Запускает управляемую среду',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:92:'approval.side_effects.runtime_stop': 'Останавливает управляемую среду',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:93:'approval.side_effects.model_binding_set': 'Обновляет привязку модели',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:94:'approval.side_effects.tool_filesystem_read': 'Читает файлы в рабочей области',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:95:'approval.side_effects.tool_filesystem_write': 'Пишет файлы в рабочей области',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:96:'approval.side_effects.tool_filesystem_delete': 'Удаляет файлы в рабочей области',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:97:'approval.side_effects.computer_use': 'Управляет курсором, окнами и вводом на этом компьютере',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:98:'approval.error_approval_required': 'Для этого действия требуется подтверждение',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:99:'approval.error_grant_expired': 'Разрешение истекло - подтвердите действие заново',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:100:'approval.error_policy_blocked': 'Действие за пределами подтверждённой рабочей области',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:101:'approval.error_generic': 'Не удалось выполнить действие',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:102:'approval.warning_destructive': 'Это действие деструктивно и может привести к потере данных.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:149:'knowledge.approval_label': 'Предпросмотр знаний проекта для подтверждения',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:356:'capability.approved_model_setup': 'Настройка одобренной локальной модели',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:438:'models.confirm_title': 'Подтвердите настройку локального AI',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:439:'models.remove_confirm_title': 'Подтвердите удаление модели',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:440:'models.confirm_detail': 'Будут загружены перечисленные внутренние bootstrap-артефакты в управляемое хранилище LocalComet.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:441:'models.remove_confirm_detail': 'Будет удалена только выбранная управляемая модель. Чаты, настройки, runtime и ваши файлы не удаляются.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:443:'models.confirm_boundary': 'Модель остаётся локальной. Это действие не даёт помощнику доступ к интернету.',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:444:'models.confirm': 'Подтвердить',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:445:'models.approved_catalog': 'Одобренный каталог',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:446:'models.approved_catalog_title': 'Все доступные модели',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:447:'models.approved_catalog_count': 'записей',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:448:'models.approved_catalog_empty': 'Одобренных моделей пока нет',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:459:'models.state.awaiting_confirmation': 'Ожидание подтверждения',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:533:'hf.stage.awaiting_confirmation': 'Ожидание подтверждения',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:540:'hf.approved_title': 'Рекомендованные артефакты',
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:675:"review.decision.unavailable": "Интеграция артефакта решения на этом этапе недоступна. Для реальных артефактов действия APPROVE, REJECT и REQUEST CHANGES отключены.",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:678:"review.decision.approve": "ОДОБРИТЬ",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:688:"review.decision.confirm": "Подтвердить тестовое намерение",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\i18n\ru.ts:689:"review.decision.blocked_approval": "ОДОБРИТЬ недоступно для заблокированной проверки.",
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\knowledge\knowledgePreview.ts:82:readonly decision_source?: 'USER_APPROVAL';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:2:import { requestApproval, runToolCall } from '$lib/bridge/approval';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:4:import type { ApprovalEnvelope } from '$lib/bridge/approval';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:6:export interface PendingApproval {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:9:envelope: ApprovalEnvelope | null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:12:export type ApprovalPhase = 'idle' | 'pending' | 'requesting' | 'executing' | 'error';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:14:export interface ApprovalFlowState {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:15:pending: PendingApproval | null;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:16:phase: ApprovalPhase;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:20:const INITIAL_STATE: ApprovalFlowState = { pending: null, phase: 'idle', errorCode: null };
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:22:export const approvalStore = writable<ApprovalFlowState>(INITIAL_STATE);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:24:export const hasPendingApproval = derived(approvalStore, ($state) => $state.pending !== null);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:26:export function resetApprovalStore(): void {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:27:approvalStore.set(INITIAL_STATE);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:30:export function requestApprovalForTool(tool: string, input: unknown): void {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:31:approvalStore.set({ pending: { tool, input, envelope: null }, phase: 'pending', errorCode: null });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:34:export function rejectApproval(): void {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:35:approvalStore.set(INITIAL_STATE);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:50:export async function confirmApproval(): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:51:const current = get(approvalStore);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:54:approvalStore.update((state) => ({ ...state, phase: 'requesting', errorCode: null }));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:56:const envelope = await requestApproval(tool, input);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:57:approvalStore.update((state) => ({
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:63:approvalStore.set(INITIAL_STATE);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\approvalStore.ts:66:approvalStore.update((state) => ({ ...state, phase: 'error', errorCode: code }));
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:7:listApprovedDownloadableArtifacts,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:10:startApprovedArtifactDownload,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:75:export async function downloadApprovedArtifact(artifactId: string): Promise<ArtifactDownloadState | null> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:77:candidate.trust_kind === 'approved_catalog' && candidate.artifact_id === artifactId
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:81:const started = await startApprovedArtifactDownload(artifact.artifact_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:104:export async function cancelApprovedArtifactDownload(artifactId: string): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:116:const model = artifacts.find((artifact) => artifact.kind === 'model' && artifact.trust_kind === 'approved_catalog');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:121:export async function removeApprovedManagedModel(modelId: string): Promise<boolean> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:151:(artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog' && artifact.artifact_id === 'llama-cpp-windows-x86-64-vulkan-bootstrap'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:154:? artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog' && artifact.artifact_id === readiness.selected_runtime_id)
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:156:const fallbackRuntime = artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog');
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:170:const terminal = await downloadApprovedArtifact(artifact.artifact_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:194:const [approvedArtifacts, modelCatalog] = await Promise.all([
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:195:listApprovedDownloadableArtifacts(),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:202:artifacts: [...approvedArtifacts, ...customArtifacts],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:219:user_confirmation_required: true,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\hfDownloads.ts:6:startApprovedArtifactDownload,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\hfDownloads.ts:201:export async function startHfDownload(cellKey: string, kind: 'url' | 'approved', target: string): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\hfDownloads.ts:214:: await startApprovedArtifactDownload(target);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:22:ApprovedModelSummary,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:23:ApprovedRuntimeSummary,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:100:readonly runtimeCatalog: readonly ApprovedRuntimeSummary[];
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:102:readonly catalog: readonly (ManagedModelSummary | ApprovedModelSummary)[];
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:188:export const approvedManagedModelInstalled = derived(managedRuntimeStore, (managed) =>
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:190:modelTrustKind(model) === 'approved_catalog' &&
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:215:if (!get(managedModelReady) && get(approvedManagedModelInstalled)) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:275:} else if (get(approvedManagedModelInstalled) && !managedConnectionPromise) {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:327:// Binding approval is user-initiated. Health polling only verifies that
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:328:// the already-approved immutable runtime instance is still alive.
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:403:export async function confirmBinding(): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:494:...modelCatalog.models.map((model) => ({ ...model, trust_kind: 'approved_catalog' as const })),
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:709:export async function confirmManagedBinding(precomputedReadiness?: ModelReadinessSummary): Promise<void> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:835:await confirmManagedBinding(readiness);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1309:if (trustKind === 'approved_catalog') assertSameCatalogIdentity(identity, readiness);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1335:const approved = artifact.kind === 'runtime' ? runtimes.get(artifact.artifact_id) : models.get(artifact.artifact_id);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1336:if (!approved || approved.status !== artifact.catalog_status) throw trustPayloadError();
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1338:const approvedBytes = 'archive_bytes' in approved ? approved.archive_bytes : approved.asset_bytes;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1339:const approvedSha256 = 'archive_sha256' in approved ? approved.archive_sha256 : approved.asset_sha256;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1342:approvedBytes !== artifact.expected_bytes ||
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1343:approvedSha256 !== artifact.expected_sha256
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1367:model: ManagedModelSummary | ApprovedModelSummary,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1368:runtimes: readonly ApprovedRuntimeSummary[],
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1402:(readiness.model_trust_kind ?? 'approved_catalog') !== modelTrustKind(selectedModel) ||
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1425:function modelTrustKind(model: ManagedModelSummary | ApprovedModelSummary): ModelReadinessSummary['model_trust_kind'] {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1426:return 'trust_kind' in model ? model.trust_kind : 'approved_catalog';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:467:if (intent === 'APPROVE' && review.status === 'BLOCKED') {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:468:decisionDialog.set({ ...INITIAL_DIALOG, errorKey: 'review.decision.blocked_approval' });
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:516:if (state.intent === 'APPROVE' && review.status === 'BLOCKED') {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:517:return 'review.decision.blocked_approval';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:536:function confirmFixtureDecision(review: ReviewCenterItem): boolean {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:558:async function confirmDecision(review: ReviewCenterItem): Promise<boolean> {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:559:if (review.fixture) return confirmFixtureDecision(review);
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:719:confirmFixtureDecision,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:720:confirmDecision,
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:799:export const confirmFixtureDecision = productionReviewCenter.confirmFixtureDecision;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:800:export const confirmDecision = productionReviewCenter.confirmDecision;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\controlPlane.ts:13:| 'approval_request'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\knowledgeReview.ts:3:export type DecisionIntent = 'APPROVE' | 'REJECT' | 'REQUEST_CHANGES';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\knowledgeReview.ts:278:readonly grants_automatic_approval_authority: false;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:171:export type CatalogStatus = 'approved_internal_bootstrap';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:175:| 'awaiting_confirmation'
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:210:readonly catalog_id: 'localcomet-approved-artifacts';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:215:export interface ApprovedRuntimeSummary {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:235:export interface ApprovedModelSummary {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:271:| (ApprovedModelSummary & { readonly trust_kind: 'approved_catalog' })
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:275:readonly runtimes: readonly ApprovedRuntimeSummary[];
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:281:readonly models: readonly ApprovedModelSummary[];
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:326:export interface ApprovedDownloadableArtifact {
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:329:readonly trust_kind: 'approved_catalog';
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:336:readonly user_confirmation_required: true;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:351:readonly user_confirmation_required: true;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:355:export type ManagedDownloadableArtifact = ApprovedDownloadableArtifact | CustomDownloadableArtifact;
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\types\modelGateway.ts:376:readonly model_trust_kind: 'approved_catalog' | 'user_supplied';

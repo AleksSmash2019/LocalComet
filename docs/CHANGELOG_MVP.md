@@ -1,5 +1,25 @@
 # Changelog — MVP
 
+## 2026-08-14 - Block 3 Orchestration & Full Computer Use (P1, MVP #4)
+
+- **Orchestration Loop**: Внедрен и стабилизирован многошаговый цикл выполнения команд инструментов (Model Gateway -> Control Plane -> Tool Execution -> Shell Store). Обработка `messages: []` полностью типизирована и покрыта тестами.
+- **Computer Use**: Инструмент `computer_use` (риск: dangerous) полностью активирован и интегрирован.
+  - Настройки `uiPreferences.ts` обновлены для персистентного хранения разрешений.
+  - По умолчанию включен доступ к ПК (`computerUse: true`).
+  - Python-сайдкар корректно делегирует высокоуровневые экшены (open_app, click, type и др.) в `modules/computer_use_real_actions_ru.py` с соблюдением границ изоляции.
+- **UI Aesthetics**: Иконки обновлены для соответствия премиальному стилю современных IDDE (stroke-width: 1.5).
+
+## 2026-08-14 — Voice Mode & System Tools (P1, MVP #3)
+
+Добавлен новый функционал и исправлена консистентность инструментов:
+
+- `system.time` — зарегистрирован новый инструмент во всех слоях безопасности: добавлен в `security/invariants/tool_risk_levels.toml`, `modules/tool_execution_ru.py` (в `SUPPORTED_TOOLS`), `modules/local_model_gateway_ru.py` (в `TOOL_REGISTRY`). Обновлены тесты четности (`test_adr015_tool_parsing.py`, `test_tool_risk_rust_parity.py`) для синхронизации количества тулзов.
+- **Voice Mode (Голосовой режим)** — внедрен в UI:
+  - STT (Speech-to-Text): интеграция Web Speech API в `MessageComposer.svelte` для голосового ввода.
+  - TTS (Text-to-Speech): интеграция синтеза речи в `MessageList.svelte`, автоматическое зачитывание ответов ассистента.
+  - Состояние UI: добавлена переменная `voiceMode` в сторы приложения (`uiPreferences.ts`, `shellStore.ts`).
+- **Audit & Tests**: Успешно проведена валидация всех инвариантов. Скрипт `Run-Gates.ps1` завершился с `Verdict: PASS` (66 из 66 тестов) после обновления provenance (доказательств). Багов и десинхронизаций между Python и Rust слоями нет.
+
 ## 2026-08-10 — Skills subsystem (P1, MVP #2)
 
 Добавлена безопасная система skills (`modules/skills/`):

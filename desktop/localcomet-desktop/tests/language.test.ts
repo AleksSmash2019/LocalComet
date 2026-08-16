@@ -117,7 +117,16 @@ describe('language store', () => {
       theme: 'system',
       locale: 'en',
       diagnosticsPanel: 'closed',
-      agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
+      voiceMode: false,
+      agentPermissions: {
+        files: true,
+        shell: false,
+        tools: true,
+        computerUse: false,
+        internet: false
+      },
+      ctxSizeOverride: null,
+      gpuLayersOverride: null
     });
     expect(localStorage.getItem(LEGACY_LANGUAGE_KEY)).toBeNull();
     setLocale('ru');

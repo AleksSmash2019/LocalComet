@@ -33,10 +33,11 @@ REAL_SIDECAR_TEST_FILTER = "supervisor::tests::real_sidecar_"
 def main() -> int:
     if os.environ.get("LOCALCOMET_REQUIRE_REAL_SIDECAR") is None:
         print(
-            "SKIP: LOCALCOMET_REQUIRE_REAL_SIDECAR not set; gate only enforces in "
-            "require mode (CI). Real-sidecar tests skip honestly with a notice."
+            "FAIL: LOCALCOMET_REQUIRE_REAL_SIDECAR not set; real-sidecar gate cannot run. "
+            "Set LOCALCOMET_REQUIRE_REAL_SIDECAR=1 with LOCALCOMET_TEST_PROJECT_ROOT and "
+            "LOCALCOMET_TEST_PYTHON (system Python, not a venv) before cargo test."
         )
-        return 0
+        return 2
 
     result = subprocess.run(
         [

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import warnings
 import zipfile
 from pathlib import Path
 from typing import Callable
@@ -86,7 +87,11 @@ def _rewrite_zip(src: Path, mutator: Callable[[str, bytes, zipfile.ZipInfo], tup
             new_info.external_attr = old_info.external_attr
             zout.writestr(new_info, payload)
         if duplicate is not None:
-            zout.writestr(duplicate[0], duplicate[1])
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", message=r"Duplicate name: .*", category=UserWarning
+                )
+                zout.writestr(duplicate[0], duplicate[1])
     return dst
 
 

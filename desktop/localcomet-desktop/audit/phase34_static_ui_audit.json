@@ -1,0 +1,1835 @@
+{
+  "component_count": 50,
+  "button_count": 110,
+  "field_count": 23,
+  "handler_bound_button_count": 108,
+  "buttons_without_handler": [
+    {
+      "file": "src/lib/components/common/CommandPalette.svelte",
+      "line": 182,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [],
+      "has_handler": false
+    }
+  ],
+  "icon_buttons_without_name": [
+    {
+      "file": "src/lib/components/chat/MessageComposer.svelte",
+      "line": 133,
+      "kind": "button",
+      "type": "button",
+      "class": "composer-icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageComposer.svelte",
+      "line": 137,
+      "kind": "button",
+      "type": "button",
+      "class": "composer-icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageComposer.svelte",
+      "line": 157,
+      "kind": "button",
+      "type": "button",
+      "class": "composer-icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 148,
+      "kind": "button",
+      "type": "button",
+      "class": "icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ChatHeader.svelte",
+      "line": 35,
+      "kind": "button",
+      "type": "button",
+      "class": "icon-button sidebar-toggle",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ChatHeader.svelte",
+      "line": 68,
+      "kind": "button",
+      "type": "button",
+      "class": "icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 45,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 68,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 91,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 114,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 137,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/SettingsPanel.svelte",
+      "line": 153,
+      "kind": "button",
+      "type": "button",
+      "class": "diagnostics-toggle",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    }
+  ],
+  "records": [
+    {
+      "file": "src/lib/components/agent/Diagnostics.svelte",
+      "line": 91,
+      "kind": "button",
+      "type": "button",
+      "class": "plain-button close-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/ApprovalCard.svelte",
+      "line": 88,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/ApprovalCard.svelte",
+      "line": 91,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/CodeBlock.svelte",
+      "line": 28,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "Copy code",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageComposer.svelte",
+      "line": 133,
+      "kind": "button",
+      "type": "button",
+      "class": "composer-icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageComposer.svelte",
+      "line": 137,
+      "kind": "button",
+      "type": "button",
+      "class": "composer-icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageComposer.svelte",
+      "line": 157,
+      "kind": "button",
+      "type": "button",
+      "class": "composer-icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageComposer.svelte",
+      "line": 169,
+      "kind": "button",
+      "type": "button",
+      "class": "send-button pill-send",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageComposer.svelte",
+      "line": 142,
+      "kind": "field",
+      "type": "field",
+      "id": "composer-draft",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/chat/MessageList.svelte",
+      "line": 140,
+      "kind": "button",
+      "type": "button",
+      "class": "prompt-card",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageList.svelte",
+      "line": 144,
+      "kind": "button",
+      "type": "button",
+      "class": "prompt-card",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageList.svelte",
+      "line": 148,
+      "kind": "button",
+      "type": "button",
+      "class": "prompt-card",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageList.svelte",
+      "line": 152,
+      "kind": "button",
+      "type": "button",
+      "class": "prompt-card",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageList.svelte",
+      "line": 184,
+      "kind": "button",
+      "type": "button",
+      "class": "msg-action-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/chat/MessageList.svelte",
+      "line": 208,
+      "kind": "button",
+      "type": "button",
+      "class": "retry-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/common/CommandPalette.svelte",
+      "line": 182,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [],
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/common/CommandPalette.svelte",
+      "line": 162,
+      "kind": "field",
+      "type": "search",
+      "id": "command-palette-search",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/common/EmptyState.svelte",
+      "line": 21,
+      "kind": "button",
+      "type": "button",
+      "class": "primary-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/files/FilePreviewDialog.svelte",
+      "line": 65,
+      "kind": "button",
+      "type": "button",
+      "class": "preview-close",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/files/FilesPanel.svelte",
+      "line": 63,
+      "kind": "button",
+      "type": "button",
+      "class": "add-files",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/files/FilesPanel.svelte",
+      "line": 102,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/files/FilesPanel.svelte",
+      "line": 110,
+      "kind": "button",
+      "type": "button",
+      "class": "forget",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/files/FilesPanel.svelte",
+      "line": 141,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/files/FilesPanel.svelte",
+      "line": 94,
+      "kind": "field",
+      "type": "checkbox",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/knowledge/KnowledgePreviewPanel.svelte",
+      "line": 51,
+      "kind": "button",
+      "type": "button",
+      "class": "primary",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/knowledge/KnowledgePreviewPanel.svelte",
+      "line": 52,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/knowledge/KnowledgePreviewPanel.svelte",
+      "line": 53,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/knowledge/KnowledgePreviewPanel.svelte",
+      "line": 55,
+      "kind": "button",
+      "type": "button",
+      "class": "primary",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/knowledge/KnowledgePreviewPanel.svelte",
+      "line": 56,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/knowledge/KnowledgePreviewPanel.svelte",
+      "line": 57,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/knowledge/KnowledgeSourceCard.svelte",
+      "line": 10,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/logs/ObservabilityRoom.svelte",
+      "line": 28,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/DownloadProgress.svelte",
+      "line": 37,
+      "kind": "button",
+      "type": "button",
+      "class": "cancel-btn",
+      "aria_label": "Отменить",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/HuggingFaceBrowser.svelte",
+      "line": 204,
+      "kind": "button",
+      "type": "button",
+      "class": "hf-search-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/HuggingFaceBrowser.svelte",
+      "line": 223,
+      "kind": "button",
+      "type": "button",
+      "class": "hf-search-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/HuggingFaceBrowser.svelte",
+      "line": 255,
+      "kind": "button",
+      "type": "button",
+      "class": "hf-download-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/HuggingFaceBrowser.svelte",
+      "line": 279,
+      "kind": "button",
+      "type": "button",
+      "class": "hf-cancel-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/HuggingFaceBrowser.svelte",
+      "line": 305,
+      "kind": "button",
+      "type": "button",
+      "class": "hf-card-header",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/HuggingFaceBrowser.svelte",
+      "line": 348,
+      "kind": "button",
+      "type": "button",
+      "class": "hf-download-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/HuggingFaceBrowser.svelte",
+      "line": 372,
+      "kind": "button",
+      "type": "button",
+      "class": "hf-cancel-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/HuggingFaceBrowser.svelte",
+      "line": 197,
+      "kind": "field",
+      "type": "text",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ManagedRuntimePanel.svelte",
+      "line": 48,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ManagedRuntimePanel.svelte",
+      "line": 49,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ManagedRuntimePanel.svelte",
+      "line": 50,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ManagedRuntimePanel.svelte",
+      "line": 70,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ManagedRuntimePanel.svelte",
+      "line": 56,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ManagedRuntimePanel.svelte",
+      "line": 65,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 65,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 66,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 86,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 106,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 107,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 56,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 72,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 81,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelGatewayPanel.svelte",
+      "line": 96,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 217,
+      "kind": "button",
+      "type": "button",
+      "class": "refresh",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 220,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 435,
+      "kind": "button",
+      "type": "button",
+      "class": "primary",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 438,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 441,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 444,
+      "kind": "button",
+      "type": "button",
+      "class": "primary",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 447,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 450,
+      "kind": "button",
+      "type": "button",
+      "class": "danger",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 471,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 472,
+      "kind": "button",
+      "type": "button",
+      "class": "danger primary",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 349,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelManagerSection.svelte",
+      "line": 375,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 143,
+      "kind": "button",
+      "type": "button",
+      "class": "drawer-backdrop",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 148,
+      "kind": "button",
+      "type": "button",
+      "class": "icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 155,
+      "kind": "button",
+      "type": "button",
+      "class": "text-button back-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 186,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 190,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 223,
+      "kind": "button",
+      "type": "button",
+      "class": "primary-button full-width",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 268,
+      "kind": "button",
+      "type": "button",
+      "class": "primary-button hero-button run-model-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 281,
+      "kind": "button",
+      "type": "button",
+      "class": "secondary-button hero-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 293,
+      "kind": "button",
+      "type": "button",
+      "class": "secondary-button hero-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 305,
+      "kind": "button",
+      "type": "button",
+      "class": "secondary-button hero-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 350,
+      "kind": "button",
+      "type": "button",
+      "class": "primary-button hero-button run-model-btn",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 363,
+      "kind": "button",
+      "type": "button",
+      "class": "secondary-button hero-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 375,
+      "kind": "button",
+      "type": "button",
+      "class": "secondary-button hero-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 387,
+      "kind": "button",
+      "type": "button",
+      "class": "secondary-button hero-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 172,
+      "kind": "field",
+      "type": "text",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 206,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 216,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/ModelSetupDrawer.svelte",
+      "line": 324,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/SkillsManagerSection.svelte",
+      "line": 45,
+      "kind": "button",
+      "type": "button",
+      "class": "primary-button compact",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/SkillsManagerSection.svelte",
+      "line": 91,
+      "kind": "button",
+      "type": "button",
+      "class": "secondary-button compact",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/model/SkillsManagerSection.svelte",
+      "line": 104,
+      "kind": "button",
+      "type": "button",
+      "class": "danger-button compact outline",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/onboarding/OnboardingScreen.svelte",
+      "line": 41,
+      "kind": "button",
+      "type": "button",
+      "class": "refresh",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/onboarding/OnboardingScreen.svelte",
+      "line": 54,
+      "kind": "button",
+      "type": "button",
+      "class": "primary",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/onboarding/OnboardingScreen.svelte",
+      "line": 58,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/DecisionConfirmationDialog.svelte",
+      "line": 199,
+      "kind": "button",
+      "type": "button",
+      "class": "secondary-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/DecisionConfirmationDialog.svelte",
+      "line": 202,
+      "kind": "button",
+      "type": "submit",
+      "class": "primary-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [],
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/review/DecisionConfirmationDialog.svelte",
+      "line": 141,
+      "kind": "field",
+      "type": "field",
+      "id": "review-actor-identifier",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/review/DecisionConfirmationDialog.svelte",
+      "line": 153,
+      "kind": "field",
+      "type": "field",
+      "id": "review-actor-display-name",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/review/DecisionConfirmationDialog.svelte",
+      "line": 173,
+      "kind": "field",
+      "type": "field",
+      "id": "review-decision-comment",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/review/ReviewCenterWorkspace.svelte",
+      "line": 114,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewCenterWorkspace.svelte",
+      "line": 127,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewCommandBar.svelte",
+      "line": 56,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewCommandBar.svelte",
+      "line": 72,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewCommandBar.svelte",
+      "line": 104,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewCommandBar.svelte",
+      "line": 107,
+      "kind": "button",
+      "type": "button",
+      "class": "refresh-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewCommandBar.svelte",
+      "line": 42,
+      "kind": "field",
+      "type": "search",
+      "id": "review-search",
+      "name": "",
+      "aria_label": "",
+      "has_handler": false
+    },
+    {
+      "file": "src/lib/components/review/ReviewCommandBar.svelte",
+      "line": 86,
+      "kind": "field",
+      "type": "field",
+      "id": "review-sort",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewDecisionPanel.svelte",
+      "line": 70,
+      "kind": "button",
+      "type": "button",
+      "class": "approve-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewDecisionPanel.svelte",
+      "line": 85,
+      "kind": "button",
+      "type": "button",
+      "class": "reject-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewDecisionPanel.svelte",
+      "line": 98,
+      "kind": "button",
+      "type": "button",
+      "class": "request-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewIdentityPanel.svelte",
+      "line": 125,
+      "kind": "button",
+      "type": "button",
+      "class": "copy-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewQueueSidebar.svelte",
+      "line": 102,
+      "kind": "button",
+      "type": "button",
+      "class": "review-queue-button status-{review.status.toLowerCase()}",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/review/ReviewQueueSidebar.svelte",
+      "line": 51,
+      "kind": "field",
+      "type": "field",
+      "id": "review-queue-select",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ApprovalModal.svelte",
+      "line": 117,
+      "kind": "button",
+      "type": "button",
+      "class": "btn-reject",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ApprovalModal.svelte",
+      "line": 120,
+      "kind": "button",
+      "type": "button",
+      "class": "btn-approve",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ChatHeader.svelte",
+      "line": 35,
+      "kind": "button",
+      "type": "button",
+      "class": "icon-button sidebar-toggle",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ChatHeader.svelte",
+      "line": 47,
+      "kind": "button",
+      "type": "button",
+      "class": "model-chip",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ChatHeader.svelte",
+      "line": 68,
+      "kind": "button",
+      "type": "button",
+      "class": "icon-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ConversationSidebar.svelte",
+      "line": 29,
+      "kind": "button",
+      "type": "button",
+      "class": "nav-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ConversationSidebar.svelte",
+      "line": 40,
+      "kind": "button",
+      "type": "button",
+      "class": "nav-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ConversationSidebar.svelte",
+      "line": 51,
+      "kind": "button",
+      "type": "button",
+      "class": "nav-button",
+      "aria_label": "Подобрать модель",
+      "title": "Подобрать модель",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ConversationSidebar.svelte",
+      "line": 64,
+      "kind": "button",
+      "type": "button",
+      "class": "plain-button new-conversation-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ConversationSidebar.svelte",
+      "line": 76,
+      "kind": "button",
+      "type": "button",
+      "class": "plain-button collapse-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ConversationSidebar.svelte",
+      "line": 94,
+      "kind": "button",
+      "type": "button",
+      "class": "conversation-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/ConversationSidebar.svelte",
+      "line": 109,
+      "kind": "button",
+      "type": "button",
+      "class": "nav-button settings-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 45,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 68,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 91,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 114,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/PermissionsSection.svelte",
+      "line": 137,
+      "kind": "button",
+      "type": "button",
+      "class": "toggle-switch",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/SettingsPanel.svelte",
+      "line": 84,
+      "kind": "button",
+      "type": "button",
+      "class": "plain-button close-button",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/SettingsPanel.svelte",
+      "line": 99,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/SettingsPanel.svelte",
+      "line": 114,
+      "kind": "button",
+      "type": "button",
+      "class": "",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/SettingsPanel.svelte",
+      "line": 153,
+      "kind": "button",
+      "type": "button",
+      "class": "diagnostics-toggle",
+      "aria_label": "",
+      "title": "",
+      "handlers": [
+        "onclick="
+      ],
+      "has_handler": true
+    },
+    {
+      "file": "src/lib/components/shell/SettingsPanel.svelte",
+      "line": 132,
+      "kind": "field",
+      "type": "field",
+      "id": "",
+      "name": "",
+      "aria_label": "",
+      "has_handler": true
+    }
+  ]
+}

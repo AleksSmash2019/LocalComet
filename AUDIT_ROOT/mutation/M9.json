@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M9",
+  "invariant": "workspace authorization",
+  "file": "modules/workspace_memory_ru.py",
+  "test": "python -m pytest tools/test_workspace_memory_ru.py -q",
+  "expected_reason": "search must reject a request for a different workspace before retrieval",
+  "original_sha256": "5ee06f875d63a11f6d95a1aa61b156b51280ee8fb51c3d130493d25e9f5a5cd8",
+  "original_occurrences": 1,
+  "started_at": "2026-08-15T22:20:31.483971+00:00",
+  "mutation_sha256": "e60879e9e243ec0f249cc5d5432a70b591329af148097868f771886836e10857",
+  "red_exit_code": 1,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "5ee06f875d63a11f6d95a1aa61b156b51280ee8fb51c3d130493d25e9f5a5cd8",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:20:32.070340+00:00"
+}

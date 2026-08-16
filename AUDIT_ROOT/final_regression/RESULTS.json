@@ -1,0 +1,151 @@
+{
+  "protocol": "prompt-v3-full-regression",
+  "created_at_unix": 1786826394,
+  "root": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean",
+  "python": "C:\\Users\\DNS\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\python.exe",
+  "results": [
+    {
+      "gate_id": "RUST_DEBUG_ALL_FEATURES",
+      "command": [
+        "cargo",
+        "test",
+        "--all-features"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 2.781,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\RUST_DEBUG_ALL_FEATURES.log",
+      "passed": true
+    },
+    {
+      "gate_id": "RUST_RELEASE_ALL_FEATURES",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "--all-features"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 1.953,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\RUST_RELEASE_ALL_FEATURES.log",
+      "passed": true
+    },
+    {
+      "gate_id": "RUST_FMT_CHECK",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 0.328,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\RUST_FMT_CHECK.log",
+      "passed": true
+    },
+    {
+      "gate_id": "RUST_CLIPPY",
+      "command": [
+        "cargo",
+        "clippy",
+        "--all-features",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 0.438,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\RUST_CLIPPY.log",
+      "passed": true
+    },
+    {
+      "gate_id": "FRONTEND_VITEST",
+      "command": [
+        "npm.cmd",
+        "test",
+        "--",
+        "--run"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 2.453,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\FRONTEND_VITEST.log",
+      "passed": true
+    },
+    {
+      "gate_id": "FRONTEND_SVELTE_CHECK",
+      "command": [
+        "npm.cmd",
+        "run",
+        "check"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 3.609,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\FRONTEND_SVELTE_CHECK.log",
+      "passed": true
+    },
+    {
+      "gate_id": "PYTHON_COMPILE_CHANGED",
+      "command": [
+        "C:\\Users\\DNS\\AppData\\Local\\Python\\bin\\python.exe",
+        "-m",
+        "py_compile",
+        "modules/workspace_memory_ru.py",
+        "modules/screen_context_policy.py",
+        "modules/browser_safety_policy.py",
+        "modules/tool_execution_ru.py",
+        "tools/test_workspace_memory_ru.py",
+        "tools/test_phase_e_safety.py"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 0.063,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\PYTHON_COMPILE_CHANGED.log",
+      "passed": true
+    },
+    {
+      "gate_id": "PYTEST_FULL",
+      "command": [
+        "C:\\Users\\DNS\\AppData\\Local\\Python\\bin\\python.exe",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean",
+      "exit_code": 1,
+      "timed_out": false,
+      "duration_seconds": 81.031,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\PYTEST_FULL.log",
+      "passed": false
+    },
+    {
+      "gate_id": "GIT_DIFF_CHECK",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "cwd": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 0.063,
+      "log_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\logs\\GIT_DIFF_CHECK.log",
+      "passed": true
+    }
+  ],
+  "all_passed": false,
+  "git_status_path": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AUDIT_ROOT\\final_regression\\git-status-final.txt"
+}

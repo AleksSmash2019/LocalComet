@@ -1,0 +1,1 @@
+C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src\lib\bridge\approval.ts:89: export async function executeApproved(

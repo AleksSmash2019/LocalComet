@@ -1,0 +1,11 @@
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:406:        gpu_layers_override: Option<u32>,
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:421:            gpu_layers_override,
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:564:        gpu_layers_override: Option<u32>,
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:667:                    gpu_layers_override,
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1327:    gpu_layers_override: Option<u32>,
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1389:            gpu_layers_override.unwrap_or(99).to_string(),
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:1391:    } else if let Some(layers) = gpu_layers_override {
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2194:    gpu_layers_override: Option<u32>,
+desktop\localcomet-desktop\src-tauri\src\managed_runtime.rs:2216:            gpu_layers_override,
+desktop\localcomet-desktop\src\lib\i18n\en.ts:323:  'settings.gpu_layers_override': 'GPU Layers (0 for CPU, 99 for Max)',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:340:  'settings.gpu_layers_override': 'Слои GPU (0 для CPU, 99 для макс.)',

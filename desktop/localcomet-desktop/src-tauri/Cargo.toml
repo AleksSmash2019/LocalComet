@@ -3,6 +3,7 @@ name = "localcomet-desktop"
 version = "6.84.6"
 description = "LocalComet desktop visual shell"
 edition = "2021"
+default-run = "localcomet-desktop"
 
 [lib]
 name = "localcomet_desktop_lib"
@@ -38,3 +39,6 @@ sysinfo = "0.31"
 raw-cpuid = "11.6.0"
 tauri-plugin-dialog = "2.7"
 tauri-plugin-fs = "2.5"
+
+[dev-dependencies]
+tauri = { version = "2.11.5", features = ["test"] }

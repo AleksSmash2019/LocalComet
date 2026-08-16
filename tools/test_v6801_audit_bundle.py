@@ -89,10 +89,24 @@ def test_bundle_verification() -> None:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_no_duplicate_zip_entries() -> None:
+    root = _fixture()
+    try:
+        result = create_audit_bundle(root=root, skip_tests=True, deterministic=True)
+        zip_path = Path(result["zip_path"])
+        with zipfile.ZipFile(zip_path, "r") as zipf:
+            names = zipf.namelist()
+        _assert(len(names) == len(set(names)), "Bundle zip contains duplicate archive entries.")
+        _assert(len(names) > 0, "Bundle zip is empty.")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main() -> None:
     tests = [
         test_bundle_creation_and_determinism,
         test_bundle_verification,
+        test_no_duplicate_zip_entries,
     ]
     for test in tests:
         start = time.perf_counter()

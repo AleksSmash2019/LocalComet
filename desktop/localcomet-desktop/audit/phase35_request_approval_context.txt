@@ -1,0 +1,3870 @@
+﻿--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:377 ---
+365:             ApprovalEntry {
+366:                 scope,
+367:                 nonce,
+368:                 issued_at: Instant::now(),
+369:                 ttl,
+370:             },
+371:         );
+372: 
+373:         Ok(token)
+374:     }
+375: 
+376:     #[allow(clippy::too_many_arguments)]
+377:     pub fn execute_approved(
+378:         &mut self,
+379:         token: &str,
+380:         tool: &str,
+381:         input_digest: &[u8; 32],
+382:         workspace: &str,
+383:         approval_id: &str,
+384:         call_id: &str,
+385:         risk_level: RiskLevel,
+386:         command_family: CommandFamily,
+387:     ) -> Result<ExecutionGrant, ApprovalError> {
+388:         if !validate_token_syntax(token) {
+389:             return Err(ApprovalError::InvalidToken);
+390:         }
+391: 
+392:         if !validate_approval_id_syntax(approval_id) {
+393:             return Err(ApprovalError::ApprovalIdMismatch);
+394:         }
+395: 
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:942 ---
+930:         let s2_session = r2.session_id().to_owned();
+931:         let digest = canonical_input_digest(&json!({"path": "test.txt", "content": "hello"}));
+932:         let t1 = r1
+933:             .issue(test_scope("files.patch", digest, "/w", &s1_session))
+934:             .unwrap();
+935:         let t2 = r2
+936:             .issue(test_scope("files.patch", digest, "/w", &s2_session))
+937:             .unwrap();
+938:         assert_ne!(t1, t2);
+939:     }
+940: 
+941:     #[test]
+942:     fn execute_approved_succeeds_with_matching_scope() {
+943:         let mut registry = ApprovalRegistry::new();
+944:         let input = json!({"path": "a.txt", "content": "data"});
+945:         let digest = canonical_input_digest(&input);
+946:         let scope = ApprovalScope {
+947:             tool: "files.patch".to_owned(),
+948:             input_digest: digest,
+949:             workspace: "/workspace".to_owned(),
+950:             session: registry.session_id().to_owned(),
+951:             risk_level: RiskLevel::Guarded,
+952:             command_family: CommandFamily::ToolFilesystemWrite,
+953:             approval_id: TEST_APPROVAL_ID.to_owned(),
+954:             call_id: TEST_CALL_ID.to_owned(),
+955:         };
+956:         let token = registry.issue(scope).unwrap();
+957:         let grant = registry
+958:             .execute_approved(
+959:                 &token,
+960:                 "files.patch",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:958 ---
+946:         let scope = ApprovalScope {
+947:             tool: "files.patch".to_owned(),
+948:             input_digest: digest,
+949:             workspace: "/workspace".to_owned(),
+950:             session: registry.session_id().to_owned(),
+951:             risk_level: RiskLevel::Guarded,
+952:             command_family: CommandFamily::ToolFilesystemWrite,
+953:             approval_id: TEST_APPROVAL_ID.to_owned(),
+954:             call_id: TEST_CALL_ID.to_owned(),
+955:         };
+956:         let token = registry.issue(scope).unwrap();
+957:         let grant = registry
+958:             .execute_approved(
+959:                 &token,
+960:                 "files.patch",
+961:                 &digest,
+962:                 "/workspace",
+963:                 TEST_APPROVAL_ID,
+964:                 TEST_CALL_ID,
+965:                 RiskLevel::Guarded,
+966:                 CommandFamily::ToolFilesystemWrite,
+967:             )
+968:             .unwrap();
+969:         assert_eq!(grant.tool, "files.patch");
+970:         assert_eq!(grant.workspace, "/workspace");
+971:     }
+972: 
+973:     #[test]
+974:     fn replay_is_rejected() {
+975:         let mut registry = ApprovalRegistry::new();
+976:         let input = json!({"path": "a.txt"});
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:990 ---
+978:         let scope = ApprovalScope {
+979:             tool: "files.patch".to_owned(),
+980:             input_digest: digest,
+981:             workspace: "/w".to_owned(),
+982:             session: registry.session_id().to_owned(),
+983:             risk_level: RiskLevel::Guarded,
+984:             command_family: CommandFamily::ToolFilesystemWrite,
+985:             approval_id: TEST_APPROVAL_ID.to_owned(),
+986:             call_id: TEST_CALL_ID.to_owned(),
+987:         };
+988:         let token = registry.issue(scope).unwrap();
+989:         registry
+990:             .execute_approved(
+991:                 &token,
+992:                 "files.patch",
+993:                 &digest,
+994:                 "/w",
+995:                 TEST_APPROVAL_ID,
+996:                 TEST_CALL_ID,
+997:                 RiskLevel::Guarded,
+998:                 CommandFamily::ToolFilesystemWrite,
+999:             )
+1000:             .unwrap();
+1001:         let err = registry
+1002:             .execute_approved(
+1003:                 &token,
+1004:                 "files.patch",
+1005:                 &digest,
+1006:                 "/w",
+1007:                 TEST_APPROVAL_ID,
+1008:                 TEST_CALL_ID,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1002 ---
+990:             .execute_approved(
+991:                 &token,
+992:                 "files.patch",
+993:                 &digest,
+994:                 "/w",
+995:                 TEST_APPROVAL_ID,
+996:                 TEST_CALL_ID,
+997:                 RiskLevel::Guarded,
+998:                 CommandFamily::ToolFilesystemWrite,
+999:             )
+1000:             .unwrap();
+1001:         let err = registry
+1002:             .execute_approved(
+1003:                 &token,
+1004:                 "files.patch",
+1005:                 &digest,
+1006:                 "/w",
+1007:                 TEST_APPROVAL_ID,
+1008:                 TEST_CALL_ID,
+1009:                 RiskLevel::Guarded,
+1010:                 CommandFamily::ToolFilesystemWrite,
+1011:             )
+1012:             .unwrap_err();
+1013:         assert!(matches!(err, ApprovalError::AlreadyConsumed));
+1014:     }
+1015: 
+1016:     #[test]
+1017:     fn idempotency_key_is_deterministic() {
+1018:         let digest = canonical_input_digest(&json!({"path": "a.txt", "content": "x"}));
+1019:         let identity = LogicalCallIdentity {
+1020:             tool: "files.write".to_owned(),
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1067 ---
+1055:         let scope = ApprovalScope {
+1056:             tool: "files.patch".to_owned(),
+1057:             input_digest: digest,
+1058:             workspace: "/w".to_owned(),
+1059:             session: registry.session_id().to_owned(),
+1060:             risk_level: RiskLevel::Guarded,
+1061:             command_family: CommandFamily::ToolFilesystemWrite,
+1062:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1063:             call_id: TEST_CALL_ID.to_owned(),
+1064:         };
+1065:         let token = registry.issue(scope).unwrap();
+1066:         let err = registry
+1067:             .execute_approved(
+1068:                 &token,
+1069:                 "files.delete",
+1070:                 &digest,
+1071:                 "/w",
+1072:                 TEST_APPROVAL_ID,
+1073:                 TEST_CALL_ID,
+1074:                 RiskLevel::Guarded,
+1075:                 CommandFamily::ToolFilesystemWrite,
+1076:             )
+1077:             .unwrap_err();
+1078:         assert!(matches!(err, ApprovalError::ToolMismatch));
+1079:     }
+1080: 
+1081:     #[test]
+1082:     fn wrong_input_digest_is_rejected() {
+1083:         let mut registry = ApprovalRegistry::new();
+1084:         let input_a = json!({"path": "a.txt", "content": "A"});
+1085:         let input_b = json!({"path": "a.txt", "content": "B"});
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1100 ---
+1088:         let scope = ApprovalScope {
+1089:             tool: "files.patch".to_owned(),
+1090:             input_digest: digest_a,
+1091:             workspace: "/w".to_owned(),
+1092:             session: registry.session_id().to_owned(),
+1093:             risk_level: RiskLevel::Guarded,
+1094:             command_family: CommandFamily::ToolFilesystemWrite,
+1095:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1096:             call_id: TEST_CALL_ID.to_owned(),
+1097:         };
+1098:         let token = registry.issue(scope).unwrap();
+1099:         let err = registry
+1100:             .execute_approved(
+1101:                 &token,
+1102:                 "files.patch",
+1103:                 &digest_b,
+1104:                 "/w",
+1105:                 TEST_APPROVAL_ID,
+1106:                 TEST_CALL_ID,
+1107:                 RiskLevel::Guarded,
+1108:                 CommandFamily::ToolFilesystemWrite,
+1109:             )
+1110:             .unwrap_err();
+1111:         assert!(matches!(err, ApprovalError::InputDigestMismatch));
+1112:     }
+1113: 
+1114:     #[test]
+1115:     fn wrong_workspace_is_rejected() {
+1116:         let mut registry = ApprovalRegistry::new();
+1117:         let input = json!({"path": "a.txt"});
+1118:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1131 ---
+1119:         let scope = ApprovalScope {
+1120:             tool: "files.patch".to_owned(),
+1121:             input_digest: digest,
+1122:             workspace: "/workspace-a".to_owned(),
+1123:             session: registry.session_id().to_owned(),
+1124:             risk_level: RiskLevel::Guarded,
+1125:             command_family: CommandFamily::ToolFilesystemWrite,
+1126:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1127:             call_id: TEST_CALL_ID.to_owned(),
+1128:         };
+1129:         let token = registry.issue(scope).unwrap();
+1130:         let err = registry
+1131:             .execute_approved(
+1132:                 &token,
+1133:                 "files.patch",
+1134:                 &digest,
+1135:                 "/workspace-b",
+1136:                 TEST_APPROVAL_ID,
+1137:                 TEST_CALL_ID,
+1138:                 RiskLevel::Guarded,
+1139:                 CommandFamily::ToolFilesystemWrite,
+1140:             )
+1141:             .unwrap_err();
+1142:         assert!(matches!(err, ApprovalError::WorkspaceMismatch));
+1143:     }
+1144: 
+1145:     #[test]
+1146:     fn key_reordering_does_not_change_digest() {
+1147:         let a = json!({"alpha": 1, "beta": 2});
+1148:         let b = json!({"beta": 2, "alpha": 1});
+1149:         assert_eq!(canonical_input_digest(&a), canonical_input_digest(&b));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1190 ---
+1178:             session: registry.session_id().to_owned(),
+1179:             risk_level: RiskLevel::Guarded,
+1180:             command_family: CommandFamily::ToolFilesystemWrite,
+1181:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1182:             call_id: TEST_CALL_ID.to_owned(),
+1183:         };
+1184:         let token_a = registry.issue(scope_a).unwrap();
+1185:         let _token_b = registry.issue(scope_b).unwrap();
+1186:         assert_eq!(registry.active_count(), 2);
+1187:         registry.invalidate_workspace("/ws-a");
+1188:         assert_eq!(registry.active_count(), 1);
+1189:         let err = registry
+1190:             .execute_approved(
+1191:                 &token_a,
+1192:                 "files.patch",
+1193:                 &digest,
+1194:                 "/ws-a",
+1195:                 TEST_APPROVAL_ID,
+1196:                 TEST_CALL_ID,
+1197:                 RiskLevel::Guarded,
+1198:                 CommandFamily::ToolFilesystemWrite,
+1199:             )
+1200:             .unwrap_err();
+1201:         assert!(matches!(err, ApprovalError::TokenNotFound));
+1202:     }
+1203: 
+1204:     #[test]
+1205:     fn invalid_prefix_is_rejected() {
+1206:         let mut registry = ApprovalRegistry::new();
+1207:         let digest = [0u8; 32];
+1208:         let err = registry
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1209 ---
+1197:                 RiskLevel::Guarded,
+1198:                 CommandFamily::ToolFilesystemWrite,
+1199:             )
+1200:             .unwrap_err();
+1201:         assert!(matches!(err, ApprovalError::TokenNotFound));
+1202:     }
+1203: 
+1204:     #[test]
+1205:     fn invalid_prefix_is_rejected() {
+1206:         let mut registry = ApprovalRegistry::new();
+1207:         let digest = [0u8; 32];
+1208:         let err = registry
+1209:             .execute_approved(
+1210:                 "apt_fake_token",
+1211:                 "files.patch",
+1212:                 &digest,
+1213:                 "/w",
+1214:                 TEST_APPROVAL_ID,
+1215:                 TEST_CALL_ID,
+1216:                 RiskLevel::Guarded,
+1217:                 CommandFamily::ToolFilesystemWrite,
+1218:             )
+1219:             .unwrap_err();
+1220:         assert!(matches!(err, ApprovalError::InvalidToken));
+1221:     }
+1222: 
+1223:     #[test]
+1224:     fn wrong_session_is_rejected() {
+1225:         let mut registry = ApprovalRegistry::new();
+1226:         let input = json!({"path": "a.txt"});
+1227:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1240 ---
+1228:         let scope = ApprovalScope {
+1229:             tool: "files.patch".to_owned(),
+1230:             input_digest: digest,
+1231:             workspace: "/w".to_owned(),
+1232:             session: "00000000000000000000000000000000".to_owned(),
+1233:             risk_level: RiskLevel::Guarded,
+1234:             command_family: CommandFamily::ToolFilesystemWrite,
+1235:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1236:             call_id: TEST_CALL_ID.to_owned(),
+1237:         };
+1238:         let token = registry.issue(scope).unwrap();
+1239:         let err = registry
+1240:             .execute_approved(
+1241:                 &token,
+1242:                 "files.patch",
+1243:                 &digest,
+1244:                 "/w",
+1245:                 TEST_APPROVAL_ID,
+1246:                 TEST_CALL_ID,
+1247:                 RiskLevel::Guarded,
+1248:                 CommandFamily::ToolFilesystemWrite,
+1249:             )
+1250:             .unwrap_err();
+1251:         assert!(matches!(err, ApprovalError::SessionMismatch));
+1252:     }
+1253: 
+1254:     #[test]
+1255:     fn expired_token_is_rejected() {
+1256:         let mut registry = ApprovalRegistry::new();
+1257:         let session = registry.session_id().to_owned();
+1258:         let digest = canonical_input_digest(&json!({"path": "test.txt", "content": "hello"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1263 ---
+1251:         assert!(matches!(err, ApprovalError::SessionMismatch));
+1252:     }
+1253: 
+1254:     #[test]
+1255:     fn expired_token_is_rejected() {
+1256:         let mut registry = ApprovalRegistry::new();
+1257:         let session = registry.session_id().to_owned();
+1258:         let digest = canonical_input_digest(&json!({"path": "test.txt", "content": "hello"}));
+1259:         let scope = test_scope("files.patch", digest, "/w", &session);
+1260:         let token =
+1261:             registry.issue_backdated(scope, Duration::from_secs(1), Duration::from_secs(10));
+1262:         let err = registry
+1263:             .execute_approved(
+1264:                 &token,
+1265:                 "files.patch",
+1266:                 &digest,
+1267:                 "/w",
+1268:                 TEST_APPROVAL_ID,
+1269:                 TEST_CALL_ID,
+1270:                 RiskLevel::Guarded,
+1271:                 CommandFamily::ToolFilesystemWrite,
+1272:             )
+1273:             .unwrap_err();
+1274:         assert!(matches!(err, ApprovalError::Expired));
+1275:     }
+1276: 
+1277:     #[test]
+1278:     fn ttl_sweep_frees_expired_slots_before_capacity_check() {
+1279:         let mut registry = ApprovalRegistry::new();
+1280:         let session = registry.session_id().to_owned();
+1281:         let digest = canonical_input_digest(&json!({"path": "test.txt", "content": "hello"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1312 ---
+1300:         let scope = ApprovalScope {
+1301:             tool: "files.patch".to_owned(),
+1302:             input_digest: digest,
+1303:             workspace: "/w".to_owned(),
+1304:             session: registry.session_id().to_owned(),
+1305:             risk_level: RiskLevel::Guarded,
+1306:             command_family: CommandFamily::ToolFilesystemWrite,
+1307:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1308:             call_id: TEST_CALL_ID.to_owned(),
+1309:         };
+1310:         let token = registry.issue(scope).unwrap();
+1311:         let grant = registry
+1312:             .execute_approved(
+1313:                 &token,
+1314:                 "files.patch",
+1315:                 &digest,
+1316:                 "/w",
+1317:                 TEST_APPROVAL_ID,
+1318:                 TEST_CALL_ID,
+1319:                 RiskLevel::Guarded,
+1320:                 CommandFamily::ToolFilesystemWrite,
+1321:             )
+1322:             .unwrap();
+1323:         assert!(!grant.is_expired());
+1324:         let stale = ExecutionGrant {
+1325:             valid_until: Instant::now() - Duration::from_secs(1),
+1326:             ..grant.clone()
+1327:         };
+1328:         assert!(stale.is_expired());
+1329:     }
+1330: 
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1348 ---
+1336:         let scope = ApprovalScope {
+1337:             tool: "files.patch".to_owned(),
+1338:             input_digest: digest,
+1339:             workspace: "/w".to_owned(),
+1340:             session: registry.session_id().to_owned(),
+1341:             risk_level: RiskLevel::Guarded,
+1342:             command_family: CommandFamily::ToolFilesystemWrite,
+1343:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1344:             call_id: TEST_CALL_ID.to_owned(),
+1345:         };
+1346:         let token = registry.issue(scope).unwrap();
+1347:         let err = registry
+1348:             .execute_approved(
+1349:                 &token,
+1350:                 "files.delete",
+1351:                 &digest,
+1352:                 "/w",
+1353:                 TEST_APPROVAL_ID,
+1354:                 TEST_CALL_ID,
+1355:                 RiskLevel::Guarded,
+1356:                 CommandFamily::ToolFilesystemWrite,
+1357:             )
+1358:             .unwrap_err();
+1359:         assert!(matches!(err, ApprovalError::ToolMismatch));
+1360:         assert_eq!(registry.active_count(), 1);
+1361:         let grant = registry
+1362:             .execute_approved(
+1363:                 &token,
+1364:                 "files.patch",
+1365:                 &digest,
+1366:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1362 ---
+1350:                 "files.delete",
+1351:                 &digest,
+1352:                 "/w",
+1353:                 TEST_APPROVAL_ID,
+1354:                 TEST_CALL_ID,
+1355:                 RiskLevel::Guarded,
+1356:                 CommandFamily::ToolFilesystemWrite,
+1357:             )
+1358:             .unwrap_err();
+1359:         assert!(matches!(err, ApprovalError::ToolMismatch));
+1360:         assert_eq!(registry.active_count(), 1);
+1361:         let grant = registry
+1362:             .execute_approved(
+1363:                 &token,
+1364:                 "files.patch",
+1365:                 &digest,
+1366:                 "/w",
+1367:                 TEST_APPROVAL_ID,
+1368:                 TEST_CALL_ID,
+1369:                 RiskLevel::Guarded,
+1370:                 CommandFamily::ToolFilesystemWrite,
+1371:             )
+1372:             .unwrap();
+1373:         assert_eq!(grant.tool, "files.patch");
+1374:         assert_eq!(registry.active_count(), 0);
+1375:     }
+1376: 
+1377:     #[test]
+1378:     fn wrong_digest_rejects_without_consuming_token() {
+1379:         let mut registry = ApprovalRegistry::new();
+1380:         let input_a = json!({"path": "a.txt", "content": "A"});
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1396 ---
+1384:         let scope = ApprovalScope {
+1385:             tool: "files.patch".to_owned(),
+1386:             input_digest: digest_a,
+1387:             workspace: "/w".to_owned(),
+1388:             session: registry.session_id().to_owned(),
+1389:             risk_level: RiskLevel::Guarded,
+1390:             command_family: CommandFamily::ToolFilesystemWrite,
+1391:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1392:             call_id: TEST_CALL_ID.to_owned(),
+1393:         };
+1394:         let token = registry.issue(scope).unwrap();
+1395:         let err = registry
+1396:             .execute_approved(
+1397:                 &token,
+1398:                 "files.patch",
+1399:                 &digest_b,
+1400:                 "/w",
+1401:                 TEST_APPROVAL_ID,
+1402:                 TEST_CALL_ID,
+1403:                 RiskLevel::Guarded,
+1404:                 CommandFamily::ToolFilesystemWrite,
+1405:             )
+1406:             .unwrap_err();
+1407:         assert!(matches!(err, ApprovalError::InputDigestMismatch));
+1408:         assert_eq!(registry.active_count(), 1);
+1409:         let grant = registry
+1410:             .execute_approved(
+1411:                 &token,
+1412:                 "files.patch",
+1413:                 &digest_a,
+1414:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1410 ---
+1398:                 "files.patch",
+1399:                 &digest_b,
+1400:                 "/w",
+1401:                 TEST_APPROVAL_ID,
+1402:                 TEST_CALL_ID,
+1403:                 RiskLevel::Guarded,
+1404:                 CommandFamily::ToolFilesystemWrite,
+1405:             )
+1406:             .unwrap_err();
+1407:         assert!(matches!(err, ApprovalError::InputDigestMismatch));
+1408:         assert_eq!(registry.active_count(), 1);
+1409:         let grant = registry
+1410:             .execute_approved(
+1411:                 &token,
+1412:                 "files.patch",
+1413:                 &digest_a,
+1414:                 "/w",
+1415:                 TEST_APPROVAL_ID,
+1416:                 TEST_CALL_ID,
+1417:                 RiskLevel::Guarded,
+1418:                 CommandFamily::ToolFilesystemWrite,
+1419:             )
+1420:             .unwrap();
+1421:         assert_eq!(grant.tool, "files.patch");
+1422:         assert_eq!(registry.active_count(), 0);
+1423:     }
+1424: 
+1425:     #[test]
+1426:     fn wrong_workspace_rejects_without_consuming_token() {
+1427:         let mut registry = ApprovalRegistry::new();
+1428:         let input = json!({"path": "a.txt"});
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1442 ---
+1430:         let scope = ApprovalScope {
+1431:             tool: "files.patch".to_owned(),
+1432:             input_digest: digest,
+1433:             workspace: "/ws-a".to_owned(),
+1434:             session: registry.session_id().to_owned(),
+1435:             risk_level: RiskLevel::Guarded,
+1436:             command_family: CommandFamily::ToolFilesystemWrite,
+1437:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1438:             call_id: TEST_CALL_ID.to_owned(),
+1439:         };
+1440:         let token = registry.issue(scope).unwrap();
+1441:         let err = registry
+1442:             .execute_approved(
+1443:                 &token,
+1444:                 "files.patch",
+1445:                 &digest,
+1446:                 "/ws-b",
+1447:                 TEST_APPROVAL_ID,
+1448:                 TEST_CALL_ID,
+1449:                 RiskLevel::Guarded,
+1450:                 CommandFamily::ToolFilesystemWrite,
+1451:             )
+1452:             .unwrap_err();
+1453:         assert!(matches!(err, ApprovalError::WorkspaceMismatch));
+1454:         assert_eq!(registry.active_count(), 1);
+1455:         let grant = registry
+1456:             .execute_approved(
+1457:                 &token,
+1458:                 "files.patch",
+1459:                 &digest,
+1460:                 "/ws-a",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1456 ---
+1444:                 "files.patch",
+1445:                 &digest,
+1446:                 "/ws-b",
+1447:                 TEST_APPROVAL_ID,
+1448:                 TEST_CALL_ID,
+1449:                 RiskLevel::Guarded,
+1450:                 CommandFamily::ToolFilesystemWrite,
+1451:             )
+1452:             .unwrap_err();
+1453:         assert!(matches!(err, ApprovalError::WorkspaceMismatch));
+1454:         assert_eq!(registry.active_count(), 1);
+1455:         let grant = registry
+1456:             .execute_approved(
+1457:                 &token,
+1458:                 "files.patch",
+1459:                 &digest,
+1460:                 "/ws-a",
+1461:                 TEST_APPROVAL_ID,
+1462:                 TEST_CALL_ID,
+1463:                 RiskLevel::Guarded,
+1464:                 CommandFamily::ToolFilesystemWrite,
+1465:             )
+1466:             .unwrap();
+1467:         assert_eq!(grant.workspace, "/ws-a");
+1468:         assert_eq!(registry.active_count(), 0);
+1469:     }
+1470: 
+1471:     #[test]
+1472:     fn wrong_session_rejects_without_consuming_token() {
+1473:         let mut registry_a = ApprovalRegistry::new();
+1474:         let input = json!({"path": "a.txt"});
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1498 ---
+1486:         let token = registry_a.issue(scope.clone()).unwrap();
+1487:         let mut registry_b = ApprovalRegistry::new();
+1488:         registry_b.entries.insert(
+1489:             token.clone(),
+1490:             ApprovalEntry {
+1491:                 scope,
+1492:                 nonce: [0u8; 16],
+1493:                 issued_at: Instant::now(),
+1494:                 ttl: DEFAULT_TTL,
+1495:             },
+1496:         );
+1497:         let err = registry_b
+1498:             .execute_approved(
+1499:                 &token,
+1500:                 "files.patch",
+1501:                 &digest,
+1502:                 "/w",
+1503:                 TEST_APPROVAL_ID,
+1504:                 TEST_CALL_ID,
+1505:                 RiskLevel::Guarded,
+1506:                 CommandFamily::ToolFilesystemWrite,
+1507:             )
+1508:             .unwrap_err();
+1509:         assert!(matches!(err, ApprovalError::SessionMismatch));
+1510:         assert_eq!(registry_b.active_count(), 1);
+1511:     }
+1512: 
+1513:     #[test]
+1514:     fn token_survives_invalid_attempt_then_succeeds() {
+1515:         let mut registry = ApprovalRegistry::new();
+1516:         let input = json!({"path": "a.txt"});
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1531 ---
+1519:         let scope = ApprovalScope {
+1520:             tool: "files.patch".to_owned(),
+1521:             input_digest: digest,
+1522:             workspace: "/w".to_owned(),
+1523:             session: registry.session_id().to_owned(),
+1524:             risk_level: RiskLevel::Guarded,
+1525:             command_family: CommandFamily::ToolFilesystemWrite,
+1526:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1527:             call_id: TEST_CALL_ID.to_owned(),
+1528:         };
+1529:         let token = registry.issue(scope).unwrap();
+1530:         let err = registry
+1531:             .execute_approved(
+1532:                 &token,
+1533:                 "files.delete",
+1534:                 &digest,
+1535:                 "/w",
+1536:                 TEST_APPROVAL_ID,
+1537:                 TEST_CALL_ID,
+1538:                 RiskLevel::Guarded,
+1539:                 CommandFamily::ToolFilesystemWrite,
+1540:             )
+1541:             .unwrap_err();
+1542:         assert!(matches!(err, ApprovalError::ToolMismatch));
+1543:         assert_eq!(registry.active_count(), 1);
+1544:         let err = registry
+1545:             .execute_approved(
+1546:                 &token,
+1547:                 "files.patch",
+1548:                 &wrong_digest,
+1549:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1545 ---
+1533:                 "files.delete",
+1534:                 &digest,
+1535:                 "/w",
+1536:                 TEST_APPROVAL_ID,
+1537:                 TEST_CALL_ID,
+1538:                 RiskLevel::Guarded,
+1539:                 CommandFamily::ToolFilesystemWrite,
+1540:             )
+1541:             .unwrap_err();
+1542:         assert!(matches!(err, ApprovalError::ToolMismatch));
+1543:         assert_eq!(registry.active_count(), 1);
+1544:         let err = registry
+1545:             .execute_approved(
+1546:                 &token,
+1547:                 "files.patch",
+1548:                 &wrong_digest,
+1549:                 "/w",
+1550:                 TEST_APPROVAL_ID,
+1551:                 TEST_CALL_ID,
+1552:                 RiskLevel::Guarded,
+1553:                 CommandFamily::ToolFilesystemWrite,
+1554:             )
+1555:             .unwrap_err();
+1556:         assert!(matches!(err, ApprovalError::InputDigestMismatch));
+1557:         assert_eq!(registry.active_count(), 1);
+1558:         let err = registry
+1559:             .execute_approved(
+1560:                 &token,
+1561:                 "files.patch",
+1562:                 &digest,
+1563:                 "/other",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1559 ---
+1547:                 "files.patch",
+1548:                 &wrong_digest,
+1549:                 "/w",
+1550:                 TEST_APPROVAL_ID,
+1551:                 TEST_CALL_ID,
+1552:                 RiskLevel::Guarded,
+1553:                 CommandFamily::ToolFilesystemWrite,
+1554:             )
+1555:             .unwrap_err();
+1556:         assert!(matches!(err, ApprovalError::InputDigestMismatch));
+1557:         assert_eq!(registry.active_count(), 1);
+1558:         let err = registry
+1559:             .execute_approved(
+1560:                 &token,
+1561:                 "files.patch",
+1562:                 &digest,
+1563:                 "/other",
+1564:                 TEST_APPROVAL_ID,
+1565:                 TEST_CALL_ID,
+1566:                 RiskLevel::Guarded,
+1567:                 CommandFamily::ToolFilesystemWrite,
+1568:             )
+1569:             .unwrap_err();
+1570:         assert!(matches!(err, ApprovalError::WorkspaceMismatch));
+1571:         assert_eq!(registry.active_count(), 1);
+1572:         let grant = registry
+1573:             .execute_approved(
+1574:                 &token,
+1575:                 "files.patch",
+1576:                 &digest,
+1577:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1573 ---
+1561:                 "files.patch",
+1562:                 &digest,
+1563:                 "/other",
+1564:                 TEST_APPROVAL_ID,
+1565:                 TEST_CALL_ID,
+1566:                 RiskLevel::Guarded,
+1567:                 CommandFamily::ToolFilesystemWrite,
+1568:             )
+1569:             .unwrap_err();
+1570:         assert!(matches!(err, ApprovalError::WorkspaceMismatch));
+1571:         assert_eq!(registry.active_count(), 1);
+1572:         let grant = registry
+1573:             .execute_approved(
+1574:                 &token,
+1575:                 "files.patch",
+1576:                 &digest,
+1577:                 "/w",
+1578:                 TEST_APPROVAL_ID,
+1579:                 TEST_CALL_ID,
+1580:                 RiskLevel::Guarded,
+1581:                 CommandFamily::ToolFilesystemWrite,
+1582:             )
+1583:             .unwrap();
+1584:         assert_eq!(grant.tool, "files.patch");
+1585:         assert_eq!(registry.active_count(), 0);
+1586:         let err = registry
+1587:             .execute_approved(
+1588:                 &token,
+1589:                 "files.patch",
+1590:                 &digest,
+1591:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1587 ---
+1575:                 "files.patch",
+1576:                 &digest,
+1577:                 "/w",
+1578:                 TEST_APPROVAL_ID,
+1579:                 TEST_CALL_ID,
+1580:                 RiskLevel::Guarded,
+1581:                 CommandFamily::ToolFilesystemWrite,
+1582:             )
+1583:             .unwrap();
+1584:         assert_eq!(grant.tool, "files.patch");
+1585:         assert_eq!(registry.active_count(), 0);
+1586:         let err = registry
+1587:             .execute_approved(
+1588:                 &token,
+1589:                 "files.patch",
+1590:                 &digest,
+1591:                 "/w",
+1592:                 TEST_APPROVAL_ID,
+1593:                 TEST_CALL_ID,
+1594:                 RiskLevel::Guarded,
+1595:                 CommandFamily::ToolFilesystemWrite,
+1596:             )
+1597:             .unwrap_err();
+1598:         assert!(matches!(err, ApprovalError::AlreadyConsumed));
+1599:     }
+1600: 
+1601:     #[test]
+1602:     fn forged_token_with_valid_prefix_is_rejected() {
+1603:         let mut registry = ApprovalRegistry::new();
+1604:         let forged = format!("{}{}", TOKEN_PREFIX, "00".repeat(32));
+1605:         let digest = [0u8; 32];
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1607 ---
+1595:                 CommandFamily::ToolFilesystemWrite,
+1596:             )
+1597:             .unwrap_err();
+1598:         assert!(matches!(err, ApprovalError::AlreadyConsumed));
+1599:     }
+1600: 
+1601:     #[test]
+1602:     fn forged_token_with_valid_prefix_is_rejected() {
+1603:         let mut registry = ApprovalRegistry::new();
+1604:         let forged = format!("{}{}", TOKEN_PREFIX, "00".repeat(32));
+1605:         let digest = [0u8; 32];
+1606:         let err = registry
+1607:             .execute_approved(
+1608:                 &forged,
+1609:                 "files.patch",
+1610:                 &digest,
+1611:                 "/w",
+1612:                 TEST_APPROVAL_ID,
+1613:                 TEST_CALL_ID,
+1614:                 RiskLevel::Guarded,
+1615:                 CommandFamily::ToolFilesystemWrite,
+1616:             )
+1617:             .unwrap_err();
+1618:         assert!(matches!(err, ApprovalError::TokenNotFound));
+1619:     }
+1620: 
+1621:     #[test]
+1622:     fn concurrent_consume_exactly_one_succeeds() {
+1623:         let registry = Arc::new(Mutex::new(ApprovalRegistry::new()));
+1624:         let input = json!({"path": "a.txt"});
+1625:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1645 ---
+1633:                 risk_level: RiskLevel::Guarded,
+1634:                 command_family: CommandFamily::ToolFilesystemWrite,
+1635:                 approval_id: TEST_APPROVAL_ID.to_owned(),
+1636:                 call_id: TEST_CALL_ID.to_owned(),
+1637:             };
+1638:             guard.issue(scope).unwrap()
+1639:         };
+1640:         let handles: Vec<_> = (0..2)
+1641:             .map(|_| {
+1642:                 let registry = Arc::clone(&registry);
+1643:                 let token = token.clone();
+1644:                 std::thread::spawn(move || {
+1645:                     registry.lock().unwrap().execute_approved(
+1646:                         &token,
+1647:                         "files.patch",
+1648:                         &digest,
+1649:                         "/w",
+1650:                         TEST_APPROVAL_ID,
+1651:                         TEST_CALL_ID,
+1652:                         RiskLevel::Guarded,
+1653:                         CommandFamily::ToolFilesystemWrite,
+1654:                     )
+1655:                 })
+1656:             })
+1657:             .collect();
+1658:         let results: Vec<_> = handles
+1659:             .into_iter()
+1660:             .map(|handle| handle.join().unwrap())
+1661:             .collect();
+1662:         let ok_count = results.iter().filter(|result| result.is_ok()).count();
+1663:         let consumed_count = results
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1688 ---
+1676:         let scope = ApprovalScope {
+1677:             tool: "files.read".to_owned(),
+1678:             input_digest: digest,
+1679:             workspace: "/w".to_owned(),
+1680:             session: registry.session_id().to_owned(),
+1681:             risk_level: RiskLevel::ReadOnly,
+1682:             command_family: CommandFamily::ToolFilesystemRead,
+1683:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1684:             call_id: TEST_CALL_ID.to_owned(),
+1685:         };
+1686:         let token = registry.issue(scope).unwrap();
+1687:         let err = registry
+1688:             .execute_approved(
+1689:                 &token,
+1690:                 "files.delete",
+1691:                 &digest,
+1692:                 "/w",
+1693:                 TEST_APPROVAL_ID,
+1694:                 TEST_CALL_ID,
+1695:                 RiskLevel::Guarded,
+1696:                 CommandFamily::ToolFilesystemWrite,
+1697:             )
+1698:             .unwrap_err();
+1699:         assert!(matches!(err, ApprovalError::ToolMismatch));
+1700:         let scope = ApprovalScope {
+1701:             tool: "files.delete".to_owned(),
+1702:             input_digest: digest,
+1703:             workspace: "/w".to_owned(),
+1704:             session: registry.session_id().to_owned(),
+1705:             risk_level: RiskLevel::Dangerous,
+1706:             command_family: CommandFamily::ToolFilesystemDelete,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1712 ---
+1700:         let scope = ApprovalScope {
+1701:             tool: "files.delete".to_owned(),
+1702:             input_digest: digest,
+1703:             workspace: "/w".to_owned(),
+1704:             session: registry.session_id().to_owned(),
+1705:             risk_level: RiskLevel::Dangerous,
+1706:             command_family: CommandFamily::ToolFilesystemDelete,
+1707:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1708:             call_id: TEST_CALL_ID.to_owned(),
+1709:         };
+1710:         let token = registry.issue(scope).unwrap();
+1711:         let grant = registry
+1712:             .execute_approved(
+1713:                 &token,
+1714:                 "files.delete",
+1715:                 &digest,
+1716:                 "/w",
+1717:                 TEST_APPROVAL_ID,
+1718:                 TEST_CALL_ID,
+1719:                 RiskLevel::Dangerous,
+1720:                 CommandFamily::ToolFilesystemDelete,
+1721:             )
+1722:             .unwrap();
+1723:         assert_eq!(grant.tool, "files.delete");
+1724:     }
+1725: 
+1726:     #[test]
+1727:     fn p0b_r2_approval_id_match_succeeds() {
+1728:         let mut registry = ApprovalRegistry::new();
+1729:         let input = json!({"path": "a.txt"});
+1730:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1743 ---
+1731:         let scope = ApprovalScope {
+1732:             tool: "files.patch".to_owned(),
+1733:             input_digest: digest,
+1734:             workspace: "/w".to_owned(),
+1735:             session: registry.session_id().to_owned(),
+1736:             risk_level: RiskLevel::Guarded,
+1737:             command_family: CommandFamily::ToolFilesystemWrite,
+1738:             approval_id: "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+1739:             call_id: TEST_CALL_ID.to_owned(),
+1740:         };
+1741:         let token = registry.issue(scope).unwrap();
+1742:         let grant = registry
+1743:             .execute_approved(
+1744:                 &token,
+1745:                 "files.patch",
+1746:                 &digest,
+1747:                 "/w",
+1748:                 "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+1749:                 TEST_CALL_ID,
+1750:                 RiskLevel::Guarded,
+1751:                 CommandFamily::ToolFilesystemWrite,
+1752:             )
+1753:             .unwrap();
+1754:         assert_eq!(grant.approval_id, "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+1755:     }
+1756: 
+1757:     #[test]
+1758:     fn p0b_r2_approval_id_mismatch_rejected() {
+1759:         let mut registry = ApprovalRegistry::new();
+1760:         let input = json!({"path": "a.txt"});
+1761:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1774 ---
+1762:         let scope = ApprovalScope {
+1763:             tool: "files.patch".to_owned(),
+1764:             input_digest: digest,
+1765:             workspace: "/w".to_owned(),
+1766:             session: registry.session_id().to_owned(),
+1767:             risk_level: RiskLevel::Guarded,
+1768:             command_family: CommandFamily::ToolFilesystemWrite,
+1769:             approval_id: "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+1770:             call_id: TEST_CALL_ID.to_owned(),
+1771:         };
+1772:         let token = registry.issue(scope).unwrap();
+1773:         let err = registry
+1774:             .execute_approved(
+1775:                 &token,
+1776:                 "files.patch",
+1777:                 &digest,
+1778:                 "/w",
+1779:                 "appr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+1780:                 TEST_CALL_ID,
+1781:                 RiskLevel::Guarded,
+1782:                 CommandFamily::ToolFilesystemWrite,
+1783:             )
+1784:             .unwrap_err();
+1785:         assert!(matches!(err, ApprovalError::ApprovalIdMismatch));
+1786:     }
+1787: 
+1788:     #[test]
+1789:     fn p0b_r2_token_survives_wrong_approval_id() {
+1790:         let mut registry = ApprovalRegistry::new();
+1791:         let input = json!({"path": "a.txt"});
+1792:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1805 ---
+1793:         let scope = ApprovalScope {
+1794:             tool: "files.patch".to_owned(),
+1795:             input_digest: digest,
+1796:             workspace: "/w".to_owned(),
+1797:             session: registry.session_id().to_owned(),
+1798:             risk_level: RiskLevel::Guarded,
+1799:             command_family: CommandFamily::ToolFilesystemWrite,
+1800:             approval_id: "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+1801:             call_id: TEST_CALL_ID.to_owned(),
+1802:         };
+1803:         let token = registry.issue(scope).unwrap();
+1804:         let err = registry
+1805:             .execute_approved(
+1806:                 &token,
+1807:                 "files.patch",
+1808:                 &digest,
+1809:                 "/w",
+1810:                 "appr_cccccccccccccccccccccccccccccccc",
+1811:                 TEST_CALL_ID,
+1812:                 RiskLevel::Guarded,
+1813:                 CommandFamily::ToolFilesystemWrite,
+1814:             )
+1815:             .unwrap_err();
+1816:         assert!(matches!(err, ApprovalError::ApprovalIdMismatch));
+1817:         assert_eq!(registry.active_count(), 1);
+1818:         let grant = registry
+1819:             .execute_approved(
+1820:                 &token,
+1821:                 "files.patch",
+1822:                 &digest,
+1823:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1819 ---
+1807:                 "files.patch",
+1808:                 &digest,
+1809:                 "/w",
+1810:                 "appr_cccccccccccccccccccccccccccccccc",
+1811:                 TEST_CALL_ID,
+1812:                 RiskLevel::Guarded,
+1813:                 CommandFamily::ToolFilesystemWrite,
+1814:             )
+1815:             .unwrap_err();
+1816:         assert!(matches!(err, ApprovalError::ApprovalIdMismatch));
+1817:         assert_eq!(registry.active_count(), 1);
+1818:         let grant = registry
+1819:             .execute_approved(
+1820:                 &token,
+1821:                 "files.patch",
+1822:                 &digest,
+1823:                 "/w",
+1824:                 "appr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+1825:                 TEST_CALL_ID,
+1826:                 RiskLevel::Guarded,
+1827:                 CommandFamily::ToolFilesystemWrite,
+1828:             )
+1829:             .unwrap();
+1830:         assert_eq!(grant.tool, "files.patch");
+1831:         assert_eq!(registry.active_count(), 0);
+1832:     }
+1833: 
+1834:     #[test]
+1835:     fn p0b_r2_call_id_match_succeeds() {
+1836:         let mut registry = ApprovalRegistry::new();
+1837:         let input = json!({"path": "a.txt"});
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1851 ---
+1839:         let scope = ApprovalScope {
+1840:             tool: "files.patch".to_owned(),
+1841:             input_digest: digest,
+1842:             workspace: "/w".to_owned(),
+1843:             session: registry.session_id().to_owned(),
+1844:             risk_level: RiskLevel::Guarded,
+1845:             command_family: CommandFamily::ToolFilesystemWrite,
+1846:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1847:             call_id: "call_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+1848:         };
+1849:         let token = registry.issue(scope).unwrap();
+1850:         let grant = registry
+1851:             .execute_approved(
+1852:                 &token,
+1853:                 "files.patch",
+1854:                 &digest,
+1855:                 "/w",
+1856:                 TEST_APPROVAL_ID,
+1857:                 "call_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+1858:                 RiskLevel::Guarded,
+1859:                 CommandFamily::ToolFilesystemWrite,
+1860:             )
+1861:             .unwrap();
+1862:         assert_eq!(grant.call_id, "call_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+1863:     }
+1864: 
+1865:     #[test]
+1866:     fn p0b_r2_call_id_mismatch_rejected() {
+1867:         let mut registry = ApprovalRegistry::new();
+1868:         let input = json!({"path": "a.txt"});
+1869:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1882 ---
+1870:         let scope = ApprovalScope {
+1871:             tool: "files.patch".to_owned(),
+1872:             input_digest: digest,
+1873:             workspace: "/w".to_owned(),
+1874:             session: registry.session_id().to_owned(),
+1875:             risk_level: RiskLevel::Guarded,
+1876:             command_family: CommandFamily::ToolFilesystemWrite,
+1877:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1878:             call_id: "call_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+1879:         };
+1880:         let token = registry.issue(scope).unwrap();
+1881:         let err = registry
+1882:             .execute_approved(
+1883:                 &token,
+1884:                 "files.patch",
+1885:                 &digest,
+1886:                 "/w",
+1887:                 TEST_APPROVAL_ID,
+1888:                 "call_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+1889:                 RiskLevel::Guarded,
+1890:                 CommandFamily::ToolFilesystemWrite,
+1891:             )
+1892:             .unwrap_err();
+1893:         assert!(matches!(err, ApprovalError::CallIdMismatch));
+1894:     }
+1895: 
+1896:     #[test]
+1897:     fn p0b_r2_risk_metadata_mismatch_does_not_block() {
+1898:         let mut registry = ApprovalRegistry::new();
+1899:         let input = json!({"path": "a.txt"});
+1900:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1913 ---
+1901:         let scope = ApprovalScope {
+1902:             tool: "files.patch".to_owned(),
+1903:             input_digest: digest,
+1904:             workspace: "/w".to_owned(),
+1905:             session: registry.session_id().to_owned(),
+1906:             risk_level: RiskLevel::Dangerous,
+1907:             command_family: CommandFamily::ToolFilesystemWrite,
+1908:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1909:             call_id: TEST_CALL_ID.to_owned(),
+1910:         };
+1911:         let token = registry.issue(scope).unwrap();
+1912:         let grant = registry
+1913:             .execute_approved(
+1914:                 &token,
+1915:                 "files.patch",
+1916:                 &digest,
+1917:                 "/w",
+1918:                 TEST_APPROVAL_ID,
+1919:                 TEST_CALL_ID,
+1920:                 RiskLevel::Dangerous,
+1921:                 CommandFamily::ToolFilesystemWrite,
+1922:             )
+1923:             .unwrap();
+1924:         assert_eq!(grant.tool, "files.patch");
+1925:     }
+1926: 
+1927:     #[test]
+1928:     fn p0b_r2_risk_level_absent_from_consume_api() {
+1929:         let mut registry = ApprovalRegistry::new();
+1930:         let input = json!({"path": "a.txt"});
+1931:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1944 ---
+1932:         let scope = ApprovalScope {
+1933:             tool: "files.patch".to_owned(),
+1934:             input_digest: digest,
+1935:             workspace: "/w".to_owned(),
+1936:             session: registry.session_id().to_owned(),
+1937:             risk_level: RiskLevel::Guarded,
+1938:             command_family: CommandFamily::ToolFilesystemWrite,
+1939:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1940:             call_id: TEST_CALL_ID.to_owned(),
+1941:         };
+1942:         let token = registry.issue(scope).unwrap();
+1943:         let grant = registry
+1944:             .execute_approved(
+1945:                 &token,
+1946:                 "files.patch",
+1947:                 &digest,
+1948:                 "/w",
+1949:                 TEST_APPROVAL_ID,
+1950:                 TEST_CALL_ID,
+1951:                 RiskLevel::Guarded,
+1952:                 CommandFamily::ToolFilesystemWrite,
+1953:             )
+1954:             .unwrap();
+1955:         assert_eq!(grant.tool, "files.patch");
+1956:     }
+1957: 
+1958:     #[test]
+1959:     fn p0b_r2_artifact_token_rejected_for_runtime_tool() {
+1960:         let mut registry = ApprovalRegistry::new();
+1961:         let input = json!({"artifact_id": "model-x"});
+1962:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:1975 ---
+1963:         let scope = ApprovalScope {
+1964:             tool: "artifact.download".to_owned(),
+1965:             input_digest: digest,
+1966:             workspace: "/w".to_owned(),
+1967:             session: registry.session_id().to_owned(),
+1968:             risk_level: RiskLevel::Guarded,
+1969:             command_family: CommandFamily::ToolFilesystemWrite,
+1970:             approval_id: TEST_APPROVAL_ID.to_owned(),
+1971:             call_id: TEST_CALL_ID.to_owned(),
+1972:         };
+1973:         let token = registry.issue(scope).unwrap();
+1974:         let err = registry
+1975:             .execute_approved(
+1976:                 &token,
+1977:                 "runtime.start",
+1978:                 &digest,
+1979:                 "/w",
+1980:                 TEST_APPROVAL_ID,
+1981:                 TEST_CALL_ID,
+1982:                 RiskLevel::Guarded,
+1983:                 CommandFamily::ToolFilesystemWrite,
+1984:             )
+1985:             .unwrap_err();
+1986:         assert!(matches!(err, ApprovalError::ToolMismatch));
+1987:     }
+1988: 
+1989:     #[test]
+1990:     fn p0b_r2_runtime_token_rejected_for_artifact_tool() {
+1991:         let mut registry = ApprovalRegistry::new();
+1992:         let input = json!({"model_id": "model-x"});
+1993:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2006 ---
+1994:         let scope = ApprovalScope {
+1995:             tool: "runtime.start".to_owned(),
+1996:             input_digest: digest,
+1997:             workspace: "/w".to_owned(),
+1998:             session: registry.session_id().to_owned(),
+1999:             risk_level: RiskLevel::Guarded,
+2000:             command_family: CommandFamily::ToolFilesystemWrite,
+2001:             approval_id: TEST_APPROVAL_ID.to_owned(),
+2002:             call_id: TEST_CALL_ID.to_owned(),
+2003:         };
+2004:         let token = registry.issue(scope).unwrap();
+2005:         let err = registry
+2006:             .execute_approved(
+2007:                 &token,
+2008:                 "artifact.download",
+2009:                 &digest,
+2010:                 "/w",
+2011:                 TEST_APPROVAL_ID,
+2012:                 TEST_CALL_ID,
+2013:                 RiskLevel::Guarded,
+2014:                 CommandFamily::ToolFilesystemWrite,
+2015:             )
+2016:             .unwrap_err();
+2017:         assert!(matches!(err, ApprovalError::ToolMismatch));
+2018:     }
+2019: 
+2020:     #[test]
+2021:     fn p0b_r2_replay_distinguished_from_unknown() {
+2022:         let mut registry = ApprovalRegistry::new();
+2023:         let input = json!({"path": "a.txt"});
+2024:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2037 ---
+2025:         let scope = ApprovalScope {
+2026:             tool: "files.patch".to_owned(),
+2027:             input_digest: digest,
+2028:             workspace: "/w".to_owned(),
+2029:             session: registry.session_id().to_owned(),
+2030:             risk_level: RiskLevel::Guarded,
+2031:             command_family: CommandFamily::ToolFilesystemWrite,
+2032:             approval_id: TEST_APPROVAL_ID.to_owned(),
+2033:             call_id: TEST_CALL_ID.to_owned(),
+2034:         };
+2035:         let token = registry.issue(scope).unwrap();
+2036:         registry
+2037:             .execute_approved(
+2038:                 &token,
+2039:                 "files.patch",
+2040:                 &digest,
+2041:                 "/w",
+2042:                 TEST_APPROVAL_ID,
+2043:                 TEST_CALL_ID,
+2044:                 RiskLevel::Guarded,
+2045:                 CommandFamily::ToolFilesystemWrite,
+2046:             )
+2047:             .unwrap();
+2048:         let replay_err = registry
+2049:             .execute_approved(
+2050:                 &token,
+2051:                 "files.patch",
+2052:                 &digest,
+2053:                 "/w",
+2054:                 TEST_APPROVAL_ID,
+2055:                 TEST_CALL_ID,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2049 ---
+2037:             .execute_approved(
+2038:                 &token,
+2039:                 "files.patch",
+2040:                 &digest,
+2041:                 "/w",
+2042:                 TEST_APPROVAL_ID,
+2043:                 TEST_CALL_ID,
+2044:                 RiskLevel::Guarded,
+2045:                 CommandFamily::ToolFilesystemWrite,
+2046:             )
+2047:             .unwrap();
+2048:         let replay_err = registry
+2049:             .execute_approved(
+2050:                 &token,
+2051:                 "files.patch",
+2052:                 &digest,
+2053:                 "/w",
+2054:                 TEST_APPROVAL_ID,
+2055:                 TEST_CALL_ID,
+2056:                 RiskLevel::Guarded,
+2057:                 CommandFamily::ToolFilesystemWrite,
+2058:             )
+2059:             .unwrap_err();
+2060:         assert!(matches!(replay_err, ApprovalError::AlreadyConsumed));
+2061:         let forged = format!("{}{}", TOKEN_PREFIX, "ff".repeat(32));
+2062:         let unknown_err = registry
+2063:             .execute_approved(
+2064:                 &forged,
+2065:                 "files.patch",
+2066:                 &digest,
+2067:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2063 ---
+2051:                 "files.patch",
+2052:                 &digest,
+2053:                 "/w",
+2054:                 TEST_APPROVAL_ID,
+2055:                 TEST_CALL_ID,
+2056:                 RiskLevel::Guarded,
+2057:                 CommandFamily::ToolFilesystemWrite,
+2058:             )
+2059:             .unwrap_err();
+2060:         assert!(matches!(replay_err, ApprovalError::AlreadyConsumed));
+2061:         let forged = format!("{}{}", TOKEN_PREFIX, "ff".repeat(32));
+2062:         let unknown_err = registry
+2063:             .execute_approved(
+2064:                 &forged,
+2065:                 "files.patch",
+2066:                 &digest,
+2067:                 "/w",
+2068:                 TEST_APPROVAL_ID,
+2069:                 TEST_CALL_ID,
+2070:                 RiskLevel::Guarded,
+2071:                 CommandFamily::ToolFilesystemWrite,
+2072:             )
+2073:             .unwrap_err();
+2074:         assert!(matches!(unknown_err, ApprovalError::TokenNotFound));
+2075:     }
+2076: 
+2077:     #[test]
+2078:     fn p0b_r2_token_consumed_before_dispatch_no_rollback() {
+2079:         let mut registry = ApprovalRegistry::new();
+2080:         let input = json!({"path": "a.txt"});
+2081:         let digest = canonical_input_digest(&input);
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2094 ---
+2082:         let scope = ApprovalScope {
+2083:             tool: "files.patch".to_owned(),
+2084:             input_digest: digest,
+2085:             workspace: "/w".to_owned(),
+2086:             session: registry.session_id().to_owned(),
+2087:             risk_level: RiskLevel::Guarded,
+2088:             command_family: CommandFamily::ToolFilesystemWrite,
+2089:             approval_id: TEST_APPROVAL_ID.to_owned(),
+2090:             call_id: TEST_CALL_ID.to_owned(),
+2091:         };
+2092:         let token = registry.issue(scope).unwrap();
+2093:         let grant = registry
+2094:             .execute_approved(
+2095:                 &token,
+2096:                 "files.patch",
+2097:                 &digest,
+2098:                 "/w",
+2099:                 TEST_APPROVAL_ID,
+2100:                 TEST_CALL_ID,
+2101:                 RiskLevel::Guarded,
+2102:                 CommandFamily::ToolFilesystemWrite,
+2103:             )
+2104:             .unwrap();
+2105:         assert!(!grant.is_expired());
+2106:         assert_eq!(registry.active_count(), 0);
+2107:         let err = registry
+2108:             .execute_approved(
+2109:                 &token,
+2110:                 "files.patch",
+2111:                 &digest,
+2112:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2108 ---
+2096:                 "files.patch",
+2097:                 &digest,
+2098:                 "/w",
+2099:                 TEST_APPROVAL_ID,
+2100:                 TEST_CALL_ID,
+2101:                 RiskLevel::Guarded,
+2102:                 CommandFamily::ToolFilesystemWrite,
+2103:             )
+2104:             .unwrap();
+2105:         assert!(!grant.is_expired());
+2106:         assert_eq!(registry.active_count(), 0);
+2107:         let err = registry
+2108:             .execute_approved(
+2109:                 &token,
+2110:                 "files.patch",
+2111:                 &digest,
+2112:                 "/w",
+2113:                 TEST_APPROVAL_ID,
+2114:                 TEST_CALL_ID,
+2115:                 RiskLevel::Guarded,
+2116:                 CommandFamily::ToolFilesystemWrite,
+2117:             )
+2118:             .unwrap_err();
+2119:         assert!(matches!(err, ApprovalError::AlreadyConsumed));
+2120:     }
+2121: 
+2122:     #[test]
+2123:     fn p0b_authoritative_risk_is_stored() {
+2124:         let mut registry = ApprovalRegistry::new();
+2125:         let session = registry.session_id().to_owned();
+2126:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2155 ---
+2143:         let session = registry.session_id().to_owned();
+2144:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+2145:         let scope = scoped(
+2146:             "files.write",
+2147:             digest,
+2148:             "/w",
+2149:             &session,
+2150:             RiskLevel::Guarded,
+2151:             CommandFamily::ToolFilesystemWrite,
+2152:         );
+2153:         let token = registry.issue(scope).unwrap();
+2154:         let grant = registry
+2155:             .execute_approved(
+2156:                 &token,
+2157:                 "files.write",
+2158:                 &digest,
+2159:                 "/w",
+2160:                 TEST_APPROVAL_ID,
+2161:                 TEST_CALL_ID,
+2162:                 RiskLevel::Guarded,
+2163:                 CommandFamily::ToolFilesystemWrite,
+2164:             )
+2165:             .unwrap();
+2166:         assert_eq!(grant.tool, "files.write");
+2167:     }
+2168: 
+2169:     #[test]
+2170:     fn p0b_lowered_risk_is_rejected() {
+2171:         let mut registry = ApprovalRegistry::new();
+2172:         let session = registry.session_id().to_owned();
+2173:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2184 ---
+2172:         let session = registry.session_id().to_owned();
+2173:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+2174:         let scope = scoped(
+2175:             "files.delete",
+2176:             digest,
+2177:             "/w",
+2178:             &session,
+2179:             RiskLevel::Dangerous,
+2180:             CommandFamily::ToolFilesystemDelete,
+2181:         );
+2182:         let token = registry.issue(scope).unwrap();
+2183:         let err = registry
+2184:             .execute_approved(
+2185:                 &token,
+2186:                 "files.delete",
+2187:                 &digest,
+2188:                 "/w",
+2189:                 TEST_APPROVAL_ID,
+2190:                 TEST_CALL_ID,
+2191:                 RiskLevel::Guarded,
+2192:                 CommandFamily::ToolFilesystemDelete,
+2193:             )
+2194:             .unwrap_err();
+2195:         assert!(matches!(err, ApprovalError::RiskMismatch));
+2196:     }
+2197: 
+2198:     #[test]
+2199:     fn p0b_wrong_risk_does_not_consume_token() {
+2200:         let mut registry = ApprovalRegistry::new();
+2201:         let session = registry.session_id().to_owned();
+2202:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2213 ---
+2201:         let session = registry.session_id().to_owned();
+2202:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+2203:         let scope = scoped(
+2204:             "files.delete",
+2205:             digest,
+2206:             "/w",
+2207:             &session,
+2208:             RiskLevel::Dangerous,
+2209:             CommandFamily::ToolFilesystemDelete,
+2210:         );
+2211:         let token = registry.issue(scope).unwrap();
+2212:         let err = registry
+2213:             .execute_approved(
+2214:                 &token,
+2215:                 "files.delete",
+2216:                 &digest,
+2217:                 "/w",
+2218:                 TEST_APPROVAL_ID,
+2219:                 TEST_CALL_ID,
+2220:                 RiskLevel::Guarded,
+2221:                 CommandFamily::ToolFilesystemDelete,
+2222:             )
+2223:             .unwrap_err();
+2224:         assert!(matches!(err, ApprovalError::RiskMismatch));
+2225:         assert_eq!(registry.active_count(), 1);
+2226:         let grant = registry
+2227:             .execute_approved(
+2228:                 &token,
+2229:                 "files.delete",
+2230:                 &digest,
+2231:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2227 ---
+2215:                 "files.delete",
+2216:                 &digest,
+2217:                 "/w",
+2218:                 TEST_APPROVAL_ID,
+2219:                 TEST_CALL_ID,
+2220:                 RiskLevel::Guarded,
+2221:                 CommandFamily::ToolFilesystemDelete,
+2222:             )
+2223:             .unwrap_err();
+2224:         assert!(matches!(err, ApprovalError::RiskMismatch));
+2225:         assert_eq!(registry.active_count(), 1);
+2226:         let grant = registry
+2227:             .execute_approved(
+2228:                 &token,
+2229:                 "files.delete",
+2230:                 &digest,
+2231:                 "/w",
+2232:                 TEST_APPROVAL_ID,
+2233:                 TEST_CALL_ID,
+2234:                 RiskLevel::Dangerous,
+2235:                 CommandFamily::ToolFilesystemDelete,
+2236:             )
+2237:             .unwrap();
+2238:         assert_eq!(grant.tool, "files.delete");
+2239:         assert_eq!(registry.active_count(), 0);
+2240:     }
+2241: 
+2242:     #[test]
+2243:     fn p0b_renderer_cannot_select_risk() {
+2244:         let mut registry = ApprovalRegistry::new();
+2245:         let session = registry.session_id().to_owned();
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2260 ---
+2248:         assert_eq!(authoritative, RiskLevel::Dangerous);
+2249:         let scope = scoped(
+2250:             "files.delete",
+2251:             digest,
+2252:             "/w",
+2253:             &session,
+2254:             authoritative,
+2255:             CommandFamily::ToolFilesystemDelete,
+2256:         );
+2257:         let token = registry.issue(scope).unwrap();
+2258:         let renderer_chosen = RiskLevel::ReadOnly;
+2259:         let err = registry
+2260:             .execute_approved(
+2261:                 &token,
+2262:                 "files.delete",
+2263:                 &digest,
+2264:                 "/w",
+2265:                 TEST_APPROVAL_ID,
+2266:                 TEST_CALL_ID,
+2267:                 renderer_chosen,
+2268:                 CommandFamily::ToolFilesystemDelete,
+2269:             )
+2270:             .unwrap_err();
+2271:         assert!(matches!(err, ApprovalError::RiskMismatch));
+2272:     }
+2273: 
+2274:     #[test]
+2275:     fn p0b_unknown_operation_has_no_accepted_risk() {
+2276:         assert!(crate::approval_commands::risk_level_for_tool("unknown.tool").is_err());
+2277:     }
+2278: 
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2312 ---
+2300:         let session = registry.session_id().to_owned();
+2301:         let digest = canonical_input_digest(&json!({"artifact_id": "m"}));
+2302:         let scope = scoped(
+2303:             "artifact.download",
+2304:             digest,
+2305:             "/w",
+2306:             &session,
+2307:             RiskLevel::Guarded,
+2308:             CommandFamily::ArtifactDownload,
+2309:         );
+2310:         let token = registry.issue(scope).unwrap();
+2311:         let grant = registry
+2312:             .execute_approved(
+2313:                 &token,
+2314:                 "artifact.download",
+2315:                 &digest,
+2316:                 "/w",
+2317:                 TEST_APPROVAL_ID,
+2318:                 TEST_CALL_ID,
+2319:                 RiskLevel::Guarded,
+2320:                 CommandFamily::ArtifactDownload,
+2321:             )
+2322:             .unwrap();
+2323:         assert_eq!(grant.tool, "artifact.download");
+2324:     }
+2325: 
+2326:     #[test]
+2327:     fn p0b_same_risk_different_family_is_rejected() {
+2328:         let mut registry = ApprovalRegistry::new();
+2329:         let session = registry.session_id().to_owned();
+2330:         let digest = canonical_input_digest(&json!({"id": "x"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2341 ---
+2329:         let session = registry.session_id().to_owned();
+2330:         let digest = canonical_input_digest(&json!({"id": "x"}));
+2331:         let scope = scoped(
+2332:             "artifact.download",
+2333:             digest,
+2334:             "/w",
+2335:             &session,
+2336:             RiskLevel::Guarded,
+2337:             CommandFamily::ArtifactDownload,
+2338:         );
+2339:         let token = registry.issue(scope).unwrap();
+2340:         let err = registry
+2341:             .execute_approved(
+2342:                 &token,
+2343:                 "artifact.download",
+2344:                 &digest,
+2345:                 "/w",
+2346:                 TEST_APPROVAL_ID,
+2347:                 TEST_CALL_ID,
+2348:                 RiskLevel::Guarded,
+2349:                 CommandFamily::RuntimeStart,
+2350:             )
+2351:             .unwrap_err();
+2352:         assert!(matches!(err, ApprovalError::FamilyMismatch));
+2353:     }
+2354: 
+2355:     #[test]
+2356:     fn p0b_same_digest_different_family_is_rejected() {
+2357:         let mut registry = ApprovalRegistry::new();
+2358:         let session = registry.session_id().to_owned();
+2359:         let digest = canonical_input_digest(&json!({"id": "x"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2370 ---
+2358:         let session = registry.session_id().to_owned();
+2359:         let digest = canonical_input_digest(&json!({"id": "x"}));
+2360:         let scope = scoped(
+2361:             "runtime.start",
+2362:             digest,
+2363:             "/w",
+2364:             &session,
+2365:             RiskLevel::Guarded,
+2366:             CommandFamily::RuntimeStart,
+2367:         );
+2368:         let token = registry.issue(scope).unwrap();
+2369:         let err = registry
+2370:             .execute_approved(
+2371:                 &token,
+2372:                 "runtime.start",
+2373:                 &digest,
+2374:                 "/w",
+2375:                 TEST_APPROVAL_ID,
+2376:                 TEST_CALL_ID,
+2377:                 RiskLevel::Guarded,
+2378:                 CommandFamily::RuntimeStop,
+2379:             )
+2380:             .unwrap_err();
+2381:         assert!(matches!(err, ApprovalError::FamilyMismatch));
+2382:     }
+2383: 
+2384:     #[test]
+2385:     fn p0b_wrong_family_does_not_consume_token() {
+2386:         let mut registry = ApprovalRegistry::new();
+2387:         let session = registry.session_id().to_owned();
+2388:         let digest = canonical_input_digest(&json!({"id": "x"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2399 ---
+2387:         let session = registry.session_id().to_owned();
+2388:         let digest = canonical_input_digest(&json!({"id": "x"}));
+2389:         let scope = scoped(
+2390:             "artifact.download",
+2391:             digest,
+2392:             "/w",
+2393:             &session,
+2394:             RiskLevel::Guarded,
+2395:             CommandFamily::ArtifactDownload,
+2396:         );
+2397:         let token = registry.issue(scope).unwrap();
+2398:         let err = registry
+2399:             .execute_approved(
+2400:                 &token,
+2401:                 "artifact.download",
+2402:                 &digest,
+2403:                 "/w",
+2404:                 TEST_APPROVAL_ID,
+2405:                 TEST_CALL_ID,
+2406:                 RiskLevel::Guarded,
+2407:                 CommandFamily::ArtifactRemove,
+2408:             )
+2409:             .unwrap_err();
+2410:         assert!(matches!(err, ApprovalError::FamilyMismatch));
+2411:         assert_eq!(registry.active_count(), 1);
+2412:         let grant = registry
+2413:             .execute_approved(
+2414:                 &token,
+2415:                 "artifact.download",
+2416:                 &digest,
+2417:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2413 ---
+2401:                 "artifact.download",
+2402:                 &digest,
+2403:                 "/w",
+2404:                 TEST_APPROVAL_ID,
+2405:                 TEST_CALL_ID,
+2406:                 RiskLevel::Guarded,
+2407:                 CommandFamily::ArtifactRemove,
+2408:             )
+2409:             .unwrap_err();
+2410:         assert!(matches!(err, ApprovalError::FamilyMismatch));
+2411:         assert_eq!(registry.active_count(), 1);
+2412:         let grant = registry
+2413:             .execute_approved(
+2414:                 &token,
+2415:                 "artifact.download",
+2416:                 &digest,
+2417:                 "/w",
+2418:                 TEST_APPROVAL_ID,
+2419:                 TEST_CALL_ID,
+2420:                 RiskLevel::Guarded,
+2421:                 CommandFamily::ArtifactDownload,
+2422:             )
+2423:             .unwrap();
+2424:         assert_eq!(grant.tool, "artifact.download");
+2425:         assert_eq!(registry.active_count(), 0);
+2426:     }
+2427: 
+2428:     #[test]
+2429:     fn p0b_renderer_cannot_select_command_family() {
+2430:         let mut registry = ApprovalRegistry::new();
+2431:         let session = registry.session_id().to_owned();
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2446 ---
+2434:         assert_eq!(authoritative, CommandFamily::ArtifactDownload);
+2435:         let scope = scoped(
+2436:             "artifact.download",
+2437:             digest,
+2438:             "/w",
+2439:             &session,
+2440:             RiskLevel::Guarded,
+2441:             authoritative,
+2442:         );
+2443:         let token = registry.issue(scope).unwrap();
+2444:         let renderer_chosen = CommandFamily::RuntimeStart;
+2445:         let err = registry
+2446:             .execute_approved(
+2447:                 &token,
+2448:                 "artifact.download",
+2449:                 &digest,
+2450:                 "/w",
+2451:                 TEST_APPROVAL_ID,
+2452:                 TEST_CALL_ID,
+2453:                 RiskLevel::Guarded,
+2454:                 renderer_chosen,
+2455:             )
+2456:             .unwrap_err();
+2457:         assert!(matches!(err, ApprovalError::FamilyMismatch));
+2458:     }
+2459: 
+2460:     #[test]
+2461:     fn p0b_consumed_tombstone_returns_already_consumed() {
+2462:         let mut registry = ApprovalRegistry::new();
+2463:         let session = registry.session_id().to_owned();
+2464:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2475 ---
+2463:         let session = registry.session_id().to_owned();
+2464:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+2465:         let scope = scoped(
+2466:             "files.write",
+2467:             digest,
+2468:             "/w",
+2469:             &session,
+2470:             RiskLevel::Guarded,
+2471:             CommandFamily::ToolFilesystemWrite,
+2472:         );
+2473:         let token = registry.issue(scope).unwrap();
+2474:         registry
+2475:             .execute_approved(
+2476:                 &token,
+2477:                 "files.write",
+2478:                 &digest,
+2479:                 "/w",
+2480:                 TEST_APPROVAL_ID,
+2481:                 TEST_CALL_ID,
+2482:                 RiskLevel::Guarded,
+2483:                 CommandFamily::ToolFilesystemWrite,
+2484:             )
+2485:             .unwrap();
+2486:         let err = registry
+2487:             .execute_approved(
+2488:                 &token,
+2489:                 "files.write",
+2490:                 &digest,
+2491:                 "/w",
+2492:                 TEST_APPROVAL_ID,
+2493:                 TEST_CALL_ID,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2487 ---
+2475:             .execute_approved(
+2476:                 &token,
+2477:                 "files.write",
+2478:                 &digest,
+2479:                 "/w",
+2480:                 TEST_APPROVAL_ID,
+2481:                 TEST_CALL_ID,
+2482:                 RiskLevel::Guarded,
+2483:                 CommandFamily::ToolFilesystemWrite,
+2484:             )
+2485:             .unwrap();
+2486:         let err = registry
+2487:             .execute_approved(
+2488:                 &token,
+2489:                 "files.write",
+2490:                 &digest,
+2491:                 "/w",
+2492:                 TEST_APPROVAL_ID,
+2493:                 TEST_CALL_ID,
+2494:                 RiskLevel::Guarded,
+2495:                 CommandFamily::ToolFilesystemWrite,
+2496:             )
+2497:             .unwrap_err();
+2498:         assert!(matches!(err, ApprovalError::AlreadyConsumed));
+2499:     }
+2500: 
+2501:     #[test]
+2502:     fn p0b_unknown_token_returns_token_not_found() {
+2503:         let mut registry = ApprovalRegistry::new();
+2504:         let forged = format!("{}{}", TOKEN_PREFIX, "ab".repeat(32));
+2505:         let digest = [0u8; 32];
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2507 ---
+2495:                 CommandFamily::ToolFilesystemWrite,
+2496:             )
+2497:             .unwrap_err();
+2498:         assert!(matches!(err, ApprovalError::AlreadyConsumed));
+2499:     }
+2500: 
+2501:     #[test]
+2502:     fn p0b_unknown_token_returns_token_not_found() {
+2503:         let mut registry = ApprovalRegistry::new();
+2504:         let forged = format!("{}{}", TOKEN_PREFIX, "ab".repeat(32));
+2505:         let digest = [0u8; 32];
+2506:         let err = registry
+2507:             .execute_approved(
+2508:                 &forged,
+2509:                 "files.write",
+2510:                 &digest,
+2511:                 "/w",
+2512:                 TEST_APPROVAL_ID,
+2513:                 TEST_CALL_ID,
+2514:                 RiskLevel::Guarded,
+2515:                 CommandFamily::ToolFilesystemWrite,
+2516:             )
+2517:             .unwrap_err();
+2518:         assert!(matches!(err, ApprovalError::TokenNotFound));
+2519:     }
+2520: 
+2521:     #[test]
+2522:     fn p0b_consumed_tombstones_have_fixed_capacity() {
+2523:         let mut registry = ApprovalRegistry::new();
+2524:         let session = registry.session_id().to_owned();
+2525:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2537 ---
+2525:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+2526:         for _ in 0..(MAX_CONSUMED_TOMBSTONES + 1) {
+2527:             let scope = scoped(
+2528:                 "files.write",
+2529:                 digest,
+2530:                 "/w",
+2531:                 &session,
+2532:                 RiskLevel::Guarded,
+2533:                 CommandFamily::ToolFilesystemWrite,
+2534:             );
+2535:             let token = registry.issue(scope).unwrap();
+2536:             registry
+2537:                 .execute_approved(
+2538:                     &token,
+2539:                     "files.write",
+2540:                     &digest,
+2541:                     "/w",
+2542:                     TEST_APPROVAL_ID,
+2543:                     TEST_CALL_ID,
+2544:                     RiskLevel::Guarded,
+2545:                     CommandFamily::ToolFilesystemWrite,
+2546:                 )
+2547:                 .unwrap();
+2548:         }
+2549:         assert!(registry.consumed_count() <= MAX_CONSUMED_TOMBSTONES);
+2550:     }
+2551: 
+2552:     #[test]
+2553:     fn p0b_oldest_tombstone_is_evicted_deterministically() {
+2554:         let mut registry = ApprovalRegistry::new();
+2555:         let session = registry.session_id().to_owned();
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2574 ---
+2562:                 digest,
+2563:                 "/w",
+2564:                 &session,
+2565:                 RiskLevel::Guarded,
+2566:                 CommandFamily::ToolFilesystemWrite,
+2567:             );
+2568:             let token = registry.issue(scope).unwrap();
+2569:             if i == 0 {
+2570:                 first_token = token.clone();
+2571:             }
+2572:             last_token = token.clone();
+2573:             registry
+2574:                 .execute_approved(
+2575:                     &token,
+2576:                     "files.write",
+2577:                     &digest,
+2578:                     "/w",
+2579:                     TEST_APPROVAL_ID,
+2580:                     TEST_CALL_ID,
+2581:                     RiskLevel::Guarded,
+2582:                     CommandFamily::ToolFilesystemWrite,
+2583:                 )
+2584:                 .unwrap();
+2585:         }
+2586:         assert_eq!(registry.consumed_count(), MAX_CONSUMED_TOMBSTONES);
+2587:         let scope = scoped(
+2588:             "files.write",
+2589:             digest,
+2590:             "/w",
+2591:             &session,
+2592:             RiskLevel::Guarded,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2597 ---
+2585:         }
+2586:         assert_eq!(registry.consumed_count(), MAX_CONSUMED_TOMBSTONES);
+2587:         let scope = scoped(
+2588:             "files.write",
+2589:             digest,
+2590:             "/w",
+2591:             &session,
+2592:             RiskLevel::Guarded,
+2593:             CommandFamily::ToolFilesystemWrite,
+2594:         );
+2595:         let token = registry.issue(scope).unwrap();
+2596:         registry
+2597:             .execute_approved(
+2598:                 &token,
+2599:                 "files.write",
+2600:                 &digest,
+2601:                 "/w",
+2602:                 TEST_APPROVAL_ID,
+2603:                 TEST_CALL_ID,
+2604:                 RiskLevel::Guarded,
+2605:                 CommandFamily::ToolFilesystemWrite,
+2606:             )
+2607:             .unwrap();
+2608:         assert_eq!(registry.consumed_count(), MAX_CONSUMED_TOMBSTONES);
+2609:         let evicted = registry
+2610:             .execute_approved(
+2611:                 &first_token,
+2612:                 "files.write",
+2613:                 &digest,
+2614:                 "/w",
+2615:                 TEST_APPROVAL_ID,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2610 ---
+2598:                 &token,
+2599:                 "files.write",
+2600:                 &digest,
+2601:                 "/w",
+2602:                 TEST_APPROVAL_ID,
+2603:                 TEST_CALL_ID,
+2604:                 RiskLevel::Guarded,
+2605:                 CommandFamily::ToolFilesystemWrite,
+2606:             )
+2607:             .unwrap();
+2608:         assert_eq!(registry.consumed_count(), MAX_CONSUMED_TOMBSTONES);
+2609:         let evicted = registry
+2610:             .execute_approved(
+2611:                 &first_token,
+2612:                 "files.write",
+2613:                 &digest,
+2614:                 "/w",
+2615:                 TEST_APPROVAL_ID,
+2616:                 TEST_CALL_ID,
+2617:                 RiskLevel::Guarded,
+2618:                 CommandFamily::ToolFilesystemWrite,
+2619:             )
+2620:             .unwrap_err();
+2621:         assert!(matches!(evicted, ApprovalError::TokenNotFound));
+2622:         let recent = registry
+2623:             .execute_approved(
+2624:                 &last_token,
+2625:                 "files.write",
+2626:                 &digest,
+2627:                 "/w",
+2628:                 TEST_APPROVAL_ID,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2623 ---
+2611:                 &first_token,
+2612:                 "files.write",
+2613:                 &digest,
+2614:                 "/w",
+2615:                 TEST_APPROVAL_ID,
+2616:                 TEST_CALL_ID,
+2617:                 RiskLevel::Guarded,
+2618:                 CommandFamily::ToolFilesystemWrite,
+2619:             )
+2620:             .unwrap_err();
+2621:         assert!(matches!(evicted, ApprovalError::TokenNotFound));
+2622:         let recent = registry
+2623:             .execute_approved(
+2624:                 &last_token,
+2625:                 "files.write",
+2626:                 &digest,
+2627:                 "/w",
+2628:                 TEST_APPROVAL_ID,
+2629:                 TEST_CALL_ID,
+2630:                 RiskLevel::Guarded,
+2631:                 CommandFamily::ToolFilesystemWrite,
+2632:             )
+2633:             .unwrap_err();
+2634:         assert!(matches!(recent, ApprovalError::AlreadyConsumed));
+2635:     }
+2636: 
+2637:     #[test]
+2638:     fn p0b_expired_tombstones_are_removed() {
+2639:         let mut registry = ApprovalRegistry::new();
+2640:         let session = registry.session_id().to_owned();
+2641:         let token = format!("{}{}", TOKEN_PREFIX, "cd".repeat(32));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:2679 ---
+2667:                 "/w",
+2668:                 &session,
+2669:                 RiskLevel::Guarded,
+2670:                 CommandFamily::ToolFilesystemWrite,
+2671:             );
+2672:             guard.issue(scope).unwrap()
+2673:         };
+2674:         let handles: Vec<_> = (0..8)
+2675:             .map(|_| {
+2676:                 let registry = Arc::clone(&registry);
+2677:                 let token = token.clone();
+2678:                 std::thread::spawn(move || {
+2679:                     registry.lock().unwrap().execute_approved(
+2680:                         &token,
+2681:                         "files.write",
+2682:                         &digest,
+2683:                         "/w",
+2684:                         TEST_APPROVAL_ID,
+2685:                         TEST_CALL_ID,
+2686:                         RiskLevel::Guarded,
+2687:                         CommandFamily::ToolFilesystemWrite,
+2688:                     )
+2689:                 })
+2690:             })
+2691:             .collect();
+2692:         let results: Vec<_> = handles
+2693:             .into_iter()
+2694:             .map(|handle| handle.join().unwrap())
+2695:             .collect();
+2696:         let ok_count = results.iter().filter(|result| result.is_ok()).count();
+2697:         let consumed_count = results
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3013 ---
+3001:         );
+3002:         assert_eq!(
+3003:             serde_json::to_value(CommandFamily::ToolFilesystemWrite).unwrap(),
+3004:             "tool_filesystem_write"
+3005:         );
+3006:         assert_eq!(
+3007:             serde_json::to_value(CommandFamily::ToolFilesystemDelete).unwrap(),
+3008:             "tool_filesystem_delete"
+3009:         );
+3010:     }
+3011: 
+3012:     #[test]
+3013:     fn p0b_r5_execute_approved_validates_approval_id_syntax() {
+3014:         let mut registry = ApprovalRegistry::new();
+3015:         let session = registry.session_id().to_owned();
+3016:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+3017:         let scope = scoped(
+3018:             "files.write",
+3019:             digest,
+3020:             "/w",
+3021:             &session,
+3022:             RiskLevel::Guarded,
+3023:             CommandFamily::ToolFilesystemWrite,
+3024:         );
+3025:         let token = registry.issue(scope).unwrap();
+3026:         let err = registry
+3027:             .execute_approved(
+3028:                 &token,
+3029:                 "files.write",
+3030:                 &digest,
+3031:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3027 ---
+3015:         let session = registry.session_id().to_owned();
+3016:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+3017:         let scope = scoped(
+3018:             "files.write",
+3019:             digest,
+3020:             "/w",
+3021:             &session,
+3022:             RiskLevel::Guarded,
+3023:             CommandFamily::ToolFilesystemWrite,
+3024:         );
+3025:         let token = registry.issue(scope).unwrap();
+3026:         let err = registry
+3027:             .execute_approved(
+3028:                 &token,
+3029:                 "files.write",
+3030:                 &digest,
+3031:                 "/w",
+3032:                 "bad-id",
+3033:                 TEST_CALL_ID,
+3034:                 RiskLevel::Guarded,
+3035:                 CommandFamily::ToolFilesystemWrite,
+3036:             )
+3037:             .unwrap_err();
+3038:         assert!(matches!(err, ApprovalError::ApprovalIdMismatch));
+3039:     }
+3040: 
+3041:     #[test]
+3042:     fn p0b_r5_execute_approved_validates_call_id_syntax() {
+3043:         let mut registry = ApprovalRegistry::new();
+3044:         let session = registry.session_id().to_owned();
+3045:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3042 ---
+3030:                 &digest,
+3031:                 "/w",
+3032:                 "bad-id",
+3033:                 TEST_CALL_ID,
+3034:                 RiskLevel::Guarded,
+3035:                 CommandFamily::ToolFilesystemWrite,
+3036:             )
+3037:             .unwrap_err();
+3038:         assert!(matches!(err, ApprovalError::ApprovalIdMismatch));
+3039:     }
+3040: 
+3041:     #[test]
+3042:     fn p0b_r5_execute_approved_validates_call_id_syntax() {
+3043:         let mut registry = ApprovalRegistry::new();
+3044:         let session = registry.session_id().to_owned();
+3045:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+3046:         let scope = scoped(
+3047:             "files.write",
+3048:             digest,
+3049:             "/w",
+3050:             &session,
+3051:             RiskLevel::Guarded,
+3052:             CommandFamily::ToolFilesystemWrite,
+3053:         );
+3054:         let token = registry.issue(scope).unwrap();
+3055:         let err = registry
+3056:             .execute_approved(
+3057:                 &token,
+3058:                 "files.write",
+3059:                 &digest,
+3060:                 "/w",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3056 ---
+3044:         let session = registry.session_id().to_owned();
+3045:         let digest = canonical_input_digest(&json!({"path": "a.txt"}));
+3046:         let scope = scoped(
+3047:             "files.write",
+3048:             digest,
+3049:             "/w",
+3050:             &session,
+3051:             RiskLevel::Guarded,
+3052:             CommandFamily::ToolFilesystemWrite,
+3053:         );
+3054:         let token = registry.issue(scope).unwrap();
+3055:         let err = registry
+3056:             .execute_approved(
+3057:                 &token,
+3058:                 "files.write",
+3059:                 &digest,
+3060:                 "/w",
+3061:                 TEST_APPROVAL_ID,
+3062:                 "bad-id",
+3063:                 RiskLevel::Guarded,
+3064:                 CommandFamily::ToolFilesystemWrite,
+3065:             )
+3066:             .unwrap_err();
+3067:         assert!(matches!(err, ApprovalError::CallIdMismatch));
+3068:     }
+3069: 
+3070:     #[test]
+3071:     fn p0b_r5_no_derived_approval_call_id_in_source() {
+3072:         let source = include_str!("approval.rs");
+3073:         let needle = format!("pub fn {}_approval_call_id", "derived");
+3074:         assert!(
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3261 ---
+3249:             command_family: CommandFamily::ToolFilesystemWrite,
+3250:             approval_id: String::new(),
+3251:             call_id: String::new(),
+3252:         };
+3253:         let descriptor = test_descriptor();
+3254:         let prompt = ScriptedApprovalPrompt {
+3255:             decision: ApprovalDecision::Approve,
+3256:         };
+3257:         let envelope = registry
+3258:             .request_with_prompt(scope, &descriptor, &prompt)
+3259:             .unwrap();
+3260:         let grant = registry
+3261:             .execute_approved(
+3262:                 &envelope.token,
+3263:                 "files.write",
+3264:                 &digest,
+3265:                 "/w",
+3266:                 &envelope.approval_id,
+3267:                 &envelope.call_id,
+3268:                 RiskLevel::Guarded,
+3269:                 CommandFamily::ToolFilesystemWrite,
+3270:             )
+3271:             .unwrap();
+3272:         assert_eq!(grant.tool, "files.write");
+3273:     }
+3274: 
+3275:     #[test]
+3276:     fn p0b_r5_no_allow_execute_approved_in_capabilities() {
+3277:         let caps = include_str!("../capabilities/main.json");
+3278:         assert!(
+3279:             !caps.contains("allow-execute-approved"),
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3276 ---
+3264:                 &digest,
+3265:                 "/w",
+3266:                 &envelope.approval_id,
+3267:                 &envelope.call_id,
+3268:                 RiskLevel::Guarded,
+3269:                 CommandFamily::ToolFilesystemWrite,
+3270:             )
+3271:             .unwrap();
+3272:         assert_eq!(grant.tool, "files.write");
+3273:     }
+3274: 
+3275:     #[test]
+3276:     fn p0b_r5_no_allow_execute_approved_in_capabilities() {
+3277:         let caps = include_str!("../capabilities/main.json");
+3278:         assert!(
+3279:             !caps.contains("allow-execute-approved"),
+3280:             "allow-execute-approved must be removed from capabilities"
+3281:         );
+3282:     }
+3283: 
+3284:     #[test]
+3285:     fn p0b_r5_no_allow_execute_approved_in_permissions() {
+3286:         let perms = include_str!("../permissions/approval.toml");
+3287:         assert!(
+3288:             !perms.contains("allow-execute-approved"),
+3289:             "allow-execute-approved must be removed from permissions"
+3290:         );
+3291:     }
+3292: 
+3293:     #[test]
+3294:     fn p0b_r5_no_user_decision_in_request_approval() {
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3285 ---
+3273:     }
+3274: 
+3275:     #[test]
+3276:     fn p0b_r5_no_allow_execute_approved_in_capabilities() {
+3277:         let caps = include_str!("../capabilities/main.json");
+3278:         assert!(
+3279:             !caps.contains("allow-execute-approved"),
+3280:             "allow-execute-approved must be removed from capabilities"
+3281:         );
+3282:     }
+3283: 
+3284:     #[test]
+3285:     fn p0b_r5_no_allow_execute_approved_in_permissions() {
+3286:         let perms = include_str!("../permissions/approval.toml");
+3287:         assert!(
+3288:             !perms.contains("allow-execute-approved"),
+3289:             "allow-execute-approved must be removed from permissions"
+3290:         );
+3291:     }
+3292: 
+3293:     #[test]
+3294:     fn p0b_r5_no_user_decision_in_request_approval() {
+3295:         let source = include_str!("approval_commands.rs");
+3296:         assert!(
+3297:             !source.contains("user_decision"),
+3298:             "user_decision parameter must be removed from request_approval"
+3299:         );
+3300:     }
+3301: 
+3302:     #[test]
+3303:     fn p0b_r5_fixture_file_exists() {
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3294 ---
+3282:     }
+3283: 
+3284:     #[test]
+3285:     fn p0b_r5_no_allow_execute_approved_in_permissions() {
+3286:         let perms = include_str!("../permissions/approval.toml");
+3287:         assert!(
+3288:             !perms.contains("allow-execute-approved"),
+3289:             "allow-execute-approved must be removed from permissions"
+3290:         );
+3291:     }
+3292: 
+3293:     #[test]
+3294:     fn p0b_r5_no_user_decision_in_request_approval() {
+3295:         let source = include_str!("approval_commands.rs");
+3296:         assert!(
+3297:             !source.contains("user_decision"),
+3298:             "user_decision parameter must be removed from request_approval"
+3299:         );
+3300:     }
+3301: 
+3302:     #[test]
+3303:     fn p0b_r5_fixture_file_exists() {
+3304:         let fixture =
+3305:             include_str!("../../../../security/contracts/approval_envelope_v1.fixture.json");
+3306:         let parsed: serde_json::Value = serde_json::from_str(fixture).unwrap();
+3307:         assert!(parsed.get("token").is_some());
+3308:         assert!(parsed.get("approvalId").is_some());
+3309:         assert!(parsed.get("callId").is_some());
+3310:         assert!(parsed.get("tool").is_some());
+3311:         assert!(parsed.get("riskLevel").is_some());
+3312:         assert!(parsed.get("commandFamily").is_some());
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3298 ---
+3286:         let perms = include_str!("../permissions/approval.toml");
+3287:         assert!(
+3288:             !perms.contains("allow-execute-approved"),
+3289:             "allow-execute-approved must be removed from permissions"
+3290:         );
+3291:     }
+3292: 
+3293:     #[test]
+3294:     fn p0b_r5_no_user_decision_in_request_approval() {
+3295:         let source = include_str!("approval_commands.rs");
+3296:         assert!(
+3297:             !source.contains("user_decision"),
+3298:             "user_decision parameter must be removed from request_approval"
+3299:         );
+3300:     }
+3301: 
+3302:     #[test]
+3303:     fn p0b_r5_fixture_file_exists() {
+3304:         let fixture =
+3305:             include_str!("../../../../security/contracts/approval_envelope_v1.fixture.json");
+3306:         let parsed: serde_json::Value = serde_json::from_str(fixture).unwrap();
+3307:         assert!(parsed.get("token").is_some());
+3308:         assert!(parsed.get("approvalId").is_some());
+3309:         assert!(parsed.get("callId").is_some());
+3310:         assert!(parsed.get("tool").is_some());
+3311:         assert!(parsed.get("riskLevel").is_some());
+3312:         assert!(parsed.get("commandFamily").is_some());
+3313:         assert!(parsed.get("expiresAtUnixMs").is_some());
+3314:     }
+3315: 
+3316:     #[test]
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3420 ---
+3408:         let python_digest = canonical_input_digest(&python_payload);
+3409:         assert_ne!(
+3410:             approval_digest, python_digest,
+3411:             "Python compatibility payload with confirmed must differ from semantic digest"
+3412:         );
+3413:     }
+3414: 
+3415:     #[test]
+3416:     fn p0b_r6_model_binding_requires_token() {
+3417:         let mut registry = ApprovalRegistry::new();
+3418:         let session = registry.session_id().to_owned();
+3419:         let digest = canonical_input_digest(&json!({"provider_id": "openai-compatible-local"}));
+3420:         let result = registry.execute_approved(
+3421:             "",
+3422:             "model.binding.set",
+3423:             &digest,
+3424:             "/w",
+3425:             TEST_APPROVAL_ID,
+3426:             TEST_CALL_ID,
+3427:             RiskLevel::Guarded,
+3428:             CommandFamily::ModelBindingSet,
+3429:         );
+3430:         let _ = session;
+3431:         assert!(result.is_err(), "empty token must be rejected");
+3432:     }
+3433: 
+3434:     #[test]
+3435:     fn p0b_r6_model_binding_requires_approval_id() {
+3436:         let mut registry = ApprovalRegistry::new();
+3437:         let digest = canonical_input_digest(&json!({"provider_id": "openai-compatible-local"}));
+3438:         let result = registry.execute_approved(
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3438 ---
+3426:             TEST_CALL_ID,
+3427:             RiskLevel::Guarded,
+3428:             CommandFamily::ModelBindingSet,
+3429:         );
+3430:         let _ = session;
+3431:         assert!(result.is_err(), "empty token must be rejected");
+3432:     }
+3433: 
+3434:     #[test]
+3435:     fn p0b_r6_model_binding_requires_approval_id() {
+3436:         let mut registry = ApprovalRegistry::new();
+3437:         let digest = canonical_input_digest(&json!({"provider_id": "openai-compatible-local"}));
+3438:         let result = registry.execute_approved(
+3439:             "lcap_0000000000000000000000000000000000000000000000000000000000000000",
+3440:             "model.binding.set",
+3441:             &digest,
+3442:             "/w",
+3443:             "",
+3444:             TEST_CALL_ID,
+3445:             RiskLevel::Guarded,
+3446:             CommandFamily::ModelBindingSet,
+3447:         );
+3448:         assert!(result.is_err(), "empty approval_id must be rejected");
+3449:     }
+3450: 
+3451:     #[test]
+3452:     fn p0b_r6_model_binding_requires_call_id() {
+3453:         let mut registry = ApprovalRegistry::new();
+3454:         let digest = canonical_input_digest(&json!({"provider_id": "openai-compatible-local"}));
+3455:         let result = registry.execute_approved(
+3456:             "lcap_0000000000000000000000000000000000000000000000000000000000000000",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3455 ---
+3443:             "",
+3444:             TEST_CALL_ID,
+3445:             RiskLevel::Guarded,
+3446:             CommandFamily::ModelBindingSet,
+3447:         );
+3448:         assert!(result.is_err(), "empty approval_id must be rejected");
+3449:     }
+3450: 
+3451:     #[test]
+3452:     fn p0b_r6_model_binding_requires_call_id() {
+3453:         let mut registry = ApprovalRegistry::new();
+3454:         let digest = canonical_input_digest(&json!({"provider_id": "openai-compatible-local"}));
+3455:         let result = registry.execute_approved(
+3456:             "lcap_0000000000000000000000000000000000000000000000000000000000000000",
+3457:             "model.binding.set",
+3458:             &digest,
+3459:             "/w",
+3460:             TEST_APPROVAL_ID,
+3461:             "",
+3462:             RiskLevel::Guarded,
+3463:             CommandFamily::ModelBindingSet,
+3464:         );
+3465:         assert!(result.is_err(), "empty call_id must be rejected");
+3466:     }
+3467: 
+3468:     #[test]
+3469:     fn p0b_r6_model_binding_internal_confirmed_after_consume() {
+3470:         let source = include_str!("control_plane.rs");
+3471:         let fn_start = source
+3472:             .find("pub async fn model_binding_set")
+3473:             .expect("model_binding_set must exist");
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3507 ---
+3495:             digest,
+3496:             "/w",
+3497:             &session,
+3498:             RiskLevel::Guarded,
+3499:             CommandFamily::ModelBindingSet,
+3500:         );
+3501:         let descriptor = test_descriptor();
+3502:         let prompt = ScriptedApprovalPrompt {
+3503:             decision: ApprovalDecision::Reject,
+3504:         };
+3505:         let result = registry.request_with_prompt(scope, &descriptor, &prompt);
+3506:         assert!(result.is_err(), "rejected approval must produce an error");
+3507:         let replay = registry.execute_approved(
+3508:             "lcap_0000000000000000000000000000000000000000000000000000000000000000",
+3509:             "model.binding.set",
+3510:             &digest,
+3511:             "/w",
+3512:             TEST_APPROVAL_ID,
+3513:             TEST_CALL_ID,
+3514:             RiskLevel::Guarded,
+3515:             CommandFamily::ModelBindingSet,
+3516:         );
+3517:         assert!(
+3518:             replay.is_err(),
+3519:             "no token exists after rejection; execution must fail"
+3520:         );
+3521:     }
+3522: 
+3523:     #[test]
+3524:     fn p0b_r6_model_binding_scope_mismatch_never_builds_python_confirmed() {
+3525:         let mut registry = ApprovalRegistry::new();
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3543 ---
+3531:             "/w",
+3532:             &session,
+3533:             RiskLevel::Guarded,
+3534:             CommandFamily::ModelBindingSet,
+3535:         );
+3536:         let descriptor = test_descriptor();
+3537:         let prompt = ScriptedApprovalPrompt {
+3538:             decision: ApprovalDecision::Approve,
+3539:         };
+3540:         let envelope = registry
+3541:             .request_with_prompt(scope, &descriptor, &prompt)
+3542:             .expect("approval must succeed");
+3543:         let result = registry.execute_approved(
+3544:             &envelope.token,
+3545:             "model.binding.set",
+3546:             &digest,
+3547:             "/other-workspace",
+3548:             &envelope.approval_id,
+3549:             &envelope.call_id,
+3550:             RiskLevel::Guarded,
+3551:             CommandFamily::ModelBindingSet,
+3552:         );
+3553:         assert!(
+3554:             result.is_err(),
+3555:             "scope mismatch must prevent execution; no confirmed payload may be built"
+3556:         );
+3557:     }
+3558: 
+3559:     #[test]
+3560:     fn p0b_r6_all_approval_errors_use_exact_mapper() {
+3561:         let source = include_str!("approval_commands.rs");
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3589 ---
+3577:             &session,
+3578:             RiskLevel::Guarded,
+3579:             CommandFamily::ArtifactDownload,
+3580:         );
+3581:         let descriptor = test_descriptor();
+3582:         let prompt = ScriptedApprovalPrompt {
+3583:             decision: ApprovalDecision::Approve,
+3584:         };
+3585:         let envelope = registry
+3586:             .request_with_prompt(scope, &descriptor, &prompt)
+3587:             .unwrap();
+3588:         registry
+3589:             .execute_approved(
+3590:                 &envelope.token,
+3591:                 "artifact.download",
+3592:                 &digest,
+3593:                 "/w",
+3594:                 &envelope.approval_id,
+3595:                 &envelope.call_id,
+3596:                 RiskLevel::Guarded,
+3597:                 CommandFamily::ArtifactDownload,
+3598:             )
+3599:             .unwrap();
+3600:         let replay = registry.execute_approved(
+3601:             &envelope.token,
+3602:             "artifact.download",
+3603:             &digest,
+3604:             "/w",
+3605:             &envelope.approval_id,
+3606:             &envelope.call_id,
+3607:             RiskLevel::Guarded,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3600 ---
+3588:         registry
+3589:             .execute_approved(
+3590:                 &envelope.token,
+3591:                 "artifact.download",
+3592:                 &digest,
+3593:                 "/w",
+3594:                 &envelope.approval_id,
+3595:                 &envelope.call_id,
+3596:                 RiskLevel::Guarded,
+3597:                 CommandFamily::ArtifactDownload,
+3598:             )
+3599:             .unwrap();
+3600:         let replay = registry.execute_approved(
+3601:             &envelope.token,
+3602:             "artifact.download",
+3603:             &digest,
+3604:             "/w",
+3605:             &envelope.approval_id,
+3606:             &envelope.call_id,
+3607:             RiskLevel::Guarded,
+3608:             CommandFamily::ArtifactDownload,
+3609:         );
+3610:         let error = replay.expect_err("replay must fail");
+3611:         assert!(
+3612:             matches!(error, ApprovalError::AlreadyConsumed),
+3613:             "consumed token must produce AlreadyConsumed, not a generic error; got: {:?}",
+3614:             error
+3615:         );
+3616:     }
+3617: 
+3618:     #[test]
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3622 ---
+3610:         let error = replay.expect_err("replay must fail");
+3611:         assert!(
+3612:             matches!(error, ApprovalError::AlreadyConsumed),
+3613:             "consumed token must produce AlreadyConsumed, not a generic error; got: {:?}",
+3614:             error
+3615:         );
+3616:     }
+3617: 
+3618:     #[test]
+3619:     fn p0b_r6_unknown_error_not_generic() {
+3620:         let mut registry = ApprovalRegistry::new();
+3621:         let digest = canonical_input_digest(&json!({"artifact_id": "test"}));
+3622:         let result = registry.execute_approved(
+3623:             "lcap_0000000000000000000000000000000000000000000000000000000000000000",
+3624:             "artifact.download",
+3625:             &digest,
+3626:             "/w",
+3627:             TEST_APPROVAL_ID,
+3628:             TEST_CALL_ID,
+3629:             RiskLevel::Guarded,
+3630:             CommandFamily::ArtifactDownload,
+3631:         );
+3632:         let error = result.expect_err("unknown token must fail");
+3633:         assert!(
+3634:             matches!(error, ApprovalError::TokenNotFound),
+3635:             "unknown token must produce TokenNotFound, not a generic error; got: {:?}",
+3636:             error
+3637:         );
+3638:     }
+3639: 
+3640:     #[test]
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval.rs:3660 ---
+3648:             "/w",
+3649:             &session,
+3650:             RiskLevel::Guarded,
+3651:             CommandFamily::ArtifactDownload,
+3652:         );
+3653:         let descriptor = test_descriptor();
+3654:         let prompt = ScriptedApprovalPrompt {
+3655:             decision: ApprovalDecision::Approve,
+3656:         };
+3657:         let envelope = registry
+3658:             .request_with_prompt(scope, &descriptor, &prompt)
+3659:             .unwrap();
+3660:         let result = registry.execute_approved(
+3661:             &envelope.token,
+3662:             "artifact.download",
+3663:             &digest,
+3664:             "/other-workspace",
+3665:             &envelope.approval_id,
+3666:             &envelope.call_id,
+3667:             RiskLevel::Guarded,
+3668:             CommandFamily::ArtifactDownload,
+3669:         );
+3670:         let error = result.expect_err("scope mismatch must fail");
+3671:         assert!(
+3672:             matches!(error, ApprovalError::WorkspaceMismatch),
+3673:             "scope mismatch must produce WorkspaceMismatch, not a generic error; got: {:?}",
+3674:             error
+3675:         );
+3676:     }
+3677: 
+3678:     #[test]
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:236 ---
+224:             "no_dispatcher",
+225:             "Frontend dispatcher not available",
+226:         ))
+227:     }
+228: }
+229: 
+230: /// Issue a scoped one-time approval token bound to (tool, input digest,
+231: /// workspace, session). Requires an explicit positive user decision and fails
+232: /// closed if no workspace is confirmed (non-workspace operations bind the
+233: /// sentinel scope instead). Returns the plain token string; approval_id and
+234: /// call_id are derived from the token at consume time.
+235: #[tauri::command(async)]
+236: pub fn request_approval(
+237:     state: State<'_, ApprovalState>,
+238:     tool: String,
+239:     input: Value,
+240: ) -> Result<ApprovalEnvelope, BridgeError> {
+241:     let risk_level = risk_level_for_tool(&tool)?;
+242:     let command_family = command_family_for_tool(&tool)
+243:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+244:     let digest = canonical_input_digest(&input);
+245:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+246:     let workspace_guard = state
+247:         .workspace
+248:         .lock()
+249:         .expect("approval workspace lock poisoned");
+250:     let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+251:     let scope = ApprovalScope {
+252:         tool: tool.clone(),
+253:         input_digest: digest,
+254:         workspace,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:276 ---
+264:         risk_level,
+265:         target_summary: serde_json::to_string(&input).unwrap_or_default(),
+266:         side_effect_category: format!("{command_family:?}"),
+267:         destructive: risk_level == RiskLevel::Dangerous,
+268:     };
+269:     let envelope = registry
+270:         .request_with_prompt(scope, &descriptor, state.prompt.as_ref())
+271:         .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+272:     Ok(envelope)
+273: }
+274: 
+275: #[cfg(test)]
+276: fn request_approval_inner(
+277:     state: &ApprovalState,
+278:     tool: String,
+279:     input: Value,
+280: ) -> Result<ApprovalEnvelope, BridgeError> {
+281:     let risk_level = risk_level_for_tool(&tool)?;
+282:     let command_family = command_family_for_tool(&tool)
+283:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+284:     let digest = canonical_input_digest(&input);
+285:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+286:     let workspace_guard = state
+287:         .workspace
+288:         .lock()
+289:         .expect("approval workspace lock poisoned");
+290:     let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+291:     let scope = ApprovalScope {
+292:         tool: tool.clone(),
+293:         input_digest: digest,
+294:         workspace,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:322 ---
+310:         .request_with_prompt(scope, &descriptor, state.prompt.as_ref())
+311:         .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+312:     Ok(envelope)
+313: }
+314: 
+315: /// Atomically validate scope and consume a one-time token, returning an
+316: /// execution grant on success.
+317: ///
+318: /// NOTE (honest boundary): the desktop sidecar exposes no tool.call execution
+319: /// path (filesystem methods are explicitly `unsupported_method`), so this
+320: /// command produces the authoritative grant but does not dispatch to the
+321: /// sidecar. A future tool-execution path must present this grant; there is no
+322: /// bypass around execute_approved.
+323: #[tauri::command]
+324: pub fn execute_approved(
+325:     state: State<'_, ApprovalState>,
+326:     token: String,
+327:     tool: String,
+328:     input: Value,
+329:     approval_id: String,
+330:     call_id: String,
+331: ) -> Result<Value, BridgeError> {
+332:     let risk_level = risk_level_for_tool(&tool)?;
+333:     let command_family = command_family_for_tool(&tool)
+334:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+335:     let digest = canonical_input_digest(&input);
+336:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+337:     let workspace_guard = state
+338:         .workspace
+339:         .lock()
+340:         .expect("approval workspace lock poisoned");
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:324 ---
+312:     Ok(envelope)
+313: }
+314: 
+315: /// Atomically validate scope and consume a one-time token, returning an
+316: /// execution grant on success.
+317: ///
+318: /// NOTE (honest boundary): the desktop sidecar exposes no tool.call execution
+319: /// path (filesystem methods are explicitly `unsupported_method`), so this
+320: /// command produces the authoritative grant but does not dispatch to the
+321: /// sidecar. A future tool-execution path must present this grant; there is no
+322: /// bypass around execute_approved.
+323: #[tauri::command]
+324: pub fn execute_approved(
+325:     state: State<'_, ApprovalState>,
+326:     token: String,
+327:     tool: String,
+328:     input: Value,
+329:     approval_id: String,
+330:     call_id: String,
+331: ) -> Result<Value, BridgeError> {
+332:     let risk_level = risk_level_for_tool(&tool)?;
+333:     let command_family = command_family_for_tool(&tool)
+334:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+335:     let digest = canonical_input_digest(&input);
+336:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+337:     let workspace_guard = state
+338:         .workspace
+339:         .lock()
+340:         .expect("approval workspace lock poisoned");
+341:     let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+342:     let grant = registry
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:343 ---
+331: ) -> Result<Value, BridgeError> {
+332:     let risk_level = risk_level_for_tool(&tool)?;
+333:     let command_family = command_family_for_tool(&tool)
+334:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+335:     let digest = canonical_input_digest(&input);
+336:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+337:     let workspace_guard = state
+338:         .workspace
+339:         .lock()
+340:         .expect("approval workspace lock poisoned");
+341:     let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+342:     let grant = registry
+343:         .execute_approved(
+344:             &token,
+345:             &tool,
+346:             &digest,
+347:             &workspace,
+348:             &approval_id,
+349:             &call_id,
+350:             risk_level,
+351:             command_family,
+352:         )
+353:         .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+354:     if grant.is_expired() {
+355:         return Err(BridgeError::new("grant_expired", "execution grant expired"));
+356:     }
+357:     Ok(json!({
+358:         "grant_id": grant.grant_id,
+359:         "tool": grant.tool,
+360:         "workspace": grant.workspace,
+361:         "session": grant.session,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:366 ---
+354:     if grant.is_expired() {
+355:         return Err(BridgeError::new("grant_expired", "execution grant expired"));
+356:     }
+357:     Ok(json!({
+358:         "grant_id": grant.grant_id,
+359:         "tool": grant.tool,
+360:         "workspace": grant.workspace,
+361:         "session": grant.session,
+362:     }))
+363: }
+364: 
+365: #[cfg(test)]
+366: fn execute_approved_inner(
+367:     state: &ApprovalState,
+368:     token: String,
+369:     tool: String,
+370:     input: Value,
+371:     approval_id: String,
+372:     call_id: String,
+373: ) -> Result<Value, BridgeError> {
+374:     let risk_level = risk_level_for_tool(&tool)?;
+375:     let command_family = command_family_for_tool(&tool)
+376:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+377:     let digest = canonical_input_digest(&input);
+378:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+379:     let workspace_guard = state
+380:         .workspace
+381:         .lock()
+382:         .expect("approval workspace lock poisoned");
+383:     let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+384:     let grant = registry
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:385 ---
+373: ) -> Result<Value, BridgeError> {
+374:     let risk_level = risk_level_for_tool(&tool)?;
+375:     let command_family = command_family_for_tool(&tool)
+376:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+377:     let digest = canonical_input_digest(&input);
+378:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+379:     let workspace_guard = state
+380:         .workspace
+381:         .lock()
+382:         .expect("approval workspace lock poisoned");
+383:     let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+384:     let grant = registry
+385:         .execute_approved(
+386:             &token,
+387:             &tool,
+388:             &digest,
+389:             &workspace,
+390:             &approval_id,
+391:             &call_id,
+392:             risk_level,
+393:             command_family,
+394:         )
+395:         .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+396:     if grant.is_expired() {
+397:         return Err(BridgeError::new("grant_expired", "execution grant expired"));
+398:     }
+399:     Ok(json!({
+400:         "grant_id": grant.grant_id,
+401:         "tool": grant.tool,
+402:         "workspace": grant.workspace,
+403:         "session": grant.session,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:412 ---
+400:         "grant_id": grant.grant_id,
+401:         "tool": grant.tool,
+402:         "workspace": grant.workspace,
+403:         "session": grant.session,
+404:     }))
+405: }
+406: 
+407: /// Validate and consume a one-time approval token for a mutating command.
+408: ///
+409: /// Shared gate used by the guarded/dangerous Tauri commands (artifact
+410: /// acquisition, managed runtime, model binding). Computes the canonical input
+411: /// digest, locks the registry and confirmed workspace, and atomically consumes
+412: /// the token via `execute_approved`. The approval_id and call_id are derived
+413: /// from the token itself; non-workspace operations bind the sentinel scope.
+414: /// Returns the execution grant on success or a typed bridge error with a
+415: /// specific approval error code without performing the guarded action on
+416: /// failure.
+417: pub fn validate_approval_token(
+418:     state: &ApprovalState,
+419:     tool: &str,
+420:     input: &Value,
+421:     token: &str,
+422:     approval_id: &str,
+423:     call_id: &str,
+424: ) -> Result<ExecutionGrant, BridgeError> {
+425:     let risk_level = risk_level_for_tool(tool)?;
+426:     let command_family = command_family_for_tool(tool)
+427:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+428:     let digest = canonical_input_digest(input);
+429:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+430:     let workspace_guard = state
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:436 ---
+424: ) -> Result<ExecutionGrant, BridgeError> {
+425:     let risk_level = risk_level_for_tool(tool)?;
+426:     let command_family = command_family_for_tool(tool)
+427:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+428:     let digest = canonical_input_digest(input);
+429:     let mut registry = state.registry.lock().expect("approval registry poisoned");
+430:     let workspace_guard = state
+431:         .workspace
+432:         .lock()
+433:         .expect("approval workspace lock poisoned");
+434:     let workspace = resolve_approval_workspace(&workspace_guard, tool)?;
+435:     let grant = registry
+436:         .execute_approved(
+437:             token,
+438:             tool,
+439:             &digest,
+440:             &workspace,
+441:             approval_id,
+442:             call_id,
+443:             risk_level,
+444:             command_family,
+445:         )
+446:         .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+447:     if grant.is_expired() {
+448:         return Err(BridgeError::new("grant_expired", "execution grant expired"));
+449:     }
+450:     Ok(grant)
+451: }
+452: 
+453: /// Execute a tool call, dispatching it to the sidecar after authorization.
+454: ///
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:456 ---
+444:             command_family,
+445:         )
+446:         .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+447:     if grant.is_expired() {
+448:         return Err(BridgeError::new("grant_expired", "execution grant expired"));
+449:     }
+450:     Ok(grant)
+451: }
+452: 
+453: /// Execute a tool call, dispatching it to the sidecar after authorization.
+454: ///
+455: /// Read-only tools run without a token. Guarded and dangerous tools require a
+456: /// one-time approval token that is consumed atomically via `execute_approved`
+457: /// BEFORE the sidecar dispatch (INV-APPROVAL-001: no bypass path). The grant and
+458: /// confirmed workspace are forwarded so the sidecar can confine execution to the
+459: /// workspace. Registry/workspace locks are released before the blocking IPC call.
+460: #[tauri::command]
+461: pub fn run_tool_call(
+462:     state: State<'_, ApprovalState>,
+463:     bridge: State<'_, Arc<ControlPlaneBridge>>,
+464:     tool: String,
+465:     input: Value,
+466:     token: Option<String>,
+467:     approval_id: Option<String>,
+468:     call_id: Option<String>,
+469: ) -> Result<Value, BridgeError> {
+470:     activation_gate(is_tool_execution_enabled())?;
+471:     run_tool_call_inner(&state, &bridge, tool, input, token, approval_id, call_id)
+472: }
+473: 
+474: #[allow(clippy::too_many_arguments)]
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:461 ---
+449:     }
+450:     Ok(grant)
+451: }
+452: 
+453: /// Execute a tool call, dispatching it to the sidecar after authorization.
+454: ///
+455: /// Read-only tools run without a token. Guarded and dangerous tools require a
+456: /// one-time approval token that is consumed atomically via `execute_approved`
+457: /// BEFORE the sidecar dispatch (INV-APPROVAL-001: no bypass path). The grant and
+458: /// confirmed workspace are forwarded so the sidecar can confine execution to the
+459: /// workspace. Registry/workspace locks are released before the blocking IPC call.
+460: #[tauri::command]
+461: pub fn run_tool_call(
+462:     state: State<'_, ApprovalState>,
+463:     bridge: State<'_, Arc<ControlPlaneBridge>>,
+464:     tool: String,
+465:     input: Value,
+466:     token: Option<String>,
+467:     approval_id: Option<String>,
+468:     call_id: Option<String>,
+469: ) -> Result<Value, BridgeError> {
+470:     activation_gate(is_tool_execution_enabled())?;
+471:     run_tool_call_inner(&state, &bridge, tool, input, token, approval_id, call_id)
+472: }
+473: 
+474: #[allow(clippy::too_many_arguments)]
+475: fn run_tool_call_inner(
+476:     state: &ApprovalState,
+477:     bridge: &ControlPlaneBridge,
+478:     tool: String,
+479:     input: Value,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:471 ---
+459: /// workspace. Registry/workspace locks are released before the blocking IPC call.
+460: #[tauri::command]
+461: pub fn run_tool_call(
+462:     state: State<'_, ApprovalState>,
+463:     bridge: State<'_, Arc<ControlPlaneBridge>>,
+464:     tool: String,
+465:     input: Value,
+466:     token: Option<String>,
+467:     approval_id: Option<String>,
+468:     call_id: Option<String>,
+469: ) -> Result<Value, BridgeError> {
+470:     activation_gate(is_tool_execution_enabled())?;
+471:     run_tool_call_inner(&state, &bridge, tool, input, token, approval_id, call_id)
+472: }
+473: 
+474: #[allow(clippy::too_many_arguments)]
+475: fn run_tool_call_inner(
+476:     state: &ApprovalState,
+477:     bridge: &ControlPlaneBridge,
+478:     tool: String,
+479:     input: Value,
+480:     token: Option<String>,
+481:     approval_id: Option<String>,
+482:     call_id: Option<String>,
+483: ) -> Result<Value, BridgeError> {
+484:     let risk_level = risk_level_for_tool(&tool)?;
+485:     let command_family = command_family_for_tool(&tool)
+486:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+487:     let digest = canonical_input_digest(&input);
+488:     // Validate all approval material before creating an idempotency entry, so
+489:     // a missing token cannot leave a dangling in-flight logical call.
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:475 ---
+463:     bridge: State<'_, Arc<ControlPlaneBridge>>,
+464:     tool: String,
+465:     input: Value,
+466:     token: Option<String>,
+467:     approval_id: Option<String>,
+468:     call_id: Option<String>,
+469: ) -> Result<Value, BridgeError> {
+470:     activation_gate(is_tool_execution_enabled())?;
+471:     run_tool_call_inner(&state, &bridge, tool, input, token, approval_id, call_id)
+472: }
+473: 
+474: #[allow(clippy::too_many_arguments)]
+475: fn run_tool_call_inner(
+476:     state: &ApprovalState,
+477:     bridge: &ControlPlaneBridge,
+478:     tool: String,
+479:     input: Value,
+480:     token: Option<String>,
+481:     approval_id: Option<String>,
+482:     call_id: Option<String>,
+483: ) -> Result<Value, BridgeError> {
+484:     let risk_level = risk_level_for_tool(&tool)?;
+485:     let command_family = command_family_for_tool(&tool)
+486:         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
+487:     let digest = canonical_input_digest(&input);
+488:     // Validate all approval material before creating an idempotency entry, so
+489:     // a missing token cannot leave a dangling in-flight logical call.
+490:     let approval_fields = require_approval_fields(risk_level, token, approval_id, call_id)?;
+491:     let (grant_id, session, workspace_path, workspace_digest, idempotency_receipt) = {
+492:         let mut registry = state.registry.lock().expect("approval registry poisoned");
+493:         let workspace_guard = state
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:531 ---
+519:                 risk_level,
+520:                 command_family,
+521:             });
+522:         let idempotency_receipt = registry
+523:             .begin_idempotent_call(&idempotency_key)
+524:             .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
+525:         let grant_id: Option<String> = match risk_level {
+526:             RiskLevel::ReadOnly => None,
+527:             RiskLevel::Guarded | RiskLevel::Dangerous => {
+528:                 let (token, approval_id, call_id) = approval_fields
+529:                     .as_ref()
+530:                     .expect("guarded risk requires prevalidated approval fields");
+531:                 match registry.execute_approved(
+532:                     token,
+533:                     &tool,
+534:                     &digest,
+535:                     &workspace.canonical_path,
+536:                     approval_id,
+537:                     call_id,
+538:                     risk_level,
+539:                     command_family,
+540:                 ) {
+541:                     Ok(grant) if grant.is_expired() => {
+542:                         registry.complete_idempotent_call(
+543:                             idempotency_receipt,
+544:                             IdempotencyOutcome::Failed,
+545:                         );
+546:                         return Err(BridgeError::new("grant_expired", "execution grant expired"));
+547:                     }
+548:                     Ok(grant) => Some(grant.grant_id),
+549:                     Err(error) => {
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:776 ---
+764:             call_id: call_id.clone(),
+765:         };
+766:         registry
+767:             .issue_with_token(token.clone(), scope)
+768:             .expect("issue token");
+769:         (token, approval_id, call_id)
+770:     }
+771: 
+772:     // Frozen-contract: disabled activation surfaces feature_disabled via
+773:     // the pure gate. No State, no bridge, no UB.
+774: 
+775:     #[test]
+776:     fn p0b_run_tool_call_rejected_when_disabled() {
+777:         let err = activation_gate(false).expect_err("must be rejected when disabled");
+778:         assert_eq!(err.code, "feature_disabled");
+779:     }
+780: 
+781:     #[test]
+782:     fn p0b_set_workspace_rejected_when_disabled() {
+783:         let err = activation_gate(false).expect_err("must be rejected when disabled");
+784:         assert_eq!(err.code, "feature_disabled");
+785:     }
+786: 
+787:     #[test]
+788:     fn p0b_activation_gate_enabled_allows() {
+789:         assert!(activation_gate(true).is_ok());
+790:         assert!(activation_gate(is_tool_execution_enabled()).is_ok());
+791:     }
+792: 
+793:     #[test]
+794:     fn p0b_execute_approved_cannot_dispatch() {
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:794 ---
+782:     fn p0b_set_workspace_rejected_when_disabled() {
+783:         let err = activation_gate(false).expect_err("must be rejected when disabled");
+784:         assert_eq!(err.code, "feature_disabled");
+785:     }
+786: 
+787:     #[test]
+788:     fn p0b_activation_gate_enabled_allows() {
+789:         assert!(activation_gate(true).is_ok());
+790:         assert!(activation_gate(is_tool_execution_enabled()).is_ok());
+791:     }
+792: 
+793:     #[test]
+794:     fn p0b_execute_approved_cannot_dispatch() {
+795:         let approval_state = test_approval_state_with_workspace();
+796:         let input = json!({"path": "notes.txt"});
+797:         let (token, approval_id, call_id) =
+798:             issue_test_token(&approval_state, "files.write", &input);
+799:         let result = execute_approved_inner(
+800:             &approval_state,
+801:             token,
+802:             "files.write".into(),
+803:             input,
+804:             approval_id,
+805:             call_id,
+806:         );
+807:         let grant = result.expect("grant issued");
+808:         assert!(grant.get("grant_id").and_then(Value::as_str).is_some());
+809:         assert_eq!(grant["tool"], "files.write");
+810:         assert_eq!(grant["workspace"], "C:\\test-workspace");
+811:         assert!(grant.get("session").and_then(Value::as_str).is_some());
+812:     }
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:799 ---
+787:     #[test]
+788:     fn p0b_activation_gate_enabled_allows() {
+789:         assert!(activation_gate(true).is_ok());
+790:         assert!(activation_gate(is_tool_execution_enabled()).is_ok());
+791:     }
+792: 
+793:     #[test]
+794:     fn p0b_execute_approved_cannot_dispatch() {
+795:         let approval_state = test_approval_state_with_workspace();
+796:         let input = json!({"path": "notes.txt"});
+797:         let (token, approval_id, call_id) =
+798:             issue_test_token(&approval_state, "files.write", &input);
+799:         let result = execute_approved_inner(
+800:             &approval_state,
+801:             token,
+802:             "files.write".into(),
+803:             input,
+804:             approval_id,
+805:             call_id,
+806:         );
+807:         let grant = result.expect("grant issued");
+808:         assert!(grant.get("grant_id").and_then(Value::as_str).is_some());
+809:         assert_eq!(grant["tool"], "files.write");
+810:         assert_eq!(grant["workspace"], "C:\\test-workspace");
+811:         assert!(grant.get("session").and_then(Value::as_str).is_some());
+812:     }
+813: 
+814:     #[test]
+815:     fn p0b_confirmed_boolean_does_not_authorize() {
+816:         let input = json!({"path": "notes.txt", "confirmed": true});
+817:         assert_eq!(
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:897 ---
+885:                 .is_none()
+886:         );
+887:     }
+888: 
+889:     #[test]
+890:     fn p0b_token_survives_scope_mismatch() {
+891:         let approval_state = test_approval_state_with_workspace();
+892:         let input = json!({"path": "notes.txt"});
+893:         let (token, approval_id, call_id) =
+894:             issue_test_token(&approval_state, "files.write", &input);
+895:         let digest = canonical_input_digest(&input);
+896:         let mut registry = approval_state.registry.lock().expect("registry lock");
+897:         let mismatch = registry.execute_approved(
+898:             &token,
+899:             "files.delete",
+900:             &digest,
+901:             "C:\\test-workspace",
+902:             &approval_id,
+903:             &call_id,
+904:             RiskLevel::Guarded,
+905:             CommandFamily::ToolFilesystemWrite,
+906:         );
+907:         assert!(matches!(
+908:             mismatch,
+909:             Err(crate::approval::ApprovalError::ToolMismatch)
+910:         ));
+911:         assert_eq!(registry.active_count(), 1);
+912:         let grant = registry
+913:             .execute_approved(
+914:                 &token,
+915:                 "files.write",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:913 ---
+901:             "C:\\test-workspace",
+902:             &approval_id,
+903:             &call_id,
+904:             RiskLevel::Guarded,
+905:             CommandFamily::ToolFilesystemWrite,
+906:         );
+907:         assert!(matches!(
+908:             mismatch,
+909:             Err(crate::approval::ApprovalError::ToolMismatch)
+910:         ));
+911:         assert_eq!(registry.active_count(), 1);
+912:         let grant = registry
+913:             .execute_approved(
+914:                 &token,
+915:                 "files.write",
+916:                 &digest,
+917:                 "C:\\test-workspace",
+918:                 &approval_id,
+919:                 &call_id,
+920:                 RiskLevel::Guarded,
+921:                 CommandFamily::ToolFilesystemWrite,
+922:             )
+923:             .expect("correct tool succeeds");
+924:         assert_eq!(grant.tool, "files.write");
+925:     }
+926: 
+927:     #[test]
+928:     fn p0b_replay_rejected() {
+929:         let approval_state = test_approval_state_with_workspace();
+930:         let input = json!({"path": "notes.txt"});
+931:         let (token, approval_id, call_id) =
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:936 ---
+924:         assert_eq!(grant.tool, "files.write");
+925:     }
+926: 
+927:     #[test]
+928:     fn p0b_replay_rejected() {
+929:         let approval_state = test_approval_state_with_workspace();
+930:         let input = json!({"path": "notes.txt"});
+931:         let (token, approval_id, call_id) =
+932:             issue_test_token(&approval_state, "files.write", &input);
+933:         let digest = canonical_input_digest(&input);
+934:         let mut registry = approval_state.registry.lock().expect("registry lock");
+935:         registry
+936:             .execute_approved(
+937:                 &token,
+938:                 "files.write",
+939:                 &digest,
+940:                 "C:\\test-workspace",
+941:                 &approval_id,
+942:                 &call_id,
+943:                 RiskLevel::Guarded,
+944:                 CommandFamily::ToolFilesystemWrite,
+945:             )
+946:             .expect("first consume succeeds");
+947:         let replay = registry.execute_approved(
+948:             &token,
+949:             "files.write",
+950:             &digest,
+951:             "C:\\test-workspace",
+952:             &approval_id,
+953:             &call_id,
+954:             RiskLevel::Guarded,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:947 ---
+935:         registry
+936:             .execute_approved(
+937:                 &token,
+938:                 "files.write",
+939:                 &digest,
+940:                 "C:\\test-workspace",
+941:                 &approval_id,
+942:                 &call_id,
+943:                 RiskLevel::Guarded,
+944:                 CommandFamily::ToolFilesystemWrite,
+945:             )
+946:             .expect("first consume succeeds");
+947:         let replay = registry.execute_approved(
+948:             &token,
+949:             "files.write",
+950:             &digest,
+951:             "C:\\test-workspace",
+952:             &approval_id,
+953:             &call_id,
+954:             RiskLevel::Guarded,
+955:             CommandFamily::ToolFilesystemWrite,
+956:         );
+957:         assert!(matches!(
+958:             replay,
+959:             Err(crate::approval::ApprovalError::AlreadyConsumed)
+960:         ));
+961:     }
+962: 
+963:     #[test]
+964:     fn p0b_forged_token_rejected() {
+965:         let approval_state = test_approval_state_with_workspace();
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:970 ---
+958:             replay,
+959:             Err(crate::approval::ApprovalError::AlreadyConsumed)
+960:         ));
+961:     }
+962: 
+963:     #[test]
+964:     fn p0b_forged_token_rejected() {
+965:         let approval_state = test_approval_state_with_workspace();
+966:         let input = json!({});
+967:         let digest = canonical_input_digest(&input);
+968:         let mut registry = approval_state.registry.lock().expect("registry lock");
+969:         let forged_lcap = format!("lcap_{}", "00".repeat(32));
+970:         let result_lcap = registry.execute_approved(
+971:             &forged_lcap,
+972:             "files.read",
+973:             &digest,
+974:             "C:\\test-workspace",
+975:             TEST_APPROVAL_ID,
+976:             TEST_CALL_ID,
+977:             RiskLevel::ReadOnly,
+978:             CommandFamily::ToolFilesystemRead,
+979:         );
+980:         assert!(matches!(
+981:             result_lcap,
+982:             Err(crate::approval::ApprovalError::TokenNotFound)
+983:         ));
+984:         let forged_apt = format!("apt_{}", "00".repeat(32));
+985:         let result_apt = registry.execute_approved(
+986:             &forged_apt,
+987:             "files.read",
+988:             &digest,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:985 ---
+973:             &digest,
+974:             "C:\\test-workspace",
+975:             TEST_APPROVAL_ID,
+976:             TEST_CALL_ID,
+977:             RiskLevel::ReadOnly,
+978:             CommandFamily::ToolFilesystemRead,
+979:         );
+980:         assert!(matches!(
+981:             result_lcap,
+982:             Err(crate::approval::ApprovalError::TokenNotFound)
+983:         ));
+984:         let forged_apt = format!("apt_{}", "00".repeat(32));
+985:         let result_apt = registry.execute_approved(
+986:             &forged_apt,
+987:             "files.read",
+988:             &digest,
+989:             "C:\\test-workspace",
+990:             TEST_APPROVAL_ID,
+991:             TEST_CALL_ID,
+992:             RiskLevel::ReadOnly,
+993:             CommandFamily::ToolFilesystemRead,
+994:         );
+995:         assert!(matches!(
+996:             result_apt,
+997:             Err(crate::approval::ApprovalError::InvalidToken)
+998:         ));
+999:     }
+1000: 
+1001:     #[test]
+1002:     fn p0b_concurrent_exactly_one_succeeds() {
+1003:         let registry = Arc::new(Mutex::new(ApprovalRegistry::new()));
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1024 ---
+1012:                 session: reg.session_id().to_owned(),
+1013:                 risk_level: RiskLevel::Guarded,
+1014:                 command_family: CommandFamily::ToolFilesystemWrite,
+1015:                 approval_id: TEST_APPROVAL_ID.to_string(),
+1016:                 call_id: TEST_CALL_ID.to_string(),
+1017:             };
+1018:             reg.issue(scope).expect("issue token")
+1019:         };
+1020:         let registry_a = Arc::clone(&registry);
+1021:         let token_a = token.clone();
+1022:         let handle_a = std::thread::spawn(move || {
+1023:             let mut reg = registry_a.lock().expect("registry lock");
+1024:             reg.execute_approved(
+1025:                 &token_a,
+1026:                 "files.write",
+1027:                 &digest,
+1028:                 "C:\\test-workspace",
+1029:                 TEST_APPROVAL_ID,
+1030:                 TEST_CALL_ID,
+1031:                 RiskLevel::Guarded,
+1032:                 CommandFamily::ToolFilesystemWrite,
+1033:             )
+1034:         });
+1035:         let registry_b = Arc::clone(&registry);
+1036:         let token_b = token;
+1037:         let handle_b = std::thread::spawn(move || {
+1038:             let mut reg = registry_b.lock().expect("registry lock");
+1039:             reg.execute_approved(
+1040:                 &token_b,
+1041:                 "files.write",
+1042:                 &digest,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1039 ---
+1027:                 &digest,
+1028:                 "C:\\test-workspace",
+1029:                 TEST_APPROVAL_ID,
+1030:                 TEST_CALL_ID,
+1031:                 RiskLevel::Guarded,
+1032:                 CommandFamily::ToolFilesystemWrite,
+1033:             )
+1034:         });
+1035:         let registry_b = Arc::clone(&registry);
+1036:         let token_b = token;
+1037:         let handle_b = std::thread::spawn(move || {
+1038:             let mut reg = registry_b.lock().expect("registry lock");
+1039:             reg.execute_approved(
+1040:                 &token_b,
+1041:                 "files.write",
+1042:                 &digest,
+1043:                 "C:\\test-workspace",
+1044:                 TEST_APPROVAL_ID,
+1045:                 TEST_CALL_ID,
+1046:                 RiskLevel::Guarded,
+1047:                 CommandFamily::ToolFilesystemWrite,
+1048:             )
+1049:         });
+1050:         let result_a = handle_a.join().expect("thread a join");
+1051:         let result_b = handle_b.join().expect("thread b join");
+1052:         assert_ne!(
+1053:             result_a.is_ok(),
+1054:             result_b.is_ok(),
+1055:             "exactly one must succeed"
+1056:         );
+1057:     }
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1151 ---
+1139:             &call_id,
+1140:         );
+1141:         assert!(result.is_ok());
+1142:     }
+1143: 
+1144:     #[test]
+1145:     fn p0b_r4_token_syntax_exact_69_chars() {
+1146:         let approval_state = test_approval_state_with_workspace();
+1147:         let digest = canonical_input_digest(&json!({}));
+1148:         let mut registry = approval_state.registry.lock().expect("registry lock");
+1149:         let short_token = format!("lcap_{}", "a".repeat(63));
+1150:         assert_eq!(short_token.len(), 68);
+1151:         let result = registry.execute_approved(
+1152:             &short_token,
+1153:             "files.read",
+1154:             &digest,
+1155:             "C:\\test-workspace",
+1156:             TEST_APPROVAL_ID,
+1157:             TEST_CALL_ID,
+1158:             RiskLevel::ReadOnly,
+1159:             CommandFamily::ToolFilesystemRead,
+1160:         );
+1161:         assert!(
+1162:             matches!(&result, Err(crate::approval::ApprovalError::InvalidToken)),
+1163:             "token with wrong length must be InvalidToken, got {result:?}"
+1164:         );
+1165:         let long_token = format!("lcap_{}", "a".repeat(65));
+1166:         assert_eq!(long_token.len(), 70);
+1167:         let result = registry.execute_approved(
+1168:             &long_token,
+1169:             "files.read",
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1167 ---
+1155:             "C:\\test-workspace",
+1156:             TEST_APPROVAL_ID,
+1157:             TEST_CALL_ID,
+1158:             RiskLevel::ReadOnly,
+1159:             CommandFamily::ToolFilesystemRead,
+1160:         );
+1161:         assert!(
+1162:             matches!(&result, Err(crate::approval::ApprovalError::InvalidToken)),
+1163:             "token with wrong length must be InvalidToken, got {result:?}"
+1164:         );
+1165:         let long_token = format!("lcap_{}", "a".repeat(65));
+1166:         assert_eq!(long_token.len(), 70);
+1167:         let result = registry.execute_approved(
+1168:             &long_token,
+1169:             "files.read",
+1170:             &digest,
+1171:             "C:\\test-workspace",
+1172:             TEST_APPROVAL_ID,
+1173:             TEST_CALL_ID,
+1174:             RiskLevel::ReadOnly,
+1175:             CommandFamily::ToolFilesystemRead,
+1176:         );
+1177:         assert!(
+1178:             matches!(&result, Err(crate::approval::ApprovalError::InvalidToken)),
+1179:             "token with wrong length must be InvalidToken, got {result:?}"
+1180:         );
+1181:     }
+1182: 
+1183:     #[test]
+1184:     fn p0b_r4_token_syntax_rejects_uppercase_hex() {
+1185:         let approval_state = test_approval_state_with_workspace();
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1190 ---
+1178:             matches!(&result, Err(crate::approval::ApprovalError::InvalidToken)),
+1179:             "token with wrong length must be InvalidToken, got {result:?}"
+1180:         );
+1181:     }
+1182: 
+1183:     #[test]
+1184:     fn p0b_r4_token_syntax_rejects_uppercase_hex() {
+1185:         let approval_state = test_approval_state_with_workspace();
+1186:         let digest = canonical_input_digest(&json!({}));
+1187:         let mut registry = approval_state.registry.lock().expect("registry lock");
+1188:         let upper_token = format!("lcap_{}", "A".repeat(64));
+1189:         assert_eq!(upper_token.len(), 69);
+1190:         let result = registry.execute_approved(
+1191:             &upper_token,
+1192:             "files.read",
+1193:             &digest,
+1194:             "C:\\test-workspace",
+1195:             TEST_APPROVAL_ID,
+1196:             TEST_CALL_ID,
+1197:             RiskLevel::ReadOnly,
+1198:             CommandFamily::ToolFilesystemRead,
+1199:         );
+1200:         assert!(
+1201:             matches!(&result, Err(crate::approval::ApprovalError::InvalidToken)),
+1202:             "uppercase hex token must be InvalidToken, got {result:?}"
+1203:         );
+1204:     }
+1205: 
+1206:     #[test]
+1207:     fn p0b_r5_request_approval_returns_envelope() {
+1208:         let approval_state = test_approval_state_with_workspace();
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1207 ---
+1195:             TEST_APPROVAL_ID,
+1196:             TEST_CALL_ID,
+1197:             RiskLevel::ReadOnly,
+1198:             CommandFamily::ToolFilesystemRead,
+1199:         );
+1200:         assert!(
+1201:             matches!(&result, Err(crate::approval::ApprovalError::InvalidToken)),
+1202:             "uppercase hex token must be InvalidToken, got {result:?}"
+1203:         );
+1204:     }
+1205: 
+1206:     #[test]
+1207:     fn p0b_r5_request_approval_returns_envelope() {
+1208:         let approval_state = test_approval_state_with_workspace();
+1209:         let envelope = request_approval_inner(
+1210:             &approval_state,
+1211:             "files.write".into(),
+1212:             json!({"path": "notes.txt"}),
+1213:         )
+1214:         .expect("scripted approve issues envelope");
+1215:         assert_eq!(envelope.token.len(), 69);
+1216:         assert!(envelope.token.starts_with("lcap_"));
+1217:         assert!(validate_token_syntax(&envelope.token));
+1218:         assert!(validate_approval_id_syntax(&envelope.approval_id));
+1219:         assert!(validate_call_id_syntax(&envelope.call_id));
+1220:         assert_eq!(envelope.tool, "files.write");
+1221:         assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+1222:         assert_eq!(envelope.command_family, CommandFamily::ToolFilesystemWrite);
+1223:     }
+1224: 
+1225:     #[test]
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1209 ---
+1197:             RiskLevel::ReadOnly,
+1198:             CommandFamily::ToolFilesystemRead,
+1199:         );
+1200:         assert!(
+1201:             matches!(&result, Err(crate::approval::ApprovalError::InvalidToken)),
+1202:             "uppercase hex token must be InvalidToken, got {result:?}"
+1203:         );
+1204:     }
+1205: 
+1206:     #[test]
+1207:     fn p0b_r5_request_approval_returns_envelope() {
+1208:         let approval_state = test_approval_state_with_workspace();
+1209:         let envelope = request_approval_inner(
+1210:             &approval_state,
+1211:             "files.write".into(),
+1212:             json!({"path": "notes.txt"}),
+1213:         )
+1214:         .expect("scripted approve issues envelope");
+1215:         assert_eq!(envelope.token.len(), 69);
+1216:         assert!(envelope.token.starts_with("lcap_"));
+1217:         assert!(validate_token_syntax(&envelope.token));
+1218:         assert!(validate_approval_id_syntax(&envelope.approval_id));
+1219:         assert!(validate_call_id_syntax(&envelope.call_id));
+1220:         assert_eq!(envelope.tool, "files.write");
+1221:         assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+1222:         assert_eq!(envelope.command_family, CommandFamily::ToolFilesystemWrite);
+1223:     }
+1224: 
+1225:     #[test]
+1226:     fn p0b_r5_request_approval_rejected_by_prompt() {
+1227:         let approval_state = ApprovalState {
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1226 ---
+1214:         .expect("scripted approve issues envelope");
+1215:         assert_eq!(envelope.token.len(), 69);
+1216:         assert!(envelope.token.starts_with("lcap_"));
+1217:         assert!(validate_token_syntax(&envelope.token));
+1218:         assert!(validate_approval_id_syntax(&envelope.approval_id));
+1219:         assert!(validate_call_id_syntax(&envelope.call_id));
+1220:         assert_eq!(envelope.tool, "files.write");
+1221:         assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+1222:         assert_eq!(envelope.command_family, CommandFamily::ToolFilesystemWrite);
+1223:     }
+1224: 
+1225:     #[test]
+1226:     fn p0b_r5_request_approval_rejected_by_prompt() {
+1227:         let approval_state = ApprovalState {
+1228:             registry: Mutex::new(ApprovalRegistry::new()),
+1229:             workspace: Mutex::new(Some(WorkspaceIdentity {
+1230:                 canonical_path: "C:\\test-workspace".to_string(),
+1231:                 digest: "abcd1234".to_string(),
+1232:             })),
+1233:             prompt: Arc::new(ScriptedApprovalPrompt {
+1234:                 decision: ApprovalDecision::Reject,
+1235:             }),
+1236:             dispatcher: None,
+1237:         };
+1238:         let result = request_approval_inner(
+1239:             &approval_state,
+1240:             "files.write".into(),
+1241:             json!({"path": "notes.txt"}),
+1242:         );
+1243:         let error = result.expect_err("rejected prompt must fail");
+1244:         assert_eq!(error.code, "approval_rejected");
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1238 ---
+1226:     fn p0b_r5_request_approval_rejected_by_prompt() {
+1227:         let approval_state = ApprovalState {
+1228:             registry: Mutex::new(ApprovalRegistry::new()),
+1229:             workspace: Mutex::new(Some(WorkspaceIdentity {
+1230:                 canonical_path: "C:\\test-workspace".to_string(),
+1231:                 digest: "abcd1234".to_string(),
+1232:             })),
+1233:             prompt: Arc::new(ScriptedApprovalPrompt {
+1234:                 decision: ApprovalDecision::Reject,
+1235:             }),
+1236:             dispatcher: None,
+1237:         };
+1238:         let result = request_approval_inner(
+1239:             &approval_state,
+1240:             "files.write".into(),
+1241:             json!({"path": "notes.txt"}),
+1242:         );
+1243:         let error = result.expect_err("rejected prompt must fail");
+1244:         assert_eq!(error.code, "approval_rejected");
+1245:     }
+1246: 
+1247:     #[test]
+1248:     fn p0b_r4_non_workspace_operations_use_sentinel() {
+1249:         let approval_state = ApprovalState {
+1250:             registry: Mutex::new(ApprovalRegistry::new()),
+1251:             workspace: Mutex::new(None),
+1252:             prompt: Arc::new(ScriptedApprovalPrompt {
+1253:                 decision: ApprovalDecision::Approve,
+1254:             }),
+1255:             dispatcher: None,
+1256:         };
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1303 ---
+1291:     #[test]
+1292:     fn p0b_import_custom_model_binds_sentinel_workspace() {
+1293:         let approval_state = ApprovalState {
+1294:             registry: Mutex::new(ApprovalRegistry::new()),
+1295:             workspace: Mutex::new(None),
+1296:             prompt: Arc::new(ScriptedApprovalPrompt {
+1297:                 decision: ApprovalDecision::Approve,
+1298:             }),
+1299:             dispatcher: None,
+1300:         };
+1301:         let input = json!({"source_path": "model.gguf", "filename": "model.gguf"});
+1302: 
+1303:         let envelope = request_approval_inner(
+1304:             &approval_state,
+1305:             "import_custom_model".to_string(),
+1306:             input.clone(),
+1307:         )
+1308:         .expect("request_approval should succeed with no workspace");
+1309: 
+1310:         assert_eq!(envelope.tool, "import_custom_model");
+1311:         assert_eq!(envelope.command_family, CommandFamily::ArtifactDownload);
+1312:         assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+1313: 
+1314:         let grant = validate_approval_token(
+1315:             &approval_state,
+1316:             "import_custom_model",
+1317:             &input,
+1318:             &envelope.token,
+1319:             &envelope.approval_id,
+1320:             &envelope.call_id,
+1321:         )
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\approval_commands.rs:1308 ---
+1296:             prompt: Arc::new(ScriptedApprovalPrompt {
+1297:                 decision: ApprovalDecision::Approve,
+1298:             }),
+1299:             dispatcher: None,
+1300:         };
+1301:         let input = json!({"source_path": "model.gguf", "filename": "model.gguf"});
+1302: 
+1303:         let envelope = request_approval_inner(
+1304:             &approval_state,
+1305:             "import_custom_model".to_string(),
+1306:             input.clone(),
+1307:         )
+1308:         .expect("request_approval should succeed with no workspace");
+1309: 
+1310:         assert_eq!(envelope.tool, "import_custom_model");
+1311:         assert_eq!(envelope.command_family, CommandFamily::ArtifactDownload);
+1312:         assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+1313: 
+1314:         let grant = validate_approval_token(
+1315:             &approval_state,
+1316:             "import_custom_model",
+1317:             &input,
+1318:             &envelope.token,
+1319:             &envelope.approval_id,
+1320:             &envelope.call_id,
+1321:         )
+1322:         .expect("validate_approval_token should succeed");
+1323: 
+1324:         assert_eq!(grant.workspace, NON_WORKSPACE_SENTINEL);
+1325:     }
+1326: 
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:23 ---
+11: mod hf_catalog;
+12: mod ipc;
+13: mod knowledge;
+14: mod managed_runtime;
+15: mod single_instance;
+16: mod skills;
+17: mod startup;
+18: mod supervisor;
+19: mod windows_job;
+20: mod workspace;
+21: 
+22: use approval_commands::{
+23:     execute_approved, request_approval, resolve_tool_approval, run_tool_call, set_workspace,
+24:     ApprovalState,
+25: };
+26: use artifact_acquisition::{
+27:     cancel_artifact_download, get_artifact_download_state, list_approved_downloadable_artifacts,
+28:     remove_managed_model, start_approved_artifact_download, ArtifactAcquisitionManager,
+29: };
+30: use artifact_trust::{
+31:     get_model_storage_info, import_custom_model, managed_artifact_trust_bundle,
+32:     managed_artifact_validation_status, managed_installed_artifacts, managed_model_catalog,
+33:     managed_model_readiness, managed_runtime_catalog, open_model_storage_folder,
+34:     ArtifactTrustService,
+35: };
+36: use control_plane::{
+37:     control_plane_bootstrap, control_plane_cancel_turn, control_plane_close_session,
+38:     control_plane_create_session, control_plane_create_thread, control_plane_get_turn_status,
+39:     control_plane_start_mock_turn, knowledge_review_decision_create, knowledge_review_get,
+40:     knowledge_review_list, knowledge_review_refresh, knowledge_review_snapshot, model_binding_set,
+41:     model_gateway_catalog, model_gateway_list_models, model_gateway_probe, model_turn_cancel,
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:271 ---
+259:             start_approved_artifact_download,
+260:             get_artifact_download_state,
+261:             cancel_artifact_download,
+262:             remove_managed_model,
+263:             managed_runtime_start,
+264:             managed_runtime_stop,
+265:             managed_runtime_logs,
+266:             files_capability_status,
+267:             select_files,
+268:             list_selected_files,
+269:             preview_selected_file,
+270:             forget_selected_file,
+271:             request_approval,
+272:             execute_approved,
+273:             resolve_tool_approval,
+274:             run_tool_call,
+275:             scan_hardware,
+276:             hf_search_models,
+277:             hf_list_repo_files,
+278:             set_workspace,
+279:             skills_list,
+280:             skills_install,
+281:             skills_enable,
+282:             skills_disable,
+283:             skills_uninstall
+284:         ])
+285:         .run(tauri::generate_context!());
+286: 
+287:     if run_result.is_err() {
+288:         startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_202");
+289:     }
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:272 ---
+260:             get_artifact_download_state,
+261:             cancel_artifact_download,
+262:             remove_managed_model,
+263:             managed_runtime_start,
+264:             managed_runtime_stop,
+265:             managed_runtime_logs,
+266:             files_capability_status,
+267:             select_files,
+268:             list_selected_files,
+269:             preview_selected_file,
+270:             forget_selected_file,
+271:             request_approval,
+272:             execute_approved,
+273:             resolve_tool_approval,
+274:             run_tool_call,
+275:             scan_hardware,
+276:             hf_search_models,
+277:             hf_list_repo_files,
+278:             set_workspace,
+279:             skills_list,
+280:             skills_install,
+281:             skills_enable,
+282:             skills_disable,
+283:             skills_uninstall
+284:         ])
+285:         .run(tauri::generate_context!());
+286: 
+287:     if run_result.is_err() {
+288:         startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_202");
+289:     }
+290: }
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\lib.rs:274 ---
+262:             remove_managed_model,
+263:             managed_runtime_start,
+264:             managed_runtime_stop,
+265:             managed_runtime_logs,
+266:             files_capability_status,
+267:             select_files,
+268:             list_selected_files,
+269:             preview_selected_file,
+270:             forget_selected_file,
+271:             request_approval,
+272:             execute_approved,
+273:             resolve_tool_approval,
+274:             run_tool_call,
+275:             scan_hardware,
+276:             hf_search_models,
+277:             hf_list_repo_files,
+278:             set_workspace,
+279:             skills_list,
+280:             skills_install,
+281:             skills_enable,
+282:             skills_disable,
+283:             skills_uninstall
+284:         ])
+285:         .run(tauri::generate_context!());
+286: 
+287:     if run_result.is_err() {
+288:         startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_202");
+289:     }
+290: }
+--- C:\Users\DNS\Documents\LocalComet-build-week-clean\desktop\localcomet-desktop\src-tauri\src\workspace.rs:215 ---
+203:         let token = registry.issue(scope).unwrap();
+204:         assert_eq!(registry.active_count(), 1);
+205: 
+206:         let new_identity =
+207:             change_workspace(&std::env::temp_dir(), &mut registry, &Some(ws_a)).unwrap();
+208: 
+209:         assert_eq!(registry.active_count(), 0);
+210:         assert!(!new_identity.canonical_path.is_empty());
+211:         assert!(!new_identity.digest.is_empty());
+212: 
+213:         let digest = canonical_input_digest(&serde_json::json!({"x": 1}));
+214:         let err = registry
+215:             .execute_approved(
+216:                 &token,
+217:                 "files.patch",
+218:                 &digest,
+219:                 "/workspace-a",
+220:                 "appr_00000000000000000000000000000000",
+221:                 "call_00000000000000000000000000000000",
+222:                 RiskLevel::Guarded,
+223:                 CommandFamily::ToolFilesystemWrite,
+224:             )
+225:             .unwrap_err();
+226:         assert!(matches!(err, crate::approval::ApprovalError::TokenNotFound));
+227:     }
+228: 
+229:     #[test]
+230:     fn workspace_digest_is_deterministic() {
+231:         let d1 = workspace_digest(Path::new("/some/path"));
+232:         let d2 = workspace_digest(Path::new("/some/path"));
+233:         assert_eq!(d1, d2);

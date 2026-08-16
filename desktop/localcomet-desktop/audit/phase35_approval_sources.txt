@@ -1,0 +1,12 @@
+C:\Users\DNS\AppData\Local\Temp\scan_approval_sources.ps1:2 знак:24
++ $patterns = @('Р?Р?С?С'С?С?Р?РчР?С'', 'Р?Р?Р+Р?С╪Р?С<Рч', 'Р?Р?Р?С'Р? ...
++                        ~~~~~~~~~~~~~
+Непредвиденная лексема "С?С?Р?РчР?С''" в выражении или операторе.
+C:\Users\DNS\AppData\Local\Temp\scan_approval_sources.ps1:2 знак:37
++ $patterns = @('Р?Р?С?С'С?С?Р?РчР?С'', 'Р?Р?Р+Р?С╪Р?С<Рч', 'Р?Р?Р?С'Р? ...
++                                     ~
+Отсутствует аргумент в списке параметров.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordEx 
+   ception
+    + FullyQualifiedErrorId : UnexpectedToken
+ 

@@ -608,12 +608,15 @@ def synchronize_runtime(source_root: Path, paths: RuntimePaths, state: dict[str,
 
 
 def _packaging_helpers():
-    try:
-        from tools import build_up00_windows_installer as packaging
-    except ModuleNotFoundError as exc:
-        if exc.name != "tools":
-            raise
-        import build_up00_windows_installer as packaging
+    """Load the repository packaging helper by path, not by ambiguous package name."""
+    import importlib.util
+
+    module_path = Path(__file__).resolve().with_name("build_up00_windows_installer.py")
+    spec = importlib.util.spec_from_file_location("localcomet_build_up00_windows_installer", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load packaging helper from {module_path}")
+    packaging = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(packaging)
     return packaging
 
 
@@ -1092,8 +1095,48 @@ def print_startup_summary(
     print("Starting LocalComet...")
 
 
+def ensure_runtime_python(source_root: Path, *, script_path: Path | None = None) -> None:
+    """Re-exec the launcher with the CPython ABI declared by the runtime manifest."""
+    if os.environ.get("LOCALCOMET_ABI_REEXEC") == "1":
+        return
+    manifest_path = source_root / "desktop" / "localcomet-desktop" / "src-tauri" / "up00-runtime-manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        python_spec = manifest["python"]
+        required = (int(python_spec["major"]), int(python_spec["minor"]))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise LauncherHold(f"runtime Python manifest is unreadable: {exc}") from exc
+    actual = (sys.version_info.major, sys.version_info.minor)
+    if required == actual:
+        return
+    script = (script_path or Path(__file__)).resolve()
+    override = os.environ.get("LOCALCOMET_RUNTIME_PYTHON")
+    direct_candidates = [
+        override,
+        shutil.which(f"python{required[0]}.{required[1]}"),
+        shutil.which(f"python{required[0]}{required[1]}"),
+        str(Path(sys.executable).with_name(f"python{required[0]}.{required[1]}.exe")),
+        str(Path(sys.executable).with_name(f"python{required[0]}{required[1]}.exe")),
+        str(Path(os.environ.get("LOCALAPPDATA", "")) / "Python" / "bin" / f"python{required[0]}.{required[1]}.exe"),
+        str(Path(os.environ.get("LOCALAPPDATA", "")) / "Python" / "pythoncore-{0}.{1}-64" / "python.exe".format(*required)),
+    ]
+    interpreter = next((Path(item) for item in direct_candidates if item and Path(item).is_file()), None)
+    command: list[str]
+    if interpreter is not None:
+        command = [str(interpreter), str(script), *sys.argv[1:]]
+    else:
+        py_launcher = shutil.which("py") if os.name == "nt" else None
+        if not py_launcher:
+            raise LauncherHold(f"CPython ABI mismatch: required {required[0]}.{required[1]}, current {actual[0]}.{actual[1]}; install the required interpreter or set LOCALCOMET_RUNTIME_PYTHON")
+        command = [py_launcher, f"-{required[0]}.{required[1]}", str(script), *sys.argv[1:]]
+    os.environ["LOCALCOMET_ABI_REEXEC"] = "1"
+    print(f"Re-launching LocalComet with CPython {required[0]}.{required[1]} for the packaged runtime")
+    completed = subprocess.run(command, cwd=str(source_root), env=os.environ.copy(), check=False)
+    raise SystemExit(completed.returncode)
+
 def main() -> int:
     source_root = source_root_from_launcher()
+    ensure_runtime_python(source_root)
     log_path: Path | None = None
     try:
         validate_source_layout(source_root)

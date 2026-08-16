@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -77,6 +78,22 @@ def sha256_file(path: Path) -> str:
 
 def utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def ensure_bundle_runtime(root: Path) -> None:
+    launcher_path = root / "tools" / "launch_localcomet_dev.py"
+    spec = importlib.util.spec_from_file_location("localcomet_launcher_helpers", launcher_path)
+    if spec is None or spec.loader is None:
+        raise PackagingHold("LocalComet launcher helpers could not be loaded")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    try:
+        module.ensure_runtime_python(root, script_path=Path(__file__).resolve())
+    except SystemExit:
+        raise
+    except Exception as exc:
+        raise PackagingHold(str(exc)) from exc
 
 
 def load_runtime_manifest(root: Path) -> dict[str, object]:
@@ -356,6 +373,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     root = repository_root()
     try:
+        ensure_bundle_runtime(root)
         commit = require_clean_feature_branch(root)
         generated_root = require_within(root / GENERATED_ROOT, root, "generated root")
         generated_root.mkdir(parents=True, exist_ok=True)

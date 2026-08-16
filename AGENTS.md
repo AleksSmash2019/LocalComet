@@ -61,9 +61,8 @@ Python:
     python scripts/refresh_evidence.py
     python scripts/check_evidence_provenance.py
 
-Block 3 stop point (2026-08-01): **MVP-P0-C-A2 PASSED**.
-Tool execution activation (`TOOL_EXECUTION_ACTIVATION_ENABLED=true`) is now unblocked.
-Block 3 orchestration and live tool execution can now be resumed and built out.
+Block 3 orchestration and live tool execution fully implemented and active.
+Computer Use permissions and delegation securely wired through UI (uiPreferences.ts) -> Rust Control Plane -> Python Sidecar.
 
 Real-sidecar gate — обязателен в CI с явно заданными
 LOCALCOMET_TEST_PROJECT_ROOT, LOCALCOMET_TEST_PYTHON и
@@ -72,18 +71,38 @@ LOCALCOMET_REQUIRE_REAL_SIDECAR=1.
 а не на venv-шим (venv\Scripts\python.exe при spawn через CreateProcess
 с env_clear мгновенно умирает с "Unable to create process", ломая
 real-sidecar тесты в ExitedBeforeReady вместо ReadinessTimeout).
+Sidecar test runtime на Windows: разворачивается в %LOCALAPPDATA%\LocalComet\DevRuntime
+(ADR-003) через tools/launch_localcomet_dev.py; системный Python — через py launcher
+(например C:\Users\<user>\AppData\Local\Python\pythoncore-3.14-64\python.exe).
+Без LOCALCOMET_REQUIRE_REAL_SIDECAR гейт завершается с кодом 2 (не запущен), а не ложным зелёным.
 
     python scripts/check_real_sidecar_tests.py
 
-Проверенный базовый уровень (13.08.2026, прогон OpenCode после bundle refresh
-и фикса real-sidecar env):
+Проверенный базовый уровень (15.08.2026, аудит и исправление B1-B8: binding runtime_id
+в approval digest и start, fmt, watchdog 615s, ignore dump_canonical_catalog,
+computerUse deny-by-default, CSP без внешних шрифтов):
+
+- svelte-check: 0 ошибок, 0 предупреждений
+- vitest: 398 тестов пройдено
+- Rust: 512 passed, 0 failed, 7 ignored; fmt и clippy -D warnings зелёные
+- trust-chain: 15 файлов проходят byte invariants
+- command parity: 58 команд зарегистрированы и вызываются
+- tool risk registry: 7 console tools и 11 sidecar tools покрыты, 19 записей валидны
+- INV-UI-001: 97 frontend-файлов без fake-state violations
+- bundle parity: 146 shipped modules совпадают с source в обеих runtime locations
+- ADR-015 Python parity: 67 passed, 1 skipped (Block 3/4 iteration limit)
+- CLI smoke: 8 passed, 0 failed
+- real-sidecar gate (CI env, системный Python): green
+- evidence provenance: 4 evidence files fresh and intact (tree=82ea233e90459bf8...)
+
+Проверенный базовый уровень (14.08.2026, прогон после завершения интеграции Computer Use и Orchestration Loop):
 
 - svelte-check: 0 ошибок, 1 предупреждений
 - vitest: 389 тестов пройдено, 1 skipped
-- Rust: 504 passed, 0 failed; fmt и clippy -D warnings зелёные
+- Rust: 511 passed, 0 failed; fmt и clippy -D warnings зелёные
 - trust-chain: 15 файлов проходят byte invariants
 - command parity: 56 команд зарегистрированы и вызываются
-- tool risk registry: 7 console tools и 10 sidecar tools покрыты, 18 записей валидны
+- tool risk registry: 7 console tools и 11 sidecar tools покрыты, 19 записей валидны
 - INV-UI-001: 97 frontend-файла без fake-state violations
 - bundle parity: 146 shipped modules совпадают с source в обеих runtime locations
 - ADR-015 Python parity: 67 passed, 1 skipped (Block 3/4 iteration limit)

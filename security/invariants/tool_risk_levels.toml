@@ -124,3 +124,9 @@ name = "import_custom_model"
 risk_level = "guarded"
 requires_approval = true
 implementation = "src-tauri::import_custom_model"
+
+[[tools]]
+name = "system.time"
+risk_level = "read_only"
+requires_approval = false
+implementation = "modules/tool_execution_ru.py::_system_time"

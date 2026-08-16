@@ -109,6 +109,7 @@ function seedReadyManagedModel(): void {
       state: 'Ready',
       installation: 'Installed',
       runtime_version: 'b10068',
+      runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap',
       runtime_instance_id: RUNTIME_INSTANCE_ID,
       runtime_instance_fingerprint: 'e'.repeat(64),
       model_id: MODEL_ID,
@@ -116,7 +117,8 @@ function seedReadyManagedModel(): void {
       binding_fingerprint: ATTACH_FINGERPRINT,
       model_state: 'Ready',
       inference_ready: true,
-      last_error: null
+      last_error: null,
+      loading_phase: null
     },
     catalogIdentity: { schema_version: 1, catalog_id: 'localcomet-approved-artifacts', catalog_version: '1.0.0', catalog_digest: CATALOG_DIGEST },
     runtimeCatalog: [],

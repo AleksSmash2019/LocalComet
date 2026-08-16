@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M5",
+  "invariant": "path containment",
+  "file": "modules/workspace_policy.py",
+  "test": "python -m pytest tools/test_v6802_bundle_security.py tools/test_workspace_memory_ru.py -q",
+  "expected_reason": "resolved target must remain inside the workspace and reject reparse/escape paths",
+  "original_sha256": "b8882d51de0dd21dcca10e3210a2145df64dafb973aa0988e747d6e851811aba",
+  "original_occurrences": 1,
+  "started_at": "2026-08-15T22:18:08.694819+00:00",
+  "mutation_sha256": "95c946827e10bcf8ea8e777e2682d4d50e990f46fa039fc98049a728335aa983",
+  "red_exit_code": 1,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "b8882d51de0dd21dcca10e3210a2145df64dafb973aa0988e747d6e851811aba",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:19:50.909802+00:00"
+}

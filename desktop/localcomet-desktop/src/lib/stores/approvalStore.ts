@@ -1,5 +1,5 @@
 import { derived, get, writable } from 'svelte/store';
-import { requestApproval, runToolCall } from '$lib/bridge/approval';
+import { executeApproved, requestApproval } from '$lib/bridge/approval';
 
 import type { ApprovalEnvelope } from '$lib/bridge/approval';
 
@@ -59,7 +59,7 @@ export async function confirmApproval(): Promise<void> {
       pending: state.pending ? { ...state.pending, envelope } : state.pending,
       phase: 'executing'
     }));
-    await runToolCall(tool, input, envelope);
+    await executeApproved(envelope.token, envelope.approvalId, envelope.callId, tool, input);
     approvalStore.set(INITIAL_STATE);
   } catch (error) {
     const code = errorCodeOf(error);

@@ -5,6 +5,7 @@ import ModelGatewayPanel from '../src/lib/components/model/ModelGatewayPanel.sve
 import ManagedRuntimePanel from '../src/lib/components/model/ManagedRuntimePanel.svelte';
 import {
   getModelGatewayCatalog,
+  getManagedRuntimeCapability,
   listModelGatewayModels,
   probeModelGateway,
   setModelBinding,
@@ -31,6 +32,7 @@ const TRUST_CATALOG = {
   catalog_digest: 'c'.repeat(64)
 };
 let invokeCalls: { command: string; args?: Record<string, unknown> }[] = [];
+let capabilityResponse: unknown = null;
 let listener: ((event: { payload: unknown }) => void) | null = null;
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -42,11 +44,12 @@ vi.mock('@tauri-apps/api/core', () => ({
       return { token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}`, tool, riskLevel: 'guarded', commandFamily: familyMap[tool] ?? 'model_binding_set', expiresAtUnixMs: Date.now() + 300_000 };
     }
     if (command === 'model_gateway_catalog') return catalogFixture();
-    if (command === 'managed_runtime_status') return { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, model_state: 'Unavailable', inference_ready: false, last_error: null };
+    if (command === 'managed_runtime_status') return { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_id: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, model_state: 'Unavailable', inference_ready: false, last_error: null };
     if (command === 'managed_runtime_catalog') return { ...TRUST_CATALOG, runtimes: [] };
     if (command === 'managed_model_catalog') return { ...TRUST_CATALOG, engine: 'llama.cpp', model_root: '<MANAGED_MODEL_ROOT>', models: [], maximum_models: 32 };
     if (command === 'managed_installed_artifacts') return { ...TRUST_CATALOG, artifacts: [] };
     if (command === 'managed_runtime_logs') return { stdout_tail: [], stderr_tail: [] };
+    if (command === 'managed_runtime_capability') return capabilityResponse;
     if (command === 'model_gateway_probe') return { status: 'Ready', provider_id: 'openai-compatible-local', host: '127.0.0.1', port: args?.port, base_path: '/v1', model_count: 1 };
     if (command === 'model_gateway_list_models') return { provider_id: 'openai-compatible-local', host: '127.0.0.1', port: args?.port, models: [{ model_id: 'local-model' }], discovered_fingerprint: FINGERPRINT };
     if (command === 'model_binding_set') return { provider_id: 'openai-compatible-local', harness_id: args?.harnessId, host: '127.0.0.1', port: args?.port, base_path: '/v1', model_id: args?.modelId, binding_fingerprint: FINGERPRINT, discovered_fingerprint: FINGERPRINT, persistence: false };
@@ -84,6 +87,14 @@ vi.mock('@tauri-apps/api/event', () => ({
 function installTauriMock(): void {
   invokeCalls = [];
   listener = null;
+  capabilityResponse = {
+    runtime_id: 'llama-cpp-windows-x86-64-vulkan-bootstrap',
+    available: true,
+    safe_to_start: true,
+    reason_code: null,
+    fallback_runtime_ids: [],
+    device_summary: 'NVIDIA GeForce RTX 5070 (11943 MiB)'
+  };
 }
 
 function catalogFixture() {
@@ -143,7 +154,7 @@ describe('Local Model Gateway frontend', () => {
     await probeModelGateway(1234);
     await listModelGatewayModels(1234);
     await setModelBinding({ providerId: 'openai-compatible-local', harnessId: 'minimal', port: 1234, modelId: 'local-model' });
-    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false } });
+    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] });
     expect(invokeCalls.map((call) => call.command)).toEqual([
       'model_gateway_catalog',
       'model_gateway_probe',
@@ -168,7 +179,8 @@ describe('Local Model Gateway frontend', () => {
       fileIds: [],
       locale: 'ru',
       bindingFingerprint: FINGERPRINT,
-      agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }
+      agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false },
+      messages: []
     });
     expect(Object.keys(invokeCalls.at(-1)?.args ?? {}).sort()).toEqual([
       'agentPermissions',
@@ -177,6 +189,7 @@ describe('Local Model Gateway frontend', () => {
       'fileIds',
       'locale',
       'maxTokens',
+      'messages',
       'modelId',
       'prompt',
       'requestId',
@@ -186,10 +199,10 @@ describe('Local Model Gateway frontend', () => {
 
   it('passes only validated opaque file identities to the model command', async () => {
     const fileId = 'd'.repeat(64);
-    const response = await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: [fileId], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false } });
+    const response = await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: [fileId], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] });
     expect(invokeCalls.at(-1)?.args?.fileIds).toEqual([fileId]);
     expect(response.file_context).toMatchObject({ included_bytes: 5, truncated: true });
-    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: ['C:\\temp\\notes.md'], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false } })).rejects.toMatchObject({ code: 'invalid_payload' });
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: ['C:\\temp\\notes.md'], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] })).rejects.toMatchObject({ code: 'invalid_payload' });
     expect(invokeCalls).toHaveLength(1);
   });
 
@@ -201,7 +214,7 @@ describe('Local Model Gateway frontend', () => {
   });
 
   it('rejects an unsupported assistant locale before invoking Tauri', async () => {
-    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false } })).rejects.toMatchObject({ code: 'invalid_payload' });
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] })).rejects.toMatchObject({ code: 'invalid_payload' });
     expect(invokeCalls).toHaveLength(0);
   });
 
@@ -355,5 +368,61 @@ describe('Local Model Gateway frontend', () => {
     expect(body).toContain('Managed llama.cpp');
     expect(body).toContain('Not installed');
     expect(body).not.toMatch(/URL|Port|API key|Executable|Model path|Environment|Arguments/i);
+  });
+
+  it('invokes the capability command with exact args and a validated payload', async () => {
+    const capability = await getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap', 'qwen2.5-1.5b-instruct-q4-k-m');
+
+    expect(invokeCalls.at(-1)).toEqual({
+      command: 'managed_runtime_capability',
+      args: { runtimeId: 'llama-cpp-windows-x86-64-vulkan-bootstrap', modelId: 'qwen2.5-1.5b-instruct-q4-k-m' }
+    });
+    expect(capability.available).toBe(true);
+    expect(capability.safe_to_start).toBe(true);
+    expect(capability.device_summary).toContain('RTX 5070');
+    expect(capability.reason_code).toBeNull();
+  });
+
+  it('rejects capability payloads that invent or drop fields', async () => {
+    // Defect caught: a payload with an extra key or a missing availability
+    // flag must throw instead of surfacing an invented capability claim.
+    capabilityResponse = {
+      runtime_id: 'llama-cpp-windows-x86-64-vulkan-bootstrap',
+      available: true,
+      safe_to_start: true,
+      reason_code: null,
+      fallback_runtime_ids: [],
+      device_summary: 'GPU',
+      unexpected: true
+    };
+    await expect(getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap')).rejects.toThrow();
+
+    const { available, ...missingAvailability } = {
+      runtime_id: 'llama-cpp-windows-x86-64-vulkan-bootstrap',
+      available: true,
+      safe_to_start: true,
+      reason_code: null,
+      fallback_runtime_ids: [],
+      device_summary: null
+    } as Record<string, unknown>;
+    capabilityResponse = missingAvailability;
+    await expect(getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap')).rejects.toThrow();
+  });
+
+  it('preserves the vulkan-unavailable reason and fallback list from the backend', async () => {
+    capabilityResponse = {
+      runtime_id: 'llama-cpp-windows-x86-64-vulkan-bootstrap',
+      available: false,
+      safe_to_start: false,
+      reason_code: 'VULKAN_DEVICE_UNAVAILABLE',
+      fallback_runtime_ids: ['llama-cpp-windows-x86-64-cpu-bootstrap'],
+      device_summary: null
+    };
+
+    const capability = await getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap', 'qwen2.5-1.5b-instruct-q4-k-m');
+
+    expect(capability.available).toBe(false);
+    expect(capability.reason_code).toBe('VULKAN_DEVICE_UNAVAILABLE');
+    expect(capability.fallback_runtime_ids).toEqual(['llama-cpp-windows-x86-64-cpu-bootstrap']);
   });
 });

@@ -1,0 +1,451 @@
+desktop\localcomet-desktop\src\lib\data\mockData.ts:93:  filename: 'Возможности runtime',
+desktop\localcomet-desktop\src\lib\data\mockData.ts:111:  detail: 'Runtime подтверждений отключён; действий нет.'
+desktop\localcomet-desktop\src\lib\data\mockData.ts:119:  runtime: 'Не запускалось',
+desktop\localcomet-desktop\src\lib\components\agent\Diagnostics.svelte:89:      <h2>{$t('diag.runtime_state')}</h2>
+desktop\localcomet-desktop\src\lib\i18n\en.ts:39:  'chat.model_loading_detail': 'LocalComet is validating the managed runtime and loading the approved model. Sending remains disabled until readiness is confirmed.',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:91:  'approval.side_effects.runtime_start': 'Starts a managed runtime',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:92:  'approval.side_effects.runtime_stop': 'Stops a managed runtime',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:209:  'setup.runtime_not_installed': 'Managed runtime is not installed yet.',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:211:  'setup.runtime_status': 'Status',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:212:  'setup.runtime_version': 'Runtime version',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:213:  'setup.runtime_model': 'Local model',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:214:  'setup.runtime_inference': 'Inference',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:221:  'setup.start_runtime': 'Start runtime',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:222:  'setup.stop_runtime': 'Stop runtime',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:228:  'diag.runtime': 'Runtime',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:229:  'diag.runtime_state': 'Runtime State',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:380:  'onboarding.runtime': 'Managed runtime',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:390:  'observability.subtitle': 'Validated session events and the bounded managed-runtime log tail.',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:391:  'observability.refresh': 'Refresh runtime',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:395:  'observability.runtime_state': 'Runtime state',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:396:  'observability.runtime_lines': 'Runtime log lines',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:399:  'observability.runtime_logs': 'Managed runtime',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:401:  'observability.no_runtime_logs': 'No managed-runtime log lines are available.',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:441:  'models.remove_confirm_detail': 'This removes only the selected managed model. Chats, settings, the runtime, and your own files are not removed.',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:492:  'models.phase.validating_runtime': 'Validating runtime…',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:496:  'models.phase.stopping': 'Stopping runtime…',
+desktop\localcomet-desktop\src\lib\i18n\en.ts:753:  "review.diagnostics.python_runtime": "Python sidecar runtime",
+desktop\localcomet-desktop\src\lib\types\controlPlane.ts:55:  readonly sidecar_runtime_version: 'v6.84.3';
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:67:  readonly runtime_instance_id?: string;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:133:export type ManagedRuntimeState = 'NotInstalled' | 'Stopped' | 'Validating' | 'Starting' | 'Ready' | 'Stopping' | 'Failed';
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:136:export interface ManagedRuntimeStatus {
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:138:  readonly state: ManagedRuntimeState;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:140:  readonly runtime_version: string | null;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:141:  readonly runtime_instance_id: string | null;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:142:  readonly runtime_instance_fingerprint: string | null;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:172:export type ArtifactKind = 'runtime' | 'model';
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:198:  | 'no_compatible_runtime_installed'
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:199:  | 'incompatible_runtime_installed';
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:204:  | 'runtime_not_installed'
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:205:  | 'runtime_invalid'
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:215:export interface ApprovedRuntimeSummary {
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:216:  readonly runtime_id: string;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:248:  readonly compatible_runtime_ids: readonly string[];
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:266:  readonly compatible_runtime_ids: readonly string[];
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:274:export interface ManagedRuntimeCatalog extends ManagedCatalogIdentity {
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:275:  readonly runtimes: readonly ApprovedRuntimeSummary[];
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:321:  readonly runtime_catalog: ManagedRuntimeCatalog;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:378:  readonly compatible_runtime_ids: readonly string[];
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:379:  readonly selected_runtime_id: string | null;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:380:  readonly runtime_status: ArtifactInstallationStatus | null;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:386:export interface ManagedRuntimeStartResponse {
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:393:  readonly runtime_instance_id: string;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:394:  readonly runtime_instance_fingerprint: string;
+desktop\localcomet-desktop\src\lib\types\modelGateway.ts:397:export interface ManagedRuntimeLogs {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:5:  ApprovedRuntimeSummary,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:21:  ManagedRuntimeCatalog,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:22:  ManagedRuntimeLogs,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:23:  ManagedRuntimeStartResponse,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:24:  ManagedRuntimeStatus,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:59:  runtimeInstanceId?: string;
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:64:  const runtimeInstanceId = args.runtimeInstanceId ? args.runtimeInstanceId : null;
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:70:    runtime_instance_id: runtimeInstanceId
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:86:  if (runtimeInstanceId !== null) {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:87:    invokeArgs.runtimeInstanceId = runtimeInstanceId;
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:94:export async function getManagedRuntimeStatus(): Promise<ManagedRuntimeStatus> {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:95:  return validateManagedStatus(await invokeExact('managed_runtime_status'));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:98:export async function getManagedRuntimeCatalog(): Promise<ManagedRuntimeCatalog> {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:99:  return validateManagedRuntimeCatalog(await invokeExact('managed_runtime_catalog'));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:240:export async function startManagedRuntime(
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:244:): Promise<ManagedRuntimeStartResponse> {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:255:  const envelope = await requestApproval('runtime.start', approvalInput);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:257:    throw { code: 'stale_request', message: 'Managed runtime start request is no longer current' };
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:269:  return validateManagedStart(await invokeExact('managed_runtime_start', invokeArgs));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:272:export async function stopManagedRuntime(): Promise<void> {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:273:  const envelope = await requestApproval('runtime.stop', {});
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:274:  await invokeExact('managed_runtime_stop', { token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId });
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:277:export async function getManagedRuntimeLogs(): Promise<ManagedRuntimeLogs> {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:278:  return validateManagedLogs(await invokeExact('managed_runtime_logs'));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:416:  if (object.provider_id === 'managed-llama-cpp' && typeof object.runtime_instance_id !== 'string') throw invalid();
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:421:function validateManagedStatus(value: unknown): ManagedRuntimeStatus {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:426:    'runtime_version',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:427:    'runtime_instance_id',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:428:    'runtime_instance_fingerprint',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:442:    runtime_version: nullableSafeText(object.runtime_version, 96),
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:443:    runtime_instance_id: nullablePattern(object.runtime_instance_id, /^[0-9a-f]{32}$/),
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:444:    runtime_instance_fingerprint: nullableHash(object.runtime_instance_fingerprint),
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:455:function validateManagedRuntimeCatalog(value: unknown): ManagedRuntimeCatalog {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:456:  const object = expectExactRecord(value, ['schema_version', 'catalog_id', 'catalog_version', 'catalog_digest', 'runtimes']);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:458:  const runtimes = boundedArray(object.runtimes, 32).map(validateApprovedRuntime);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:459:  validateUniqueSorted(runtimes.map((runtime) => runtime.runtime_id));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:460:  return { ...identity, runtimes };
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:519:    'runtime_catalog',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:524:    runtime_catalog: validateManagedRuntimeCatalog(object.runtime_catalog),
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:544:  const kind = exactString(object.kind, ['runtime', 'model']);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:551:    (kind === 'runtime' && (format !== 'zip' || quantization !== null)) ||
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:647:  const kind = exactString(object.kind, ['runtime', 'model']);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:659:      (kind === 'runtime' && (observedBytes !== null || observedSha256 !== null)))
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:722:    'compatible_runtime_ids',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:723:    'selected_runtime_id',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:724:    'runtime_status',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:730:  const compatibleRuntimeIds = boundedArray(object.compatible_runtime_ids, 32).map((item) => validateArtifactId(String(item)));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:731:  validateUniqueSorted(compatibleRuntimeIds);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:732:  const selectedRuntimeId = object.selected_runtime_id === null ? null : validateArtifactId(String(object.selected_runtime_id));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:734:  const runtimeStatus = object.runtime_status === null ? null : validateInstallationStatus(object.runtime_status);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:737:    'no_compatible_runtime_installed',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:738:    'incompatible_runtime_installed'
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:744:    'runtime_not_installed',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:745:    'runtime_invalid',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:752:    runtimeStatus === 'valid' &&
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:755:    selectedRuntimeId !== null &&
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:756:    compatibleRuntimeIds.includes(selectedRuntimeId);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:758:  if (compatibility === 'compatible' && (runtimeStatus !== 'valid' || selectedRuntimeId === null || !compatibleRuntimeIds.includes(selectedRuntimeId))) throw invalid();
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:759:  if (compatibility === 'no_compatible_runtime_installed' && selectedRuntimeId !== null) throw invalid();
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:762:  if (readiness === 'runtime_not_installed' && (modelStatus !== 'valid' || runtimeStatus !== 'not_installed')) throw invalid();
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:763:  if (readiness === 'runtime_invalid' && (modelStatus !== 'valid' || runtimeStatus === null || ['valid', 'not_installed'].includes(runtimeStatus))) throw invalid();
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:764:  if (readiness === 'incompatible' && compatibility !== 'incompatible_runtime_installed') throw invalid();
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:770:    compatible_runtime_ids: compatibleRuntimeIds,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:771:    selected_runtime_id: selectedRuntimeId,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:772:    runtime_status: runtimeStatus,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:779:function validateManagedStart(value: unknown): ManagedRuntimeStartResponse {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:787:    'runtime_instance_id',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:788:    'runtime_instance_fingerprint'
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:798:    runtime_instance_id: patternString(object.runtime_instance_id, /^[0-9a-f]{32}$/),
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:799:    runtime_instance_fingerprint: validateHash(object.runtime_instance_fingerprint)
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:803:function validateManagedLogs(value: unknown): ManagedRuntimeLogs {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1004:function validateApprovedRuntime(value: unknown): ApprovedRuntimeSummary {
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1006:    'runtime_id',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1033:  // The approved catalog ships both CPU and Vulkan runtimes; the variant is
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1037:    runtime_id: validateArtifactId(String(object.runtime_id)),
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1071:    'compatible_runtime_ids',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1084:  const compatibleRuntimeIds = boundedArray(object.compatible_runtime_ids, 32).map((item) => validateArtifactId(String(item)));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1085:  validateUniqueSorted(compatibleRuntimeIds);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1099:    compatible_runtime_ids: compatibleRuntimeIds,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1119:    'compatible_runtime_ids',
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1127:  const compatibleRuntimeIds = boundedArray(object.compatible_runtime_ids, 32).map((item) => validateArtifactId(String(item)));
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1128:  validateUniqueSorted(compatibleRuntimeIds);
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1140:    compatible_runtime_ids: compatibleRuntimeIds,
+desktop\localcomet-desktop\src\lib\bridge\modelGateway.ts:1307:  // Raised from 512: the managed runtime now runs with --n-predict 4096 and
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:7:  import { managedRuntimeStore, refreshManagedRuntimeStatus } from '$lib/stores/modelGateway';
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:14:      await refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:45:      <span>{$t('observability.runtime_state')}</span>
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:47:        label={$managedRuntimeStore.status?.state ?? $t('common.not_determined')}
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:48:        tone={$managedRuntimeStore.status?.state === 'Ready' ? 'ready' : 'unknown'}
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:52:      <span>{$t('observability.runtime_lines')}</span>
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:53:      <strong>{$managedRuntimeStore.logs.stdout_tail.length + $managedRuntimeStore.logs.stderr_tail.length}</strong>
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:68:        <h4>{$t('observability.runtime_logs')}</h4>
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:71:      {#if $managedRuntimeStore.logs.stdout_tail.length === 0 && $managedRuntimeStore.logs.stderr_tail.length === 0}
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:72:        <p class="empty">{$t('observability.no_runtime_logs')}</p>
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:75:          {#each $managedRuntimeStore.logs.stderr_tail as line}
+desktop\localcomet-desktop\src\lib\components\logs\ObservabilityRoom.svelte:78:          {#each $managedRuntimeStore.logs.stdout_tail as line}
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:91:  'approval.side_effects.runtime_start': 'Запускает управляемую среду',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:92:  'approval.side_effects.runtime_stop': 'Останавливает управляемую среду',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:209:  'setup.runtime_not_installed': 'Управляемый runtime пока не установлен.',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:211:  'setup.runtime_status': 'Статус',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:212:  'setup.runtime_version': 'Версия runtime',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:213:  'setup.runtime_model': 'Локальная модель',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:214:  'setup.runtime_inference': 'Инференс',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:221:  'setup.start_runtime': 'Запустить runtime',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:222:  'setup.stop_runtime': 'Остановить runtime',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:245:  'diag.runtime': 'Среда выполнения',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:246:  'diag.runtime_state': 'Состояние системы',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:380:  'onboarding.runtime': 'Управляемый runtime',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:390:  'observability.subtitle': 'Валидированные события сессии и ограниченный хвост логов управляемого runtime.',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:391:  'observability.refresh': 'Обновить runtime',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:395:  'observability.runtime_state': 'Состояние runtime',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:396:  'observability.runtime_lines': 'Строки runtime-лога',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:399:  'observability.runtime_logs': 'Управляемый runtime',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:401:  'observability.no_runtime_logs': 'Строки лога управляемого runtime пока недоступны.',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:441:  'models.remove_confirm_detail': 'Будет удалена только выбранная управляемая модель. Чаты, настройки, runtime и ваши файлы не удаляются.',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:492:  'models.phase.validating_runtime': 'Проверка движка…',
+desktop\localcomet-desktop\src\lib\i18n\ru.ts:753:  "review.diagnostics.python_runtime": "Среда Python sidecar",
+desktop\localcomet-desktop\src\lib\stores\reviewCenter.ts:120:      pythonRuntimeContractVersion: $snapshot?.sidecar_runtime_version ?? null,
+desktop\localcomet-desktop\src\lib\components\shell\ChatHeader.svelte:5:  import { approvedManagedModelInstalled, connectSelectedManagedModel, gatewayStatus, inferenceRequestStore, managedConnectionBusy, managedModelReady, managedRuntimeStore } from '$lib/stores/modelGateway';
+desktop\localcomet-desktop\src\lib\components\shell\ChatHeader.svelte:20:    if ($managedRuntimeStore.lastError || $managedRuntimeStore.status?.last_error || $managedRuntimeStore.status?.state === 'Failed') return { label: $t('conn.model_error'), tone: 'danger' as const };
+desktop\localcomet-desktop\src\lib\components\shell\ChatHeader.svelte:21:    if ($managedConnectionBusy || ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') || ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '')) return { label: $t('conn.model_loading'), tone: 'info' as const };
+desktop\localcomet-desktop\src\lib\components\shell\ChatHeader.svelte:24:  $: safeModelIdentity = $managedRuntimeStore.status?.model_display_name ?? $managedRuntimeStore.status?.model_id ?? '';
+desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:360:    'sidecar_runtime_version',
+desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:387:  boundedString(object.sidecar_runtime_version, 'sidecar runtime version', 64);
+desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:534:    'sidecar_runtime_version',
+desktop\localcomet-desktop\src\lib\bridge\knowledgeReview.ts:552:  boundedString(object.sidecar_runtime_version, 'sidecar runtime version', 64);
+desktop\localcomet-desktop\src\lib\types\knowledgeReview.ts:224:  readonly sidecar_runtime_version: string;
+desktop\localcomet-desktop\src\lib\types\knowledgeReview.ts:298:  readonly sidecar_runtime_version: string;
+desktop\localcomet-desktop\src\lib\types\knowledgeReview.ts:331:  readonly pythonRuntimeContractVersion: string | null;
+desktop\localcomet-desktop\src\lib\stores\hfDownloads.ts:10:import { refreshManagedRuntimeStatus } from '$lib/stores/modelGateway';
+desktop\localcomet-desktop\src\lib\stores\hfDownloads.ts:144:    refreshManagedRuntimeStatus()
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:15:  managedRuntimeStore,
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:16:  refreshManagedRuntimeStatus,
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:124:    await refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:150:  const vulkanRuntime = artifacts.find(
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:151:    (artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog' && artifact.artifact_id === 'llama-cpp-windows-x86-64-vulkan-bootstrap'
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:153:  const selectedRuntime = readiness?.selected_runtime_id
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:154:    ? artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog' && artifact.artifact_id === readiness.selected_runtime_id)
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:156:  const fallbackRuntime = artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog');
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:157:  const runtime = selectedRuntime ?? vulkanRuntime ?? fallbackRuntime;
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:158:  if (!runtime || model.kind !== 'model' || (model.trust_kind === 'user_supplied' && !isInstalled(model.artifact_id))) return false;
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:164:  for (const artifact of [runtime, model]) {
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:181:    await refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:188:    lastError: connected ? null : get(managedRuntimeStore).lastError
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:242:  if (generation === lifecycleGeneration) await refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\artifactAcquisition.ts:257:  return get(managedRuntimeStore).installedArtifacts.some((artifact) =>
+desktop\localcomet-desktop\src\lib\bridge\approval.ts:4:export type ApprovalCommandFamily = 'artifact_download' | 'artifact_remove' | 'runtime_start' | 'runtime_stop' | 'model_binding_set' | 'tool_filesystem_read' | 'tool_filesystem_write' | 'tool_filesystem_delete' | 'computer_use';
+desktop\localcomet-desktop\src\lib\bridge\approval.ts:38:const COMMAND_FAMILIES: readonly string[] = ['artifact_download', 'artifact_remove', 'runtime_start', 'runtime_stop', 'model_binding_set', 'tool_filesystem_read', 'tool_filesystem_write', 'tool_filesystem_delete', 'computer_use'];
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:8:  getManagedRuntimeLogs,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:9:  getManagedRuntimeCatalog,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:10:  getManagedRuntimeStatus,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:16:  startManagedRuntime,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:18:  stopManagedRuntime,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:23:  ApprovedRuntimeSummary,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:34:  ManagedRuntimeCatalog,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:35:  ManagedRuntimeLogs,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:36:  ManagedRuntimeState,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:37:  ManagedRuntimeStatus,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:59:// runtime's raised --n-predict so the server stops being the first clipper.
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:68:// Live status polling cadence while a managed runtime start is in flight, so
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:93:type ManagedRuntimePanelReadiness = Omit<ModelReadinessSummary, 'model_trust_kind'> & {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:97:export interface ManagedRuntimePanelState {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:98:  readonly status: ManagedRuntimeStatus | null;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:100:  readonly runtimeCatalog: readonly ApprovedRuntimeSummary[];
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:103:  readonly readiness: ManagedRuntimePanelReadiness | null;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:107:  readonly logs: ManagedRuntimeLogs;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:128:const initialManagedState: ManagedRuntimePanelState = {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:131:  runtimeCatalog: [],
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:176:export const managedRuntimeStore = writable<ManagedRuntimePanelState>(initialManagedState);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:183:  [managedRuntimeStore, modelGatewayStore],
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:186:export const approvedManagedModelInstalled = derived(managedRuntimeStore, (managed) =>
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:190:    model.compatible_runtime_ids.some((runtimeId) =>
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:191:      managed.installedArtifacts.some((artifact) => artifact.kind === 'runtime' && artifact.artifact_id === runtimeId && artifact.installation_status === 'valid')
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:211:      await refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:271:    if (get(managedRuntimeStore).binding) {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:290:  const expected = get(managedRuntimeStore).binding;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:301:      const status = await getManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:303:      const current = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:305:      const runtimeReady =
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:310:        status.runtime_instance_id === expected.runtime_instance_id;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:311:      managedRuntimeStore.update((state) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:314:        binding: runtimeReady ? state.binding : null,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:315:        lastError: runtimeReady ? null : {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:316:          code: status.state === 'Failed' ? 'runtime_unavailable' : 'model_not_ready',
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:317:          message: status.state === 'Failed' ? 'Managed runtime is unavailable' : 'Managed model is not ready'
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:320:      if (!runtimeReady) {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:326:      // the already-approved immutable runtime instance is still alive.
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:331:      managedRuntimeStore.update((state) => ({ ...state, binding: null, lastError: normalized }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:429:  const previousModelId = get(managedRuntimeStore).selectedModelId;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:430:  managedRuntimeStore.update((state) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:446:    managedRuntimeStore.update((state) => state.selectedModelId === modelId
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:449:    if (!readiness.launchable && get(managedRuntimeStore).selectedModelId === modelId) clearManagedGatewayBinding();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:451:    managedRuntimeStore.update((state) => state.selectedModelId === modelId
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:454:    if (get(managedRuntimeStore).selectedModelId === modelId) clearManagedGatewayBinding();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:459:  const previousHarnessId = get(managedRuntimeStore).harnessId;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:460:  managedRuntimeStore.update((state) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:468:export async function refreshManagedRuntimeStatus(): Promise<void> {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:470:    const [status, runtimeCatalog, modelCatalog, installedArtifacts, logs] = await Promise.all([
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:471:      getManagedRuntimeStatus(),
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:472:      getManagedRuntimeCatalog(),
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:475:      getManagedRuntimeLogs()
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:477:    assertManagedTrustBundle(runtimeCatalog, modelCatalog, installedArtifacts);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:486:    const previous = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:499:      previous.binding.runtime_instance_id === status.runtime_instance_id &&
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:501:      isInstalledLaunchable(selectedModel, runtimeCatalog.runtimes, validations);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:502:    managedRuntimeStore.update((state) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:505:      catalogIdentity: catalogIdentityOf(runtimeCatalog),
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:506:      runtimeCatalog: runtimeCatalog.runtimes,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:517:    const runtimeError = status.last_error;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:518:    if (runtimeError) {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:519:      managedRuntimeStore.update((state) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:521:        lastError: { code: 'runtime_unavailable', message: runtimeError }
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:525:    managedRuntimeStore.update((state) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:528:      runtimeCatalog: [],
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:540:export async function startSelectedManagedRuntime(precomputedReadiness?: ModelReadinessSummary): Promise<void> {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:542:  const state = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:544:    get(managedRuntimeStore).selectedModelId === state.selectedModelId;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:550:      managedRuntimeStore.update((current) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:554:        lastError: { code: 'model_not_ready', message: 'Managed model and runtime artifacts are not ready' }
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:559:    managedRuntimeStore.update((current) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:564:        state: 'Starting' as ManagedRuntimeState,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:579:    const startPromise = startManagedRuntime(
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:586:      getManagedRuntimeStatus()
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:589:          managedRuntimeStore.update((current) => ({ ...current, status: live }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:601:            reject({ code: 'start_watchdog_timeout', message: 'Managed runtime start exceeded the watchdog deadline' });
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:613:          if (stillCurrent()) void refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:617:      void refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:620:    const status = await getManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:622:      void refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:625:    managedRuntimeStore.update((current) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:629:        ? { code: 'runtime_unavailable', message: status.last_error }
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:634:      void refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:638:    managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalized }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:643:export async function stopSelectedManagedRuntime(): Promise<void> {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:644:  managedRuntimeStore.update((state) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:656:    await stopManagedRuntime();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:658:    managedRuntimeStore.update((state) => ({ ...state, lastError: normalizeGatewayError(error) }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:660:  await refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:665:  const state = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:666:  const runtimeInstanceId = state.status?.runtime_instance_id ?? '';
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:669:    !runtimeInstanceId ||
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:677:    const current = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:685:      current.status.runtime_instance_id === runtimeInstanceId;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:693:    existing.runtime_instance_id === runtimeInstanceId
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:700:      managedRuntimeStore.update((value) => ({ ...value, readiness, binding: null }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:708:      runtimeInstanceId,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:712:    managedRuntimeStore.update((value) => ({ ...value, readiness, binding, lastError: null }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:716:    managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalizeGatewayError(error) }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:724:  managedRuntimeStore.update((current) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:738:  let state = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:742:    get(managedRuntimeStore).selectedModelId === selectedModelId &&
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:743:    get(managedRuntimeStore).harnessId === harnessId;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:745:    managedRuntimeStore.update((current) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:754:    managedRuntimeStore.update((current) => ({ ...current, readiness, lastError: null }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:756:      throw { code: 'model_not_ready', message: 'Managed model and runtime artifacts are not ready' };
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:759:    state = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:766:      if (state.status?.state === 'Ready') await stopSelectedManagedRuntime();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:768:      await startSelectedManagedRuntime(readiness);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:772:    state = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:780:        managedRuntimeStore.update((current) => ({
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:783:          lastError: { code: 'runtime_not_ready', message: 'Managed runtime did not become ready' }
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:795:    managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalized }));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:839:    const error = get(managedRuntimeStore).lastError ?? { code: 'model_session_unavailable', message: 'Managed model session is unavailable' };
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:846:  const managed = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1249:    throw { code: 'runtime_unavailable', message: 'Secure request identifier generation is unavailable' };
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1257:  const state = get(managedRuntimeStore);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1266:    !sameStrings(readiness.compatible_runtime_ids, model.compatible_runtime_ids)
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1268:  if (readiness.selected_runtime_id && !state.runtimeCatalog.some((runtime) => runtime.runtime_id === readiness.selected_runtime_id)) {
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1275:  runtimeCatalog: ManagedRuntimeCatalog,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1279:  assertSameCatalogIdentity(runtimeCatalog, modelCatalog);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1280:  assertSameCatalogIdentity(runtimeCatalog, installedArtifacts);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1281:  const runtimes = new Map(runtimeCatalog.runtimes.map((runtime) => [runtime.runtime_id, runtime] as const));
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1285:    if (model.compatible_runtime_ids.some((runtimeId) => !runtimes.has(runtimeId))) throw trustPayloadError();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1287:  if (installedArtifacts.artifacts.length !== runtimes.size + models.size) throw trustPayloadError();
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1289:    const approved = artifact.kind === 'runtime' ? runtimes.get(artifact.artifact_id) : models.get(artifact.artifact_id);
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1322:  runtimes: readonly ApprovedRuntimeSummary[],
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1327:  return model.compatible_runtime_ids.some((runtimeId) =>
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1328:    runtimes.some((runtime) => runtime.runtime_id === runtimeId) &&
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1330:      artifact.kind === 'runtime' && artifact.artifact_id === runtimeId && artifact.installation_status === 'valid'
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1336:  managed: ManagedRuntimePanelState,
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1352:    !status.runtime_instance_id ||
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1362:    binding.runtime_instance_id !== status.runtime_instance_id ||
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1366:    gateway.binding.runtime_instance_id !== status.runtime_instance_id ||
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1373:  const runtimeInstalled = readiness.selected_runtime_id !== null && managed.installedArtifacts.some((artifact) =>
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1374:    artifact.kind === 'runtime' && artifact.artifact_id === readiness.selected_runtime_id && artifact.installation_status === 'valid'
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1376:  return modelInstalled && runtimeInstalled;
+desktop\localcomet-desktop\src\lib\stores\modelGateway.ts:1409:  managedRuntimeStore.set(initialManagedState);
+desktop\localcomet-desktop\src\lib\components\review\ReviewDiagnosticsPanel.svelte:35:      <dt>{$t('review.diagnostics.python_runtime')}</dt>
+desktop\localcomet-desktop\src\lib\components\review\ReviewDiagnosticsPanel.svelte:36:      <dd><code>{$reviewDiagnostics.pythonRuntimeContractVersion ?? $t('review.unavailable')}</code></dd>
+desktop\localcomet-desktop\src\lib\components\onboarding\OnboardingScreen.svelte:8:  import { managedModelReady, managedRuntimeStore } from '$lib/stores/modelGateway';
+desktop\localcomet-desktop\src\lib\components\onboarding\OnboardingScreen.svelte:13:  $: catalogReady = $managedRuntimeStore.catalogIdentity !== null && $artifactAcquisitionStore.artifacts.length > 0;
+desktop\localcomet-desktop\src\lib\components\onboarding\OnboardingScreen.svelte:14:  $: runtimeInstalled = $managedRuntimeStore.installedArtifacts.some(
+desktop\localcomet-desktop\src\lib\components\onboarding\OnboardingScreen.svelte:15:    (artifact) => artifact.kind === 'runtime' && artifact.installation_status === 'valid'
+desktop\localcomet-desktop\src\lib\components\onboarding\OnboardingScreen.svelte:17:  $: modelInstalled = $managedRuntimeStore.installedArtifacts.some(
+desktop\localcomet-desktop\src\lib\components\onboarding\OnboardingScreen.svelte:47:        <div><span>{$t('onboarding.runtime')}</span><StatusBadge label={$t(runtimeInstalled ? 'common.verified' : 'onboarding.not_installed')} tone={runtimeInstalled ? 'ready' : 'disabled'} /></div>
+desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:4:  import { managedRuntimeStore } from '$lib/stores/modelGateway';
+desktop\localcomet-desktop\src\lib\components\model\HuggingFaceBrowser.svelte:180:    return $managedRuntimeStore.installedArtifacts.some(
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:7:    managedRuntimeStore,
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:8:    refreshManagedRuntimeStatus,
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:11:    startSelectedManagedRuntime,
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:12:    stopSelectedManagedRuntime
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:16:  $: status = $managedRuntimeStore.status;
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:18:  $: selectedModel = $managedRuntimeStore.catalog.find((model) => model.model_id === $managedRuntimeStore.selectedModelId);
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:19:  $: modelLaunchable = $managedRuntimeStore.readiness?.model_id === selectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:20:  $: canStart = !$inferenceBusy && Boolean(selectedModel) && modelLaunchable && (state === 'Stopped' || state === 'Failed' || (state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId));
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:22:  $: canBind = !$inferenceBusy && state === 'Ready' && status?.model_state === 'Ready' && status?.inference_ready === true && status?.model_id === $managedRuntimeStore.selectedModelId && modelLaunchable && Boolean(status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:30:<section class="managed-panel card-surface" aria-label="LocalComet managed runtime">
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:33:      <p class="eyebrow">LocalComet managed runtime</p>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:41:    <TelemetryRow label="Managed Runtime" value={status?.installation ?? 'Not installed'} tone={state === 'NotInstalled' ? 'disabled' : 'ready'} />
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:42:    <TelemetryRow label="Runtime Version" value={status?.runtime_version ?? 'Not validated'} tone="disabled" mono />
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:48:    <button type="button" disabled={$inferenceBusy} onclick={() => void refreshManagedRuntimeStatus()}>Refresh</button>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:49:    <button type="button" disabled={!canStart} onclick={() => void startSelectedManagedRuntime()}>{state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId ? 'Switch Model' : 'Start Runtime'}</button>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:50:    <button type="button" disabled={!canStop} onclick={() => void stopSelectedManagedRuntime()}>Stop Runtime</button>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:56:      <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(event) => void setManagedSelectedModel((event.currentTarget as HTMLSelectElement).value)}>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:58:        {#each $managedRuntimeStore.catalog as model}
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:65:      <select disabled={$inferenceBusy} value={$managedRuntimeStore.harnessId} onchange={onHarnessChange}>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:73:  <div class="fingerprint" aria-label="Managed runtime fingerprint">
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:74:    <span>Runtime Instance</span>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:75:    <code>{status?.runtime_instance_fingerprint ?? 'Runtime not ready'}</code>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:78:  {#if $managedRuntimeStore.logs.stdout_tail.length || $managedRuntimeStore.logs.stderr_tail.length}
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:79:    <pre class="runtime-logs" aria-label="Sanitized managed runtime logs">{[...$managedRuntimeStore.logs.stdout_tail, ...$managedRuntimeStore.logs.stderr_tail].join('\n')}</pre>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:81:  {#if $managedRuntimeStore.lastError}
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:82:    <p class="managed-error" role="status">{$managedRuntimeStore.lastError.message}</p>
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:159:  .runtime-logs {
+desktop\localcomet-desktop\src\lib\components\model\ManagedRuntimePanel.svelte:164:  .runtime-logs {
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:19:    managedRuntimeStore,
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:20:    refreshManagedRuntimeStatus,
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:22:    stopSelectedManagedRuntime
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:42:  let selectedModelId = $managedRuntimeStore.selectedModelId;
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:45:  $: runtimes = $managedRuntimeStore.runtimeCatalog ?? [];
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:46:  $: runtime = runtimes.find((r) => r.variant === 'vulkan') ?? runtimes[0] ?? null;
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:51:  $: runtimeArtifact = $artifactAcquisitionStore.artifacts.find((artifact): artifact is ApprovedDownloadableArtifact => artifact.kind === 'runtime' && artifact.artifact_id === 'llama-cpp-windows-x86-64-vulkan-bootstrap')
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:52:    ?? $artifactAcquisitionStore.artifacts.find((artifact): artifact is ApprovedDownloadableArtifact => artifact.kind === 'runtime')
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:54:  $: runtimeInstalled = runtimes.some((item) => installationState(item.runtime_id) === 'valid');
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:57:  $: runtimeDownload = runtimeArtifact ? $artifactAcquisitionStore.downloads[runtimeArtifact.artifact_id] ?? null : null;
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:61:  $: canRemove = modelCanBeRemoved && !activeDownload && !['Ready', 'Starting', 'Validating', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '');
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:64:  $: runtimeDownloading = runtimeDownload && !isTerminal(runtimeDownload);
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:66:  $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:67:  $: managedModelState = $managedRuntimeStore.status?.model_state ?? 'Unavailable';
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:68:  $: runtimeRunning = ['Starting', 'Validating', 'Ready', 'Stopping'].includes(managedState);
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:71:  $: stepEngine = (runtimeInstalled ? 'done' : runtimeDownloading ? 'active' : 'pending') as StepStatus;
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:72:  $: stepModel = (modelInstalled ? 'done' : !runtimeInstalled ? 'pending' : modelDownloading ? 'active' : 'pending') as StepStatus;
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:73:  $: stepLaunch = ($managedModelReady ? 'done' : !modelInstalled ? 'pending' : runtimeRunning || $managedConnectionBusy ? 'active' : 'pending') as StepStatus;
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:78:    if (managedState === 'Validating') return $t('models.phase.validating_runtime');
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:79:    if (managedState === 'Starting' && managedModelState === 'Validating') return $t('models.phase.validating_runtime');
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:82:    if (managedState === 'Ready' && !$managedRuntimeStore.status?.inference_ready) return $t('models.phase.connecting');
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:92:    return $managedRuntimeStore.installedArtifacts.find((artifact) => artifact.artifact_id === artifactId)?.installation_status ?? 'not_installed';
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:100:    const artifacts = [runtimeArtifact, selectedModelArtifact].filter((artifact): artifact is ManagedDownloadableArtifact => artifact !== null);
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:170:        await refreshManagedRuntimeStatus();
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:206:      <button type="button" class="refresh" disabled={$acquisitionBusy} onclick={() => void refreshManagedRuntimeStatus()}>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:221:        {#if runtimeDownloading && runtimeDownload}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:222:          {$t('models.step.downloading')} {runtimeDownload.percent ?? 0}%
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:223:        {:else if runtimeInstalled}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:229:      {#if runtimeDownloading && runtimeDownload}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:230:        <div class="step-progress-track"><div class="step-progress-fill" style="width: {runtimeDownload.percent ?? 0}%;"></div></div>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:303:      detail={$managedRuntimeStore.status?.loading_phase || $t('chat.model_loading_detail')}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:314:        <strong>{runtime ? `llama.cpp ${runtime.release_tag}` : 'llama.cpp'}</strong>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:316:      <StatusBadge label={displayState(runtimeInstalled ? 'valid' : installationState(runtime?.runtime_id ?? ''))} tone={runtimeInstalled ? 'ready' : 'disabled'} />
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:319:      <div><dt>{$t('models.release')}</dt><dd>{runtime?.release_tag ?? '—'}</dd></div>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:320:      <div><dt>{$t('models.license')}</dt><dd>{runtime?.license_id ?? '—'}</dd></div>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:321:      <div><dt>{$t('models.size')}</dt><dd>{runtimeArtifact ? formatBytes(runtimeArtifact.expected_bytes) : '—'}</dd></div>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:322:      {#if runtimeDownload}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:323:        <div><dt>{$t('models.download')}</dt><dd>{displayState(runtimeDownload.lifecycle)} {runtimeDownload.percent === null ? '' : `${runtimeDownload.percent}%`}</dd></div>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:326:    <dl class="runtime-variants">
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:327:      {#each runtimes as item}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:331:            <StatusBadge label={displayState(installationState(item.runtime_id))} tone={installationState(item.runtime_id) === 'valid' ? 'ready' : 'disabled'} />
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:407:    {#if selectedModelArtifact && (!runtimeInstalled || !modelInstalled) && !activeDownload && !customModelInvalid}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:410:    {#if runtimeArtifact && !runtimeInstalled && !activeDownload}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:411:      <button type="button" disabled={actionPending} onclick={() => requestDownload(runtimeArtifact)}><span>{runtimeDownload?.lifecycle === 'failed' || runtimeDownload?.lifecycle === 'cancelled' ? $t('models.retry_engine') : $t('models.install_engine')}</span></button>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:416:    {#if runtimeInstalled && modelInstalled && !$managedModelReady && !activeDownload}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:419:    {#if $managedRuntimeStore.status?.state === 'Ready'}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:420:      <button type="button" disabled={actionPending} onclick={() => void stopSelectedManagedRuntime()}>{$t('models.disconnect')}</button>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:430:  {#if $managedRuntimeStore.lastError && $managedRuntimeStore.lastError.code !== 'invalid_payload'}
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:431:    <p class="error" role="status">{$managedRuntimeStore.lastError.message}</p>
+desktop\localcomet-desktop\src\lib\components\model\ModelManagerSection.svelte:460:  .runtime-variants { padding-top: var(--lc-space-2); border-top: var(--border-thin); }
+desktop\localcomet-desktop\src\lib\components\chat\MessageList.svelte:8:    managedRuntimeStore,
+desktop\localcomet-desktop\src\lib\components\chat\MessageList.svelte:69:  $: modelLoading = $acquisitionBusy || ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') ||
+desktop\localcomet-desktop\src\lib\components\chat\MessageList.svelte:70:    ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '');
+desktop\localcomet-desktop\src\lib\components\chat\MessageList.svelte:329:  .runtime .bubble {
+desktop\localcomet-desktop\src\lib\components\chat\ToolCallCard.svelte:33:      <span class="eyebrow" class:computer-use={isCU}>{isCU ? 'COMPUTER USE' : isWebTool ? `WEB ${tool.operation === 'web.search' ? 'SEARCH' : 'FETCH'}` : 'Tool Runtime'}</span>
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:14:    managedRuntimeStore,
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:17:    refreshManagedRuntimeStatus,
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:46:  $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:47:  $: managedSelectedModel = $managedRuntimeStore.catalog.find((m) => m.model_id === $managedRuntimeStore.selectedModelId);
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:48:  $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === managedSelectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:53:  $: setupTargetModel = approvedSetupModels.find((artifact) => artifact.artifact_id === $managedRuntimeStore.selectedModelId) ?? approvedSetupModels[0] ?? null;
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:58:    if (managedState === 'Validating') return $t('models.phase.validating_runtime');
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:59:    if (managedState === 'Starting' && $managedRuntimeStore.status?.model_state === 'Validating') return $t('models.phase.validating_runtime');
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:60:    if (managedState === 'Starting' && $managedRuntimeStore.status?.model_state === 'Loading') return $t('models.phase.loading_model');
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:62:    if (managedState === 'Ready' && !$managedRuntimeStore.status?.inference_ready) return $t('models.phase.connecting');
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:104:    const targetModelId = $managedRuntimeStore.selectedModelId || setupTargetModel?.artifact_id;
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:106:    if ($managedRuntimeStore.selectedModelId !== targetModelId) {
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:109:    const currentReadiness = get(managedRuntimeStore).readiness;
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:321:            {#if $managedRuntimeStore.catalog.length > 1}
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:324:                <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:326:                  {#each $managedRuntimeStore.catalog as model}
+desktop\localcomet-desktop\src\lib\components\model\ModelSetupDrawer.svelte:406:                detail={$managedRuntimeStore.status?.loading_phase || $t('chat.model_loading_detail')}

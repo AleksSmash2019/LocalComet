@@ -1,0 +1,22 @@
+{
+  "mutation_id": "M2",
+  "invariant": "digest verification",
+  "file": "desktop/localcomet-desktop/src-tauri/src/approval.rs",
+  "test": "cargo test wrong_digest_rejects_without_consuming_token --lib",
+  "expected_reason": "wrong input digest must be rejected without consuming approval",
+  "original_sha256": "1bf6d273f7cb43badab87c27d2073d7237413e4f69725206c55c5160fbb4a988",
+  "original_occurrences": 1,
+  "started_at": "2026-08-15T22:17:45.689288+00:00",
+  "mutation_sha256": "8000f8dbffcd43d539b232bbe2dda957b2059f88ac127185f2029aa22365acff",
+  "red_exit_code": 101,
+  "red_timed_out": false,
+  "red_passed": false,
+  "restored_sha256": "1bf6d273f7cb43badab87c27d2073d7237413e4f69725206c55c5160fbb4a988",
+  "rollback_verified": true,
+  "green_exit_code": 0,
+  "green_timed_out": false,
+  "green_passed": true,
+  "rolled_back": true,
+  "status": "PASS",
+  "finished_at": "2026-08-15T22:17:53.391538+00:00"
+}

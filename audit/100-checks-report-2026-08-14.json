@@ -1,0 +1,669 @@
+{
+  "total": 100,
+  "pass": 75,
+  "fail": 10,
+  "timeout": 0,
+  "error": 15,
+  "results": [
+    {
+      "name": "01 AGENTS instructions exist",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\AGENTS.md"
+    },
+    {
+      "name": "02 frontend package manifest exists",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\package.json"
+    },
+    {
+      "name": "03 frontend lockfile exists",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\package-lock.json"
+    },
+    {
+      "name": "04 Rust manifest exists",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri\\Cargo.toml"
+    },
+    {
+      "name": "05 Rust lockfile exists",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri\\Cargo.lock"
+    },
+    {
+      "name": "06 Python requirements exist",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\requirements.txt"
+    },
+    {
+      "name": "07 Tauri config exists",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri\\tauri.conf.json"
+    },
+    {
+      "name": "08 TypeScript config exists",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\tsconfig.json"
+    },
+    {
+      "name": "09 Svelte config exists",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\svelte.config.js"
+    },
+    {
+      "name": "10 Vite config exists",
+      "status": "PASS",
+      "detail": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\vite.config.ts"
+    },
+    {
+      "name": "11 cycle gate uses current frontend test count",
+      "status": "FAIL",
+      "detail": "run_7_cycles.py: '390'"
+    },
+    {
+      "name": "12 cycle gate has no stale 384 threshold",
+      "status": "PASS",
+      "detail": "run_7_cycles.py: '384'"
+    },
+    {
+      "name": "13 removed MCP launcher is not referenced by scripts",
+      "status": "ERROR",
+      "detail": "FileNotFoundError(2, 'No such file or directory')"
+    },
+    {
+      "name": "14 English locale exists",
+      "status": "PASS",
+      "detail": "desktop/localcomet-desktop/src/lib/i18n/en.ts: 'export'"
+    },
+    {
+      "name": "15 Russian locale exists",
+      "status": "PASS",
+      "detail": "desktop/localcomet-desktop/src/lib/i18n/ru.ts: 'export'"
+    },
+    {
+      "name": "16 approval component exists",
+      "status": "FAIL",
+      "detail": "desktop/localcomet-desktop/src/lib/components/chat/ApprovalCard.svelte: 'approval'"
+    },
+    {
+      "name": "17 model gateway bridge exists",
+      "status": "PASS",
+      "detail": "desktop/localcomet-desktop/src/lib/bridge/modelGateway.ts: 'export'"
+    },
+    {
+      "name": "18 supervisor source exists",
+      "status": "PASS",
+      "detail": "desktop/localcomet-desktop/src-tauri/src/supervisor.rs: 'enum'"
+    },
+    {
+      "name": "19 release-only stale DebugPython is absent",
+      "status": "FAIL",
+      "detail": "desktop/localcomet-desktop/src-tauri/src/supervisor.rs: 'DebugPython'"
+    },
+    {
+      "name": "20 no literal FIXME in first-party source",
+      "status": "PASS",
+      "detail": "audit/full-review-2026-07-26/41-known-defects.md: 'No literal TODO/FIXME'"
+    },
+    {
+      "name": "21 Python compile gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.478,
+      "output_tail": "OK: 287 Python file(s) compile clean (git index)"
+    },
+    {
+      "name": "22 command parity gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.055,
+      "output_tail": "OK: 56 commands registered and invoked (parity holds)"
+    },
+    {
+      "name": "23 bundle parity gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.061,
+      "output_tail": "OK: 146 shipped module(s) match source across 2 location(s) (bundle parity holds)"
+    },
+    {
+      "name": "24 i18n parity gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.061,
+      "output_tail": "OK: 483 used i18n key(s) present in ru.ts (719) and en.ts (719)"
+    },
+    {
+      "name": "25 fake UI state gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.063,
+      "output_tail": "OK: no fake-state violations in 97 frontend file(s) (INV-UI-001)"
+    },
+    {
+      "name": "26 mock data import gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.06,
+      "output_tail": "mockData import gate: 5 file(s) with mockData imports\nOK: all 5 imports are in the allowlist\nAllowlist: 5 entries\n  src/lib/components/chat/CodeBlock.svelte: type-only import\n  src/lib/components/chat/ToolCallCard.svelte: type-only import\n  src/lib/components/shell/AppShell.svelte: type-only import\n  src/lib/components/shell/SettingsPanel.svelte: type-only import\n  src/lib/stores/shellStore.ts: fallback constants (modeOptions, inspectorSections)"
+    },
+    {
+      "name": "27 tool risk registry gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.045,
+      "output_tail": "OK: 7 console tool function(s) classified (5 mutating, all requiring approval); 11 sidecar tools covered; 19 registry entries valid"
+    },
+    {
+      "name": "28 evidence provenance gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.256,
+      "output_tail": "OK: 4 evidence file(s) fresh and intact (tree=c9dde3766f22dfce...)"
+    },
+    {
+      "name": "29 historical evidence gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.255,
+      "output_tail": "Historical evidence: 46 valid, 0 BODY_MISMATCH, original digests preserved"
+    },
+    {
+      "name": "30 real sidecar enforcement gate",
+      "status": "FAIL",
+      "returncode": 2,
+      "duration_s": 0.043,
+      "output_tail": "FAIL: LOCALCOMET_REQUIRE_REAL_SIDECAR not set; real-sidecar gate cannot run. Set LOCALCOMET_REQUIRE_REAL_SIDECAR=1 with LOCALCOMET_TEST_PROJECT_ROOT and LOCALCOMET_TEST_PYTHON (system Python, not a venv) before cargo test."
+    },
+    {
+      "name": "31 ADR015 parser tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 7.41,
+      "output_tail": "erleaved_calls_atomic_emission) ... ok\ntest_a2_content_and_tool_calls_coexist_atomically (__main__.ToolCallIntegrationTests.test_a2_content_and_tool_calls_coexist_atomically) ... ok\ntest_a2b_text_after_tool_fragments_stays_zero_until_requests_emit (__main__.ToolCallIntegrationTests.test_a2b_text_after_tool_fragments_stays_zero_until_requests_emit) ... ok\ntest_a3_invalid_batch_is_atomic_no_partial_emission (__main__.ToolCallIntegrationTests.test_a3_invalid_batch_is_atomic_no_partial_emission) ... ok\ntest_a4a_tools_empty_rejects_model_tool_call_fail_closed (__main__.ToolCallIntegrationTests.test_a4a_tools_empty_rejects_model_tool_call_fail_closed) ... ok\ntest_a4b_tools_empty_plain_content_completes (__main__.ToolCallIntegrationTests.test_a4b_tools_empty_plain_content_completes) ... ok\ntest_a5_eleven_tool_calls_rejected_atomically (__main__.ToolCallIntegrationTests.test_a5_eleven_tool_calls_rejected_atomically) ... ok\ntest_a5_iteration_limit_is_frontend_orchestration (__main__.ToolCallIntegrationTests.test_a5_iteration_limit_is_frontend_orchestration) ... skipped 'iteration limit (5) � frontend orchestration (Block 3/4), not a _run_turn concern; unblock when Block 3/4 adds the client-side orchestration loop and its own test surface'\ntest_a5_ten_tool_calls_allowed_atomic (__main__.ToolCallIntegrationTests.test_a5_ten_tool_calls_allowed_atomic) ... ok\ntest_edge_broken_json_arguments_fails_atomically (__main__.ToolCallIntegrationTests.test_edge_broken_json_arguments_fails_atomically) ... ok\ntest_edge_duplicate_id_last_non_none_wins (__main__.ToolCallIntegrationTests.test_edge_duplicate_id_last_non_none_wins) ... ok\ntest_edge_duplicate_index_merges_into_single_call (__main__.ToolCallIntegrationTests.test_edge_duplicate_index_merges_into_single_call) ... ok\ntest_build_tool_schemas_is_openai_function_format (__main__.ToolRegistryTests.test_build_tool_schemas_is_openai_function_format) ... ok\ntest_files_write_schema_requires_path_and_content (__main__.ToolRegistryTests.test_files_write_schema_requires_path_and_content) ... ok\ntest_registry_has_exactly_five_files_tools (__main__.ToolRegistryTests.test_registry_has_exactly_five_files_tools) ... ok\ntest_every_registered_tool_accepts_exact_valid_arguments (__main__.ValidateToolCallTests.test_every_registered_tool_accepts_exact_valid_arguments) ... ok\ntest_extra_unknown_field_is_rejected (__main__.ValidateToolCallTests.test_extra_unknown_field_is_rejected) ... ok\ntest_invalid_arguments_json_is_rejected (__main__.ValidateToolCallTests.test_invalid_arguments_json_is_rejected) ... ok\ntest_missing_required_field_is_rejected (__main__.ValidateToolCallTests.test_missing_required_field_is_rejected) ... ok\ntest_unknown_tool_is_rejected (__main__.ValidateToolCallTests.test_unknown_tool_is_rejected) ... ok\ntest_wrong_type_field_is_rejected (__main__.ValidateToolCallTests.test_wrong_type_field_is_rejected) ... ok\n\n----------------------------------------------------------------------\nRan 67 tests in 7.283s\n\nOK (skipped=1)"
+    },
+    {
+      "name": "32 legacy quarantine tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 2.266,
+      "output_tail": "........................\n----------------------------------------------------------------------\nRan 24 tests in 2.154s\n\nOK"
+    },
+    {
+      "name": "33 sidecar health contract tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.394,
+      "output_tail": "me_id (__main__.InvalidRequestTests.test_p0c_r1_bad_runtime_id) ... ok\ntest_p0c_r1_bad_type (__main__.InvalidRequestTests.test_p0c_r1_bad_type) ... ok\ntest_p0c_r1_boolean_generation (__main__.InvalidRequestTests.test_p0c_r1_boolean_generation) ... ok\ntest_p0c_r1_negative_sent_at (__main__.InvalidRequestTests.test_p0c_r1_negative_sent_at) ... ok\ntest_p0c_r1_zero_generation (__main__.InvalidRequestTests.test_p0c_r1_zero_generation) ... ok\ntest_p0c_r1_live_sidecar_reaches_ready_without_stdout_contamination (__main__.LiveSidecarTests.test_p0c_r1_live_sidecar_reaches_ready_without_stdout_contamination) ... ok\ntest_p0c_r1_corpus_has_cross_language_minimum (__main__.ProductionParserCorpusTests.test_p0c_r1_corpus_has_cross_language_minimum) ... ok\ntest_p0c_r1_every_parser_case_uses_production_decoder (__main__.ProductionParserCorpusTests.test_p0c_r1_every_parser_case_uses_production_decoder) ... ok\ntest_p0c_r1_frame_decoder_recovers_after_reset (__main__.ProductionParserCorpusTests.test_p0c_r1_frame_decoder_recovers_after_reset) ... ok\ntest_p0c_r1_repeated_array_values_accepted (__main__.ProductionParserCorpusTests.test_p0c_r1_repeated_array_values_accepted) ... ok\ntest_p0c_r1_unicode_decoded_duplicate_rejected (__main__.ProductionParserCorpusTests.test_p0c_r1_unicode_decoded_duplicate_rejected) ... ok\ntest_p0c_r1_health_capability_exactly_disabled (__main__.VariantAProductionTests.test_p0c_r1_health_capability_exactly_disabled) ... ok\ntest_p0c_r1_outer_inner_request_binding (__main__.VariantAProductionTests.test_p0c_r1_outer_inner_request_binding) ... ok\ntest_p0c_r1_ready_status (__main__.VariantAProductionTests.test_p0c_r1_ready_status) ... ok\ntest_p0c_r1_received_timestamp_non_negative (__main__.VariantAProductionTests.test_p0c_r1_received_timestamp_non_negative) ... ok\ntest_p0c_r1_response_echoes_generation (__main__.VariantAProductionTests.test_p0c_r1_response_echoes_generation) ... ok\ntest_p0c_r1_response_echoes_nonce (__main__.VariantAProductionTests.test_p0c_r1_response_echoes_nonce) ... ok\ntest_p0c_r1_response_echoes_runtime (__main__.VariantAProductionTests.test_p0c_r1_response_echoes_runtime) ... ok\ntest_p0c_r1_response_exact_outer_keys (__main__.VariantAProductionTests.test_p0c_r1_response_exact_outer_keys) ... ok\ntest_p0c_r1_response_inner_id_binding (__main__.VariantAProductionTests.test_p0c_r1_response_inner_id_binding) ... ok\ntest_p0c_r1_response_outer_id_binding (__main__.VariantAProductionTests.test_p0c_r1_response_outer_id_binding) ... ok\ntest_p0c_r1_response_protocol (__main__.VariantAProductionTests.test_p0c_r1_response_protocol) ... ok\ntest_p0c_r1_response_reply_to_binding (__main__.VariantAProductionTests.test_p0c_r1_response_reply_to_binding) ... ok\ntest_p0c_r1_response_type (__main__.VariantAProductionTests.test_p0c_r1_response_type) ... ok\ntest_p0c_r1_valid_payload (__main__.VariantAProductionTests.test_p0c_r1_valid_payload) ... ok\n\n----------------------------------------------------------------------\nRan 31 tests in 0.237s\n\nOK"
+    },
+    {
+      "name": "34 sidecar health protocol unit tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.062,
+      "output_tail": ".....................................\n----------------------------------------------------------------------\nRan 37 tests in 0.002s\n\nOK"
+    },
+    {
+      "name": "35 injection approval tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.059,
+      "output_tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.001s\n\nOK"
+    },
+    {
+      "name": "36 unready sidecar tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 30.044,
+      "output_tail": "\u0000\u0000\u00001{\"type\":\"hello\",\"payload\":{\"role\":\"python_core\"}}"
+    },
+    {
+      "name": "37 assistant context tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.1,
+      "output_tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.003s\n\nOK"
+    },
+    {
+      "name": "38 security negative tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.398,
+      "output_tail": ".....\n----------------------------------------------------------------------\nRan 5 tests in 0.338s\n\nOK"
+    },
+    {
+      "name": "39 model chat backend tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 8.75,
+      "output_tail": "test_cancel_before_connect_sends_no_post_and_worker_is_quiescent (__main__.ModelChatBackendTests.test_cancel_before_connect_sends_no_post_and_worker_is_quiescent) ... ok\ntest_cancel_precedence_ack_second_request_and_shutdown_cleanup (__main__.ModelChatBackendTests.test_cancel_precedence_ack_second_request_and_shutdown_cleanup) ... ok\ntest_exact_start_contract_and_identity_validation (__main__.ModelChatBackendTests.test_exact_start_contract_and_identity_validation) ... ok\ntest_first_token_inactivity_and_overall_timeouts (__main__.ModelChatBackendTests.test_first_token_inactivity_and_overall_timeouts) ... ok\ntest_gateway_emits_outside_lock_during_concurrent_knowledge_decision (__main__.ModelChatBackendTests.test_gateway_emits_outside_lock_during_concurrent_knowledge_decision) ... ok\ntest_managed_attach_header_deadline_keeps_sidecar_healthy_and_retryable (__main__.ModelChatBackendTests.test_managed_attach_header_deadline_keeps_sidecar_healthy_and_retryable) ... ok\ntest_managed_attach_timeout_uses_rust_facing_timeout_envelope (__main__.ModelChatBackendTests.test_managed_attach_timeout_uses_rust_facing_timeout_envelope) ... ok\ntest_managed_readiness_alias_and_stable_public_model (__main__.ModelChatBackendTests.test_managed_readiness_alias_and_stable_public_model) ... ok\ntest_model_list_absolute_deadline_stops_slow_body_and_adapter_recovers (__main__.ModelChatBackendTests.test_model_list_absolute_deadline_stops_slow_body_and_adapter_recovers) ... ok\ntest_runner_avoids_writer_gateway_lock_inversion_during_knowledge_cancel (__main__.ModelChatBackendTests.test_runner_avoids_writer_gateway_lock_inversion_during_knowledge_cancel) ... ok\ntest_runner_serializes_acceptance_before_worker_event (__main__.ModelChatBackendTests.test_runner_serializes_acceptance_before_worker_event) ... ok\ntest_shutdown_before_connect_sends_no_post_and_worker_is_quiescent (__main__.ModelChatBackendTests.test_shutdown_before_connect_sends_no_post_and_worker_is_quiescent) ... ok\ntest_stream_order_empty_chunks_done_and_second_request (__main__.ModelChatBackendTests.test_stream_order_empty_chunks_done_and_second_request) ... ok\n\n----------------------------------------------------------------------\nRan 13 tests in 8.547s\n\nOK"
+    },
+    {
+      "name": "40 managed runtime tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 1.704,
+      "output_tail": "dce139541bdad7c/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/thiserror-adce139541bdad7c/build_script_build-adce139541bdad7c.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/typeid-6dfd4fe32eff1f88/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/typeid-6dfd4fe32eff1f88/build_script_build-6dfd4fe32eff1f88.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/vswhom-sys-d2430d7085e5fe22/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/vswhom-sys-d2430d7085e5fe22/build_script_build-d2430d7085e5fe22.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/web_atoms-50dabaefc07534f8/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/web_atoms-50dabaefc07534f8/build_script_build-50dabaefc07534f8.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/webview2-com-sys-bc9a392fc6dc12c8/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/webview2-com-sys-bc9a392fc6dc12c8/build_script_build-bc9a392fc6dc12c8.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/winapi-6f44728d7a8f286e/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/winapi-6f44728d7a8f286e/build_script_build-6f44728d7a8f286e.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/windows_x86_64_msvc-902ee3afda908dd5/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/windows_x86_64_msvc-902ee3afda908dd5/build_script_build-902ee3afda908dd5.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/windows_x86_64_msvc-d482329c78a37e13/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/windows_x86_64_msvc-d482329c78a37e13/build_script_build-d482329c78a37e13.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/wry-c7b33398c5290d71/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/wry-c7b33398c5290d71/build_script_build-c7b33398c5290d71.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/zip-a3760a7958592e47/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/zip-a3760a7958592e47/build_script_build-a3760a7958592e47.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/zmij-4a7df9907622696f/build-script-build.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/build/zmij-4a7df9907622696f/build_script_build-4a7df9907622696f.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/deps/format_catalog.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/deps/localcomet_desktop.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/format_catalog.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/localcomet-core.exe\", \"desktop/localcomet-desktop/src-tauri/target/release/localcomet-desktop.exe\"]\nALL v6.84.5.1 MANAGED RUNTIME TESTS PASSED"
+    },
+    {
+      "name": "41 v677 regression tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.11,
+      "output_tail": "PASS test_panel_routes_single_dispatch 0.020s\nPASS test_safety_status_lightweight 0.023s\nPASS test_reviewer_request_file_safety 0.011s\nPASS test_nonexistent_root_overrides_are_read_only_on_import 0.004s\nPASS test_nonexistent_root_dispatches_do_not_escape_override 0.005s\nPASS test_generate_capability_map_import_is_read_only 0.001s\nALL v6.77 REGRESSION TESTS PASSED"
+    },
+    {
+      "name": "42 v678 router registry tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 1.074,
+      "output_tail": "PASS test_safety_and_reviewer_routes 0.029s\nPASS test_all_reachable_legacy_routes_dispatch_once 0.031s\nPASS test_fallback_and_empty_input_schema 0.001s\nPASS test_predicates_are_read_only 0.001s\nPASS test_router_ast_shape_when_consolidated 0.005s\nPASS test_headless_self_check_version_marker 0.950s\nALL v6.78 ROUTER REGISTRY TESTS PASSED"
+    },
+    {
+      "name": "43 v679 retention tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.612,
+      "output_tail": "PASS test_import_and_missing_root_are_read_only 0.010s\nPASS test_retention_plan_policy_and_protections 0.527s\nPASS test_module_entry_points_use_stable_plan_schema 0.005s\nPASS test_safety_status_remains_lightweight 0.030s\nALL v6.79 RETENTION TESTS PASSED"
+    },
+    {
+      "name": "44 diagnostics tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 33.141,
+      "output_tail": "PASS test_import_creates_no_files 0.122s\nPASS test_command_matching 0.000s\nPASS test_panel_route_invokes_diagnostics_once 0.004s\nPASS test_panel_version_plain_string 0.000s\nPASS test_safety_called_once_and_lightweight 0.070s\nPASS test_schema_privacy_and_runtime 0.212s\nPASS test_missing_subsystems_warn_safely 0.002s\nPASS test_ast_single_dispatcher_and_route_present 0.004s\nPASS test_previous_suites_and_staging 32.672s\nALL v6.81 DIAGNOSTICS TESTS PASSED"
+    },
+    {
+      "name": "45 task planner tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.377,
+      "output_tail": "PASS test_import_has_no_side_effects 0.136s\nPASS test_command_matching 0.000s\nPASS test_panel_dispatch_once_and_route_order 0.004s\nPASS test_schema_determinism_and_steps 0.000s\nPASS test_risk_and_approval 0.000s\nPASS test_redaction_paths_and_no_effects 0.137s\nPASS test_execution_counters_and_external_calls 0.000s\nPASS test_panel_version_manifest_and_dispatcher 0.026s\nALL v6.82 TASK PLANNER TESTS PASSED"
+    },
+    {
+      "name": "46 autonomy policy tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.265,
+      "output_tail": "PASS test_import_side_effects 0.140s\nPASS test_policy_defaults_and_validation 0.002s\nPASS test_action_proposals_and_levels 0.006s\nPASS test_path_safety_and_protection 0.005s\nPASS test_kill_switches_and_budget 0.002s\nPASS test_run_id_state_transitions_and_privacy 0.000s\nPASS test_run_budget_and_policy_interaction 0.001s\nPASS test_manifest_and_regression_invariants 0.028s\nALL v6.83 AUTONOMY POLICY TESTS PASSED"
+    },
+    {
+      "name": "47 action executor tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.691,
+      "output_tail": "PASS test_import_side_effects 0.148s\nPASS test_configuration_and_validation 0.004s\nPASS test_action_mapping_fingerprint_and_approval 0.023s\nPASS test_path_policy_and_kill_switches 0.016s\nPASS test_read_list_search_and_syntax 0.040s\nPASS test_allowlisted_test_execution 0.294s\nPASS test_writes_patches_hashes_and_rollback 0.048s\nPASS test_result_budget_manifest_and_regression_invariants 0.035s\nALL v6.84 ACTION EXECUTOR TESTS PASSED"
+    },
+    {
+      "name": "48 tool execution tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.244,
+      "output_tail": "path_is_rejected_and_response_frames_stay_encodable (__main__.ToolCallRoutingTests.test_lone_surrogate_path_is_rejected_and_response_frames_stay_encodable)\nADR-015 B10 follow-up: a lone surrogate in `path` was echoed back into the ... ok\ntest_surrogate_named_file_on_disk_does_not_break_listing (__main__.ToolCallRoutingTests.test_surrogate_named_file_on_disk_does_not_break_listing)\nA file whose on-disk name carries a lone surrogate must not make the ... ok\ntest_tool_call_confinement_error_returns_error_envelope (__main__.ToolCallRoutingTests.test_tool_call_confinement_error_returns_error_envelope) ... ok\ntest_tool_call_is_routed_and_returns_response_envelope (__main__.ToolCallRoutingTests.test_tool_call_is_routed_and_returns_response_envelope) ... ok\ntest_files_create_folder_outside_workspace_is_blocked (__main__.ToolExecutionConfinementTests.test_files_create_folder_outside_workspace_is_blocked) ... ok\ntest_files_delete_and_create_folder_and_list (__main__.ToolExecutionConfinementTests.test_files_delete_and_create_folder_and_list) ... ok\ntest_files_delete_outside_workspace_is_blocked (__main__.ToolExecutionConfinementTests.test_files_delete_outside_workspace_is_blocked) ... ok\ntest_files_delete_workspace_root_is_rejected (__main__.ToolExecutionConfinementTests.test_files_delete_workspace_root_is_rejected) ... ok\ntest_files_list_outside_workspace_is_blocked (__main__.ToolExecutionConfinementTests.test_files_list_outside_workspace_is_blocked) ... ok\ntest_files_read_absolute_path_outside_workspace_is_blocked (__main__.ToolExecutionConfinementTests.test_files_read_absolute_path_outside_workspace_is_blocked) ... ok\ntest_files_read_inside_workspace_succeeds (__main__.ToolExecutionConfinementTests.test_files_read_inside_workspace_succeeds) ... ok\ntest_files_read_oversized_file_is_payload_too_large (__main__.ToolExecutionConfinementTests.test_files_read_oversized_file_is_payload_too_large) ... ok\ntest_files_read_symlink_escape_is_blocked (__main__.ToolExecutionConfinementTests.test_files_read_symlink_escape_is_blocked) ... ok\ntest_files_read_traversal_escape_is_blocked (__main__.ToolExecutionConfinementTests.test_files_read_traversal_escape_is_blocked) ... ok\ntest_files_write_is_fail_closed_until_secure_no_reparse_writer_exists (__main__.ToolExecutionConfinementTests.test_files_write_is_fail_closed_until_secure_no_reparse_writer_exists) ... ok\ntest_files_write_outside_workspace_is_blocked (__main__.ToolExecutionConfinementTests.test_files_write_outside_workspace_is_blocked) ... ok\ntest_files_write_oversized_content_is_invalid (__main__.ToolExecutionConfinementTests.test_files_write_oversized_content_is_invalid) ... ok\ntest_missing_workspace_field_is_invalid (__main__.ToolExecutionConfinementTests.test_missing_workspace_field_is_invalid) ... ok\ntest_unsupported_tool_is_rejected (__main__.ToolExecutionConfinementTests.test_unsupported_tool_is_rejected) ... ok\n\n----------------------------------------------------------------------\nRan 23 tests in 0.087s\n\nOK"
+    },
+    {
+      "name": "49 control plane tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.506,
+      "output_tail": "ALL v6.84.4 CONTROL PLANE TESTS PASSED (369 checks)"
+    },
+    {
+      "name": "50 sidecar supervisor tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.498,
+      "output_tail": "ALL v6.84.3 SIDECAR SUPERVISOR TESTS PASSED (233 checks, 0.45s)"
+    },
+    {
+      "name": "51 model gateway tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 5.77,
+      "output_tail": "PASS test_registries_and_validation 0.000s\nPASS test_version_alignment_and_turn_payload_shape 0.000s\nPASS test_probe_list_and_binding 0.511s\nPASS test_managed_attach_binding_and_detach 0.513s\nPASS test_provider_rejects_malformed_responses 2.033s\nPASS test_harnesses_are_deterministic_and_text_only 0.000s\nPASS test_sse_streaming_and_fail_closed 2.036s\nPASS test_single_active_and_cancellation_cleanup 0.503s\nPASS test_source_build_artifacts_absent 0.028s\nALL v6.84.5 MODEL GATEWAY TESTS PASSED"
+    },
+    {
+      "name": "52 desktop IPC tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 2.557,
+      "output_tail": "PASS test_import_safety 2.438s\nPASS test_canonical_json_and_framing 0.001s\nPASS test_envelope_payload_and_constructors 0.005s\nPASS test_streaming_errors_cancel_approval_and_sanitization 0.001s\nPASS test_schema_document_manifest_and_regression_invariants 0.030s\nALL v6.84.1 DESKTOP IPC TESTS PASSED"
+    },
+    {
+      "name": "53 desktop shell tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.106,
+      "output_tail": "ALL v6.84.2 DESKTOP SHELL TESTS PASSED (Phase C)"
+    },
+    {
+      "name": "54 evidence injection tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 5.822,
+      "output_tail": "owledgeInjectionControlPlaneTests.test_65_unknown_injection_rejected) ... ok\ntest_66_events_monotonic (__main__.KnowledgeInjectionControlPlaneTests.test_66_events_monotonic) ... ok\ntest_67_no_injected_at_preview_or_approval (__main__.KnowledgeInjectionControlPlaneTests.test_67_no_injected_at_preview_or_approval) ... ok\ntest_68_synthetic_message_not_thread_item (__main__.KnowledgeInjectionControlPlaneTests.test_68_synthetic_message_not_thread_item) ... ok\ntest_69_public_control_plane_only_adds_review_reads (__main__.KnowledgeInjectionControlPlaneTests.test_69_public_control_plane_only_adds_review_reads) ... ok\ntest_69a_timed_out_model_event_maps_to_failed (__main__.KnowledgeInjectionControlPlaneTests.test_69a_timed_out_model_event_maps_to_failed) ... ok\ntest_70_in_memory_only (__main__.KnowledgeInjectionControlPlaneTests.test_70_in_memory_only) ... ok\ntest_71_loopback_exact_outbound_context (__main__.KnowledgeInjectionGatewayTests.test_71_loopback_exact_outbound_context) ... ok\ntest_72_loopback_original_user_unchanged (__main__.KnowledgeInjectionGatewayTests.test_72_loopback_original_user_unchanged) ... ok\ntest_73_outbound_has_no_tools_or_vault_root (__main__.KnowledgeInjectionGatewayTests.test_73_outbound_has_no_tools_or_vault_root) ... ok\ntest_74_streaming_and_single_terminal (__main__.KnowledgeInjectionGatewayTests.test_74_streaming_and_single_terminal) ... ok\ntest_75_audit_metadata_once_and_bounded (__main__.KnowledgeInjectionGatewayTests.test_75_audit_metadata_once_and_bounded) ... ok\ntest_76_cancellation_preserves_injection_and_followup (__main__.KnowledgeInjectionGatewayTests.test_76_cancellation_preserves_injection_and_followup) ... ok\ntest_77_one_active_rule_preserved (__main__.KnowledgeInjectionGatewayTests.test_77_one_active_rule_preserved) ... ok\ntest_78_tool_call_rejection_preserved (__main__.KnowledgeInjectionGatewayTests.test_78_tool_call_rejection_preserved) ... ok\ntest_79_ordinary_path_has_trusted_system_then_user (__main__.KnowledgeInjectionGatewayTests.test_79_ordinary_path_has_trusted_system_then_user) ... ok\ntest_80_stale_dispatch_sends_no_request (__main__.KnowledgeInjectionGatewayTests.test_80_stale_dispatch_sends_no_request) ... ok\ntest_81_cross_turn_dispatch_sends_no_request (__main__.KnowledgeInjectionGatewayTests.test_81_cross_turn_dispatch_sends_no_request) ... ok\ntest_82_model_gateway_has_no_adapter_or_vault_import (__main__.KnowledgeInjectionGatewayTests.test_82_model_gateway_has_no_adapter_or_vault_import) ... ok\ntest_83_registry_contents_unchanged (__main__.KnowledgeInjectionGatewayTests.test_83_registry_contents_unchanged) ... ok\ntest_84_common_assembly_path_for_all_bindings (__main__.KnowledgeInjectionGatewayTests.test_84_common_assembly_path_for_all_bindings) ... ok\ntest_85_e6_internal_path_cannot_forge_user_approval (__main__.KnowledgeInjectionGatewayTests.test_85_e6_internal_path_cannot_forge_user_approval) ... ok\n\n----------------------------------------------------------------------\nRan 86 tests in 5.674s\n\nOK"
+    },
+    {
+      "name": "55 knowledge adapter tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.757,
+      "output_tail": "ain__.KnowledgeAdapterTests.test_42_no_network_occurs) ... ok\ntest_43_no_filesystem_writes_occur (__main__.KnowledgeAdapterTests.test_43_no_filesystem_writes_occur) ... ok\ntest_44_no_persistent_index_files_created (__main__.KnowledgeAdapterTests.test_44_no_persistent_index_files_created) ... ok\ntest_45_no_vault_mutation_occurs (__main__.KnowledgeAdapterTests.test_45_no_vault_mutation_occurs) ... ok\ntest_46_reparse_boundary_is_mapped (__main__.KnowledgeAdapterTests.test_46_reparse_boundary_is_mapped) ... ok\ntest_47_only_markdown_notes_are_indexed (__main__.KnowledgeAdapterTests.test_47_only_markdown_notes_are_indexed) ... ok\ntest_48_obsidian_json_is_not_knowledge (__main__.KnowledgeAdapterTests.test_48_obsidian_json_is_not_knowledge) ... ok\ntest_49_current_vs_historical_is_not_contradiction (__main__.KnowledgeAdapterTests.test_49_current_vs_historical_is_not_contradiction) ... ok\ntest_50_every_retrieval_returns_revision (__main__.KnowledgeAdapterTests.test_50_every_retrieval_returns_revision) ... ok\ntest_51_auto_intent_uses_lexical_heuristic (__main__.KnowledgeAdapterTests.test_51_auto_intent_uses_lexical_heuristic) ... ok\ntest_52_dispatch_exposes_exact_operations (__main__.KnowledgeAdapterTests.test_52_dispatch_exposes_exact_operations) ... ok\ntest_53_config_is_immutable (__main__.KnowledgeAdapterTests.test_53_config_is_immutable) ... ok\ntest_54_config_global_limit_is_validated (__main__.KnowledgeAdapterTests.test_54_config_global_limit_is_validated) ... ok\ntest_55_note_get_hard_context_limit_enforced (__main__.KnowledgeAdapterTests.test_55_note_get_hard_context_limit_enforced) ... ok\ntest_56_preview_hard_context_limit_enforced (__main__.KnowledgeAdapterTests.test_56_preview_hard_context_limit_enforced) ... ok\ntest_57_refresh_dispatch_does_not_accept_vault_override (__main__.KnowledgeAdapterTests.test_57_refresh_dispatch_does_not_accept_vault_override) ... ok\ntest_58_status_reports_not_configured (__main__.KnowledgeAdapterTests.test_58_status_reports_not_configured) ... ok\ntest_59_error_contract_is_stable (__main__.KnowledgeAdapterTests.test_59_error_contract_is_stable) ... ok\ntest_60_results_do_not_expose_absolute_paths (__main__.KnowledgeAdapterTests.test_60_results_do_not_expose_absolute_paths) ... ok\ntest_61_founder_relation_is_conservative (__main__.KnowledgeAdapterTests.test_61_founder_relation_is_conservative) ... ok\ntest_62_context_total_matches_selected_content (__main__.KnowledgeAdapterTests.test_62_context_total_matches_selected_content) ... ok\ntest_63_scores_are_deterministic_integers (__main__.KnowledgeAdapterTests.test_63_scores_are_deterministic_integers) ... ok\ntest_64_diagnostic_logging_omits_full_query (__main__.KnowledgeAdapterTests.test_64_diagnostic_logging_omits_full_query) ... ok\ntest_65_failed_initialization_retains_validator_status (__main__.KnowledgeAdapterTests.test_65_failed_initialization_retains_validator_status) ... ok\n\n----------------------------------------------------------------------\nRan 65 tests in 0.642s\n\nOK"
+    },
+    {
+      "name": "56 knowledge control plane tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.171,
+      "output_tail": "rseded_explicitly_delegated (__main__.KnowledgeControlPlaneTests.test_45_include_superseded_explicitly_delegated) ... ok\ntest_46_evidence_class_semantics_preserved (__main__.KnowledgeControlPlaneTests.test_46_evidence_class_semantics_preserved) ... ok\ntest_47_founder_intent_remains_distinct (__main__.KnowledgeControlPlaneTests.test_47_founder_intent_remains_distinct) ... ok\ntest_48_missing_request_rejected (__main__.KnowledgeControlPlaneTests.test_48_missing_request_rejected) ... ok\ntest_49_terminal_retrieval_is_idempotent (__main__.KnowledgeControlPlaneTests.test_49_terminal_retrieval_is_idempotent) ... ok\ntest_50_failed_result_has_structured_error (__main__.KnowledgeControlPlaneTests.test_50_failed_result_has_structured_error) ... ok\ntest_51_error_message_hides_absolute_path (__main__.KnowledgeControlPlaneTests.test_51_error_message_hides_absolute_path) ... ok\ntest_52_result_contract_is_frozen (__main__.KnowledgeControlPlaneTests.test_52_result_contract_is_frozen) ... ok\ntest_53_turn_summary_is_bounded (__main__.KnowledgeControlPlaneTests.test_53_turn_summary_is_bounded) ... ok\ntest_54_events_do_not_emit_query (__main__.KnowledgeControlPlaneTests.test_54_events_do_not_emit_query) ... ok\ntest_55_exact_knowledge_event_families_registered (__main__.KnowledgeControlPlaneTests.test_55_exact_knowledge_event_families_registered) ... ok\ntest_56_external_methods_are_only_authorized_read_only_reviews (__main__.KnowledgeControlPlaneTests.test_56_external_methods_are_only_authorized_read_only_reviews) ... ok\ntest_57_no_persistent_request_storage_created (__main__.KnowledgeControlPlaneTests.test_57_no_persistent_request_storage_created) ... ok\ntest_58_tauri_only_adds_fixed_read_only_review_commands (__main__.KnowledgeControlPlaneTests.test_58_tauri_only_adds_fixed_read_only_review_commands) ... ok\ntest_59_no_frontend_bridge_added (__main__.KnowledgeControlPlaneTests.test_59_no_frontend_bridge_added) ... ok\ntest_60_adapter_result_contract_failure_is_failed (__main__.KnowledgeControlPlaneTests.test_60_adapter_result_contract_failure_is_failed) ... ok\ntest_61_turn_state_unchanged_by_knowledge (__main__.KnowledgeControlPlaneTests.test_61_turn_state_unchanged_by_knowledge) ... ok\ntest_62_ready_warnings_preserved (__main__.KnowledgeControlPlaneTests.test_62_ready_warnings_preserved) ... ok\ntest_63_request_defaults_are_adapter_bounds (__main__.KnowledgeControlPlaneTests.test_63_request_defaults_are_adapter_bounds) ... ok\ntest_64_stale_request_retained_as_historical_failed_state (__main__.KnowledgeControlPlaneTests.test_64_stale_request_retained_as_historical_failed_state) ... ok\ntest_65_request_identity_factory_uses_kreq_uuid_form (__main__.KnowledgeControlPlaneTests.test_65_request_identity_factory_uses_kreq_uuid_form) ... ok\ntest_66_raw_query_is_not_echoed_in_result_status (__main__.KnowledgeControlPlaneTests.test_66_raw_query_is_not_echoed_in_result_status) ... ok\n\n----------------------------------------------------------------------\nRan 66 tests in 0.011s\n\nOK"
+    },
+    {
+      "name": "57 knowledge change proposal tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.745,
+      "output_tail": "oposal_with_authority_spoofing (__main__.KnowledgeChangeProposalContractTests.test_45_validator_rejects_proposal_with_authority_spoofing) ... ok\ntest_46_validator_rejects_proposal_with_lifecycle_spoofing (__main__.KnowledgeChangeProposalContractTests.test_46_validator_rejects_proposal_with_lifecycle_spoofing) ... ok\ntest_52_vault_fingerprint_unchanged (__main__.KnowledgeChangeProposalInvariantsTests.test_52_vault_fingerprint_unchanged) ... ok\ntest_53_vault_file_count_unchanged (__main__.KnowledgeChangeProposalInvariantsTests.test_53_vault_file_count_unchanged) ... ok\ntest_54_no_model_calls_during_validation (__main__.KnowledgeChangeProposalInvariantsTests.test_54_no_model_calls_during_validation) ... ok\ntest_55_no_network_calls_during_validation (__main__.KnowledgeChangeProposalInvariantsTests.test_55_no_network_calls_during_validation) ... ok\ntest_56_no_shell_execution (__main__.KnowledgeChangeProposalInvariantsTests.test_56_no_shell_execution) ... ok\ntest_57_no_tauri_commands (__main__.KnowledgeChangeProposalInvariantsTests.test_57_no_tauri_commands) ... ok\ntest_58_no_frontend_changes (__main__.KnowledgeChangeProposalInvariantsTests.test_58_no_frontend_changes) ... ok\ntest_59_no_model_gateway_changes (__main__.KnowledgeChangeProposalInvariantsTests.test_59_no_model_gateway_changes) ... ok\ntest_60_no_provider_harness_registry_changes (__main__.KnowledgeChangeProposalInvariantsTests.test_60_no_provider_harness_registry_changes) ... ok\ntest_61_no_automatic_approval (__main__.KnowledgeChangeProposalInvariantsTests.test_61_no_automatic_approval) ... ok\ntest_62_no_persistent_proposal_store (__main__.KnowledgeChangeProposalInvariantsTests.test_62_no_persistent_proposal_store) ... ok\ntest_63_deterministic_validation_result (__main__.KnowledgeChangeProposalInvariantsTests.test_63_deterministic_validation_result) ... ok\ntest_64_validation_failure_does_not_mutate_input (__main__.KnowledgeChangeProposalInvariantsTests.test_64_validation_failure_does_not_mutate_input) ... ok\ntest_65_failed_validation_does_not_mutate_previous_valid_result (__main__.KnowledgeChangeProposalInvariantsTests.test_65_failed_validation_does_not_mutate_previous_valid_result) ... ok\ntest_47_real_vault_update_existing_proposal_validates (__main__.KnowledgeChangeProposalRealVaultTests.test_47_real_vault_update_existing_proposal_validates) ... ok\ntest_48_real_vault_create_new_proposal_validates (__main__.KnowledgeChangeProposalRealVaultTests.test_48_real_vault_create_new_proposal_validates) ... ok\ntest_49_content_hash_deterministic (__main__.KnowledgeChangeProposalRealVaultTests.test_49_content_hash_deterministic) ... ok\ntest_50_stale_revision_rejected_real_vault (__main__.KnowledgeChangeProposalRealVaultTests.test_50_stale_revision_rejected_real_vault) ... ok\ntest_51_collision_rejected_real_vault (__main__.KnowledgeChangeProposalRealVaultTests.test_51_collision_rejected_real_vault) ... ok\n\n----------------------------------------------------------------------\nRan 65 tests in 0.627s\n\nOK"
+    },
+    {
+      "name": "58 knowledge review tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.229,
+      "output_tail": "on_error) ... ok\ntest_087_validation_snapshot_excessive_depth_fails_closed (__main__.KnowledgeReviewBehaviorTests.test_087_validation_snapshot_excessive_depth_fails_closed) ... ok\ntest_088_validation_snapshot_excessive_total_nodes_fails_closed (__main__.KnowledgeReviewBehaviorTests.test_088_validation_snapshot_excessive_total_nodes_fails_closed) ... ok\ntest_089_validation_snapshot_mapping_entry_bound_is_enforced (__main__.KnowledgeReviewBehaviorTests.test_089_validation_snapshot_mapping_entry_bound_is_enforced) ... ok\ntest_090_validation_snapshot_sequence_entry_bound_is_enforced (__main__.KnowledgeReviewBehaviorTests.test_090_validation_snapshot_sequence_entry_bound_is_enforced) ... ok\ntest_091_validation_snapshot_key_length_bound_is_enforced (__main__.KnowledgeReviewBehaviorTests.test_091_validation_snapshot_key_length_bound_is_enforced) ... ok\ntest_092_validation_snapshot_string_value_bound_is_enforced (__main__.KnowledgeReviewBehaviorTests.test_092_validation_snapshot_string_value_bound_is_enforced) ... ok\ntest_093_validation_snapshot_unsupported_mutable_type_fails_closed (__main__.KnowledgeReviewBehaviorTests.test_093_validation_snapshot_unsupported_mutable_type_fails_closed) ... ok\ntest_094_windows_drive_root_unc_and_absolute_paths_are_rejected (__main__.KnowledgeReviewBehaviorTests.test_094_windows_drive_root_unc_and_absolute_paths_are_rejected) ... ok\ntest_095_parent_traversal_nul_and_overlength_paths_are_rejected (__main__.KnowledgeReviewBehaviorTests.test_095_parent_traversal_nul_and_overlength_paths_are_rejected) ... ok\ntest_096_normal_vault_relative_and_dotted_paths_are_accepted (__main__.KnowledgeReviewBehaviorTests.test_096_normal_vault_relative_and_dotted_paths_are_accepted) ... ok\ntest_097_string_stable_id_collection_is_rejected_not_split_into_characters (__main__.KnowledgeReviewBehaviorTests.test_097_string_stable_id_collection_is_rejected_not_split_into_characters) ... ok\ntest_098_bytes_mapping_generator_and_scalar_stable_id_inputs_are_rejected (__main__.KnowledgeReviewBehaviorTests.test_098_bytes_mapping_generator_and_scalar_stable_id_inputs_are_rejected) ... ok\ntest_099_approved_stable_id_collection_types_are_copied_to_frozenset (__main__.KnowledgeReviewBehaviorTests.test_099_approved_stable_id_collection_types_are_copied_to_frozenset) ... ok\ntest_100_valid_result_observed_revision_drift_suppresses_normal_change_material (__main__.KnowledgeReviewBehaviorTests.test_100_valid_result_observed_revision_drift_suppresses_normal_change_material) ... ok\ntest_101_validated_revision_mismatch_suppresses_normal_change_material (__main__.KnowledgeReviewBehaviorTests.test_101_validated_revision_mismatch_suppresses_normal_change_material) ... ok\ntest_102_expected_revision_binding_mismatch_suppresses_normal_change_material (__main__.KnowledgeReviewBehaviorTests.test_102_expected_revision_binding_mismatch_suppresses_normal_change_material) ... ok\n\n----------------------------------------------------------------------\nRan 102 tests in 0.126s\n\nOK"
+    },
+    {
+      "name": "59 human review decision tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 4.947,
+      "output_tail": "_038_actor_metadata_is_frozen (__main__.HumanReviewDecisionBehaviorTests.test_038_actor_metadata_is_frozen) ... ok\ntest_039_caller_owned_inputs_are_not_mutated (__main__.HumanReviewDecisionBehaviorTests.test_039_caller_owned_inputs_are_not_mutated) ... ok\ntest_040_identity_ignores_ambient_time_environment_and_paths (__main__.HumanReviewDecisionBehaviorTests.test_040_identity_ignores_ambient_time_environment_and_paths) ... ok\ntest_041_module_has_no_filesystem_write_runtime (__main__.HumanReviewDecisionBehaviorTests.test_041_module_has_no_filesystem_write_runtime) ... ok\ntest_042_module_has_no_persistence_registry_database_or_consumer_api (__main__.HumanReviewDecisionBehaviorTests.test_042_module_has_no_persistence_registry_database_or_consumer_api) ... ok\ntest_043_module_has_no_network_model_tauri_or_frontend_coupling (__main__.HumanReviewDecisionBehaviorTests.test_043_module_has_no_network_model_tauri_or_frontend_coupling) ... ok\ntest_044_module_has_no_subprocess_or_shell_runtime (__main__.HumanReviewDecisionBehaviorTests.test_044_module_has_no_subprocess_or_shell_runtime) ... ok\ntest_045_e9a_and_e9b_inputs_are_not_mutated (__main__.HumanReviewDecisionBehaviorTests.test_045_e9a_and_e9b_inputs_are_not_mutated) ... ok\ntest_046_hard_stop_and_no_authority_invariants_are_explicit (__main__.HumanReviewDecisionBehaviorTests.test_046_hard_stop_and_no_authority_invariants_are_explicit) ... ok\ntest_047_exact_comment_character_and_utf8_boundaries_are_accepted (__main__.HumanReviewDecisionBehaviorTests.test_047_exact_comment_character_and_utf8_boundaries_are_accepted) ... ok\ntest_048_binding_values_require_exact_types_and_formats (__main__.HumanReviewDecisionBehaviorTests.test_048_binding_values_require_exact_types_and_formats) ... ok\ntest_049_actor_argument_requires_exact_metadata_type (__main__.HumanReviewDecisionBehaviorTests.test_049_actor_argument_requires_exact_metadata_type) ... ok\ntest_050_malformed_real_type_artifact_field_is_rejected (__main__.HumanReviewDecisionBehaviorTests.test_050_malformed_real_type_artifact_field_is_rejected) ... ok\ntest_051_typed_rejection_is_deterministic_and_validation_order_is_fixed (__main__.HumanReviewDecisionBehaviorTests.test_051_typed_rejection_is_deterministic_and_validation_order_is_fixed) ... ok\ntest_052_incomplete_fake_e9b_dependency_fails_static_import (__main__.HumanReviewDecisionBehaviorTests.test_052_incomplete_fake_e9b_dependency_fails_static_import) ... ok\ntest_053_all_eight_deliberate_faults_are_detected (__main__.HumanReviewDecisionBehaviorTests.test_053_all_eight_deliberate_faults_are_detected) ... ok\ntest_054_focused_suite_substance_gate (__main__.HumanReviewDecisionBehaviorTests.test_054_focused_suite_substance_gate) ... ok\ntest_055_public_artifact_constructor_enforces_lifecycle_invariants (__main__.HumanReviewDecisionBehaviorTests.test_055_public_artifact_constructor_enforces_lifecycle_invariants) ... ok\n\n----------------------------------------------------------------------\nRan 55 tests in 2.462s\n\nOK"
+    },
+    {
+      "name": "60 review projection tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.554,
+      "output_tail": "ectionBehaviorTests.test_059_focused_suite_substance_gate) ... ok\ntest_060_validation_depth_nodes_mapping_sequence_key_and_string_bounds (__main__.ProjectionBehaviorTests.test_060_validation_depth_nodes_mapping_sequence_key_and_string_bounds) ... ok\ntest_061_general_string_and_source_body_bounds_fail_closed (__main__.ProjectionBehaviorTests.test_061_general_string_and_source_body_bounds_fail_closed) ... ok\ntest_062_finding_detail_source_bound_fails_closed (__main__.ProjectionBehaviorTests.test_062_finding_detail_source_bound_fails_closed) ... ok\ntest_063_same_shape_but_unbound_decision_identity_is_rejected (__main__.ProjectionBehaviorTests.test_063_same_shape_but_unbound_decision_identity_is_rejected) ... ok\ntest_064_empty_and_dot_only_source_paths_are_rejected (__main__.ProjectionBehaviorTests.test_064_empty_and_dot_only_source_paths_are_rejected) ... ok\ntest_065_exact_review_identity_contract_and_binding_fields_are_preserved (__main__.ProjectionBehaviorTests.test_065_exact_review_identity_contract_and_binding_fields_are_preserved) ... ok\ntest_066_every_representation_field_and_line_profile_value_is_exact (__main__.ProjectionBehaviorTests.test_066_every_representation_field_and_line_profile_value_is_exact) ... ok\ntest_067_all_projection_records_are_runtime_frozen (__main__.ProjectionBehaviorTests.test_067_all_projection_records_are_runtime_frozen) ... ok\ntest_068_real_finding_message_is_bounded_by_bytes_and_lines (__main__.ProjectionBehaviorTests.test_068_real_finding_message_is_bounded_by_bytes_and_lines) ... ok\ntest_069_exact_root_type_rejects_review_and_decision_subclasses (__main__.ProjectionBehaviorTests.test_069_exact_root_type_rejects_review_and_decision_subclasses) ... ok\ntest_070_manual_projection_injection_is_rejected_before_json_escape (__main__.ProjectionBehaviorTests.test_070_manual_projection_injection_is_rejected_before_json_escape) ... ok\ntest_071_stable_id_and_windows_normalized_traversal_are_rejected (__main__.ProjectionBehaviorTests.test_071_stable_id_and_windows_normalized_traversal_are_rejected) ... ok\ntest_072_summary_projection_has_exact_bounded_queue_fields (__main__.ProjectionBehaviorTests.test_072_summary_projection_has_exact_bounded_queue_fields) ... ok\ntest_073_summary_is_derived_by_calling_the_accepted_full_projector (__main__.ProjectionBehaviorTests.test_073_summary_is_derived_by_calling_the_accepted_full_projector) ... ok\ntest_074_blocked_summary_preserves_absence_without_authority_fields (__main__.ProjectionBehaviorTests.test_074_blocked_summary_preserves_absence_without_authority_fields) ... ok\ntest_075_summary_truncation_fact_is_truthful_and_canonical (__main__.ProjectionBehaviorTests.test_075_summary_truncation_fact_is_truthful_and_canonical) ... ok\ntest_076_summary_is_frozen_fresh_and_rejects_wrong_source_type (__main__.ProjectionBehaviorTests.test_076_summary_is_frozen_fresh_and_rejects_wrong_source_type) ... ok\n\n----------------------------------------------------------------------\nRan 76 tests in 0.398s\n\nOK"
+    },
+    {
+      "name": "61 Svelte type check",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.002,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "62 frontend unit test suite",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.001,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "63 frontend production build",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.001,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "64 npm dependency tree",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.0,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "65 npm production audit",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.003,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "66 frontend coverage gate",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.001,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "67 frontend language tests",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.0,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "68 frontend shell store tests",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.006,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "69 frontend model gateway tests",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.0,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "70 frontend managed artifacts tests",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.0,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "71 Rust formatting",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.351,
+      "output_tail": ""
+    },
+    {
+      "name": "72 Rust debug unit tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 7.347,
+      "output_tail": "es_full_validation_and_readiness_marks_trust ... ok\ntest workspace::tests::file_path_is_rejected_as_not_directory ... ok\ntest artifact_trust::tests::readiness_distinguishes_missing_invalid_and_incompatible_runtime ... ok\ntest workspace::tests::supplied_symlink_workspace_is_rejected_before_canonicalization ... ok\ntest files::tests::missing_changed_and_replaced_files_are_rejected_before_reread ... ok\ntest artifact_trust::tests::resolved_launch_holds_model_and_runtime_identity_guards ... ok\ntest files::tests::verbatim_and_trailing_alias_handling_is_fail_closed ... ok\ntest files::tests::rename_replacement_stale_reselection_and_concurrent_forget_are_safe ... ok\ntest files::tests::growth_and_truncation_during_read_fail_closed_with_deterministic_hooks ... ok\ntest files::tests::reparse_points_cloud_placeholders_aliases_and_non_regular_files_are_rejected ... ok\ntest files::tests::unsupported_oversized_binary_and_invalid_utf8_files_fail_closed ... ok\ntest artifact_trust::tests::live_inventory_revalidates_exact_bytes_and_ignores_appdata_authority ... ok\ntest artifact_acquisition::tests::approved_runtime_envelope_installs_only_the_pinned_subset_and_license ... ok\ntest artifact_acquisition::tests::runtime_envelope_rejects_missing_members_and_disposition_drift_before_promotion ... ok\ntest managed_runtime::tests::runtime_args_keep_model_and_state_paths_inside_the_explicit_application_root ... ok\ntest managed_runtime::tests::accelerated_runtime_args_request_full_gpu_offload ... ok\ntest managed_runtime::tests::fixed_runtime_args_disable_webui_and_agent ... ok\ntest files::tests::active_context_enforces_five_mibibytes_and_stable_registry_order ... ok\ntest artifact_acquisition::tests::runtime_license_asset_identity_is_checked_before_atomic_promotion ... ok\ntest artifact_validation_cache::tests::concurrent_validation_hashes_once_and_reuses_completed_entry ... ok\ntest approval::tests::p0b_consumed_tombstones_have_fixed_capacity ... ok\ntest approval::tests::p0b_oldest_tombstone_is_evicted_deterministically ... ok\n\ntest result: ok. 512 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 1.89s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\n   Compiling localcomet-desktop v6.84.6 (C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.89s\n     Running unittests src\\lib.rs (target\\debug\\deps\\localcomet_desktop_lib-911ab1d8c8573a54.exe)\n     Running unittests src\\bin\\format_catalog.rs (target\\debug\\deps\\format_catalog-fe6fc4024294631f.exe)\n     Running unittests src\\main.rs (target\\debug\\deps\\localcomet_desktop-d34acfa2e8678083.exe)\n   Doc-tests localcomet_desktop_lib"
+    },
+    {
+      "name": "73 Rust release unit tests",
+      "status": "FAIL",
+      "returncode": 101,
+      "duration_s": 37.113,
+      "output_tail": ": no variant named `DebugPython` found for enum `supervisor::SidecarProgram`\n    --> src\\supervisor.rs:1770:38\n     |\n  59 | pub enum SidecarProgram {\n     | ----------------------- variant `DebugPython` not found here\n...\n1770 |             program: SidecarProgram::DebugPython {\n     |                                      ^^^^^^^^^^^ variant not found in `supervisor::SidecarProgram`\n\nerror[E0599]: no variant named `DebugPython` found for enum `supervisor::SidecarProgram`\n    --> src\\supervisor.rs:1792:38\n     |\n  59 | pub enum SidecarProgram {\n     | ----------------------- variant `DebugPython` not found here\n...\n1792 |             program: SidecarProgram::DebugPython {\n     |                                      ^^^^^^^^^^^ variant not found in `supervisor::SidecarProgram`\n\nerror[E0599]: no associated function or constant named `debug_for_tests` found for struct `supervisor::SupervisorConfig` in the current scope\n    --> src\\supervisor.rs:2782:31\n     |\n  77 | pub struct SupervisorConfig {\n     | --------------------------- associated function or constant `debug_for_tests` not found for this struct\n...\n2782 |             SupervisorConfig::debug_for_tests(root, python),\n     |                               ^^^^^^^^^^^^^^^ associated function or constant not found in `supervisor::SupervisorConfig`\n     |\nnote: if you're trying to build a new `supervisor::SupervisorConfig` consider using one of the following associated functions:\n      supervisor::SupervisorConfig::discover\n      supervisor::SupervisorConfig::release_from_current_exe\n    --> src\\supervisor.rs:83:5\n     |\n  83 |     pub fn discover() -> Self {\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^^\n...\n 204 |     pub fn release_from_current_exe() -> Self {\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nerror[E0599]: no variant named `DebugPython` found for enum `supervisor::SidecarProgram`\n    --> src\\supervisor.rs:2831:38\n     |\n  59 | pub enum SidecarProgram {\n     | ----------------------- variant `DebugPython` not found here\n...\n2831 |             program: SidecarProgram::DebugPython {\n     |                                      ^^^^^^^^^^^ variant not found in `supervisor::SidecarProgram`\n\nwarning: unreachable pattern\n    --> src\\supervisor.rs:1742:13\n     |\n1736 | /             SidecarProgram::ReleaseBundle {\n1737 | |                 executable, runner, ..\n1738 | |             } => {\n     | |_____________- matches all the relevant values\n...\n1742 |               _ => panic!(\"release sidecar executable expected\"),\n     |               ^ no value can reach this\n     |\n     = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default\n\nSome errors have detailed explanations: E0425, E0599.\nFor more information about an error, try `rustc --explain E0425`.\nwarning: `localcomet-desktop` (lib test) generated 1 warning\nerror: could not compile `localcomet-desktop` (lib test) due to 8 previous errors; 1 warning emitted\nwarning: build failed, waiting for other jobs to finish..."
+    },
+    {
+      "name": "74 Rust clippy warnings as errors",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 2.23,
+      "output_tail": "Checking localcomet-desktop v6.84.6 (C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.14s"
+    },
+    {
+      "name": "75 Rust release build",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 1.055,
+      "output_tail": "Compiling localcomet-desktop v6.84.6 (C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri)\n    Finished `release` profile [optimized] target(s) in 1.01s"
+    },
+    {
+      "name": "76 Rust duplicate dependency graph",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.199,
+      "output_tail": " (*)\n└── wry v0.55.1 (*)\n\nwindows-implement v0.57.0 (proc-macro)\n└── windows-core v0.57.0 (*)\n\nwindows-implement v0.60.2 (proc-macro)\n├── webview2-com v0.38.2 (*)\n└── windows-core v0.61.2 (*)\n\nwindows-interface v0.57.0 (proc-macro)\n└── windows-core v0.57.0 (*)\n\nwindows-interface v0.59.3 (proc-macro)\n├── webview2-com v0.38.2 (*)\n└── windows-core v0.61.2 (*)\n\nwindows-link v0.1.3\n├── windows v0.61.3 (*)\n├── windows-core v0.61.2 (*)\n├── windows-future v0.2.1 (*)\n├── windows-numerics v0.2.0 (*)\n├── windows-result v0.3.4\n│   └── windows-core v0.61.2 (*)\n├── windows-strings v0.4.2\n│   └── windows-core v0.61.2 (*)\n└── windows-threading v0.1.0\n    └── windows-future v0.2.1 (*)\n\nwindows-link v0.2.1\n├── parking_lot_core v0.9.12 (*)\n├── windows-sys v0.61.2\n│   ├── dirs-sys v0.5.0\n│   │   └── dirs v6.0.0\n│   │       ├── tauri v2.11.5 (*)\n│   │       └── tauri-build v2.6.3 (*)\n│   ├── localcomet-desktop v6.84.6 (C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\desktop\\localcomet-desktop\\src-tauri)\n│   ├── mio v1.2.2\n│   │   └── tokio v1.52.3\n│   │       ├── hyper v1.10.1 (*)\n│   │       ├── hyper-rustls v0.27.9 (*)\n│   │       ├── hyper-util v0.1.20 (*)\n│   │       ├── reqwest v0.13.4 (*)\n│   │       ├── tauri v2.11.5 (*)\n│   │       ├── tokio-rustls v0.26.4 (*)\n│   │       └── tower v0.5.3\n│   │           ├── reqwest v0.13.4 (*)\n│   │           └── tower-http v0.6.11 (*)\n│   ├── muda v0.19.3 (*)\n│   ├── rustls-platform-verifier v0.7.0 (*)\n│   ├── socket2 v0.6.4\n│   │   ├── hyper-util v0.1.20 (*)\n│   │   └── tokio v1.52.3 (*)\n│   ├── softbuffer v0.4.8\n│   │   └── tauri-runtime-wry v2.11.4 (*)\n│   └── tokio v1.52.3 (*)\n├── windows-sys v0.61.2\n│   └── winapi-util v0.1.11\n│       ├── same-file v1.0.6\n│       │   └── walkdir v2.5.0\n│       │       ├── tauri-build v2.6.3 (*)\n│       │       ├── tauri-codegen v2.6.3 (*)\n│       │       ├── tauri-plugin v2.6.3 (*)\n│       │       ├── tauri-utils v2.9.3 (*)\n│       │       └── tauri-utils v2.9.3 (*)\n│       └── walkdir v2.5.0 (*)\n└── windows-version v0.1.7\n    ├── tao v0.35.3 (*)\n    ├── window-vibrancy v0.6.0\n    │   └── tauri v2.11.5 (*)\n    └── wry v0.55.1 (*)\n\nwindows-result v0.1.2\n└── windows-core v0.57.0 (*)\n\nwindows-result v0.3.4 (*)\n\nwindows-sys v0.59.0\n└── window-vibrancy v0.6.0 (*)\n\nwindows-sys v0.59.0\n└── winreg v0.55.0\n    └── embed-resource v3.0.11 (*)\n\nwindows-sys v0.60.2\n└── rfd v0.16.0\n    └── tauri-plugin-dialog v2.7.2 (*)\n\nwindows-sys v0.61.2 (*)\n\nwindows-sys v0.61.2 (*)\n\nwindows-targets v0.52.6\n├── windows v0.57.0 (*)\n├── windows-core v0.57.0 (*)\n├── windows-result v0.1.2 (*)\n├── windows-sys v0.59.0 (*)\n└── windows-sys v0.59.0 (*)\n\nwindows-targets v0.53.5\n└── windows-sys v0.60.2 (*)\n\nwindows_x86_64_msvc v0.52.6\n└── windows-targets v0.52.6 (*)\n\nwindows_x86_64_msvc v0.53.1\n└── windows-targets v0.53.5 (*)\n\nwinnow v0.7.15\n└── toml v0.9.12+spec-1.1.0 (*)\n\nwinnow v1.0.4\n├── toml v1.1.2+spec-1.1.0 (*)\n└── toml_parser v1.1.2+spec-1.1.0\n    ├── toml v0.9.12+spec-1.1.0 (*)\n    └── toml v1.1.2+spec-1.1.0 (*)"
+    },
+    {
+      "name": "77 desktop IPC source compile",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 2.509,
+      "output_tail": "PASS test_import_safety 2.392s\nPASS test_canonical_json_and_framing 0.001s\nPASS test_envelope_payload_and_constructors 0.005s\nPASS test_streaming_errors_cancel_approval_and_sanitization 0.001s\nPASS test_schema_document_manifest_and_regression_invariants 0.031s\nALL v6.84.1 DESKTOP IPC TESTS PASSED"
+    },
+    {
+      "name": "78 tool risk Rust parity",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.064,
+      "output_tail": "OK: Rust risk_level_for_tool matches tool_risk_levels.toml (19 tools)\nOK: Rust REGISTERED_MODEL_TOOLS matches Python TOOL_REGISTRY (10 tools)\nOK: R4 execution coverage confirmed via SUPPORTED_TOOLS\nOK: parser self-tests passed"
+    },
+    {
+      "name": "79 Tauri desktop native integration",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.1,
+      "output_tail": "ALL v6.84.2 DESKTOP SHELL TESTS PASSED (Phase C)"
+    },
+    {
+      "name": "80 release manifest integrity",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.102,
+      "output_tail": "ALL v6.84.2 DESKTOP SHELL TESTS PASSED (Phase C)"
+    },
+    {
+      "name": "81 seven cycle end-to-end gate",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 111.561,
+      "output_tail": "5T00:17:38.137101 → 2026-08-15T00:17:53.971734\n  детали → cycle1.log\n\n========== ЦИКЛ 2/7 — 2026-08-15T00:17:53.971734 ==========\n[2] npm run check ...\n[2] npm test ...\n[2] npm run build ...\n[2] python гейты (параллельно) ...\nЦикл 2: PASS | 15.9s (py 7.3s) | фронт [check:0/0(3.6s) | test:390/390(2.4s) | build:OK(2.6s)] | python [trust:15 PASS(0.1s) | bundle:146/146(0.1s) | adr015:67(1 skipped)(7.3s)] | 2026-08-15T00:17:53.971734 → 2026-08-15T00:18:09.888265\n  детали → cycle2.log\n\n========== ЦИКЛ 3/7 — 2026-08-15T00:18:09.888265 ==========\n[3] npm run check ...\n[3] npm test ...\n[3] npm run build ...\n[3] python гейты (параллельно) ...\nЦикл 3: PASS | 16.0s (py 7.3s) | фронт [check:0/0(3.6s) | test:390/390(2.4s) | build:OK(2.6s)] | python [trust:15 PASS(0.1s) | bundle:146/146(0.1s) | adr015:67(1 skipped)(7.3s)] | 2026-08-15T00:18:09.888265 → 2026-08-15T00:18:25.872101\n  детали → cycle3.log\n\n========== ЦИКЛ 4/7 — 2026-08-15T00:18:25.872101 ==========\n[4] npm run check ...\n[4] npm test ...\n[4] npm run build ...\n[4] python гейты (параллельно) ...\nЦикл 4: PASS | 15.8s (py 7.3s) | фронт [check:0/0(3.6s) | test:390/390(2.4s) | build:OK(2.6s)] | python [trust:15 PASS(0.0s) | bundle:146/146(0.1s) | adr015:67(1 skipped)(7.3s)] | 2026-08-15T00:18:25.872101 → 2026-08-15T00:18:41.713363\n  детали → cycle4.log\n\n========== ЦИКЛ 5/7 — 2026-08-15T00:18:41.713995 ==========\n[5] npm run check ...\n[5] npm test ...\n[5] npm run build ...\n[5] python гейты (параллельно) ...\nЦикл 5: PASS | 16.1s (py 7.3s) | фронт [check:0/0(3.6s) | test:390/390(2.5s) | build:OK(2.6s)] | python [trust:15 PASS(0.0s) | bundle:146/146(0.1s) | adr015:67(1 skipped)(7.3s)] | 2026-08-15T00:18:41.713995 → 2026-08-15T00:18:57.786779\n  детали → cycle5.log\n\n========== ЦИКЛ 6/7 — 2026-08-15T00:18:57.786779 ==========\n[6] npm run check ...\n[6] npm test ...\n[6] npm run build ...\n[6] python гейты (параллельно) ...\nЦикл 6: PASS | 15.9s (py 7.2s) | фронт [check:0/0(3.6s) | test:390/390(2.5s) | build:OK(2.6s)] | python [trust:15 PASS(0.1s) | bundle:146/146(0.1s) | adr015:67(1 skipped)(7.2s)] | 2026-08-15T00:18:57.786779 → 2026-08-15T00:19:13.722770\n  детали → cycle6.log\n\n========== ЦИКЛ 7/7 — 2026-08-15T00:19:13.722770 ==========\n[7] npm run check ...\n[7] npm test ...\n[7] npm run build ...\n[7] python гейты (параллельно) ...\nЦикл 7: PASS | 15.9s (py 7.2s) | фронт [check:0/0(3.6s) | test:390/390(2.4s) | build:OK(2.6s)] | python [trust:15 PASS(0.0s) | bundle:146/146(0.1s) | adr015:67(1 skipped)(7.2s)] | 2026-08-15T00:19:13.722770 → 2026-08-15T00:19:29.619607\n  детали → cycle7.log\n\n========== СВОДКА 7/7 ==========\nPASS: 7/7\nFAIL: 0/7\nИтог: 7/7 PASS — все гейты стабильны.\nТочек роста нет — оба контура (фронт + python) детерминированы.\n\nЛоги: C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean\\.cycle-logs\n  cycle1.log — 18205 bytes\n  cycle2.log — 18205 bytes\n  cycle3.log — 18206 bytes\n  cycle4.log — 18206 bytes\n  cycle5.log — 18205 bytes\n  cycle6.log — 18205 bytes\n  cycle7.log — 18206 bytes\n  summary.log — 2308 bytes"
+    },
+    {
+      "name": "82 reproducibility suite",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 8.837,
+      "output_tail": "PASS test_import_and_root_precedence_are_read_only 1.384s\nPASS test_real_manifest_static_preflight 1.508s\nPASS test_synthetic_failures_are_reported_safely 0.006s\nPASS test_cli_output_and_determinism 2.164s\nPASS test_clean_temp_copy_passes_without_source_access 1.331s\nPASS test_previous_suites_and_staging 2.388s\nALL v6.80 REPRODUCIBILITY TESTS PASSED"
+    },
+    {
+      "name": "83 audit bundle creation",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.514,
+      "output_tail": "PASS test_bundle_creation_and_determinism 0.225s\nPASS test_bundle_verification 0.117s\nPASS test_no_duplicate_zip_entries 0.111s\nALL v6.80.1 AUDIT BUNDLE TESTS PASSED"
+    },
+    {
+      "name": "84 bundle security suite",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 32.108,
+      "output_tail": "PASS test_valid_bundle_and_tamper_detection 0.131s\nPASS test_archive_path_and_schema_rejections 0.128s\nPASS test_secret_detection_and_limits 0.193s\nPASS test_compare_and_determinism_no_repo_writes 22.724s\nPASS test_previous_suites_and_staging 8.869s\nALL v6.80.2 BUNDLE SECURITY TESTS PASSED\n\nC:\\Users\\DNS\\AppData\\Local\\hermes\\hermes-agent\\.hermes-runtime\\python\\generation-1785811000-24920-bd691184\\cpython-3.11-windows-x86_64-none\\Lib\\zipfile.py:1580: UserWarning: Duplicate name: 'LocalComet_Audit_Bundle_86a7cad83ced47b9/source/main.py'\n  return self._open_to_write(zinfo, force_zip64=force_zip64)"
+    },
+    {
+      "name": "85 start-localcomet launcher tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.285,
+      "output_tail": "test_active_lock_is_rejected (__main__.StartLocalCometTests.test_active_lock_is_rejected) ... ok\ntest_cli_rejects_json_for_interactive_start (__main__.StartLocalCometTests.test_cli_rejects_json_for_interactive_start) ... ok\ntest_existing_installed_or_dev_process_holds_launch (__main__.StartLocalCometTests.test_existing_installed_or_dev_process_holds_launch) ... ok\ntest_failed_doctor_never_calls_legacy (__main__.StartLocalCometTests.test_failed_doctor_never_calls_legacy) ... ok\ntest_keyboard_interrupt_maps_to_130_and_releases_lock (__main__.StartLocalCometTests.test_keyboard_interrupt_maps_to_130_and_releases_lock) ... ok\ntest_lock_is_created_and_released (__main__.StartLocalCometTests.test_lock_is_created_and_released) ... ok\ntest_logs_command_is_truthful_when_empty (__main__.StartLocalCometTests.test_logs_command_is_truthful_when_empty) ... ok\ntest_loopback_dev_url_is_loaded (__main__.StartLocalCometTests.test_loopback_dev_url_is_loaded) ... ok\ntest_malformed_lock_fails_closed (__main__.StartLocalCometTests.test_malformed_lock_fails_closed) ... ok\ntest_non_loopback_dev_url_is_rejected (__main__.StartLocalCometTests.test_non_loopback_dev_url_is_rejected) ... ok\ntest_offline_launch_requires_reusable_dependencies (__main__.StartLocalCometTests.test_offline_launch_requires_reusable_dependencies) ... ok\ntest_parser_defaults_to_start (__main__.StartLocalCometTests.test_parser_defaults_to_start) ... ok\ntest_port_probe_reports_available_and_occupied (__main__.StartLocalCometTests.test_port_probe_reports_available_and_occupied) ... ok\ntest_real_python_path_is_accepted (__main__.StartLocalCometTests.test_real_python_path_is_accepted) ... ok\ntest_release_and_legacy_contract_are_explicit (__main__.StartLocalCometTests.test_release_and_legacy_contract_are_explicit) ... ok\ntest_source_contains_no_shell_or_authority_expansion (__main__.StartLocalCometTests.test_source_contains_no_shell_or_authority_expansion) ... ok\ntest_stale_lock_is_recovered (__main__.StartLocalCometTests.test_stale_lock_is_recovered) ... ok\ntest_status_is_read_only_and_bounded (__main__.StartLocalCometTests.test_status_is_read_only_and_bounded) ... ok\ntest_successful_launch_calls_legacy_once_and_restores_environment (__main__.StartLocalCometTests.test_successful_launch_calls_legacy_once_and_restores_environment) ... ok\ntest_tail_is_line_and_byte_bounded (__main__.StartLocalCometTests.test_tail_is_line_and_byte_bounded) ... ok\ntest_windowsapps_python_is_rejected (__main__.StartLocalCometTests.test_windowsapps_python_is_rejected) ... ok\ntest_wrapper_delegates_runtime_ownership_to_existing_launcher (__main__.StartLocalCometTests.test_wrapper_delegates_runtime_ownership_to_existing_launcher) ... ok\n\n----------------------------------------------------------------------\nRan 22 tests in 0.175s\n\nOK"
+    },
+    {
+      "name": "86 development launcher tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 1.258,
+      "output_tail": "ALL v6.84.5.1d2 DEV LAUNCHER TESTS PASSED (82 checks)"
+    },
+    {
+      "name": "87 UTF-8 SSE decoder tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 2.618,
+      "output_tail": "PASS test_ascii_split_across_chunks\n  (0.001s)\nPASS test_cyrillic_split_after_first_byte\n  (0.000s)\nPASS test_cyrillic_split_before_final_byte\n  (0.000s)\nPASS test_multiple_cyrillic_split_different_boundaries\n  (0.000s)\nPASS test_emoji_split_across_4byte_boundary\n  (0.000s)\nPASS test_mixed_ascii_cyrillic_emoji_split\n  (0.000s)\nPASS test_sse_line_split_across_chunks\n  (0.000s)\nPASS test_sse_data_payload_split_across_chunks\n  (0.000s)\nPASS test_multiple_sse_events_in_one_chunk\n  (0.000s)\nPASS test_partial_final_multibyte_at_eof\n  (0.000s)\nPASS test_decoder_flush_at_normal_eof\n  (0.000s)\nPASS test_no_replacement_character_corruption\n  (0.001s)\nPASS test_stream_delta_ordering_preserved\n  (0.000s)\nPASS test_cancellation_path_preserved\n  (0.000s)\nPASS test_exactly_one_terminal_outcome\n  (0.000s)\nPASS test_integration_small_read_chunks_cyrillic\n  (0.507s)\nPASS test_integration_emoji_small_reads\n  (0.503s)\nPASS test_integration_byte_by_byte_read\n  (0.503s)\nPASS test_integration_multiple_events_split\n  (0.503s)\nPASS test_integration_non_streaming_unchanged\n  (0.503s)\nPASS test_provider_registry_unchanged\n  (0.000s)\nPASS test_harness_registry_unchanged\n  (0.000s)\nPASS test_tool_function_rejection_unchanged\n  (0.000s)\n\n==================================================\nSSE UTF-8 DECODER TESTS: 23/23 passed, ALL PASSED"
+    },
+    {
+      "name": "88 knowledge preview tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.184,
+      "output_tail": ".test_056_source_keyboard) ... ok\ntest_057_source_wrap (__main__.StaticBoundaryTests.test_057_source_wrap) ... ok\ntest_058_responsive (__main__.StaticBoundaryTests.test_058_responsive) ... ok\ntest_059_no_overflow (__main__.StaticBoundaryTests.test_059_no_overflow) ... ok\ntest_060_vault_hash_visible (__main__.StaticBoundaryTests.test_060_vault_hash_visible) ... ok\ntest_061_full_wrapper_hidden (__main__.StaticBoundaryTests.test_061_full_wrapper_hidden) ... ok\ntest_062_frontend_no_vault_root (__main__.StaticBoundaryTests.test_062_frontend_no_vault_root) ... ok\ntest_063_frontend_no_decision_source_arg (__main__.StaticBoundaryTests.test_063_frontend_no_decision_source_arg) ... ok\ntest_064_frontend_no_query_arg (__main__.StaticBoundaryTests.test_064_frontend_no_query_arg) ... ok\ntest_065_frontend_preview_command (__main__.StaticBoundaryTests.test_065_frontend_preview_command) ... ok\ntest_066_frontend_decide_command (__main__.StaticBoundaryTests.test_066_frontend_decide_command) ... ok\ntest_067_frontend_hash_bound (__main__.StaticBoundaryTests.test_067_frontend_hash_bound) ... ok\ntest_068_frontend_path_guard (__main__.StaticBoundaryTests.test_068_frontend_path_guard) ... ok\ntest_069_frontend_credential_guard (__main__.StaticBoundaryTests.test_069_frontend_credential_guard) ... ok\ntest_070_frontend_injection_event (__main__.StaticBoundaryTests.test_070_frontend_injection_event) ... ok\ntest_071_command_max_context (__main__.StaticBoundaryTests.test_071_command_max_context) ... ok\ntest_072_command_max_results (__main__.StaticBoundaryTests.test_072_command_max_results) ... ok\ntest_073_command_no_vault (__main__.StaticBoundaryTests.test_073_command_no_vault) ... ok\ntest_074_command_no_decision_source (__main__.StaticBoundaryTests.test_074_command_no_decision_source) ... ok\ntest_075_command_no_raw_context (__main__.StaticBoundaryTests.test_075_command_no_raw_context) ... ok\ntest_076_command_include (__main__.StaticBoundaryTests.test_076_command_include) ... ok\ntest_077_command_reject (__main__.StaticBoundaryTests.test_077_command_reject) ... ok\ntest_078_command_cancel (__main__.StaticBoundaryTests.test_078_command_cancel) ... ok\ntest_079_two_tauri_commands (__main__.StaticBoundaryTests.test_079_two_tauri_commands) ... ok\ntest_080_trusted_user_source (__main__.StaticBoundaryTests.test_080_trusted_user_source) ... ok\ntest_081_duplicate_receipts (__main__.StaticBoundaryTests.test_081_duplicate_receipts) ... ok\ntest_082_in_flight_guard (__main__.StaticBoundaryTests.test_082_in_flight_guard) ... ok\ntest_083_query_from_prompt (__main__.StaticBoundaryTests.test_083_query_from_prompt) ... ok\ntest_084_gateway_no_vault_import (__main__.StaticBoundaryTests.test_084_gateway_no_vault_import) ... ok\ntest_085_no_frontend_dependency (__main__.StaticBoundaryTests.test_085_no_frontend_dependency) ... ok\ntest_086_no_persist (__main__.StaticBoundaryTests.test_086_no_persist) ... ok\n\n----------------------------------------------------------------------\nRan 86 tests in 0.030s\n\nOK"
+    },
+    {
+      "name": "89 knowledge producer tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.184,
+      "output_tail": "ies_are_preserved (__main__.KnowledgeReviewProducerTests.test_008_exact_kprop_kchange_kreview_identities_are_preserved) ... ok\ntest_009_ordering_is_deterministic_independent_of_production_order (__main__.KnowledgeReviewProducerTests.test_009_ordering_is_deterministic_independent_of_production_order) ... ok\ntest_010_exact_duplicate_production_is_idempotent (__main__.KnowledgeReviewProducerTests.test_010_exact_duplicate_production_is_idempotent) ... ok\ntest_011_identity_collision_with_unequal_artifact_fails_closed (__main__.KnowledgeReviewProducerTests.test_011_identity_collision_with_unequal_artifact_fails_closed) ... ok\ntest_012_arbitrary_mapping_proposal_is_rejected (__main__.KnowledgeReviewProducerTests.test_012_arbitrary_mapping_proposal_is_rejected) ... ok\ntest_013_wrong_validation_type_is_rejected (__main__.KnowledgeReviewProducerTests.test_013_wrong_validation_type_is_rejected) ... ok\ntest_014_wrong_current_state_type_is_rejected (__main__.KnowledgeReviewProducerTests.test_014_wrong_current_state_type_is_rejected) ... ok\ntest_015_hard_artifact_count_bound_rejects_distinct_addition (__main__.KnowledgeReviewProducerTests.test_015_hard_artifact_count_bound_rejects_distinct_addition) ... ok\ntest_016_full_collection_fails_without_hidden_eviction (__main__.KnowledgeReviewProducerTests.test_016_full_collection_fails_without_hidden_eviction) ... ok\ntest_017_source_inputs_are_not_mutated_or_retained_mutably (__main__.KnowledgeReviewProducerTests.test_017_source_inputs_are_not_mutated_or_retained_mutably) ... ok\ntest_018_returned_artifact_is_an_immutable_snapshot (__main__.KnowledgeReviewProducerTests.test_018_returned_artifact_is_an_immutable_snapshot) ... ok\ntest_019_constructor_injection_remains_compatible_with_production (__main__.KnowledgeReviewProducerTests.test_019_constructor_injection_remains_compatible_with_production) ... ok\ntest_020_real_analyze_review_dependency_cannot_be_bypassed (__main__.KnowledgeReviewProducerTests.test_020_real_analyze_review_dependency_cannot_be_bypassed) ... ok\ntest_021_producer_is_not_exposed_as_an_ipc_method (__main__.KnowledgeReviewProducerTests.test_021_producer_is_not_exposed_as_an_ipc_method) ... ok\ntest_022_no_sidecar_rust_tauri_or_frontend_producer_surface_exists (__main__.KnowledgeReviewProducerTests.test_022_no_sidecar_rust_tauri_or_frontend_producer_surface_exists) ... ok\ntest_023_no_registration_or_decision_creation_vocabulary_in_producer (__main__.KnowledgeReviewProducerTests.test_023_no_registration_or_decision_creation_vocabulary_in_producer) ... ok\ntest_024_production_uses_no_filesystem_network_subprocess_or_model_path (__main__.KnowledgeReviewProducerTests.test_024_production_uses_no_filesystem_network_subprocess_or_model_path) ... ok\ntest_025_list_get_contracts_and_real_source_remain_unchanged (__main__.KnowledgeReviewProducerTests.test_025_list_get_contracts_and_real_source_remain_unchanged) ... ok\n\n----------------------------------------------------------------------\nRan 25 tests in 0.024s\n\nOK"
+    },
+    {
+      "name": "90 knowledge command center tests",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 0.186,
+      "output_tail": "main__.KnowledgeOperationsCommandCenterTests.test_012_request_changes_requires_meaningful_comment) ... ok\ntest_013_proposal_identity_mismatch_fails_closed (__main__.KnowledgeOperationsCommandCenterTests.test_013_proposal_identity_mismatch_fails_closed) ... ok\ntest_014_review_identity_mismatch_cannot_select_another_artifact (__main__.KnowledgeOperationsCommandCenterTests.test_014_review_identity_mismatch_cannot_select_another_artifact) ... ok\ntest_015_change_identity_mismatch_fails_closed (__main__.KnowledgeOperationsCommandCenterTests.test_015_change_identity_mismatch_fails_closed) ... ok\ntest_016_observed_revision_mismatch_fails_closed (__main__.KnowledgeOperationsCommandCenterTests.test_016_observed_revision_mismatch_fails_closed) ... ok\ntest_017_payload_extra_field_rejected (__main__.KnowledgeOperationsCommandCenterTests.test_017_payload_extra_field_rejected) ... ok\ntest_018_decision_capacity_fails_without_eviction (__main__.KnowledgeOperationsCommandCenterTests.test_018_decision_capacity_fails_without_eviction) ... ok\ntest_019_status_exposes_only_bounded_session_counts (__main__.KnowledgeOperationsCommandCenterTests.test_019_status_exposes_only_bounded_session_counts) ... ok\ntest_020_production_owner_has_no_write_or_persistence_call (__main__.KnowledgeOperationsCommandCenterTests.test_020_production_owner_has_no_write_or_persistence_call) ... ok\ntest_021_payload_validation_enforces_utf8_and_fixed_actor_source (__main__.KnowledgeOperationsCommandCenterTests.test_021_payload_validation_enforces_utf8_and_fixed_actor_source) ... ok\ntest_022_payload_validation_enforces_decision_comment_and_change_policy (__main__.KnowledgeOperationsCommandCenterTests.test_022_payload_validation_enforces_decision_comment_and_change_policy) ... ok\ntest_023_session_reset_is_a_new_empty_control_plane_instance (__main__.KnowledgeOperationsCommandCenterTests.test_023_session_reset_is_a_new_empty_control_plane_instance) ... ok\ntest_024_decision_response_contains_only_bounded_evidence_and_hard_stop (__main__.KnowledgeOperationsCommandCenterTests.test_024_decision_response_contains_only_bounded_evidence_and_hard_stop) ... ok\ntest_025_refresh_failure_blocks_every_decision_without_storage (__main__.KnowledgeOperationsCommandCenterTests.test_025_refresh_failure_blocks_every_decision_without_storage) ... ok\ntest_026_refresh_unavailable_blocks_every_decision_without_storage (__main__.KnowledgeOperationsCommandCenterTests.test_026_refresh_unavailable_blocks_every_decision_without_storage) ... ok\ntest_027_unknown_fresh_revision_blocks_every_decision_without_storage (__main__.KnowledgeOperationsCommandCenterTests.test_027_unknown_fresh_revision_blocks_every_decision_without_storage) ... ok\ntest_028_decision_path_never_uses_cached_status_as_freshness_authority (__main__.KnowledgeOperationsCommandCenterTests.test_028_decision_path_never_uses_cached_status_as_freshness_authority) ... ok\n\n----------------------------------------------------------------------\nRan 28 tests in 0.015s\n\nOK"
+    },
+    {
+      "name": "91 Python dependency audit",
+      "status": "PASS",
+      "returncode": 0,
+      "duration_s": 14.654,
+      "output_tail": "No known vulnerabilities found"
+    },
+    {
+      "name": "92 project doctor",
+      "status": "FAIL",
+      "returncode": 1,
+      "duration_s": 0.11,
+      "output_tail": "LocalComet Preflight - Windows \n\nRequirement                              | Status     | Found                          | Breaks                         | Install Command                              \n-----------------------------------------------------------------------------------------------------------------------------------------------------------------------\nRust toolchain (rustc/cargo)             | OK         | rustc 1.97.0 (2d8144b78 2026-  | cargo build/test               | rustup default stable                        \nC linker (cc, cl/link MSVC, or ziglang)  | MISSING    | not found                      | Rust linking                   | pip install ziglang OR MSVC build tools      \nNode.js >= 18                            | OK         | v24.18.0                       | Svelte/npm build               | Download from nodejs.org                     \nnpm registry (registry.npmjs.org)        | MISSING    | UNREACHABLE                    | npm install                    | Check network/proxy or npm config            \nPython >= 3.9                            | OK         | python 3.11.15                 | sidecar startup                | Download from python.org                     \nWebView2 runtime (Windows)               | OK         | WebView2 found                 | Tauri desktop window           | Install WebView2 runtime                     \nNSIS (makensis)                          | MISSING    | not found                      | tauri build --bundle nsis      | Install NSIS and add to PATH                 \nSidecar dependencies                     | OK         | sidecar deps: check deferred   | sidecar execution              | pip install -r requirements.txt              \n\nBLOCKING - must fix before build. See MISSING statuses above."
+    },
+    {
+      "name": "93 Rust dependency audit availability",
+      "status": "FAIL",
+      "returncode": 101,
+      "duration_s": 0.03,
+      "output_tail": "error: no such command: `audit`\n\nhelp: a command with a similar name exists: `add`\n\nhelp: view all installed commands with `cargo --list`\nhelp: find a package to install `audit` with `cargo search cargo-audit`"
+    },
+    {
+      "name": "94 Python first-party mypy gate",
+      "status": "FAIL",
+      "returncode": 1,
+      "duration_s": 0.168,
+      "output_tail": "ackend.py:208: error: \"QuietThreadingHTTPServer\" has no attribute \"posts\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:209: error: \"QuietThreadingHTTPServer\" has no attribute \"post_paths\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:210: error: \"QuietThreadingHTTPServer\" has no attribute \"get_paths\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:211: error: \"QuietThreadingHTTPServer\" has no attribute \"authorization_headers\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:212: error: \"QuietThreadingHTTPServer\" has no attribute \"post_event\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:215: error: \"QuietThreadingHTTPServer\" has no attribute \"scenario_lock\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:216: error: \"QuietThreadingHTTPServer\" has no attribute \"scenarios\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:218: error: \"QuietThreadingHTTPServer\" has no attribute \"next_scenario\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:227: error: \"QuietThreadingHTTPServer\" has no attribute \"posts\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:231: error: \"QuietThreadingHTTPServer\" has no attribute \"post_event\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:234: error: \"QuietThreadingHTTPServer\" has no attribute \"scenario_lock\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:235: error: \"QuietThreadingHTTPServer\" has no attribute \"scenarios\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:493: error: \"QuietThreadingHTTPServer\" has no attribute \"get_paths\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:496: error: \"QuietThreadingHTTPServer\" has no attribute \"authorization_headers\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:497: error: \"QuietThreadingHTTPServer\" has no attribute \"authorization_headers\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:579: error: \"BaseException\" has no attribute \"code\"  [attr-defined]\ntools\\test_up05_wp01_model_chat_backend.py:652: error: Need type annotation for \"cases\"  [var-annotated]\ntools\\test_up05_wp01_model_chat_backend.py:778: error: Item \"None\" of \"_ActiveTurn | None\" has no attribute \"thread\"  [union-attr]\ntools\\test_up05_wp01_model_chat_backend.py:779: error: Item \"None\" of \"_ActiveTurn | None\" has no attribute \"cancel\"  [union-attr]\ntools\\test_up05_wp01_model_chat_backend.py:837: error: Item \"None\" of \"_ActiveTurn | None\" has no attribute \"thread\"  [union-attr]\ntools\\test_up05_wp01_model_chat_backend.py:838: error: Item \"None\" of \"_ActiveTurn | None\" has no attribute \"cancel\"  [union-attr]\ntools\\test_up05_wp01_model_chat_backend.py:1055: error: Item \"None\" of \"_ActiveTurn | None\" has no attribute \"thread\"  [union-attr]\ntools\\test_up05_wp01_model_chat_backend.py:1092: error: Argument 1 to \"ProcessFrameReader\" has incompatible type \"IO[bytes]\"; expected \"BinaryIO\"  [arg-type]\nFound 620 errors in 64 files (checked 217 source files)"
+    },
+    {
+      "name": "95 Python lint gate availability",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.0,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "96 Python formatter gate availability",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.0,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "97 complexity gate availability",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.0,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "98 Windows bundle command",
+      "status": "ERROR",
+      "returncode": null,
+      "duration_s": 0.009,
+      "output_tail": "FileNotFoundError(2, 'Не удается найти указанный файл', None, 2, None)"
+    },
+    {
+      "name": "99 git whitespace integrity",
+      "status": "FAIL",
+      "returncode": 2,
+      "duration_s": 0.048,
+      "output_tail": "desktop/localcomet-desktop/tests/uiPreferences.test.ts:187: new blank line at EOF.\n\nwarning: in the working copy of 'desktop/localcomet-desktop/src/lib/components/shell/PermissionsSection.svelte', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'desktop/localcomet-desktop/src/lib/stores/shellStore.ts', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'desktop/localcomet-desktop/src/lib/stores/uiPreferences.ts', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'desktop/localcomet-desktop/static/modelfit.html', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'desktop/localcomet-desktop/tests/language.test.ts', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'desktop/localcomet-desktop/tests/p0b-r5-approval-contract.test.ts', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'desktop/localcomet-desktop/tests/p0c-sidecar-health.test.ts', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'desktop/localcomet-desktop/tests/shellStore.test.ts', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'desktop/localcomet-desktop/tests/uiPreferences.test.ts', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'requirements.txt', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'tools/test_tool_risk_rust_parity.py', CRLF will be replaced by LF the next time Git touches it"
+    },
+    {
+      "name": "100 release-oriented preflight",
+      "status": "FAIL",
+      "returncode": 2,
+      "duration_s": 0.036,
+      "output_tail": "C:\\Users\\DNS\\AppData\\Local\\hermes\\hermes-agent\\.hermes-runtime\\python\\generation-1785811000-24920-bd691184\\cpython-3.11-windows-x86_64-none\\python.exe: can't open file 'C:\\\\Users\\\\DNS\\\\Documents\\\\LocalComet-build-week-clean\\\\scripts\\\\preflight_audit.py': [Errno 2] No such file or directory"
+    }
+  ]
+}

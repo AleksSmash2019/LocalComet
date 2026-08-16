@@ -39,7 +39,7 @@ const MAX_LOG_BYTES: usize = 256 * 1024;
 const MAX_LOG_LINES: usize = 200;
 const MAX_LOG_CARRY_BYTES: usize = 512 * 1024;
 const MAX_PROBE_BYTES: usize = 64 * 1024;
-const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(180);
+const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(600);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const PROCESS_DROP_WAIT_RESERVE: Duration = Duration::from_secs(2);
 const REQUIRED_FLAGS: &[&str] = &[
@@ -84,12 +84,14 @@ pub struct ManagedRuntimeStatus {
     pub inference_ready: bool,
     pub installation: String,
     pub runtime_version: Option<String>,
+    pub runtime_id: Option<String>,
     pub runtime_instance_id: Option<String>,
     pub runtime_instance_fingerprint: Option<String>,
     pub model_id: Option<String>,
     pub model_display_name: Option<String>,
     pub binding_fingerprint: Option<String>,
     pub last_error: Option<String>,
+    pub loading_phase: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -100,6 +102,7 @@ pub struct ManagedRuntimeStartResponse {
     pub provider_id: &'static str,
     pub model_id: String,
     pub model_display_name: String,
+    pub runtime_id: String,
     pub runtime_instance_id: String,
     pub runtime_instance_fingerprint: String,
 }
@@ -151,6 +154,7 @@ struct ActiveRuntime {
     api_key_handle: Option<File>,
     credential: String,
     port: u16,
+    runtime_id: String,
     runtime_instance_id: String,
     runtime_instance_fingerprint: String,
     binding_fingerprint: String,
@@ -201,6 +205,7 @@ struct ManagedRuntimeInner {
     inference_ready: bool,
     runtime_version: Option<String>,
     last_error: Option<String>,
+    loading_phase: Option<String>,
     active: Option<ActiveRuntime>,
     startup: Option<StartupAttempt>,
     next_startup_generation: u64,
@@ -216,6 +221,7 @@ impl Default for ManagedRuntimeInner {
             inference_ready: false,
             runtime_version: None,
             last_error: None,
+            loading_phase: None,
             active: None,
             startup: None,
             next_startup_generation: 0,
@@ -261,6 +267,7 @@ impl ManagedRuntimeSupervisor {
                 inner.inference_ready = false;
                 inner.runtime_version = None;
                 inner.last_error = Some("managed runtime exited".into());
+                inner.loading_phase = None;
                 active
             } else {
                 None
@@ -274,6 +281,7 @@ impl ManagedRuntimeSupervisor {
                 inner.state = ManagedRuntimeState::Failed;
                 inner.model_state = ManagedModelState::Failed;
                 inner.inference_ready = false;
+                inner.loading_phase = None;
             }
         }
 
@@ -287,10 +295,12 @@ impl ManagedRuntimeSupervisor {
             inner.state = ManagedRuntimeState::NotInstalled;
             inner.model_state = ManagedModelState::Unavailable;
             inner.inference_ready = false;
+            inner.loading_phase = None;
         } else if inner.active.is_none() && inner.state == ManagedRuntimeState::NotInstalled {
             inner.state = ManagedRuntimeState::Stopped;
             inner.model_state = ManagedModelState::Unavailable;
             inner.inference_ready = false;
+            inner.loading_phase = None;
         }
         let active = inner.active.as_ref();
         ManagedRuntimeStatus {
@@ -304,6 +314,7 @@ impl ManagedRuntimeSupervisor {
                 "Not installed".into()
             },
             runtime_version: inner.runtime_version.clone(),
+            runtime_id: active.map(|item| item.runtime_id.clone()),
             runtime_instance_id: active.map(|item| item.runtime_instance_id.clone()),
             runtime_instance_fingerprint: active
                 .map(|item| item.runtime_instance_fingerprint.clone()),
@@ -311,6 +322,7 @@ impl ManagedRuntimeSupervisor {
             model_display_name: active.map(|item| item.model_display_name.clone()),
             binding_fingerprint: active.map(|item| item.binding_fingerprint.clone()),
             last_error: inner.last_error.clone(),
+            loading_phase: inner.loading_phase.clone(),
         }
     }
 
@@ -334,65 +346,151 @@ impl ManagedRuntimeSupervisor {
         }
     }
 
+    /// Typed CPU/Vulkan capability report (P0-6). Never fabricates
+    /// availability: the report comes from the runtime's own device probe, and
+    /// `fallback_runtime_ids` lists the model's other compatible engines
+    /// without claiming they are installed.
+    pub fn runtime_capability(
+        &self,
+        runtime_id: &str,
+        model_id: Option<&str>,
+    ) -> Result<ManagedRuntimeCapability, BridgeError> {
+        if runtime_id.is_empty()
+            || runtime_id.len() > 96
+            || runtime_id.chars().any(char::is_whitespace)
+        {
+            return Err(ManagedRuntimeError::new("invalid_payload", "invalid runtime id").into());
+        }
+        if let Some(model_id) = model_id {
+            if model_id.is_empty()
+                || model_id.len() > 96
+                || model_id.chars().any(char::is_whitespace)
+            {
+                return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
+            }
+        }
+        let target = self.artifacts.runtime_probe_target(runtime_id)?;
+        let mut capability = probe_capability(
+            &target.runtime_id,
+            &target.release_tag,
+            &target.package_dir,
+            &target.executable,
+        );
+        if let Some(model_id) = model_id {
+            let readiness = self.artifacts.model_readiness(model_id)?;
+            capability.fallback_runtime_ids = readiness
+                .compatible_runtime_ids
+                .iter()
+                .filter(|candidate| candidate.as_str() != runtime_id)
+                .cloned()
+                .collect();
+        }
+        Ok(capability)
+    }
+
     pub(crate) fn runtime_start_approval_input(
         &self,
         model_id: &str,
         custom_sha256: Option<&str>,
+        runtime_id: Option<&str>,
     ) -> Result<Value, BridgeError> {
         self.artifacts
-            .runtime_start_approval_input(model_id, custom_sha256)
+            .runtime_start_approval_input(model_id, custom_sha256, runtime_id)
             .map_err(BridgeError::from)
     }
 
-    pub(crate) fn ensure_model_ready(&self, model_id: &str) -> Result<(), BridgeError> {
+    pub(crate) fn ensure_trusted_model_start(
+        &self,
+        model_id: &str,
+        runtime_id: Option<&str>,
+    ) -> Result<(), BridgeError> {
+        let _ = self.runtime_start_approval_input(model_id, None, runtime_id)?;
+        let readiness = self
+            .artifacts
+            .model_readiness(model_id)
+            .map_err(BridgeError::from)?;
+        let trusted_and_valid = readiness.model_trust_kind
+            == crate::artifact_trust::ModelTrustKind::ApprovedCatalog
+            && readiness.model_status == crate::artifact_trust::InstallationStatus::Valid
+            && readiness.runtime_status == Some(crate::artifact_trust::InstallationStatus::Valid)
+            && readiness.compatibility == crate::artifact_trust::CompatibilityStatus::Compatible
+            && readiness.launchable;
+        if !trusted_and_valid {
+            return Err(ManagedRuntimeError::new(
+                "trusted_runtime_required",
+                "only a valid approved catalog model with a valid compatible runtime may use trusted start",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn ensure_trusted_active_stop(
+        &self,
+        bridge: &ControlPlaneBridge,
+    ) -> Result<(), BridgeError> {
+        let status = self.status(bridge);
+        let model_id = status.model_id.clone().ok_or_else(|| {
+            ManagedRuntimeError::new(
+                "trusted_runtime_required",
+                "no active managed model may use trusted stop",
+            )
+        })?;
+        // Bind the approval input to the runtime that is actually active so a
+        // stop cannot be validated against a different runtime selection than
+        // the one the model was started with.
+        let _ = self.runtime_start_approval_input(&model_id, None, status.runtime_id.as_deref())?;
+        let readiness = self
+            .artifacts
+            .model_readiness(&model_id)
+            .map_err(BridgeError::from)?;
+        let trusted_and_valid = readiness.model_trust_kind
+            == crate::artifact_trust::ModelTrustKind::ApprovedCatalog
+            && readiness.model_status == crate::artifact_trust::InstallationStatus::Valid
+            && readiness.runtime_status == Some(crate::artifact_trust::InstallationStatus::Valid)
+            && readiness.compatibility == crate::artifact_trust::CompatibilityStatus::Compatible
+            && readiness.launchable;
+        if !trusted_and_valid {
+            return Err(ManagedRuntimeError::new(
+                "trusted_runtime_required",
+                "only a valid approved catalog model with a valid compatible runtime may use trusted stop",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    /// Turn dispatch gate (P0-3): the model must be ready; returns the active
+    /// runtime instance identity (runtime_instance_id, attach binding
+    /// fingerprint) so the control plane can bind turns to the binding the
+    /// user actually confirmed for THIS instance.
+    pub(crate) fn active_runtime_identity(
+        &self,
+        model_id: &str,
+    ) -> Result<(String, String), BridgeError> {
         let _transition = self
             .transition
             .lock()
             .expect("managed runtime transition lock poisoned");
-        let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
-        let process_running = inner
-            .active
-            .as_ref()
-            .is_some_and(|active| managed_process_is_running(&active.process));
-        if !process_running {
-            if inner.active.is_some() {
-                inner.state = ManagedRuntimeState::Failed;
-                inner.model_state = ManagedModelState::Failed;
-                inner.inference_ready = false;
-                inner.last_error = Some("managed runtime exited".into());
-            }
-            return Err(ManagedRuntimeError::new(
-                "runtime_not_ready",
-                "managed runtime is not ready",
-            )
-            .into());
-        }
-        if inner.state != ManagedRuntimeState::Ready {
-            return Err(ManagedRuntimeError::new(
-                "runtime_not_ready",
-                "managed runtime is not ready",
-            )
-            .into());
-        }
-        let model_ready = inner.model_state == ManagedModelState::Ready
-            && inner.inference_ready
-            && inner
-                .active
-                .as_ref()
-                .is_some_and(|active| active.model_id == model_id);
-        if !model_ready {
-            return Err(
-                ManagedRuntimeError::new("model_not_ready", "managed model is not ready").into(),
-            );
-        }
-        Ok(())
+        let inner = self.inner.lock().expect("managed runtime lock poisoned");
+        classify_model_ready_for_read(&inner, model_id)?;
+        let active = inner.active.as_ref().ok_or_else(|| {
+            ManagedRuntimeError::new("model_not_ready", "managed model is not ready")
+        })?;
+        Ok((
+            active.runtime_instance_id.clone(),
+            active.binding_fingerprint.clone(),
+        ))
     }
 
     pub fn start(
         &self,
         model_id: &str,
         custom_sha256: Option<&str>,
+        runtime_id: Option<&str>,
         bridge: &ControlPlaneBridge,
+        ctx_size_override: Option<u32>,
+        gpu_layers_override: Option<u32>,
     ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
         self.record_connection_event("request", "begin", "LC_MODEL_CONNECT_000", "requested");
         let attempt = match self.begin_start() {
@@ -402,14 +500,19 @@ impl ManagedRuntimeSupervisor {
                 return Err(error);
             }
         };
-        let model_load_deadline = Instant::now() + MODEL_LOAD_TIMEOUT;
-        let response =
-            match self.start_inner(model_id, custom_sha256, model_load_deadline, &attempt) {
-                Ok(response) => response,
-                Err(error) => {
-                    return Err(self.settle_start_failure(&attempt, error, bridge, false));
-                }
-            };
+        let (response, model_load_deadline) = match self.start_inner(
+            model_id,
+            custom_sha256,
+            runtime_id,
+            &attempt,
+            ctx_size_override,
+            gpu_layers_override,
+        ) {
+            Ok(response) => response,
+            Err(error) => {
+                return Err(self.settle_start_failure(&attempt, error, bridge, false));
+            }
+        };
         let attach = match self.attach_payload_for_attempt(&attempt) {
             Ok(attach) => attach,
             Err(error) => {
@@ -465,6 +568,7 @@ impl ManagedRuntimeSupervisor {
             inner.model_state = ManagedModelState::Unloading;
             inner.inference_ready = false;
             inner.last_error = None;
+            inner.loading_phase = None;
             (inner.active.take(), final_state)
         };
 
@@ -487,6 +591,7 @@ impl ManagedRuntimeSupervisor {
         inner.state = final_state;
         inner.model_state = ManagedModelState::Unavailable;
         inner.inference_ready = false;
+        inner.loading_phase = None;
         let response = ManagedRuntimeStopResponse {
             state: inner.state.clone(),
             model_state: inner.model_state.clone(),
@@ -534,6 +639,7 @@ impl ManagedRuntimeSupervisor {
         inner.inference_ready = false;
         inner.runtime_version = None;
         inner.last_error = None;
+        inner.loading_phase = Some("Validating runtime".into());
         Ok(attempt)
     }
 
@@ -541,14 +647,16 @@ impl ManagedRuntimeSupervisor {
         &self,
         model_id: &str,
         custom_sha256: Option<&str>,
-        model_load_deadline: Instant,
+        runtime_id: Option<&str>,
         attempt: &StartupAttempt,
-    ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
+        ctx_size_override: Option<u32>,
+        gpu_layers_override: Option<u32>,
+    ) -> Result<(ManagedRuntimeStartResponse, Instant), BridgeError> {
         let roots = self.artifacts.roots();
         self.record_connection_event("validation", "begin", "LC_MODEL_CONNECT_001", "artifacts");
-        let launch = self
-            .artifacts
-            .resolve_launch_for_start(model_id, custom_sha256)?;
+        let launch =
+            self.artifacts
+                .resolve_launch_for_start(model_id, custom_sha256, runtime_id)?;
         let validation_detail = safe_log_token(artifact_validation_detail(
             launch.artifact_validation_source,
         ));
@@ -566,6 +674,14 @@ impl ManagedRuntimeSupervisor {
             "LC_MODEL_CONNECT_002",
             "capabilities",
         );
+        if launch.runtime_id.contains("vulkan") {
+            // P0-6: fail with an explicit reason and CPU fallback hint when the
+            // Vulkan variant is selected but no Vulkan device is enumerated.
+            if let Err(error) = ensure_vulkan_device_available(&launch) {
+                self.record_connection_event("validation", "failure", error.code, &error.message);
+                return Err(error.into());
+            }
+        }
         attempt.ensure_active()?;
         let state_directory_handles = self.artifacts.guard_runtime_state_root()?;
         let credential = generate_credential()?;
@@ -587,9 +703,33 @@ impl ManagedRuntimeSupervisor {
             provider_id: "managed-llama-cpp",
             model_id: launch.model_id.clone(),
             model_display_name: launch.model_display_name.clone(),
+            runtime_id: launch.runtime_id.clone(),
             runtime_instance_id: runtime_instance_id.clone(),
             runtime_instance_fingerprint: runtime_instance_fingerprint.clone(),
         };
+
+        let model_size_bytes = std::fs::metadata(&launch.model_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let model_size_gb = model_size_bytes as f64 / 1_073_741_824.0;
+        let dynamic_timeout = 180 + (10.0 * model_size_gb) as u64;
+        let dynamic_timeout = dynamic_timeout.min(600);
+        let model_load_deadline = Instant::now() + Duration::from_secs(dynamic_timeout);
+
+        let mut sys = sysinfo::System::new_all();
+        sys.refresh_memory();
+        let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
+        if available_ram_gb < model_size_gb + 0.5 {
+            return Err(ManagedRuntimeError::new(
+                "model_does_not_fit",
+                format!(
+                    "Not enough memory. Required: ~{:.1} GB, Available: {:.1} GB",
+                    model_size_gb + 0.5,
+                    available_ram_gb
+                ),
+            )
+            .into());
+        }
 
         let process = {
             let _transition = self
@@ -608,6 +748,7 @@ impl ManagedRuntimeSupervisor {
                 inner.state = ManagedRuntimeState::Starting;
                 inner.model_state = ManagedModelState::Loading;
                 inner.inference_ready = false;
+                inner.loading_phase = Some("Loading model weights".into());
             }
             let (api_key_file, api_key_handle) =
                 write_private_api_key_file(&roots.state_root, &credential)?;
@@ -615,10 +756,13 @@ impl ManagedRuntimeSupervisor {
                 executable: launch.executable.clone(),
                 args: runtime_args(
                     &launch.model_path,
+                    launch.mmproj_path.as_ref(),
                     port,
                     &api_key_file,
                     &alias,
                     launch.runtime_id.contains("vulkan"),
+                    ctx_size_override,
+                    gpu_layers_override,
                 ),
                 current_dir: launch.package_dir.clone(),
                 env: sanitized_runtime_environment(),
@@ -698,6 +842,7 @@ impl ManagedRuntimeSupervisor {
                     api_key_handle: Some(api_key_handle),
                     credential,
                     port,
+                    runtime_id: launch.runtime_id.clone(),
                     runtime_instance_id,
                     runtime_instance_fingerprint,
                     binding_fingerprint,
@@ -725,6 +870,7 @@ impl ManagedRuntimeSupervisor {
                 api_key_handle: Some(api_key_handle),
                 credential: credential.clone(),
                 port,
+                runtime_id: launch.runtime_id.clone(),
                 runtime_instance_id,
                 runtime_instance_fingerprint,
                 binding_fingerprint,
@@ -735,7 +881,12 @@ impl ManagedRuntimeSupervisor {
                 _directory_handles: launch.directory_handles,
                 _state_directory_handles: state_directory_handles,
             });
-            self.record_connection_event("process", "success", "LC_MODEL_CONNECT_003", "started");
+            self.record_connection_event(
+                "process",
+                "success",
+                "LC_MODEL_CONNECT_003",
+                &format!("started runtime={}", launch.runtime_id),
+            );
             process
         };
 
@@ -750,7 +901,7 @@ impl ManagedRuntimeSupervisor {
             )
         })?;
         self.record_connection_event("readiness", "success", "LC_MODEL_CONNECT_003", "ready");
-        Ok(response)
+        Ok((response, model_load_deadline))
     }
 
     fn attach_payload_for_attempt(&self, attempt: &StartupAttempt) -> Result<Value, BridgeError> {
@@ -804,6 +955,7 @@ impl ManagedRuntimeSupervisor {
         inner.model_state = ManagedModelState::Ready;
         inner.inference_ready = true;
         inner.last_error = None;
+        inner.loading_phase = None;
         Ok(())
     }
 
@@ -834,6 +986,7 @@ impl ManagedRuntimeSupervisor {
             inner.inference_ready = false;
             inner.runtime_version = None;
             inner.last_error = Some(sanitize_text(&error.message, 240));
+            inner.loading_phase = None;
             inner
                 .active
                 .as_ref()
@@ -975,6 +1128,45 @@ fn managed_process_is_running(process: &Arc<Mutex<ContainedManagedRuntimeProcess
         .lock()
         .expect("managed runtime process lock poisoned")
         .is_running()
+}
+
+/// Pure readiness classification for turn dispatch, extracted so the exact
+/// gate (dead process, non-Ready runtime, non-Ready model, foreign model) is
+/// unit-testable without a live managed process. Read-only variant used by
+/// active_runtime_identity.
+fn classify_model_ready_for_read(
+    inner: &ManagedRuntimeInner,
+    model_id: &str,
+) -> Result<(), ManagedRuntimeError> {
+    let process_running = inner
+        .active
+        .as_ref()
+        .is_some_and(|active| managed_process_is_running(&active.process));
+    if !process_running {
+        return Err(ManagedRuntimeError::new(
+            "runtime_not_ready",
+            "managed runtime is not ready",
+        ));
+    }
+    if inner.state != ManagedRuntimeState::Ready {
+        return Err(ManagedRuntimeError::new(
+            "runtime_not_ready",
+            "managed runtime is not ready",
+        ));
+    }
+    let model_ready = inner.model_state == ManagedModelState::Ready
+        && inner.inference_ready
+        && inner
+            .active
+            .as_ref()
+            .is_some_and(|active| active.model_id == model_id);
+    if !model_ready {
+        return Err(ManagedRuntimeError::new(
+            "model_not_ready",
+            "managed model is not ready",
+        ));
+    }
+    Ok(())
 }
 
 fn terminate_managed_process(process: &Arc<Mutex<ContainedManagedRuntimeProcess>>, exit_code: u32) {
@@ -1143,10 +1335,28 @@ fn run_capability_probe(
     flag: &str,
     attempt: &StartupAttempt,
 ) -> Result<String, ManagedRuntimeError> {
+    let output = run_runtime_probe(
+        &runtime.executable,
+        &runtime.package_dir,
+        flag,
+        Duration::from_secs(2),
+        Some(&attempt.cancelled),
+    )?;
+    attempt.ensure_active()?;
+    Ok(output)
+}
+
+fn run_runtime_probe(
+    executable: &Path,
+    package_dir: &Path,
+    flag: &str,
+    probe_timeout: Duration,
+    cancelled: Option<&AtomicBool>,
+) -> Result<String, ManagedRuntimeError> {
     let spec = ManagedRuntimeLaunchSpec {
-        executable: runtime.executable.clone(),
+        executable: executable.to_path_buf(),
         args: vec![OsString::from(flag)],
-        current_dir: runtime.package_dir.clone(),
+        current_dir: package_dir.to_path_buf(),
         env: sanitized_runtime_environment(),
     };
     let mut process = ContainedManagedRuntimeProcess::spawn(&spec)
@@ -1172,9 +1382,9 @@ fn run_capability_probe(
         },
         None => None,
     };
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + probe_timeout;
     let mut completed = false;
-    while Instant::now() < deadline && !attempt.is_cancelled() {
+    while Instant::now() < deadline && !cancelled.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
         if process.wait_bounded(200) {
             completed = true;
             break;
@@ -1187,7 +1397,6 @@ fn run_capability_probe(
     }
     let stdout = join_probe_reader(stdout_reader, deadline)?;
     let stderr = join_probe_reader(stderr_reader, deadline)?;
-    attempt.ensure_active()?;
     if !completed {
         return Err(ManagedRuntimeError::new(
             "runtime_incompatible",
@@ -1212,6 +1421,186 @@ fn run_capability_probe(
 
 fn normalize_probe_output(output: String) -> String {
     output.replace('\0', "")
+}
+
+/// Typed capability report for a managed runtime variant (P0-6). `available`
+/// is only true when the runtime's own device probe positively confirms the
+/// variant can run on this machine; absence is reported with a stable reason
+/// code instead of a silent fallback.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ManagedRuntimeCapability {
+    pub runtime_id: String,
+    pub available: bool,
+    pub safe_to_start: bool,
+    pub reason_code: Option<&'static str>,
+    pub fallback_runtime_ids: Vec<String>,
+    pub device_summary: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DeviceProbeOutcome {
+    VulkanDevice(String),
+    NoVulkanDevice,
+    ProbeUnavailable,
+}
+
+struct DeviceProbeCacheEntry {
+    key: String,
+    outcome: DeviceProbeOutcome,
+}
+
+// Device enumeration is deterministic per runtime binary and driver session,
+// so cache it exactly like the flag capability probe: keyed by executable
+// identity, invalidated when the binary is replaced.
+static DEVICE_PROBE_CACHE: std::sync::OnceLock<Mutex<Option<DeviceProbeCacheEntry>>> =
+    std::sync::OnceLock::new();
+
+fn device_probe_cache_key(
+    runtime_id: &str,
+    release_tag: &str,
+    executable: &Path,
+) -> Option<String> {
+    let metadata = fs::metadata(executable).ok()?;
+    let modified = metadata.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
+    Some(format!(
+        "{}:{}:{:?}:{}:{}",
+        runtime_id,
+        release_tag,
+        executable,
+        metadata.len(),
+        modified.as_nanos()
+    ))
+}
+
+fn cached_device_probe(
+    runtime_id: &str,
+    release_tag: &str,
+    package_dir: &Path,
+    executable: &Path,
+) -> DeviceProbeOutcome {
+    let cache_key = device_probe_cache_key(runtime_id, release_tag, executable);
+    if let Some(key) = &cache_key {
+        let cache = DEVICE_PROBE_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("device probe cache poisoned");
+        if let Some(entry) = cache.as_ref() {
+            if &entry.key == key {
+                return entry.outcome.clone();
+            }
+        }
+    }
+    let outcome = match run_runtime_probe(
+        executable,
+        package_dir,
+        "--list-devices",
+        Duration::from_secs(5),
+        None,
+    ) {
+        Ok(output) => match parse_vulkan_device_summaries(&output).into_iter().next() {
+            Some(summary) => DeviceProbeOutcome::VulkanDevice(summary),
+            None => DeviceProbeOutcome::NoVulkanDevice,
+        },
+        Err(_) => DeviceProbeOutcome::ProbeUnavailable,
+    };
+    if let Some(key) = cache_key {
+        let mut cache = DEVICE_PROBE_CACHE
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("device probe cache poisoned");
+        *cache = Some(DeviceProbeCacheEntry {
+            key,
+            outcome: outcome.clone(),
+        });
+    }
+    outcome
+}
+
+/// Parses `--list-devices` output lines shaped like `Vulkan0: <name> (...)`.
+/// The digit suffix anchor keeps prose that merely mentions Vulkan (for
+/// example `--help` text or "Vulkan support: enabled") from being counted as
+/// an available device.
+fn parse_vulkan_device_summaries(output: &str) -> Vec<String> {
+    let mut summaries = Vec::new();
+    for line in output.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("Vulkan") else {
+            continue;
+        };
+        let Some((index, summary)) = rest.split_once(':') else {
+            continue;
+        };
+        if index.is_empty() || !index.chars().all(|character| character.is_ascii_digit()) {
+            continue;
+        }
+        let summary = summary.trim();
+        if summary.is_empty() {
+            continue;
+        }
+        summaries.push(sanitize_text(summary, 96));
+    }
+    summaries
+}
+
+fn probe_capability(
+    runtime_id: &str,
+    release_tag: &str,
+    package_dir: &Path,
+    executable: &Path,
+) -> ManagedRuntimeCapability {
+    let accelerated = runtime_id.contains("vulkan");
+    let outcome = cached_device_probe(runtime_id, release_tag, package_dir, executable);
+    let mut capability = ManagedRuntimeCapability {
+        runtime_id: runtime_id.to_owned(),
+        available: false,
+        safe_to_start: false,
+        reason_code: None,
+        fallback_runtime_ids: Vec::new(),
+        device_summary: None,
+    };
+    match outcome {
+        DeviceProbeOutcome::VulkanDevice(summary) => {
+            capability.available = true;
+            capability.safe_to_start = true;
+            capability.device_summary = Some(summary);
+        }
+        DeviceProbeOutcome::NoVulkanDevice => {
+            if accelerated {
+                capability.reason_code = Some("VULKAN_DEVICE_UNAVAILABLE");
+            } else {
+                // A CPU runtime listing no external devices is the expected
+                // healthy outcome, not an availability failure.
+                capability.available = true;
+                capability.safe_to_start = true;
+            }
+        }
+        DeviceProbeOutcome::ProbeUnavailable => {
+            capability.reason_code = Some("RUNTIME_PROBE_UNAVAILABLE");
+        }
+    }
+    capability
+}
+
+/// Pre-start Vulkan enforcement (P0-6): a Vulkan launch is rejected only when
+/// the device probe positively enumerates zero Vulkan devices. If the probe
+/// itself cannot run, absence is not proven and the existing readiness
+/// contract stays authoritative instead of failing closed on a guess.
+fn ensure_vulkan_device_available(
+    launch: &ValidatedRuntimeModel,
+) -> Result<(), ManagedRuntimeError> {
+    match cached_device_probe(
+        &launch.runtime_id,
+        &launch.runtime_release_tag,
+        &launch.package_dir,
+        &launch.executable,
+    ) {
+        DeviceProbeOutcome::VulkanDevice(_) => Ok(()),
+        DeviceProbeOutcome::NoVulkanDevice => Err(ManagedRuntimeError::new(
+            "vulkan_device_unavailable",
+            "no Vulkan device is available; select the CPU engine for this model",
+        )),
+        DeviceProbeOutcome::ProbeUnavailable => Ok(()),
+    }
 }
 
 struct ProbeOutput {
@@ -1267,16 +1656,23 @@ fn join_probe_reader(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn runtime_args(
     model: &Path,
+    mmproj: Option<&PathBuf>,
     port: u16,
     api_key_file: &Path,
     alias: &str,
     accelerated: bool,
+    ctx_size_override: Option<u32>,
+    gpu_layers_override: Option<u32>,
 ) -> Vec<OsString> {
-    let mut args = vec![
-        OsString::from("--model"),
-        model.as_os_str().to_os_string(),
+    let mut args = vec![OsString::from("--model"), model.as_os_str().to_os_string()];
+    if let Some(mmproj_path) = mmproj {
+        args.push(OsString::from("--mmproj"));
+        args.push(mmproj_path.as_os_str().to_os_string());
+    }
+    args.extend(vec![
         OsString::from("--host"),
         OsString::from("127.0.0.1"),
         OsString::from("--port"),
@@ -1294,7 +1690,7 @@ fn runtime_args(
         // it stops a future runtime bump from silently flipping that default.
         // REQUIRED_FLAGS below makes an engine without the flag fail closed.
         OsString::from("--jinja"),
-    ];
+    ]);
 
     let model_size_bytes = std::fs::metadata(model).map(|m| m.len()).unwrap_or(0);
     let model_size_gb = model_size_bytes as f64 / 1_073_741_824.0;
@@ -1316,9 +1712,11 @@ fn runtime_args(
         }
     }
 
+    let final_ctx_size = ctx_size_override.unwrap_or(ctx_size);
+
     // Context and generation budgets, dynamically scaled to prevent OOM.
     args.push(OsString::from("--ctx-size"));
-    args.push(OsString::from(ctx_size.to_string()));
+    args.push(OsString::from(final_ctx_size.to_string()));
     args.push(OsString::from("--n-predict"));
     args.push(OsString::from("4096"));
     args.push(OsString::from("--alias"));
@@ -1328,19 +1726,39 @@ fn runtime_args(
         // The flag is appended last so positional assertions on earlier
         // arguments stay stable across runtimes.
         args.push(OsString::from("--gpu-layers"));
-        args.push(OsString::from("99"));
+        args.push(OsString::from(
+            gpu_layers_override.unwrap_or(99).to_string(),
+        ));
+    } else if let Some(layers) = gpu_layers_override {
+        args.push(OsString::from("--gpu-layers"));
+        args.push(OsString::from(layers.to_string()));
     }
     args
 }
 
 fn sanitized_runtime_environment() -> Vec<(OsString, OsString)> {
     let mut env = Vec::new();
-    for key in ["SystemRoot", "WINDIR", "TEMP", "TMP"] {
+    for key in [
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "COMMONPROGRAMFILES",
+        "VK_ICD_FILENAMES",
+        "VK_DRIVER_FILES",
+        "CUDA_PATH",
+    ] {
         if let Some(value) = std::env::var_os(key) {
             env.push((OsString::from(key), value));
         }
     }
-    if let Some(system_root) = std::env::var_os("SystemRoot") {
+    if let Some(path) = std::env::var_os("PATH") {
+        env.push((OsString::from("PATH"), path));
+    } else if let Some(system_root) = std::env::var_os("SystemRoot") {
         env.push((
             OsString::from("PATH"),
             PathBuf::from(system_root).join("System32").into_os_string(),
@@ -2103,6 +2521,65 @@ pub async fn managed_runtime_status(
 }
 
 #[tauri::command]
+pub async fn managed_runtime_capability(
+    runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    runtime_id: String,
+    model_id: Option<String>,
+) -> Result<ManagedRuntimeCapability, BridgeError> {
+    let runtime = Arc::clone(&runtime);
+    tauri::async_runtime::spawn_blocking(move || {
+        runtime.runtime_capability(&runtime_id, model_id.as_deref())
+    })
+    .await
+    .map_err(|_| {
+        BridgeError::new(
+            "runtime_unavailable",
+            "managed runtime capability worker failed",
+        )
+    })?
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn managed_runtime_start_trusted(
+    runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    bridge: State<'_, Arc<ControlPlaneBridge>>,
+    model_id: String,
+    runtime_id: Option<String>,
+    ctx_size_override: Option<u32>,
+    gpu_layers_override: Option<u32>,
+) -> Result<ManagedRuntimeStartResponse, BridgeError> {
+    if model_id.is_empty() || model_id.len() > 96 || model_id.chars().any(char::is_whitespace) {
+        return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
+    }
+    if runtime_id.as_ref().is_some_and(|value| {
+        value.is_empty() || value.len() > 96 || value.chars().any(char::is_whitespace)
+    }) {
+        return Err(ManagedRuntimeError::new("invalid_payload", "invalid runtime id").into());
+    }
+    runtime.ensure_trusted_model_start(&model_id, runtime_id.as_deref())?;
+    let runtime = Arc::clone(&runtime);
+    let bridge = Arc::clone(&bridge);
+    tauri::async_runtime::spawn_blocking(move || {
+        runtime.start(
+            &model_id,
+            None,
+            runtime_id.as_deref(),
+            &bridge,
+            ctx_size_override,
+            gpu_layers_override,
+        )
+    })
+    .await
+    .map_err(|_| {
+        BridgeError::new(
+            "runtime_unavailable",
+            "managed runtime trusted start worker failed",
+        )
+    })?
+}
+
+#[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn managed_runtime_start(
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
@@ -2110,14 +2587,26 @@ pub async fn managed_runtime_start(
     approval: State<'_, crate::approval_commands::ApprovalState>,
     model_id: String,
     custom_sha256: Option<String>,
+    runtime_id: Option<String>,
     token: String,
     approval_id: String,
     call_id: String,
+    ctx_size_override: Option<u32>,
+    gpu_layers_override: Option<u32>,
 ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
     if model_id.is_empty() || model_id.len() > 96 || model_id.chars().any(char::is_whitespace) {
         return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
     }
-    let input = runtime.runtime_start_approval_input(&model_id, custom_sha256.as_deref())?;
+    if runtime_id.as_ref().is_some_and(|value| {
+        value.is_empty() || value.len() > 96 || value.chars().any(char::is_whitespace)
+    }) {
+        return Err(ManagedRuntimeError::new("invalid_payload", "invalid runtime id").into());
+    }
+    let input = runtime.runtime_start_approval_input(
+        &model_id,
+        custom_sha256.as_deref(),
+        runtime_id.as_deref(),
+    )?;
     crate::approval_commands::validate_approval_token(
         &approval,
         "runtime.start",
@@ -2129,10 +2618,35 @@ pub async fn managed_runtime_start(
     let runtime = Arc::clone(&runtime);
     let bridge = Arc::clone(&bridge);
     tauri::async_runtime::spawn_blocking(move || {
-        runtime.start(&model_id, custom_sha256.as_deref(), &bridge)
+        runtime.start(
+            &model_id,
+            custom_sha256.as_deref(),
+            runtime_id.as_deref(),
+            &bridge,
+            ctx_size_override,
+            gpu_layers_override,
+        )
     })
     .await
     .map_err(|_| BridgeError::new("runtime_unavailable", "managed runtime start worker failed"))?
+}
+
+#[tauri::command]
+pub async fn managed_runtime_stop_trusted(
+    runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    bridge: State<'_, Arc<ControlPlaneBridge>>,
+) -> Result<ManagedRuntimeStopResponse, BridgeError> {
+    runtime.ensure_trusted_active_stop(&bridge)?;
+    let runtime = Arc::clone(&runtime);
+    let bridge = Arc::clone(&bridge);
+    tauri::async_runtime::spawn_blocking(move || runtime.stop(&bridge))
+        .await
+        .map_err(|_| {
+            BridgeError::new(
+                "runtime_unavailable",
+                "managed runtime trusted stop worker failed",
+            )
+        })?
 }
 
 #[tauri::command]
@@ -2189,6 +2703,65 @@ mod tests {
     }
 
     #[test]
+    fn device_probe_parser_detects_real_vulkan_device_lines() {
+        let output =
+            "Available devices:\n  Vulkan0: NVIDIA GeForce RTX 5070 (11943 MiB, 11175 MiB free)\n";
+
+        let summaries = parse_vulkan_device_summaries(output);
+
+        assert_eq!(summaries.len(), 1);
+        assert!(summaries[0].contains("NVIDIA GeForce RTX 5070"));
+    }
+
+    #[test]
+    fn device_probe_parser_rejects_prose_that_mentions_vulkan() {
+        // Defect caught: help text or driver notes mentioning the word Vulkan
+        // must never be counted as an available device, otherwise the UI would
+        // show the Vulkan engine as usable with no device present.
+        let output = "Vulkan support: enabled\navailable devices: none\n  Vulkan backend compiled in\nusage: llama-server [--device]\n";
+
+        let summaries = parse_vulkan_device_summaries(output);
+
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn device_probe_parser_requires_device_summary_text() {
+        let output = "Vulkan0:\nVulkan1:   \nVulkanx: GPU\n";
+
+        let summaries = parse_vulkan_device_summaries(output);
+
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn capability_report_serializes_reason_and_fallback() {
+        let capability = ManagedRuntimeCapability {
+            runtime_id: "llama-cpp-windows-x86-64-vulkan-bootstrap".into(),
+            available: false,
+            safe_to_start: false,
+            reason_code: Some("VULKAN_DEVICE_UNAVAILABLE"),
+            fallback_runtime_ids: vec!["llama-cpp-windows-x86-64-cpu-bootstrap".into()],
+            device_summary: None,
+        };
+
+        let value = serde_json::to_value(&capability).expect("serialize capability");
+
+        assert_eq!(
+            value["runtime_id"],
+            "llama-cpp-windows-x86-64-vulkan-bootstrap"
+        );
+        assert_eq!(value["available"], false);
+        assert_eq!(value["safe_to_start"], false);
+        assert_eq!(value["reason_code"], "VULKAN_DEVICE_UNAVAILABLE");
+        assert_eq!(
+            value["fallback_runtime_ids"],
+            json!(["llama-cpp-windows-x86-64-cpu-bootstrap"])
+        );
+        assert_eq!(value["device_summary"], Value::Null);
+    }
+
+    #[test]
     fn connection_event_rows_are_bounded_and_sanitized() {
         let row = connection_event_row(
             42,
@@ -2229,10 +2802,13 @@ mod tests {
     fn fixed_runtime_args_disable_webui_and_agent() {
         let args = runtime_args(
             Path::new(r"C:\m\model.gguf"),
+            None,
             12345,
             Path::new(r"C:\k\key.txt"),
             "alias",
             false,
+            None,
+            None,
         );
         let joined = args
             .iter()
@@ -2251,10 +2827,13 @@ mod tests {
     fn accelerated_runtime_args_request_full_gpu_offload() {
         let args = runtime_args(
             Path::new(r"C:\m\model.gguf"),
+            None,
             12345,
             Path::new(r"C:\k\key.txt"),
             "alias",
             true,
+            None,
+            None,
         );
         let joined = args
             .iter()
@@ -2274,7 +2853,16 @@ mod tests {
             .join("approved-model")
             .join("approved-model.gguf");
         let key = application_root.join("runtime-state").join("key-test.txt");
-        let args = runtime_args(&model, 12345, &key, "approved-model", false);
+        let args = runtime_args(
+            &model,
+            None,
+            12345,
+            &key,
+            "approved-model",
+            false,
+            None,
+            None,
+        );
 
         assert_eq!(args[1], model.into_os_string());
         assert_eq!(args[7], key.into_os_string());
@@ -2324,6 +2912,7 @@ mod tests {
             provider_id: "managed-llama-cpp",
             model_id: "approved-model".into(),
             model_display_name: "Approved Model".into(),
+            runtime_id: "llama-cpp-windows-x86-64-cpu-bootstrap".into(),
             runtime_instance_id: "a".repeat(32),
             runtime_instance_fingerprint: "b".repeat(64),
         };
@@ -2413,17 +3002,103 @@ mod tests {
             inference_ready: false,
             installation: "Installed".into(),
             runtime_version: None,
+            runtime_id: Some("llama-cpp-windows-x86-64-vulkan-bootstrap".into()),
             runtime_instance_id: None,
             runtime_instance_fingerprint: None,
             model_id: Some("approved-model".into()),
             model_display_name: Some("Approved Model".into()),
             binding_fingerprint: None,
             last_error: None,
+            loading_phase: None,
         };
         let value = serde_json::to_value(status).expect("serialize managed status");
         assert_eq!(value["state"], "Starting");
         assert_eq!(value["model_state"], "Loading");
         assert_eq!(value["inference_ready"], false);
+        // The selected runtime identity must survive the status wire so the UI
+        // and telemetry cannot lose the CPU/Vulkan binding (P0-3).
+        assert_eq!(
+            value["runtime_id"],
+            "llama-cpp-windows-x86-64-vulkan-bootstrap"
+        );
+    }
+
+    #[test]
+    fn start_response_serializes_runtime_id() {
+        // Defect caught: dropping runtime_id from the start response would let
+        // the UI confirm a start without knowing which engine variant ran.
+        let response = ManagedRuntimeStartResponse {
+            state: ManagedRuntimeState::Ready,
+            model_state: ManagedModelState::Ready,
+            inference_ready: true,
+            provider_id: "managed-llama-cpp",
+            model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
+            model_display_name: "Qwen2.5 1.5B".into(),
+            runtime_id: "llama-cpp-windows-x86-64-cpu-bootstrap".into(),
+            runtime_instance_id: "0123456789abcdef0123456789abcdef".into(),
+            runtime_instance_fingerprint: "a".repeat(64),
+        };
+        let value = serde_json::to_value(response).expect("serialize start response");
+        assert_eq!(
+            value["runtime_id"],
+            "llama-cpp-windows-x86-64-cpu-bootstrap"
+        );
+        assert_eq!(value["state"], "Ready");
+    }
+
+    #[test]
+    fn turn_dispatch_rejects_any_model_without_a_live_active_runtime() {
+        // Defect caught: a turn reaching dispatch with no active runtime must
+        // fail closed with runtime_not_ready, never fall through to the
+        // fingerprint comparison.
+        let inner = ManagedRuntimeInner::default();
+        let error =
+            classify_model_ready_for_read(&inner, "approved-model").expect_err("no active runtime");
+        assert_eq!(error.code, "runtime_not_ready");
+    }
+
+    #[test]
+    fn turn_dispatch_rejects_non_ready_runtime_state() {
+        // A state machine that reports Starting must never authorize a turn,
+        // even if every other field looks ready.
+        let inner = ManagedRuntimeInner {
+            state: ManagedRuntimeState::Starting,
+            model_state: ManagedModelState::Ready,
+            inference_ready: true,
+            ..Default::default()
+        };
+        let error =
+            classify_model_ready_for_read(&inner, "approved-model").expect_err("starting state");
+        assert_eq!(error.code, "runtime_not_ready");
+    }
+
+    #[test]
+    fn turn_dispatch_dominates_stale_ready_flags_when_process_is_gone() {
+        // Defect caught: leftover Ready state/inference flags must never
+        // authorize a turn once no live process backs them; the dead-process
+        // gate runs first regardless of how ready the flags claim to be.
+        let inner = ManagedRuntimeInner {
+            state: ManagedRuntimeState::Ready,
+            model_state: ManagedModelState::Ready,
+            inference_ready: true,
+            ..Default::default()
+        };
+        let error =
+            classify_model_ready_for_read(&inner, "approved-model").expect_err("no live process");
+        assert_eq!(error.code, "runtime_not_ready");
+    }
+
+    #[test]
+    fn active_runtime_identity_fails_closed_without_an_active_runtime() {
+        // The dispatch gate must reject before any fingerprint logic when no
+        // managed runtime is active at all.
+        let artifacts = ArtifactTrustService::production(&std::env::temp_dir())
+            .expect("construct artifact trust service");
+        let supervisor = ManagedRuntimeSupervisor::new(Arc::new(artifacts));
+        let error = supervisor
+            .active_runtime_identity("approved-model")
+            .expect_err("no active runtime");
+        assert_eq!(error.code, "runtime_not_ready");
     }
 
     #[test]
