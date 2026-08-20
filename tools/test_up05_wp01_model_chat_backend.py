@@ -21,6 +21,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from tools.test_fixtures.event_wait import TERMINAL_METHODS, wait_for_terminal
 
 from modules.desktop_ipc_contract_ru import (  # noqa: E402
     decode_frame,
@@ -32,6 +33,7 @@ from modules.desktop_sidecar_runtime_ru import DesktopSidecarRuntime  # noqa: E4
 from modules.local_model_gateway_ru import (  # noqa: E402
     HARNESS_MINIMAL,
     MANAGED_PROVIDER_ID,
+    MANAGED_READINESS_MAX_TOKENS,
     PROVIDER_ID,
     GatewayError,
     GatewayLimits,
@@ -43,12 +45,6 @@ from modules.local_model_gateway_ru import (  # noqa: E402
 from tools import run_localcomet_desktop_sidecar as sidecar_runner  # noqa: E402
 
 
-TERMINAL_METHODS = {
-    "model.turn.completed",
-    "model.turn.cancelled",
-    "model.turn.timed_out",
-    "model.turn.failed",
-}
 
 
 class ScenarioProvider(BaseHTTPRequestHandler):
@@ -278,26 +274,13 @@ def _turn_request(
         "model_id": str(binding["model_id"]),
         "submitted_at_unix_ms": 1_700_000_000_000,
         "max_tokens": max_tokens,
+        "seed": 42,
+        "effort": "off",
         "prompt": prompt,
         "assistant_context": trusted_assistant_context_payload("ru"),
         "binding_fingerprint": str(binding["binding_fingerprint"]),
         "messages": [],
     }
-
-
-def _wait_for_terminal(
-    events: list[tuple[str, str, int, Mapping[str, Any]]],
-    timeout: float = 3.0,
-) -> tuple[str, str, int, Mapping[str, Any]]:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        terminals = [event for event in events if event[0] in TERMINAL_METHODS]
-        if terminals:
-            return terminals[-1]
-        time.sleep(0.005)
-    raise AssertionError(f"model turn did not terminate: {[event[0] for event in events]}")
-
-
 def _assert_gateway_error(test: unittest.TestCase, code: str, callback: Any) -> None:
     with test.assertRaises(GatewayError) as caught:
         callback()
@@ -391,6 +374,8 @@ class ModelChatBackendTests(unittest.TestCase):
                     "model_id",
                     "submitted_at_unix_ms",
                     "max_tokens",
+                    "seed",
+                    "effort",
                     "binding_fingerprint",
                     "state",
                     "provider_id",
@@ -405,7 +390,7 @@ class ModelChatBackendTests(unittest.TestCase):
             self.assertEqual("Accepted", accepted["state"])
             self.assertEqual(request["request_id"], accepted["turn_id"])
             self.assertEqual(17, accepted["max_tokens"])
-            _wait_for_terminal(events)
+            wait_for_terminal(events)
             _assert_gateway_error(
                 self,
                 "invalid_payload",
@@ -437,7 +422,7 @@ class ModelChatBackendTests(unittest.TestCase):
                 events: list[tuple[str, str, int, Mapping[str, Any]]] = []
                 request = _turn_request(binding, request_id, max_tokens=23)
                 gateway.start_turn(request, lambda *event: events.append(event))
-                _wait_for_terminal(events)
+                wait_for_terminal(events)
                 self.assertEqual(
                     [
                         "model.turn.started",
@@ -492,7 +477,8 @@ class ModelChatBackendTests(unittest.TestCase):
             )
             self.assertEqual(["/v1/models"], server.httpd.get_paths)
             self.assertEqual("provider-alias", server.posts[0]["model"])
-            self.assertEqual(1, server.posts[0]["max_tokens"])
+            self.assertEqual(MANAGED_READINESS_MAX_TOKENS, server.posts[0]["max_tokens"])
+            self.assertGreater(MANAGED_READINESS_MAX_TOKENS, 1)
             self.assertEqual(f"Bearer {credential}", server.httpd.authorization_headers[0])
             self.assertEqual(f"Bearer {credential}", server.httpd.authorization_headers[1])
 
@@ -511,7 +497,7 @@ class ModelChatBackendTests(unittest.TestCase):
                 _turn_request(binding, "e" * 24, max_tokens=7),
                 lambda *event: events.append(event),
             )
-            _wait_for_terminal(events)
+            wait_for_terminal(events)
             self.assertEqual("provider-alias", server.posts[1]["model"])
             self.assertEqual(7, server.posts[1]["max_tokens"])
             self.assertTrue(all(event[3]["model_id"] == "stable-model" for event in events))
@@ -670,7 +656,7 @@ class ModelChatBackendTests(unittest.TestCase):
                     _turn_request(binding, format(index + 10, "024x")),
                     lambda *event: events.append(event),
                 )
-                terminal = _wait_for_terminal(events)
+                terminal = wait_for_terminal(events)
                 self.assertEqual("model.turn.timed_out", terminal[0])
                 self.assertEqual("TimedOut", terminal[3]["state"])
                 self.assertEqual(error_code, terminal[3]["metadata"]["error"]["code"])
@@ -722,7 +708,7 @@ class ModelChatBackendTests(unittest.TestCase):
                 "Cancelling" if cancelled["worker_alive"] else "Cancelled",
                 cancelled["state"],
             )
-            _wait_for_terminal(first_events)
+            wait_for_terminal(first_events)
             snapshot = list(first_events)
             time.sleep(0.35)
             self.assertEqual(snapshot, first_events)
@@ -734,7 +720,7 @@ class ModelChatBackendTests(unittest.TestCase):
                 _turn_request(binding, "2" * 24),
                 lambda *event: second_events.append(event),
             )
-            self.assertEqual("model.turn.completed", _wait_for_terminal(second_events)[0])
+            self.assertEqual("model.turn.completed", wait_for_terminal(second_events)[0])
             self.assertTrue(all(event[1] == "2" * 24 for event in second_events))
 
             server.post_event.clear()
@@ -745,7 +731,7 @@ class ModelChatBackendTests(unittest.TestCase):
             )
             self.assertTrue(server.post_event.wait(1.0))
             gateway.shutdown()
-            _wait_for_terminal(shutdown_events)
+            wait_for_terminal(shutdown_events)
             shutdown_snapshot = list(shutdown_events)
             time.sleep(0.35)
             self.assertEqual(shutdown_snapshot, shutdown_events)
@@ -801,7 +787,7 @@ class ModelChatBackendTests(unittest.TestCase):
                 self.assertFalse(result["worker_alive"])
                 self.assertFalse(worker.is_alive())
                 self.assertEqual([], server.posts)
-                self.assertEqual("model.turn.cancelled", _wait_for_terminal(events)[0])
+                self.assertEqual("model.turn.cancelled", wait_for_terminal(events)[0])
                 self.assertEqual(1, sum(event[0] in TERMINAL_METHODS for event in events))
 
                 second_events: list[tuple[str, str, int, Mapping[str, Any]]] = []
@@ -809,7 +795,7 @@ class ModelChatBackendTests(unittest.TestCase):
                     _turn_request(binding, "7" * 24),
                     lambda *event: second_events.append(event),
                 )
-                self.assertEqual("model.turn.completed", _wait_for_terminal(second_events)[0])
+                self.assertEqual("model.turn.completed", wait_for_terminal(second_events)[0])
                 self.assertEqual(1, len(server.posts))
 
     def test_shutdown_before_connect_sends_no_post_and_worker_is_quiescent(self) -> None:
@@ -854,7 +840,7 @@ class ModelChatBackendTests(unittest.TestCase):
                 self.assertEqual([], shutdown_error)
                 self.assertFalse(worker.is_alive())
                 self.assertEqual([], server.posts)
-                self.assertEqual("model.turn.cancelled", _wait_for_terminal(events)[0])
+                self.assertEqual("model.turn.cancelled", wait_for_terminal(events)[0])
                 self.assertEqual(1, sum(event[0] in TERMINAL_METHODS for event in events))
                 self.assertIsNone(gateway._active)
 
@@ -1060,7 +1046,7 @@ class ModelChatBackendTests(unittest.TestCase):
                 decision.start()
                 decision.join(1.0)
                 self.assertFalse(decision.is_alive())
-                self.assertEqual("model.turn.completed", _wait_for_terminal(events)[0])
+                self.assertEqual("model.turn.completed", wait_for_terminal(events)[0])
                 worker.join(1.0)
 
             self.assertFalse(worker.is_alive())

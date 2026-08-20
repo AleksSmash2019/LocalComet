@@ -16,6 +16,8 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from tools.test_fixtures.assertions import assert_condition
+from tools.test_fixtures.assertions import make_gateway_error_assertion
 
 from modules.desktop_control_plane_ru import DESKTOP_CONTROL_PLANE_VERSION  # noqa: E402
 from modules.desktop_ipc_contract_ru import IPC_PROTOCOL, IPC_PROTOCOL_VERSION  # noqa: E402
@@ -23,6 +25,7 @@ from modules.desktop_sidecar_runtime_ru import DESKTOP_SIDECAR_RUNTIME_VERSION  
 from modules.local_model_gateway_ru import (  # noqa: E402
     HARNESS_REGISTRY,
     LOCAL_MODEL_GATEWAY_VERSION,
+    MANAGED_READINESS_MAX_TOKENS,
     MODEL_GATEWAY_METHODS,
     PROVIDER_REGISTRY,
     GatewayError,
@@ -39,24 +42,13 @@ from modules.local_model_gateway_ru import (  # noqa: E402
 )
 
 
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def _raises(fn, code: str | None = None) -> None:
-    try:
-        fn()
-    except GatewayError as exc:
-        if code is not None:
-            _assert(exc.code == code, f"Expected {code}, got {exc.code}")
-        return
-    raise AssertionError("Expected GatewayError")
+assert_gateway_error = make_gateway_error_assertion(GatewayError)
 
 
 class FakeProvider(BaseHTTPRequestHandler):
     mode = "ok"
     seen_posts = 0
+    seen_post_bodies: list[dict[str, Any]] = []
 
     def log_message(self, *_: Any) -> None:
         return
@@ -91,10 +83,12 @@ class FakeProvider(BaseHTTPRequestHandler):
         type(self).seen_posts += 1
         length = int(self.headers.get("Content-Length", "0"))
         body = json.loads(self.rfile.read(length).decode("utf-8"))
+        type(self).seen_post_bodies.append(body)
         if (
-            set(body) != {"max_tokens", "messages", "model", "stream", "temperature"}
+            set(body) != {"max_tokens", "messages", "model", "seed", "sse_ping_interval", "stream", "temperature"}
             or body["stream"] is not True
             or body["temperature"] != 0
+            or body["sse_ping_interval"] != 5.0
             or not 1 <= body["max_tokens"] <= 8192
         ):
             self.send_response(400)
@@ -138,6 +132,7 @@ class FakeServer:
     def __init__(self, mode: str = "ok") -> None:
         FakeProvider.mode = mode
         FakeProvider.seen_posts = 0
+        FakeProvider.seen_post_bodies = []
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), FakeProvider)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
 
@@ -156,14 +151,14 @@ class FakeServer:
 
 
 def test_registries_and_validation() -> None:
-    _assert(PROVIDER_REGISTRY == ("openai-compatible-local", "managed-llama-cpp"), "provider registry changed")
-    _assert(HARNESS_REGISTRY == ("minimal", "native-localcomet"), "harness registry changed")
-    _assert(len(MODEL_GATEWAY_METHODS) == 8, "gateway method count changed")
+    assert_condition(PROVIDER_REGISTRY == ("openai-compatible-local", "managed-llama-cpp"), "provider registry changed")
+    assert_condition(HARNESS_REGISTRY == ("minimal", "native-localcomet"), "harness registry changed")
+    assert_condition(len(MODEL_GATEWAY_METHODS) == 8, "gateway method count changed")
     gateway = LocalModelGateway()
-    _raises(lambda: gateway.probe({"port": "1234"}), "invalid_payload")
-    _raises(lambda: gateway.probe({"port": 80}), "invalid_payload")
-    _raises(lambda: gateway.set_binding({"provider_id": "http://127.0.0.1:1/v1", "harness_id": "minimal", "port": 1234, "model_id": "x", "confirmed": True}), "invalid_payload")
-    _raises(lambda: gateway.set_binding({"provider_id": "openai-compatible-local", "harness_id": "dynamic", "port": 1234, "model_id": "x", "confirmed": True}), "invalid_payload")
+    assert_gateway_error(lambda: gateway.probe({"port": "1234"}), "invalid_payload")
+    assert_gateway_error(lambda: gateway.probe({"port": 80}), "invalid_payload")
+    assert_gateway_error(lambda: gateway.set_binding({"provider_id": "http://127.0.0.1:1/v1", "harness_id": "minimal", "port": 1234, "model_id": "x", "confirmed": True}), "invalid_payload")
+    assert_gateway_error(lambda: gateway.set_binding({"provider_id": "openai-compatible-local", "harness_id": "dynamic", "port": 1234, "model_id": "x", "confirmed": True}), "invalid_payload")
 
 
 def test_version_alignment_and_turn_payload_shape() -> None:
@@ -182,6 +177,7 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         model_id="local-model",
         submitted_at_unix_ms=1,
         max_tokens=64,
+        seed=42,
         prompt="hello",
         assistant_context=_validate_assistant_context(trusted_assistant_context_payload("ru")),
         binding_fingerprint="a" * 64,
@@ -194,7 +190,7 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         text="hello",
         generated_bytes=5,
     )
-    _assert(
+    assert_condition(
         set(payload)
         == {
             "control_plane_version",
@@ -212,6 +208,9 @@ def test_version_alignment_and_turn_payload_shape() -> None:
             "model_id",
             "submitted_at_unix_ms",
             "max_tokens",
+            "seed",
+            "effort",
+            "stream_channel",
             "binding_fingerprint",
             "text",
             "model_called",
@@ -222,7 +221,7 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         },
         "turn payload shape changed",
     )
-    _assert(
+    assert_condition(
         set(payload["metadata"])
         == {
             "provider_id",
@@ -233,6 +232,9 @@ def test_version_alignment_and_turn_payload_shape() -> None:
             "model_id",
             "submitted_at_unix_ms",
             "max_tokens",
+            "seed",
+            "effort",
+            "stream_channel",
             "binding_fingerprint",
             "model_called",
             "tools_executed",
@@ -241,29 +243,29 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         },
         "turn payload metadata shape changed",
     )
-    _assert(payload["control_plane_version"] == DESKTOP_CONTROL_PLANE_VERSION == "v6.84.6", "Control Plane version not aligned")
-    _assert(payload["control_plane_version"] != "v6.84.4", "stale Control Plane version still emitted")
-    _assert(payload["model_gateway_version"] == LOCAL_MODEL_GATEWAY_VERSION == "v6.84.5", "Model Gateway release changed")
-    _assert(IPC_PROTOCOL == "localcomet.ipc" and IPC_PROTOCOL_VERSION == "1.0", "IPC protocol changed")
-    _assert(DESKTOP_SIDECAR_RUNTIME_VERSION == "v6.84.3", "Sidecar runtime version changed")
+    assert_condition(payload["control_plane_version"] == DESKTOP_CONTROL_PLANE_VERSION == "v6.84.6", "Control Plane version not aligned")
+    assert_condition(payload["control_plane_version"] != "v6.84.4", "stale Control Plane version still emitted")
+    assert_condition(payload["model_gateway_version"] == LOCAL_MODEL_GATEWAY_VERSION == "v6.84.5", "Model Gateway release changed")
+    assert_condition(IPC_PROTOCOL == "localcomet.ipc" and IPC_PROTOCOL_VERSION == "1.0", "IPC protocol changed")
+    assert_condition(DESKTOP_SIDECAR_RUNTIME_VERSION == "v6.84.3", "Sidecar runtime version changed")
 
     bridge_text = (ROOT / "desktop" / "localcomet-desktop" / "src" / "lib" / "bridge" / "controlPlane.ts").read_text(encoding="utf-8")
     bridge_test_text = (ROOT / "desktop" / "localcomet-desktop" / "tests" / "control-plane.test.ts").read_text(encoding="utf-8")
-    _assert("object.control_plane_version !== 'v6.84.6'" in bridge_text, "exact Control Plane validation changed")
-    _assert("rejects the stale v6.84.4 bootstrap version" in bridge_test_text, "stale-version rejection test missing")
+    assert_condition("object.control_plane_version !== 'v6.84.6'" in bridge_text, "exact Control Plane validation changed")
+    assert_condition("rejects the stale v6.84.4 bootstrap version" in bridge_test_text, "stale-version rejection test missing")
 
 
 def test_probe_list_and_binding() -> None:
     with FakeServer() as server:
         gateway = LocalModelGateway()
         probe = gateway.probe({"port": server.port})
-        _assert(probe["host"] == "127.0.0.1" and probe["base_path"] == "/v1", "endpoint boundary changed")
+        assert_condition(probe["host"] == "127.0.0.1" and probe["base_path"] == "/v1", "endpoint boundary changed")
         listed = gateway.list_models({"port": server.port})
-        _assert(listed["models"] == [{"model_id": "local-model"}], "model listing failed")
-        _raises(lambda: gateway.set_binding({"provider_id": "openai-compatible-local", "harness_id": "minimal", "port": server.port, "model_id": "other", "confirmed": True}), "invalid_payload")
-        _raises(lambda: gateway.set_binding({"provider_id": "openai-compatible-local", "harness_id": "minimal", "port": server.port, "model_id": "local-model", "confirmed": False}), "invalid_payload")
+        assert_condition(listed["models"] == [{"model_id": "local-model"}], "model listing failed")
+        assert_gateway_error(lambda: gateway.set_binding({"provider_id": "openai-compatible-local", "harness_id": "minimal", "port": server.port, "model_id": "other", "confirmed": True}), "invalid_payload")
+        assert_gateway_error(lambda: gateway.set_binding({"provider_id": "openai-compatible-local", "harness_id": "minimal", "port": server.port, "model_id": "local-model", "confirmed": False}), "invalid_payload")
         binding = gateway.set_binding({"provider_id": "openai-compatible-local", "harness_id": "minimal", "port": server.port, "model_id": "local-model", "confirmed": True})
-        _assert(len(binding["binding_fingerprint"]) == 64, "binding fingerprint missing")
+        assert_condition(len(binding["binding_fingerprint"]) == 64, "binding fingerprint missing")
 
 
 def test_managed_attach_binding_and_detach() -> None:
@@ -279,8 +281,15 @@ def test_managed_attach_binding_and_detach() -> None:
                 "binding_fingerprint": "c" * 64,
             }
         )
-        _assert(attach["provider_id"] == MANAGED_PROVIDER_ID, "managed provider attach failed")
-        _assert(attach["model_state"] == "Ready" and attach["inference_ready"] is True, "managed readiness missing")
+        assert_condition(attach["provider_id"] == MANAGED_PROVIDER_ID, "managed provider attach failed")
+        assert_condition(attach["model_state"] == "Ready" and attach["inference_ready"] is True, "managed readiness missing")
+        assert_condition(
+            FakeProvider.seen_posts
+            == 1
+            and FakeProvider.seen_post_bodies[0]["max_tokens"] == MANAGED_READINESS_MAX_TOKENS
+            and MANAGED_READINESS_MAX_TOKENS > 1,
+            "managed readiness probe must allow more than one generated token",
+        )
         binding = gateway.set_binding(
             {
                 "provider_id": MANAGED_PROVIDER_ID,
@@ -291,25 +300,25 @@ def test_managed_attach_binding_and_detach() -> None:
                 "runtime_instance_id": "a" * 32,
             }
         )
-        _assert(binding["provider_id"] == MANAGED_PROVIDER_ID, "managed binding provider wrong")
-        _assert("port" not in binding and "runtime_instance_id" in binding, "managed binding exposed port")
+        assert_condition(binding["provider_id"] == MANAGED_PROVIDER_ID, "managed binding provider wrong")
+        assert_condition("port" not in binding and "runtime_instance_id" in binding, "managed binding exposed port")
         detached = gateway.managed_detach()
-        _assert(detached["detached"] is True, "managed detach failed")
+        assert_condition(detached["detached"] is True, "managed detach failed")
 
 
 def test_provider_rejects_malformed_responses() -> None:
     for mode in ("duplicate_json", "oversized", "malformed_model", "redirect"):
         with FakeServer(mode) as server:
-            _raises(lambda: ProviderAdapter(server.port, GatewayLimits(maximum_model_count=4)).list_models())
+            assert_gateway_error(lambda: ProviderAdapter(server.port, GatewayLimits(maximum_model_count=4)).list_models())
 
 
 def test_harnesses_are_deterministic_and_text_only() -> None:
     context = _validate_assistant_context(trusted_assistant_context_payload("en"))
     minimal = HarnessAdapter("minimal", GatewayLimits()).messages_for("hello", context)
     native = HarnessAdapter("native-localcomet", GatewayLimits()).messages_for("hello", context)
-    _assert([message["role"] for message in minimal] == ["system", "user"], "trusted system message order changed")
-    _assert(native == HarnessAdapter("native-localcomet", GatewayLimits()).messages_for("hello", context), "native harness not deterministic")
-    _assert("external tools are unavailable" in native[0]["content"] and "Project context was not supplied" in native[0]["content"], "assistant safety context missing")
+    assert_condition([message["role"] for message in minimal] == ["system", "user"], "trusted system message order changed")
+    assert_condition(native == HarnessAdapter("native-localcomet", GatewayLimits()).messages_for("hello", context), "native harness not deterministic")
+    assert_condition("external tools are unavailable" in native[0]["content"] and "Project context was not supplied" in native[0]["content"], "assistant safety context missing")
 
 
 def test_sse_streaming_and_fail_closed() -> None:
@@ -317,11 +326,11 @@ def test_sse_streaming_and_fail_closed() -> None:
         adapter = ProviderAdapter(server.port, GatewayLimits())
         called = []
         text = "".join(adapter.stream_chat("local-model", ({"role": "user", "content": "hi"},), threading.Event(), lambda: called.append(True)))
-        _assert(text == "hello" and called == [True], "fragmented SSE did not parse")
+        assert_condition(text == "hello" and called == [True], "fragmented SSE did not parse")
     for mode in ("tool_calls", "function_call", "multi_choice"):
         with FakeServer(mode) as server:
             adapter = ProviderAdapter(server.port, GatewayLimits())
-            _raises(lambda: list(adapter.stream_chat("local-model", ({"role": "user", "content": "hi"},), threading.Event(), lambda: None)), "stream_protocol_error")
+            assert_gateway_error(lambda: list(adapter.stream_chat("local-model", ({"role": "user", "content": "hi"},), threading.Event(), lambda: None)), "stream_protocol_error")
 
 
 def test_single_active_and_cancellation_cleanup() -> None:
@@ -337,6 +346,8 @@ def test_single_active_and_cancellation_cleanup() -> None:
             "model_id": "local-model",
             "submitted_at_unix_ms": 1,
             "max_tokens": 32,
+            "seed": 42,
+            "effort": "off",
             "prompt": "hello",
             "assistant_context": trusted_assistant_context_payload("en"),
             "binding_fingerprint": binding["binding_fingerprint"],
@@ -344,12 +355,12 @@ def test_single_active_and_cancellation_cleanup() -> None:
         }
         started = gateway.start_turn(request, lambda m, t, s, p: events.append((m, str(p.get("state")))))
         second = {**request, "request_id": "e" * 24, "prompt": "again"}
-        _raises(lambda: gateway.start_turn(second, lambda *_: None), "busy")
+        assert_gateway_error(lambda: gateway.start_turn(second, lambda *_: None), "busy")
         result = gateway.cancel_turn({"request_id": started["request_id"]})
-        _assert(result["accepted"] is True and result["already_terminal"] is False, "cancel ack wrong")
-        _assert(result["worker_alive"] is False, "worker remained alive after cancellation")
+        assert_condition(result["accepted"] is True and result["already_terminal"] is False, "cancel ack wrong")
+        assert_condition(result["worker_alive"] is False, "worker remained alive after cancellation")
         gateway.shutdown()
-        _assert(any(method == "model.turn.cancelled" for method, _ in events), "cancel event missing")
+        assert_condition(any(method == "model.turn.cancelled" for method, _ in events), "cancel event missing")
 
 
 def test_source_build_artifacts_absent() -> None:
@@ -358,10 +369,10 @@ def test_source_build_artifacts_absent() -> None:
         ["git", "ls-files", "--", "desktop/localcomet-desktop/node_modules", "desktop/localcomet-desktop/src-tauri/target"],
         cwd=str(ROOT), capture_output=True, text=True, check=False,
     )
-    _assert(tracked.returncode == 0 and tracked.stdout.strip() == "", "build artifacts tracked by git")
+    assert_condition(tracked.returncode == 0 and tracked.stdout.strip() == "", "build artifacts tracked by git")
     if os.environ.get("LOCALCOMET_PACKAGING_CHECK") == "1":
-        _assert(not (desktop / "node_modules").exists(), "source node_modules present (packaging check)")
-        _assert(not (desktop / "src-tauri" / "target").exists(), "source src-tauri/target present (packaging check)")
+        assert_condition(not (desktop / "node_modules").exists(), "source node_modules present (packaging check)")
+        assert_condition(not (desktop / "src-tauri" / "target").exists(), "source src-tauri/target present (packaging check)")
 
 
 def main() -> None:

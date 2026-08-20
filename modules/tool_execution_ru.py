@@ -15,8 +15,11 @@ file content travels as a JSON string value.
 
 from __future__ import annotations
 
-import shutil
+import queue
 from pathlib import Path
+import threading
+
+import os
 from typing import Any, Mapping
 
 from modules.workspace_policy import WorkspacePolicy, WorkspacePolicyError
@@ -181,37 +184,61 @@ def _files_write(policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any
 def _files_create_folder(
     policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]
 ) -> dict[str, Any]:
-    target = _resolve_in_workspace(policy, _require_str(input_obj, "path"))
-    try:
-        target.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise ToolExecutionError("internal_error", f"create_folder failed: {exc}") from exc
-    except ValueError as exc:
-        raise ToolExecutionError("invalid_payload", f"path is not usable: {exc}") from exc
-    return {"tool": tool, "path": str(target)}
+    _require_str(input_obj, "path")
+    # Path resolution is not an authorization handle. A junction can replace a
+    # component after validation and before mkdir on Windows, so this operation
+    # must remain unavailable until a handle-relative no-reparse primitive is
+    # implemented and covered by platform-specific tests.
+    raise ToolExecutionError(
+        "feature_disabled",
+        "files.create_folder is unavailable until secure no-reparse folder creation is implemented",
+    )
 
 
 def _files_delete(policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]) -> dict[str, Any]:
-    target = _resolve_in_workspace(policy, _require_str(input_obj, "path"))
-    if target == Path(policy.canonical_path):
-        raise ToolExecutionError("invalid_payload", "cannot delete the workspace root")
-    if target.is_dir():
+    _require_str(input_obj, "path")
+    # Recursive delete has the same validation/use race as writes and folder
+    # creation. Fail closed rather than accepting a workspace escape primitive.
+    raise ToolExecutionError(
+        "feature_disabled",
+        "files.delete is unavailable until secure no-reparse deletion is implemented",
+    )
+
+
+def _execute_real_action_bounded(execute_real_action, dispatched: dict[str, Any], kind: str):
+    """Bound only GUI app launch; other actions retain their normal semantics."""
+    if kind != "open_app":
+        return execute_real_action(dispatched, simulate=False)
+
+    result_queue = queue.Queue(maxsize=1)
+
+    def worker():
         try:
-            shutil.rmtree(target)
-        except OSError as exc:
-            raise ToolExecutionError("internal_error", f"delete failed: {exc}") from exc
-    elif target.exists():
-        try:
-            target.unlink()
-        except OSError as exc:
-            raise ToolExecutionError("internal_error", f"delete failed: {exc}") from exc
-    else:
-        raise ToolExecutionError("invalid_payload", "path does not exist")
-    return {"tool": tool, "path": str(target)}
+            result_queue.put((True, execute_real_action(dispatched, simulate=False)))
+        except BaseException as exc:
+            result_queue.put((False, exc))
+
+    thread = threading.Thread(target=worker, name="computer-use-real-action", daemon=True)
+    thread.start()
+    thread.join(timeout=5.0)
+    if thread.is_alive():
+        return {
+            "ok": True,
+            "status": "launch_pending",
+            "verification": "pending",
+            "mode": "computer_use_real_open_app_pending",
+            "app": dispatched.get("target", ""),
+            "result": "Команда запуска передана приложению.",
+        }
+
+    succeeded, value = result_queue.get_nowait()
+    if not succeeded:
+        raise ToolExecutionError("internal_error", f"computer_use backend failed: {value}")
+    return value
 
 
 def _computer_use(
-    policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]
+    policy: WorkspacePolicy | None, tool: str, input_obj: Mapping[str, Any]
 ) -> dict[str, Any]:
     """Real computer_use dispatch (delegation).
 
@@ -243,6 +270,15 @@ def _computer_use(
     coordinate = input_obj.get("coordinate")
     if coordinate is not None and not isinstance(coordinate, list):
         raise ToolExecutionError("invalid_payload", "coordinate must be an array")
+
+    target_val = input_obj.get("target", "")
+    if target_val is not None and not isinstance(target_val, str):
+        raise ToolExecutionError("invalid_payload", "target must be a string")
+    target = str(target_val or "").strip()
+    if target:
+        _reject_unrenderable(target, "target")
+    if not target and action in ("open_app", "open_folder") and isinstance(text_val, str):
+        target = text_val.strip()
 
     # Explicit allowlist of delegated actions — no open-ended dispatch.
     # Anything outside this is a deterministic error, not a side effect.
@@ -285,7 +321,8 @@ def _computer_use(
     }
     kind = kind_map[action]
 
-    dispatched: dict[str, Any] = {"kind": kind, "target": input_obj.get("target", "")}
+    dispatched: dict[str, Any] = {"kind": kind, "target": target}
+
     if text_val:
         dispatched["text"] = text_val
     if action in ("key", "hotkey") and text_val:
@@ -296,7 +333,8 @@ def _computer_use(
     # Caller-provided coordinate is treated as advisory — real click planning
     # is delegated to computer_use_click_planner_ru via the backend.
 
-    result = execute_real_action(dispatched, simulate=False)
+    result = _execute_real_action_bounded(execute_real_action, dispatched, kind)
+
     # Normalize sidecar response shape — always include tool identity.
     result.setdefault("tool", tool)
     result.setdefault("action", action)
@@ -307,7 +345,11 @@ def _computer_use(
 # Guarded, rate-limited, no eval. search = DuckDuckGo HTML scrape (no key).
 # fetch = GET with 10kB limit + html strip + MAX_FILE_BYTES guard.
 # Both share a tiny in-memory cache so repeated calls don't hammer the net.
-import urllib.request, urllib.parse
+import http.client
+import ipaddress
+import socket
+import urllib.parse
+import urllib.request
 import html as _html
 
 _web_cache: dict[str, tuple[float, str]] = {}
@@ -376,12 +418,116 @@ def _web_search(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
     _web_cache_put(f"s:{query.strip().lower()}", out)
     return {"tool": tool, "query": query, "results": results, "cached": False}
 
+def _resolve_public_fetch_target(url: str) -> tuple[urllib.parse.ParseResult, str]:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ToolExecutionError("invalid_payload", "url must use http(s) with a hostname and no credentials")
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError as exc:
+        raise ToolExecutionError("invalid_payload", "url has an invalid port") from exc
+    if port not in {80, 443}:
+        raise ToolExecutionError("policy_denied", "web.fetch only permits standard HTTP(S) ports")
+    host = parsed.hostname
+    try:
+        candidate_ips = {ipaddress.ip_address(host)}
+    except ValueError:
+        try:
+            infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+        except OSError as exc:
+            raise ToolExecutionError("invalid_payload", f"unable to resolve URL host: {exc}") from exc
+        candidate_ips = {ipaddress.ip_address(info[4][0]) for info in infos}
+    if not candidate_ips or any(
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_unspecified
+        or ip.is_multicast
+        for ip in candidate_ips
+    ):
+        raise ToolExecutionError(
+            "policy_denied",
+            "web.fetch does not allow private, loopback, link-local, reserved, or multicast hosts",
+        )
+    # The selected address is used directly below, so a hostile DNS answer cannot
+    # rebind the connection after validation to an internal address.
+    return parsed, str(sorted(candidate_ips, key=lambda item: (item.version, int(item)))[0])
+
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, host: str, *, connect_ip: str, **kwargs) -> None:
+        self._connect_ip = connect_ip
+        super().__init__(host, **kwargs)
+
+    def connect(self) -> None:
+        self.sock = socket.create_connection((self._connect_ip, self.port), self.timeout, self.source_address)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, host: str, *, connect_ip: str, server_hostname: str, **kwargs) -> None:
+        self._connect_ip = connect_ip
+        self._server_hostname = server_hostname
+        super().__init__(host, **kwargs)
+
+    def connect(self) -> None:
+        self.sock = socket.create_connection((self._connect_ip, self.port), self.timeout, self.source_address)
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=self._server_hostname)
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, connect_ip: str) -> None:
+        super().__init__()
+        self._connect_ip = connect_ip
+
+    def http_open(self, req):
+        return self.do_open(
+            lambda host, **kwargs: _PinnedHTTPConnection(host, connect_ip=self._connect_ip, **kwargs),
+            req,
+        )
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, connect_ip: str, server_hostname: str) -> None:
+        super().__init__()
+        self._connect_ip = connect_ip
+        self._server_hostname = server_hostname
+
+    def https_open(self, req):
+        return self.do_open(
+            lambda host, **kwargs: _PinnedHTTPSConnection(
+                host,
+                connect_ip=self._connect_ip,
+                server_hostname=self._server_hostname,
+                **kwargs,
+            ),
+            req,
+        )
+
+
+def _pinned_fetch_opener(connect_ip: str, server_hostname: str):
+    # ProxyHandler({}) deliberately ignores HTTP(S)_PROXY and NO_PROXY inherited
+    # from the desktop. The connection is pinned to the checked public address.
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoRedirectHandler(),
+        _PinnedHTTPHandler(connect_ip),
+        _PinnedHTTPSHandler(connect_ip, server_hostname),
+    )
+
 def _web_fetch(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
     url = input_obj.get("url")
     if not isinstance(url, str) or not url.strip():
         raise ToolExecutionError("invalid_payload", "url must be a non-empty string")
     _reject_unrenderable(url, "url")
     url = url.strip()
+    parsed, connect_ip = _resolve_public_fetch_target(url)
     if not url.startswith(_ALLOWED_FETCH_SCHEMES):
         raise ToolExecutionError("invalid_payload", "url must start with https:// or http://")
     if len(url) > 2000:
@@ -392,7 +538,7 @@ def _web_fetch(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
     import urllib.request
     req = urllib.request.Request(url, headers={"User-Agent": "LocalComet/6.84 web.fetch"})
     try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with _pinned_fetch_opener(connect_ip, parsed.hostname).open(req, timeout=12) as resp:
             ctype = (resp.headers.get("Content-Type") or "").lower()
             if "text/html" not in ctype and "text/plain" not in ctype and "application/json" not in ctype and "application/xml" not in ctype and "text/" not in ctype:
                 raise ToolExecutionError("invalid_payload", f"unsupported content-type: {ctype[:80]}")
@@ -441,8 +587,19 @@ def _skills_invoke(policy: WorkspacePolicy, tool: str, payload: Mapping[str, Any
             "invalid_payload",
             "arguments must be an object or array",
         )
+    requested_permissions = payload.get("permissions")
+    if (
+        not isinstance(requested_permissions, list)
+        or not requested_permissions
+        or any(not isinstance(permission, str) or not permission for permission in requested_permissions)
+        or len(set(requested_permissions)) != len(requested_permissions)
+    ):
+        raise ToolExecutionError(
+            "invalid_payload",
+            "permissions must be a non-empty list of unique strings",
+        )
     try:
-        return invoke_skill(skill_id, arguments)
+        return invoke_skill(skill_id, arguments, requested_permissions)
     except SkillInvokeError as exc:
         raise ToolExecutionError(exc.code, exc.message) from exc
 
@@ -457,6 +614,8 @@ def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
     input_obj = payload.get("input")
     if not isinstance(input_obj, Mapping):
         raise ToolExecutionError("invalid_payload", "input must be an object")
+    if tool == "computer_use":
+        return _computer_use(None, tool, input_obj)
     try:
         policy = WorkspacePolicy(workspace, workspace_digest, session)
     except WorkspacePolicyError as exc:
@@ -471,8 +630,7 @@ def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
         return _files_create_folder(policy, tool, input_obj)
     if tool == "files.delete":
         return _files_delete(policy, tool, input_obj)
-    if tool == "computer_use":
-        return _computer_use(policy, tool, input_obj)
+    
     if tool == "shell":
         return _shell(policy, tool, input_obj)
     if tool == "web.search":

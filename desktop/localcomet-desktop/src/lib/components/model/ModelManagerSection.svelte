@@ -27,6 +27,9 @@
   import { t } from '$lib/i18n';
   import type { ApprovedDownloadableArtifact, ManagedDownloadableArtifact, ManagedRuntimeCapability } from '$lib/types/modelGateway';
   import Icon from '$lib/components/common/Icon.svelte';
+  import { selectDefaultModelArtifact } from '$lib/stores/modelDefault';
+  import { computeMode, setComputeMode } from '$lib/stores/shellStore';
+  import { computeModeProfile, isComputeMode } from '$lib/types/computeMode';
 
   // The separate "Hugging Face" settings tab was removed: the approved catalog
   // and the list of already-downloaded models now render together in one
@@ -41,23 +44,52 @@
   let confirmation: Confirmation | null = null;
   let actionPending = false;
   let selectedModelId = $managedRuntimeStore.selectedModelId;
+  let defaultModelAutoSelected = false;
 
 
   $: runtimes = $managedRuntimeStore.runtimeCatalog ?? [];
-  $: selectedRuntimeId = $managedRuntimeStore.preferredRuntimeId
-    ?? $managedRuntimeStore.readiness?.selected_runtime_id
-    ?? runtimes.find((candidate) => candidate.variant === 'cpu')?.runtime_id
-    ?? runtimes[0]?.runtime_id
-    ?? '';
+  $: selectedRuntimeId = (() => {
+    const preferred = runtimes.find((candidate) => candidate.runtime_id === $managedRuntimeStore.preferredRuntimeId);
+    const targetVariant = computeModeProfile($computeMode).runtimeVariant;
+    return (preferred?.variant === targetVariant ? preferred.runtime_id : null)
+      ?? runtimes.find((candidate) => candidate.variant === targetVariant)?.runtime_id
+      ?? preferred?.runtime_id
+      ?? $managedRuntimeStore.readiness?.selected_runtime_id
+      ?? runtimes[0]?.runtime_id
+      ?? '';
+  })();
   $: runtime = runtimes.find((candidate) => candidate.runtime_id === selectedRuntimeId) ?? runtimes[0] ?? null;
   $: modelArtifacts = $artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model');
   $: approvedModelArtifacts = modelArtifacts.filter((artifact): artifact is ApprovedDownloadableArtifact => artifact.trust_kind === 'approved_catalog');
   $: customModelArtifacts = modelArtifacts.filter((artifact) => artifact.trust_kind === 'user_supplied');
   $: selectedModelArtifact = modelArtifacts.find((artifact) => artifact.artifact_id === selectedModelId) ?? null;
+  // The first-run baseline is the light 1.5B model. Prefer it when installed;
+  // otherwise keep it selected so the UI offers the intended one-click setup.
+  // A user selection is never overwritten after this one-time initialization.
+  $: if (
+    !defaultModelAutoSelected &&
+    approvedModelArtifacts.length > 0 &&
+    (!selectedModelId || modelArtifacts.find((artifact) => artifact.artifact_id === selectedModelId)?.trust_kind === 'approved_catalog')
+  ) {
+    const defaultModel = selectDefaultModelArtifact(
+      approvedModelArtifacts,
+      new Set(
+        $managedRuntimeStore.installedArtifacts
+          .filter((artifact) => installationState(artifact.artifact_id) === 'valid')
+          .map((artifact) => artifact.artifact_id)
+      )
+    );
+    if (defaultModel && selectedModelId !== defaultModel.artifact_id) {
+      selectedModelId = defaultModel.artifact_id;
+      void setManagedSelectedModel(selectedModelId);
+    }
+    defaultModelAutoSelected = true;
+  }
   $: runtimeArtifact = selectedRuntimeId
     ? $artifactAcquisitionStore.artifacts.find((artifact): artifact is ApprovedDownloadableArtifact => artifact.kind === 'runtime' && artifact.artifact_id === selectedRuntimeId) ?? null
     : null;
   $: runtimeInstalled = selectedRuntimeId !== '' && installationState(selectedRuntimeId) === 'valid';
+  $: anyRuntimeInstalled = runtimes.some((candidate) => installationState(candidate.runtime_id) === 'valid');
   $: modelInstalled = selectedModelArtifact ? installationState(selectedModelArtifact.artifact_id) === 'valid' : false;
   $: customModelInvalid = selectedModelArtifact?.trust_kind === 'user_supplied' && !modelInstalled;
   $: runtimeDownload = runtimeArtifact ? $artifactAcquisitionStore.downloads[runtimeArtifact.artifact_id] ?? null : null;
@@ -178,7 +210,22 @@
 
   function onRuntimeChange(event: Event) {
     const value = (event.currentTarget as HTMLSelectElement).value;
+    const selected = runtimes.find((candidate) => candidate.runtime_id === value);
+    if (selected) {
+      setComputeMode(selected.variant === 'cpu' ? 'cpu' : $computeMode === 'hybrid' ? 'hybrid' : 'gpu');
+    }
     setManagedPreferredRuntime(value);
+  }
+
+  function onComputeModeChange(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (!isComputeMode(value)) return;
+    setComputeMode(value);
+    const targetVariant = computeModeProfile(value).runtimeVariant;
+    const targetRuntime = runtimes.find((candidate) => candidate.variant === targetVariant);
+    if (targetRuntime && targetRuntime.runtime_id !== selectedRuntimeId) {
+      setManagedPreferredRuntime(targetRuntime.runtime_id);
+    }
   }
 
   function isTerminal(download: { readonly lifecycle: string }): boolean {
@@ -374,6 +421,21 @@
       </select>
       <small>{$t('models.engine_variant_hint')}</small>
     </label>
+    {#if anyRuntimeInstalled}
+      <label class="runtime-selector compute-mode-selector">
+        <span>{$t('models.compute_mode')}</span>
+        <select
+          value={$computeMode}
+          disabled={$managedConnectionBusy || runtimeRunning}
+          onchange={onComputeModeChange}
+        >
+          <option value="gpu">{$t('models.compute_mode.gpu')}</option>
+          <option value="hybrid">{$t('models.compute_mode.hybrid')}</option>
+          <option value="cpu">{$t('models.compute_mode.cpu')}</option>
+        </select>
+        <small>{$t('models.compute_mode.hint')}</small>
+      </label>
+    {/if}
     {#if capability}
       <p class="runtime-capability" class:capability-unavailable={!capability.available}>
         {#if capability.available}
@@ -515,6 +577,7 @@
   dl div { display: flex; justify-content: space-between; gap: var(--lc-space-2); font-size: 11px; }
   .runtime-variants { padding-top: var(--lc-space-2); border-top: var(--border-thin); }
   .runtime-selector { display: grid; gap: 6px; padding-top: var(--lc-space-2); border-top: var(--border-thin); }
+  .runtime-selector.compute-mode-selector { padding-top: 0; border-top: 0; }
   .runtime-selector > span { color: var(--lc-muted); font-size: 11px; font-weight: 700; }
   .runtime-selector select { width: 100%; min-width: 0; }
   .runtime-selector small, .runtime-selector-hint { margin: 0; color: var(--lc-muted); font-size: 10px; line-height: 1.4; }
@@ -522,7 +585,20 @@
   .runtime-capability.capability-unavailable { color: var(--lc-danger); font-weight: 700; }
   dt { color: var(--lc-muted); }
   dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
-  .actions { display: flex; flex-wrap: wrap; gap: var(--lc-space-2); }
+  .actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--lc-space-2);
+    margin: 0 calc(var(--lc-space-4) * -1);
+    padding: var(--lc-space-3) var(--lc-space-4);
+    border-top: var(--border-thin);
+    background: color-mix(in srgb, var(--lc-panel-solid) 88%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
   button { min-height: 34px; border: var(--border-thin); border-radius: var(--lc-radius-sm); padding: 0 var(--lc-space-3); background: var(--lc-panel-solid); color: var(--lc-text); font-size: 12px; font-weight: 760; cursor: pointer; }
   button:disabled { color: var(--lc-faint); cursor: not-allowed; }
   .primary { border-color: var(--lc-accent); background: var(--lc-accent); color: var(--lc-logo-cut); }

@@ -1,4 +1,5 @@
 use crate::approval::canonical_input_digest;
+use crate::approval_commands::ApprovalState;
 use crate::files::SelectedFilesManager;
 use crate::ipc;
 use crate::managed_runtime::ManagedRuntimeSupervisor;
@@ -24,6 +25,7 @@ pub const MAX_PROMPT_CHARS: usize = 8192;
 pub const MAX_DELTA_CHARS: usize = 65_536;
 pub const MIN_MODEL_PORT: u16 = 1024;
 pub const MAX_MODEL_PROMPT_CHARS: usize = 16_384;
+pub const DEFAULT_MODEL_SEED: u32 = 42;
 pub const MAX_MODEL_EVENTS_PER_REQUEST: usize = 2_048;
 pub const MAX_MODEL_EVENT_TEXT_PER_REQUEST: usize = 262_144;
 pub const MAX_KNOWLEDGE_REVIEW_OFFSET: u16 = 128;
@@ -47,6 +49,7 @@ pub const MAX_ARGUMENT_NODES: usize = 4_096;
 const _: () = assert!(HARD_MAX_IN_FLIGHT_REQUESTS >= MAX_IN_FLIGHT_REQUESTS);
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const TOOL_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 const MOCK_TURN_TIMEOUT: Duration = Duration::from_secs(10);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
 const MODEL_ATTACH_TIMEOUT: Duration = Duration::from_secs(300);
@@ -73,7 +76,9 @@ const _: () = assert!(REGISTERED_MODEL_TOOLS.len() == 11);
 struct ModelToolArgumentSchema {
     required_string_fields: &'static [&'static str],
     optional_string_fields: &'static [&'static str],
+    required_array_fields: &'static [&'static str],
     optional_array_fields: &'static [&'static str],
+    optional_json_fields: &'static [&'static str],
 }
 
 fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
@@ -82,43 +87,59 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             Some(ModelToolArgumentSchema {
                 required_string_fields: &["path"],
                 optional_string_fields: &[],
+                required_array_fields: &[],
                 optional_array_fields: &[],
+                optional_json_fields: &[],
             })
         }
         "files.write" => Some(ModelToolArgumentSchema {
             required_string_fields: &["path", "content"],
             optional_string_fields: &[],
+            required_array_fields: &[],
             optional_array_fields: &[],
+            optional_json_fields: &[],
         }),
         "shell" => Some(ModelToolArgumentSchema {
             required_string_fields: &["command"],
             optional_string_fields: &[],
+            required_array_fields: &[],
             optional_array_fields: &[],
+            optional_json_fields: &[],
         }),
         "computer_use" => Some(ModelToolArgumentSchema {
             required_string_fields: &["action"],
-            optional_string_fields: &["text"],
+            optional_string_fields: &["text", "target"],
+            required_array_fields: &[],
             optional_array_fields: &["coordinate"],
+            optional_json_fields: &[],
         }),
         "skills.invoke" => Some(ModelToolArgumentSchema {
             required_string_fields: &["skill_id"],
             optional_string_fields: &[],
-            optional_array_fields: &["arguments"],
+            required_array_fields: &["permissions"],
+            optional_array_fields: &[],
+            optional_json_fields: &["arguments"],
         }),
         "web.search" => Some(ModelToolArgumentSchema {
             required_string_fields: &["query"],
             optional_string_fields: &[],
+            required_array_fields: &[],
             optional_array_fields: &[],
+            optional_json_fields: &[],
         }),
         "web.fetch" => Some(ModelToolArgumentSchema {
             required_string_fields: &["url"],
             optional_string_fields: &[],
+            required_array_fields: &[],
             optional_array_fields: &[],
+            optional_json_fields: &[],
         }),
         "system.time" => Some(ModelToolArgumentSchema {
             required_string_fields: &[],
             optional_string_fields: &[],
+            required_array_fields: &[],
             optional_array_fields: &[],
+            optional_json_fields: &[],
         }),
         _ => None,
     }
@@ -134,6 +155,7 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
         if !schema.required_string_fields.contains(&key.as_str())
             && !schema.optional_string_fields.contains(&key.as_str())
             && !schema.optional_array_fields.contains(&key.as_str())
+            && !schema.optional_json_fields.contains(&key.as_str())
         {
             let message = format!("tool {name} has unknown argument field {key}");
             return Err(BridgeError::new("protocol_mismatch", &message));
@@ -152,6 +174,19 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
             }
         }
     }
+    for field in schema.required_array_fields {
+        match object.get(*field) {
+            None => {
+                let message = format!("tool {name} missing required argument field {field}");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            }
+            Some(Value::Array(_)) => {}
+            Some(_) => {
+                let message = format!("tool {name} argument field {field} must be an array");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            }
+        }
+    }
     for field in schema.optional_string_fields {
         if let Some(val) = object.get(*field) {
             if !val.is_string() {
@@ -164,6 +199,15 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
         if let Some(val) = object.get(*field) {
             if !val.is_array() {
                 let message = format!("tool {name} argument field {field} must be an array");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            }
+        }
+    }
+    for field in schema.optional_json_fields {
+        if let Some(val) = object.get(*field) {
+            if !val.is_object() && !val.is_array() {
+                let message =
+                    format!("tool {name} argument field {field} must be an object or array");
                 return Err(BridgeError::new("protocol_mismatch", &message));
             }
         }
@@ -241,8 +285,8 @@ impl ControlPlaneMethod {
             Self::ModelTurnStart
             | Self::ModelTurnCancel
             | Self::KnowledgeTurnDecide
-            | Self::KnowledgeReviewDecisionCreate
-            | Self::ToolCall => Duration::from_secs(5),
+            | Self::KnowledgeReviewDecisionCreate => Duration::from_secs(5),
+            Self::ToolCall => TOOL_CALL_TIMEOUT,
             Self::ModelManagedAttach => MODEL_ATTACH_TIMEOUT,
             Self::ModelManagedDetach => MODEL_DETACH_TIMEOUT,
             Self::KnowledgeTurnPreview => Duration::from_secs(15),
@@ -375,7 +419,7 @@ struct AssistantCapabilities {
     tools: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentPermissions {
     pub files: bool,
@@ -480,6 +524,7 @@ pub(crate) struct ModelRequestIdentity {
     pub(crate) model_id: String,
     pub(crate) submitted_at_unix_ms: u64,
     pub(crate) max_tokens: u16,
+    pub(crate) seed: u32,
     pub(crate) binding_fingerprint: String,
 }
 
@@ -539,6 +584,7 @@ struct ModelRequestEntry {
     buffered_events: Vec<UiControlPlaneEvent>,
     tools_enabled: bool,
     permitted_tool_names: Vec<String>,
+    effort: String,
     intermediate_tool_calls: Vec<Value>,
     /// Digest of the canonical `model.turn.start` wire payload this reservation
     /// authorizes, including `assistant_context`. `None` until the reservation is
@@ -576,6 +622,7 @@ impl ModelRequestEntry {
             buffered_events: Vec::new(),
             tools_enabled,
             permitted_tool_names,
+            effort: "off".to_owned(),
             intermediate_tool_calls: Vec::new(),
             reserved_wire_digest: None,
         }
@@ -701,11 +748,22 @@ fn model_request_reservation_exists(
 
 /// Canonical `model.turn.start` wire payload. Single construction site so the
 /// digest that authorizes a turn and the bytes that are framed cannot drift.
+#[allow(dead_code)]
 pub(crate) fn model_turn_wire_payload(
     identity: &ModelRequestIdentity,
     prompt: &str,
     assistant_context: &AssistantContext,
     messages: &[Value],
+) -> Value {
+    model_turn_wire_payload_with_effort(identity, prompt, assistant_context, messages, "off")
+}
+
+pub(crate) fn model_turn_wire_payload_with_effort(
+    identity: &ModelRequestIdentity,
+    prompt: &str,
+    assistant_context: &AssistantContext,
+    messages: &[Value],
+    effort: &str,
 ) -> Value {
     json!({
         "request_id": identity.request_id,
@@ -713,6 +771,8 @@ pub(crate) fn model_turn_wire_payload(
         "model_id": identity.model_id,
         "submitted_at_unix_ms": identity.submitted_at_unix_ms,
         "max_tokens": identity.max_tokens,
+        "seed": identity.seed,
+        "effort": effort,
         "prompt": prompt,
         "assistant_context": assistant_context,
         "binding_fingerprint": identity.binding_fingerprint,
@@ -1018,6 +1078,7 @@ impl ControlPlaneBridge {
         identity: &ModelRequestIdentity,
         permitted_tool_names: Vec<String>,
         wire_digest: [u8; 32],
+        effort: &str,
     ) -> Result<(), BridgeError> {
         let watchdog = {
             let mut registry = self
@@ -1025,6 +1086,9 @@ impl ControlPlaneBridge {
                 .lock()
                 .expect("model request registry poisoned");
             let watchdog = registry.insert(identity.clone(), permitted_tool_names)?;
+            if let Some(entry) = registry.entries.get_mut(&identity.request_id) {
+                entry.effort = effort.to_owned();
+            }
             if let Err(error) =
                 registry.bind_reserved_wire_digest(&identity.request_id, wire_digest)
             {
@@ -1050,8 +1114,15 @@ impl ControlPlaneBridge {
         prompt: String,
         assistant_context: AssistantContext,
         messages: Vec<Value>,
+        effort: String,
     ) -> Result<Value, BridgeError> {
-        let payload = model_turn_wire_payload(&identity, &prompt, &assistant_context, &messages);
+        let payload = model_turn_wire_payload_with_effort(
+            &identity,
+            &prompt,
+            &assistant_context,
+            &messages,
+            &effort,
+        );
         let response = match self.request_reserved_model_start(&identity.request_id, payload) {
             Ok(response) => response,
             Err(error) => {
@@ -1059,13 +1130,14 @@ impl ControlPlaneBridge {
                 return Err(error);
             }
         };
-        let (provider_id, harness_id) = match validate_model_acceptance(&response, &identity) {
-            Ok(binding) => binding,
-            Err(error) => {
-                self.discard_unaccepted_model_request(&identity.request_id);
-                return Err(error);
-            }
-        };
+        let (provider_id, harness_id) =
+            match validate_model_acceptance(&response, &identity, &effort) {
+                Ok(binding) => binding,
+                Err(error) => {
+                    self.discard_unaccepted_model_request(&identity.request_id);
+                    return Err(error);
+                }
+            };
 
         let release_events = {
             let mut registry = self
@@ -1110,6 +1182,7 @@ impl ControlPlaneBridge {
             &identity,
             &provider_id,
             &harness_id,
+            &effort,
         ))
     }
 
@@ -2398,11 +2471,14 @@ pub async fn model_turn_start(
     state: State<'_, Arc<ControlPlaneBridge>>,
     runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     files: State<'_, SelectedFilesManager>,
+    approval: State<'_, ApprovalState>,
     request_id: String,
     chat_session_id: String,
     model_id: String,
     submitted_at_unix_ms: u64,
     max_tokens: u16,
+    seed: u32,
+    effort: String,
     prompt: String,
     file_ids: Vec<String>,
     locale: String,
@@ -2413,6 +2489,7 @@ pub async fn model_turn_start(
     ensure_request_id(&request_id)?;
     ensure_chat_session_id(&chat_session_id)?;
     ensure_model_id(&model_id)?;
+    ensure_effort(&effort)?;
     if submitted_at_unix_ms == 0 || submitted_at_unix_ms > 9_007_199_254_740_991 {
         return Err(BridgeError::new(
             "invalid_payload",
@@ -2421,6 +2498,18 @@ pub async fn model_turn_start(
     }
     // Raised from 512: the managed runtime now runs --n-predict 4096 and the
     // external OpenAI-compatible provider (LM Studio) has no such ceiling.
+    if seed != DEFAULT_MODEL_SEED {
+        return Err(BridgeError::new(
+            "invalid_payload",
+            "seed must equal the fixed model seed",
+        ));
+    }
+    if seed > i32::MAX as u32 {
+        return Err(BridgeError::new(
+            "invalid_payload",
+            "seed is outside the allowed range",
+        ));
+    }
     if !(1..=8192).contains(&max_tokens) {
         return Err(BridgeError::new(
             "invalid_payload",
@@ -2469,6 +2558,7 @@ pub async fn model_turn_start(
         file_context_report.is_some(),
         Some(&agent_permissions),
     )?;
+    approval.set_agent_permissions(agent_permissions.clone());
     ensure_fingerprint(&binding_fingerprint)?;
     let identity = ModelRequestIdentity {
         request_id,
@@ -2476,21 +2566,24 @@ pub async fn model_turn_start(
         model_id,
         submitted_at_unix_ms,
         max_tokens,
+        seed,
         binding_fingerprint,
     };
     // The reservation is bound to the digest of the exact wire payload it
     // authorizes, assistant_context (and therefore the capability/tool grant that
     // drives permitted_tool_names) included. Dispatch re-derives this digest.
-    let wire_digest = model_turn_wire_digest(&model_turn_wire_payload(
+    let wire_digest = model_turn_wire_digest(&model_turn_wire_payload_with_effort(
         &identity,
         &prompt,
         &assistant_context,
         &messages,
+        &effort,
     ));
     state.reserve_model_turn(
         &identity,
         assistant_context.capabilities.tools.clone(),
         wire_digest,
+        &effort,
     )?;
     let cleanup_state = Arc::clone(&state);
     let cleanup_request_id = identity.request_id.clone();
@@ -2515,7 +2608,13 @@ pub async fn model_turn_start(
                 .remove(&identity.request_id);
             return Err(error);
         }
-        worker_state.request_model_turn_reserved(identity, prompt, assistant_context, messages)
+        worker_state.request_model_turn_reserved(
+            identity,
+            prompt,
+            assistant_context,
+            messages,
+            effort,
+        )
     })
     .await
     {
@@ -2737,6 +2836,7 @@ struct ModelCancelAcknowledgement {
 fn validate_model_acceptance(
     response: &Value,
     expected: &ModelRequestIdentity,
+    expected_effort: &str,
 ) -> Result<(String, String), BridgeError> {
     let object = response.as_object().ok_or_else(|| {
         BridgeError::new("protocol_mismatch", "model acceptance is not an object")
@@ -2748,8 +2848,10 @@ fn validate_model_acceptance(
         "model_id",
         "submitted_at_unix_ms",
         "max_tokens",
+        "seed",
         "binding_fingerprint",
         "state",
+        "effort",
         "provider_id",
         "harness_id",
         "model_called",
@@ -2778,9 +2880,11 @@ fn validate_model_acceptance(
         || string("model_id")? != expected.model_id
         || string("binding_fingerprint")? != expected.binding_fingerprint
         || string("state")? != "Accepted"
+        || string("effort")? != expected_effort
         || object.get("submitted_at_unix_ms").and_then(Value::as_u64)
             != Some(expected.submitted_at_unix_ms)
         || object.get("max_tokens").and_then(Value::as_u64) != Some(u64::from(expected.max_tokens))
+        || object.get("seed").and_then(Value::as_u64) != Some(u64::from(expected.seed))
         || object.get("model_called").and_then(Value::as_bool) != Some(false)
         || object.get("tools_executed").and_then(Value::as_u64) != Some(0)
         || object.get("persistence").and_then(Value::as_bool) != Some(false)
@@ -2805,6 +2909,7 @@ fn project_model_acceptance(
     identity: &ModelRequestIdentity,
     provider_id: &str,
     harness_id: &str,
+    effort: &str,
 ) -> Value {
     json!({
         "request_id": identity.request_id,
@@ -2813,8 +2918,10 @@ fn project_model_acceptance(
         "model_id": identity.model_id,
         "submitted_at_unix_ms": identity.submitted_at_unix_ms,
         "max_tokens": identity.max_tokens,
+        "seed": identity.seed,
         "binding_fingerprint": identity.binding_fingerprint,
         "state": "Accepted",
+        "effort": effort,
         "provider_id": provider_id,
         "harness_id": harness_id,
         "model_called": false,
@@ -2941,6 +3048,11 @@ fn knowledge_model_identity_from_event(
         .and_then(Value::as_u64)
         .and_then(|value| u16::try_from(value).ok())
         .ok_or_else(|| BridgeError::new("protocol_mismatch", "model event budget missing"))?;
+    let seed = metadata
+        .get("seed")
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| BridgeError::new("protocol_mismatch", "model event seed missing"))?;
     let binding_fingerprint = string("binding_fingerprint")?;
     let provider_id = string("provider_id")?;
     let harness_id = string("harness_id")?;
@@ -2966,6 +3078,7 @@ fn knowledge_model_identity_from_event(
             model_id: model_id.into(),
             submitted_at_unix_ms,
             max_tokens,
+            seed,
             binding_fingerprint: binding_fingerprint.into(),
         },
         provider_id.into(),
@@ -3106,7 +3219,21 @@ fn validate_and_record_model_event(
             "model event identity mismatch",
         ));
     }
-    let telemetry = validate_model_event_metadata(entry, event, method)?;
+    let telemetry = match validate_model_event_metadata(entry, event, method) {
+        Ok(telemetry) => telemetry,
+        Err(error) => {
+            let trace_path = std::env::temp_dir().join("localcomet-rust-model-event-error.txt");
+            let trace = format!(
+                "method={method}\ncode={}\nmessage={}\nentry_generated_bytes={}\nevent_metadata={}\n",
+                error.code,
+                error.message,
+                entry.generated_bytes,
+                event.metadata,
+            );
+            let _ = std::fs::write(trace_path, trace);
+            return Err(error);
+        }
+    };
     if entry.terminal_seen {
         return Err(BridgeError::new(
             "invalid_sequence",
@@ -3433,6 +3560,8 @@ fn validate_model_event_metadata(
         "model_id",
         "submitted_at_unix_ms",
         "max_tokens",
+        "seed",
+        "effort",
         "binding_fingerprint",
         "model_called",
         "tools_executed",
@@ -3456,6 +3585,7 @@ fn validate_model_event_metadata(
     if metadata.keys().any(|key| {
         !BASE_KEYS.contains(&key.as_str())
             && key != "error"
+            && key != "stream_channel"
             && !KNOWLEDGE_KEYS.contains(&key.as_str())
             && !(is_tool_event && key == "tool_calls")
     }) || BASE_KEYS.iter().any(|key| !metadata.contains_key(*key))
@@ -3465,6 +3595,18 @@ fn validate_model_event_metadata(
             "model event metadata shape mismatch",
         ));
     }
+    if let Some(channel) = metadata.get("stream_channel") {
+        if !matches!(channel.as_str(), Some("content") | Some("reasoning")) {
+            return Err(BridgeError::new(
+                "protocol_mismatch",
+                "model event stream channel mismatch",
+            ));
+        }
+    }
+    let effort = metadata
+        .get("effort")
+        .and_then(Value::as_str)
+        .ok_or_else(|| BridgeError::new("protocol_mismatch", "model effort missing"))?;
     let provider_id = metadata
         .get("provider_id")
         .and_then(Value::as_str)
@@ -3505,9 +3647,12 @@ fn validate_model_event_metadata(
             == Some(entry.identity.submitted_at_unix_ms)
         && metadata.get("max_tokens").and_then(Value::as_u64)
             == Some(u64::from(entry.identity.max_tokens))
+        && metadata.get("seed").and_then(Value::as_u64) == Some(u64::from(entry.identity.seed))
         && metadata.get("binding_fingerprint").and_then(Value::as_str)
             == Some(entry.identity.binding_fingerprint.as_str());
     if !base_identity_matches
+        || ensure_effort(effort).is_err()
+        || effort != entry.effort
         || ensure_provider(provider_id).is_err()
         || ensure_harness(harness_id).is_err()
         || entry
@@ -3678,6 +3823,12 @@ fn project_model_event_metadata(event: &UiControlPlaneEvent) -> Result<Value, Br
                 .cloned()
                 .ok_or_else(|| BridgeError::new("protocol_mismatch", "model telemetry missing"))?,
         );
+    }
+    if let Some(effort) = metadata.get("effort") {
+        projected.insert("effort".into(), effort.clone());
+    }
+    if let Some(channel) = metadata.get("stream_channel") {
+        projected.insert("stream_channel".into(), channel.clone());
     }
     if matches!(
         event.method.as_str(),
@@ -3851,6 +4002,8 @@ fn validate_payload_for_method(
                 "model_id",
                 "submitted_at_unix_ms",
                 "max_tokens",
+                "seed",
+                "effort",
                 "prompt",
                 "assistant_context",
                 "binding_fingerprint",
@@ -4292,6 +4445,17 @@ fn ensure_harness(value: &str) -> Result<(), BridgeError> {
     }
 }
 
+fn ensure_effort(value: &str) -> Result<(), BridgeError> {
+    if matches!(value, "off" | "low" | "medium" | "high") {
+        Ok(())
+    } else {
+        Err(BridgeError::new(
+            "invalid_payload",
+            "unsupported effort level",
+        ))
+    }
+}
+
 fn ensure_model_id(value: &str) -> Result<(), BridgeError> {
     if !value.is_empty()
         && value.len() <= 192
@@ -4626,7 +4790,7 @@ mod tests {
         assert_eq!(ControlPlaneMethod::ToolCall.as_wire(), "tool.call");
         assert_eq!(
             ControlPlaneMethod::ToolCall.timeout(),
-            Duration::from_secs(5)
+            Duration::from_secs(30)
         );
         assert!(CONTROL_PLANE_METHOD_VOCABULARY
             .iter()
@@ -5029,6 +5193,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_000,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "a".repeat(64),
         }
     }
@@ -5223,6 +5388,8 @@ mod tests {
             "model_id": identity.model_id,
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
+            "seed": identity.seed,
+            "effort": "off",
             "binding_fingerprint": identity.binding_fingerprint,
             "model_called": model_called,
             "tools_executed": 0,
@@ -5260,12 +5427,23 @@ mod tests {
             "model_id": identity.model_id,
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
+            "seed": identity.seed,
+            "effort": "off",
             "prompt": "hello",
             "assistant_context": AssistantContext::trusted("ru", false, None).unwrap(),
             "binding_fingerprint": identity.binding_fingerprint,
             "messages": [],
         });
         assert!(validate_payload_for_method(ControlPlaneMethod::ModelTurnStart, &payload).is_ok());
+        let mut without_effort = payload.clone();
+        without_effort
+            .as_object_mut()
+            .expect("model turn payload object")
+            .remove("effort");
+        assert!(
+            validate_payload_for_method(ControlPlaneMethod::ModelTurnStart, &without_effort)
+                .is_err()
+        );
         assert!(validate_payload_for_method(
             ControlPlaneMethod::ModelTurnStart,
             &json!({"prompt":"hello","binding_fingerprint":"a".repeat(64)})
@@ -5311,21 +5489,23 @@ mod tests {
             "model_id": identity.model_id,
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
+        "seed": identity.seed,
             "binding_fingerprint": identity.binding_fingerprint,
             "state": "Accepted",
+            "effort": "off",
             "provider_id": "managed-llama-cpp",
             "harness_id": "minimal",
             "model_called": false,
             "tools_executed": 0,
             "persistence": false,
         });
-        assert!(validate_model_acceptance(&response, &identity).is_ok());
+        assert!(validate_model_acceptance(&response, &identity, "off").is_ok());
         let mut wrong = response;
         wrong["model_id"] = json!("foreign-model");
-        assert!(validate_model_acceptance(&wrong, &identity).is_err());
-        let mut extra = project_model_acceptance(&identity, "managed-llama-cpp", "minimal");
+        assert!(validate_model_acceptance(&wrong, &identity, "off").is_err());
+        let mut extra = project_model_acceptance(&identity, "managed-llama-cpp", "minimal", "off");
         extra["untrusted"] = json!("cross-webview");
-        assert!(validate_model_acceptance(&extra, &identity).is_err());
+        assert!(validate_model_acceptance(&extra, &identity, "off").is_err());
     }
 
     #[test]
@@ -6237,6 +6417,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let entry_a = ModelRequestEntry::new(identity_a.clone(), vec!["files.read".to_string()]);
@@ -6591,6 +6772,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let entry_a = ModelRequestEntry::new(
@@ -7006,6 +7188,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let mut entry_a =
@@ -7331,6 +7514,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let mut entry_a = b5_entry(&identity_a);
@@ -7831,6 +8015,9 @@ mod tests {
             max_tokens: identity_value["maxTokens"]
                 .as_u64()
                 .expect("maxTokens must be an unsigned integer") as u16,
+            seed: identity_value["seed"]
+                .as_u64()
+                .expect("seed must be an unsigned integer") as u32,
             binding_fingerprint: identity_value["bindingFingerprint"]
                 .as_str()
                 .expect("bindingFingerprint must be a string")
@@ -8397,6 +8584,7 @@ mod tests {
             model_id: identity_a.model_id.clone(),
             submitted_at_unix_ms: identity_a.submitted_at_unix_ms + 1,
             max_tokens: identity_a.max_tokens,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let calls = b6_calls();
@@ -8546,6 +8734,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let calls = b6_calls();
@@ -8961,6 +9150,7 @@ mod tests {
             model_id: identity_a.model_id.clone(),
             submitted_at_unix_ms: identity_a.submitted_at_unix_ms + 7,
             max_tokens: identity_a.max_tokens,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "c".repeat(64),
         };
         let calls = b6_calls();

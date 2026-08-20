@@ -12,22 +12,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from tools.test_fixtures.assertions import assert_condition
+from tools.test_fixtures.path_inventory import paths_under_set
 
 
 def _reload_module(name: str):
     sys.modules.pop(name, None)
     return importlib.import_module(name)
-
-
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def _paths_under(root: Path) -> set[str]:
-    if not root.exists():
-        return set()
-    return {path.relative_to(root).as_posix() for path in root.rglob("*")}
 
 
 def test_panel_routes_single_dispatch() -> None:
@@ -60,18 +51,18 @@ def test_panel_routes_single_dispatch() -> None:
 
         calls.clear()
         result = panel.run_panel_chat_command("статус разработки")
-        _assert(calls == ["dev"], "Safety route must dispatch exactly once.")
-        _assert(result["route"] == "dev", "Safety command routed incorrectly.")
+        assert_condition(calls == ["dev"], "Safety route must dispatch exactly once.")
+        assert_condition(result["route"] == "dev", "Safety command routed incorrectly.")
 
         calls.clear()
         result = panel.run_panel_chat_command("reviewer bridge status")
-        _assert(calls == ["reviewer"], "Reviewer route must dispatch exactly once.")
-        _assert(result["route"] == "reviewer", "Reviewer command routed incorrectly.")
+        assert_condition(calls == ["reviewer"], "Reviewer route must dispatch exactly once.")
+        assert_condition(result["route"] == "reviewer", "Reviewer command routed incorrectly.")
 
         calls.clear()
         result = panel.run_panel_chat_command("definitely unknown v677 command")
-        _assert(calls == ["fallback"], "Fallback must dispatch exactly once.")
-        _assert(result["route"] == "fallback", "Unknown command skipped fallback.")
+        assert_condition(calls == ["fallback"], "Fallback must dispatch exactly once.")
+        assert_condition(result["route"] == "fallback", "Unknown command skipped fallback.")
     finally:
         panel._run_development_safety_command_ru_v676a = originals["dev"]
         panel._run_reviewer_bridge_command_ru_v676a = originals["reviewer"]
@@ -94,14 +85,14 @@ def test_safety_status_lightweight() -> None:
 
     evaluation = result.get("evaluation", {})
     gates = evaluation.get("gates", {})
-    _assert(elapsed < 0.5, f"Safety status took {elapsed:.3f}s; expected <0.5s.")
-    _assert(gates.get("contracts", {}).get("executed") is False, "Contracts ran in status.")
-    _assert(gates.get("strict", {}).get("executed") is False, "Strict checks ran in status.")
-    _assert(
+    assert_condition(elapsed < 0.5, f"Safety status took {elapsed:.3f}s; expected <0.5s.")
+    assert_condition(gates.get("contracts", {}).get("executed") is False, "Contracts ran in status.")
+    assert_condition(gates.get("strict", {}).get("executed") is False, "Strict checks ran in status.")
+    assert_condition(
         evaluation.get("diff_risk", {}).get("untracked_ignored_for_risk") is True,
         "Untracked files must be ignored for risk.",
     )
-    _assert(safety.ROOT_DIR == ROOT, "Safety ROOT_DIR must honor LOCALCOMET_ROOT.")
+    assert_condition(safety.ROOT_DIR == ROOT, "Safety ROOT_DIR must honor LOCALCOMET_ROOT.")
 
 
 def test_reviewer_request_file_safety() -> None:
@@ -122,10 +113,10 @@ def test_reviewer_request_file_safety() -> None:
         traversal = reviewer.create_reviewer_request("../escape", "traversal probe")
         automatic = reviewer.create_reviewer_request("", "auto id probe")
 
-        _assert(first["task_id"] == "same_task", "Reviewer task id was not preserved.")
-        _assert(second["task_id"] == "same_task_2", "Duplicate reviewer id did not get suffix.")
-        _assert(traversal["task_id"].startswith("review_"), "Traversal-like id was not replaced.")
-        _assert(automatic["task_id"].startswith("review_"), "Blank id did not allocate auto id.")
+        assert_condition(first["task_id"] == "same_task", "Reviewer task id was not preserved.")
+        assert_condition(second["task_id"] == "same_task_2", "Duplicate reviewer id did not get suffix.")
+        assert_condition(traversal["task_id"].startswith("review_"), "Traversal-like id was not replaced.")
+        assert_condition(automatic["task_id"].startswith("review_"), "Blank id did not allocate auto id.")
 
         all_files = (
             first["files_created"]
@@ -133,18 +124,18 @@ def test_reviewer_request_file_safety() -> None:
             + traversal["files_created"]
             + automatic["files_created"]
         )
-        _assert(len(first["files_created"]) == 3, "Reviewer must create exactly 3 files/request.")
-        _assert(len(second["files_created"]) == 3, "Reviewer duplicate must create exactly 3 files.")
+        assert_condition(len(first["files_created"]) == 3, "Reviewer must create exactly 3 files/request.")
+        assert_condition(len(second["files_created"]) == 3, "Reviewer duplicate must create exactly 3 files.")
         for file_text in all_files:
             path = Path(file_text).resolve()
             path.relative_to(temp_root.resolve())
-            _assert(path.exists(), f"Reviewer artifact missing: {path}")
+            assert_condition(path.exists(), f"Reviewer artifact missing: {path}")
 
         first_prompt = Path(first["files_created"][0]).read_text(encoding="utf-8")
         second_prompt = Path(second["files_created"][0]).read_text(encoding="utf-8")
-        _assert("first" in first_prompt, "First reviewer prompt was overwritten.")
-        _assert("second" in second_prompt, "Second reviewer prompt missing expected content.")
-        _assert(reviewer.ROOT_DIR == temp_root.resolve(), "Reviewer ROOT_DIR must honor LOCALCOMET_ROOT.")
+        assert_condition("first" in first_prompt, "First reviewer prompt was overwritten.")
+        assert_condition("second" in second_prompt, "Second reviewer prompt missing expected content.")
+        assert_condition(reviewer.ROOT_DIR == temp_root.resolve(), "Reviewer ROOT_DIR must honor LOCALCOMET_ROOT.")
 
 
 def test_nonexistent_root_overrides_are_read_only_on_import() -> None:
@@ -161,14 +152,14 @@ def test_nonexistent_root_overrides_are_read_only_on_import() -> None:
                 os.environ.pop("LOCALCOMET_ROOT_DIR", None)
                 os.environ[env_name] = str(configured_root)
 
-                before = _paths_under(sandbox)
+                before = paths_under_set(sandbox)
                 module = _reload_module(module_name)
-                after = _paths_under(sandbox)
+                after = paths_under_set(sandbox)
 
-                _assert(module.ROOT_DIR == configured_root, f"{module_name} ignored {env_name}.")
-                _assert(module.ROOT_DIR != ROOT, f"{module_name} fell back to the source repo.")
-                _assert(before == after, f"{module_name} import created filesystem entries.")
-                _assert(not configured_root.exists(), f"{module_name} import created the override root.")
+                assert_condition(module.ROOT_DIR == configured_root, f"{module_name} ignored {env_name}.")
+                assert_condition(module.ROOT_DIR != ROOT, f"{module_name} fell back to the source repo.")
+                assert_condition(before == after, f"{module_name} import created filesystem entries.")
+                assert_condition(not configured_root.exists(), f"{module_name} import created the override root.")
 
 
 def test_nonexistent_root_dispatches_do_not_escape_override() -> None:
@@ -187,26 +178,26 @@ def test_nonexistent_root_dispatches_do_not_escape_override() -> None:
         }
 
         result = reviewer.dispatch("reviewer bridge create missing_root_probe")
-        _assert(result.get("ok") is True, "Reviewer dispatch failed for nonexistent override root.")
+        assert_condition(result.get("ok") is True, "Reviewer dispatch failed for nonexistent override root.")
         for file_text in result.get("files_created", []):
             path = Path(file_text).resolve()
             path.relative_to(configured_root)
             path.relative_to(reviewer.INBOX_DIR.resolve())
-            _assert(path.exists(), f"Reviewer dispatch did not create expected inbox file: {path}")
-        observed = _paths_under(sandbox)
-        _assert(
+            assert_condition(path.exists(), f"Reviewer dispatch did not create expected inbox file: {path}")
+        observed = paths_under_set(sandbox)
+        assert_condition(
             "missing-root/.localcomet/reviewer/archive" not in observed,
             "Reviewer dispatch created archive outside the inbox path.",
         )
-        _assert(
+        assert_condition(
             "missing-root/.localcomet/reviewer/outbox" not in observed,
             "Reviewer dispatch created outbox outside the inbox path.",
         )
-        _assert(
+        assert_condition(
             "missing-root/.localcomet/reviewer/templates" not in observed,
             "Reviewer dispatch created templates outside the inbox path.",
         )
-        _assert(reviewer.ROOT_DIR == configured_root, "Reviewer dispatch selected the wrong root.")
+        assert_condition(reviewer.ROOT_DIR == configured_root, "Reviewer dispatch selected the wrong root.")
 
     with tempfile.TemporaryDirectory(prefix="localcomet_v677_safety_root_") as temp_text:
         sandbox = Path(temp_text)
@@ -214,15 +205,15 @@ def test_nonexistent_root_dispatches_do_not_escape_override() -> None:
         os.environ["LOCALCOMET_ROOT"] = str(configured_root)
         os.environ.pop("LOCALCOMET_ROOT_DIR", None)
 
-        before = _paths_under(sandbox)
+        before = paths_under_set(sandbox)
         safety = _reload_module("modules.development_safety_orchestrator_ru")
         result = safety.status()
-        after = _paths_under(sandbox)
+        after = paths_under_set(sandbox)
 
-        _assert(result.get("ok") is True, "Safety status failed for nonexistent override root.")
-        _assert(safety.ROOT_DIR == configured_root, "Safety status selected the wrong root.")
-        _assert(before == after, "Safety status wrote under the configured missing root sandbox.")
-        _assert(not configured_root.exists(), "Safety status created the configured missing root.")
+        assert_condition(result.get("ok") is True, "Safety status failed for nonexistent override root.")
+        assert_condition(safety.ROOT_DIR == configured_root, "Safety status selected the wrong root.")
+        assert_condition(before == after, "Safety status wrote under the configured missing root sandbox.")
+        assert_condition(not configured_root.exists(), "Safety status created the configured missing root.")
 
 
 def test_generate_capability_map_import_is_read_only() -> None:
@@ -236,8 +227,8 @@ def test_generate_capability_map_import_is_read_only() -> None:
         os.environ["LOCALCOMET_REPORT_DIR"] = str(report_dir)
 
         module = _reload_module("GenerateCapabilityMap")
-        _assert(module._project_root() == temp_root.resolve(), "Capability map root is not portable.")
-        _assert(not report_dir.exists(), "GenerateCapabilityMap wrote reports during import.")
+        assert_condition(module._project_root() == temp_root.resolve(), "Capability map root is not portable.")
+        assert_condition(not report_dir.exists(), "GenerateCapabilityMap wrote reports during import.")
 
 
 def main() -> None:

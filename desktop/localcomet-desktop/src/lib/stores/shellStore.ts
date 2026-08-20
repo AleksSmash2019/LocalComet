@@ -1,8 +1,9 @@
 import { derived, get, writable } from 'svelte/store';
 import { inspectorSections, modeOptions, modelOptions } from '$lib/data/mockData';
 import type { ChatMessageState, InspectorSection, MockMessage, ModeOption, ModelOption, ThemeMode } from '$lib/data/mockData';
-import type { AgentPermissions } from './uiPreferences';
-import { loadUiPreferences, updateUiPreferences } from './uiPreferences';
+import type { AgentPermissions, ComputeMode, EffortLevel } from './uiPreferences';
+import { isComputeMode, isEffortLevel, loadUiPreferences, updateUiPreferences } from './uiPreferences';
+
 import { conversationStore, getActiveConversationId, resetConversationStore, selectConversation as selectConversationInStore } from './conversationStore';
 
 // Must match the composer textarea maxlength="12000" (MessageComposer.svelte)
@@ -23,8 +24,11 @@ function cloneMessages(): MockMessage[] {
 export const themeMode = writable<ThemeMode>(initialUiPreferences.theme);
 export const agentPermissions = writable<AgentPermissions>(initialUiPreferences.agentPermissions);
 export const voiceMode = writable<boolean>(initialUiPreferences.voiceMode);
+export const effortLevel = writable<EffortLevel>(initialUiPreferences.effort);
+
 export const ctxSizeOverride = writable<number | null>(initialUiPreferences.ctxSizeOverride);
 export const gpuLayersOverride = writable<number | null>(initialUiPreferences.gpuLayersOverride);
+export const computeMode = writable<ComputeMode>(initialUiPreferences.computeMode);
 export const activeWorkspace = writable<WorkspaceMode>('chat');
 export const sidebarExpanded = writable(true);
 export const inspectorVisible = writable(initialUiPreferences.diagnosticsPanel === 'open');
@@ -106,6 +110,14 @@ export function setVoiceMode(enabled: boolean): void {
   updateUiPreferences({ voiceMode: enabled });
 }
 
+export function setEffortLevel(level: EffortLevel): void {
+  if (!isEffortLevel(level)) return;
+  effortLevel.set(level);
+  updateUiPreferences({ effort: level });
+}
+
+
+
 export function setCtxSizeOverride(value: number | null): void {
   ctxSizeOverride.set(value);
   updateUiPreferences({ ctxSizeOverride: value });
@@ -114,6 +126,12 @@ export function setCtxSizeOverride(value: number | null): void {
 export function setGpuLayersOverride(value: number | null): void {
   gpuLayersOverride.set(value);
   updateUiPreferences({ gpuLayersOverride: value });
+}
+
+export function setComputeMode(mode: ComputeMode): void {
+  if (!isComputeMode(mode)) return;
+  computeMode.set(mode);
+  updateUiPreferences({ computeMode: mode });
 }
 
 export function setSelectedModel(model: ModelOption): void {
@@ -152,17 +170,20 @@ export function appendMockMessage(rawDraft: string): boolean {
   return true;
 }
 
-export function appendAcceptedChatTurn(requestId: string, rawDraft: string, conversationId?: string): boolean {
+export function appendAcceptedChatTurn(requestId: string, rawDraft: string, conversationId?: string, requestedEffort?: EffortLevel): boolean {
+
   const bounded = rawDraft.slice(0, MAX_DRAFT_LENGTH);
   const body = bounded.trim();
   if (!body || !/^[0-9a-f]{24}$/.test(requestId)) return false;
   if (get(chatMessages).some((message) => message.requestId === requestId)) return false;
 
-  messageCounter += 1;
+    messageCounter += 1;
+  const turnEffort = isEffortLevel(requestedEffort) ? requestedEffort : get(effortLevel);
   chatMessages.update((messages) => [
     ...messages,
     {
       id: `chat-user-${messageCounter}`,
+
       role: 'user',
       body,
       requestId,
@@ -173,10 +194,13 @@ export function appendAcceptedChatTurn(requestId: string, rawDraft: string, conv
       role: 'assistant',
       body: '',
       requestId,
-      conversationId,
-      state: 'accepted'
+            conversationId,
+      state: 'accepted',
+      effort: turnEffort,
+      reasoning: ''
     }
   ]);
+
   composerDraft.set('');
   return true;
 }
@@ -197,7 +221,28 @@ export function appendAssistantChunk(requestId: string, chunk: string): boolean 
   return appended;
 }
 
+export const MAX_REASONING_MESSAGE_LENGTH = 131_072;
+
+export function appendAssistantReasoningChunk(requestId: string, chunk: string): boolean {
+  if (!chunk || !/^[0-9a-f]{24}$/.test(requestId)) return false;
+  let appended = false;
+  chatMessages.update((messages) => messages.map((message) => {
+    if (message.role !== 'assistant' || message.requestId !== requestId || isTerminalMessage(message.state)) return message;
+    appended = true;
+    const currentReasoning = message.reasoning ?? '';
+    return {
+      ...message,
+      reasoning: currentReasoning.length >= MAX_REASONING_MESSAGE_LENGTH
+        ? currentReasoning
+        : `${currentReasoning}${chunk}`.slice(0, MAX_REASONING_MESSAGE_LENGTH),
+      state: 'streaming'
+    };
+  }));
+  return appended;
+}
+
 export function setAssistantToolCalls(requestId: string, toolCalls: import('$lib/data/mockData').ToolCallMock[]): boolean {
+
   if (!/^[0-9a-f]{24}$/.test(requestId)) return false;
   let updated = false;
   chatMessages.update((messages) => messages.map((message) => {

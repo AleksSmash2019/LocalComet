@@ -22,6 +22,7 @@
     DESKTOP_SHELL_VERSION
   } from '$lib/version';
   import { filesCapabilityAvailable, initializeFilesCapability } from '$lib/stores/files';
+  import { chooseWorkspace, restoreWorkspace, workspaceStore } from '$lib/stores/workspace';
 
   export let onClose: () => void = () => undefined;
 
@@ -66,6 +67,7 @@
   onMount(() => {
     closeButton?.focus();
     void initializeFilesCapability();
+    void restoreWorkspace();
   });
 </script>
 
@@ -141,6 +143,33 @@
           {/each}
         </select>
       </div>
+      </section>
+
+      <section aria-labelledby="settings-workspace">
+        <h3 id="settings-workspace">{$t('settings.workspace_title')}</h3>
+        <p class="workspace-description">{$t('settings.workspace_description')}</p>
+        <div class="workspace-card" data-workspace-status={$workspaceStore.status}>
+          <div class="workspace-path">
+            <span>{$t('settings.workspace_path')}</span>
+            <output title={$workspaceStore.path ?? $t('settings.workspace_unconfirmed')}>
+              {$workspaceStore.path ?? $t('settings.workspace_unconfirmed')}
+            </output>
+          </div>
+          <button
+            type="button"
+            class="diagnostics-toggle workspace-button"
+            disabled={$workspaceStore.status === 'confirming'}
+            onclick={() => void chooseWorkspace()}
+          >
+            <Icon name="folder" size={18} />
+            <span>{$t($workspaceStore.status === 'confirming' ? 'settings.workspace_selecting' : 'settings.workspace_choose')}</span>
+          </button>
+        </div>
+        {#if $workspaceStore.error}
+          <p class="workspace-error" role="alert">
+            <strong>{$t('settings.workspace_error')}:</strong> {$workspaceStore.error}
+          </p>
+        {/if}
       </section>
 
       <section aria-labelledby="settings-diagnostics">
@@ -379,6 +408,52 @@
   .language-select:focus-visible {
     outline: 2px solid var(--lc-accent);
     outline-offset: 2px;
+  }
+
+  .workspace-description {
+    margin: 0 0 var(--lc-space-3);
+    color: var(--lc-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .workspace-card {
+    display: grid;
+    gap: var(--lc-space-3);
+    border: var(--border-thin);
+    border-radius: var(--lc-radius-sm);
+    padding: var(--lc-space-3);
+    background: var(--lc-panel-soft);
+  }
+
+  .workspace-path {
+    display: grid;
+    gap: var(--lc-space-1);
+    min-width: 0;
+  }
+
+  .workspace-path > span {
+    color: var(--lc-muted);
+    font-size: 11px;
+    font-weight: 720;
+  }
+
+  .workspace-path output {
+    overflow-wrap: anywhere;
+    color: var(--lc-text);
+    font-family: var(--lc-mono);
+    font-size: 11px;
+  }
+
+  .workspace-button {
+    width: fit-content;
+  }
+
+  .workspace-error {
+    margin: var(--lc-space-2) 0 0;
+    color: var(--lc-danger);
+    font-size: 11px;
+    line-height: 1.4;
   }
 
   .choice-grid button,

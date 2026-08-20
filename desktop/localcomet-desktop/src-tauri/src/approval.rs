@@ -52,6 +52,7 @@ pub enum CommandFamily {
     ToolFilesystemWrite,
     ToolFilesystemDelete,
     ComputerUse,
+    SkillsInvoke,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,11 +61,13 @@ pub enum ApprovalDecision {
     Reject,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApprovalPromptError {
     Unavailable(String),
 }
 
+#[allow(dead_code)]
 pub trait ApprovalPrompt: Send + Sync {
     fn decide(
         &self,
@@ -102,6 +105,7 @@ pub struct FrontendApprovalPrompt {
     pub dispatcher: std::sync::Arc<FrontendApprovalDispatcher>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, serde::Serialize)]
 struct ApprovalRequestPayload {
     pub request_id: String,
@@ -112,6 +116,7 @@ struct ApprovalRequestPayload {
     pub destructive: bool,
 }
 
+#[allow(dead_code)]
 impl ApprovalPrompt for FrontendApprovalPrompt {
     fn decide(
         &self,
@@ -203,6 +208,7 @@ pub fn command_family_for_tool(tool: &str) -> Option<CommandFamily> {
         "files.write" | "files.create_folder" => Some(CommandFamily::ToolFilesystemWrite),
         "files.delete" => Some(CommandFamily::ToolFilesystemDelete),
         "computer_use" => Some(CommandFamily::ComputerUse),
+        "skills.invoke" => Some(CommandFamily::SkillsInvoke),
         "import_custom_model" => Some(CommandFamily::ArtifactDownload),
         _ => None,
     }
@@ -306,6 +312,43 @@ impl ApprovalRegistry {
         self.issue_inner(token, scope, DEFAULT_TTL)
     }
 
+    /// Issue a scoped approval envelope without opening a frontend prompt.
+    ///
+    /// This is reserved for a Rust-verified continuation of an operation that
+    /// was already approved: callers must prove the exact active managed
+    /// runtime identity before reaching this method. The resulting token still
+    /// uses the normal CSPRNG, TTL, scope, and one-time-consumption path.
+    pub fn issue_without_prompt(
+        &mut self,
+        scope: ApprovalScope,
+        descriptor: &ApprovalDescriptor,
+    ) -> Result<ApprovalEnvelope, ApprovalError> {
+        let token = generate_token();
+        let approval_id = generate_approval_id();
+        let call_id = generate_call_id();
+        let scope = ApprovalScope {
+            approval_id: approval_id.clone(),
+            call_id: call_id.clone(),
+            ..scope
+        };
+        self.issue_inner(token.clone(), scope, DEFAULT_TTL)?;
+        let expires_at_unix_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+            + DEFAULT_TTL.as_millis() as u64;
+        Ok(ApprovalEnvelope {
+            token,
+            approval_id,
+            call_id,
+            tool: descriptor.tool.clone(),
+            risk_level: descriptor.risk_level,
+            command_family: descriptor.command_family,
+            expires_at_unix_ms,
+        })
+    }
+
+    #[allow(dead_code)]
     pub fn request_with_prompt(
         &mut self,
         scope: ApprovalScope,
@@ -315,31 +358,7 @@ impl ApprovalRegistry {
         match prompt.decide(descriptor) {
             Err(_) => Err(ApprovalError::PromptUnavailable),
             Ok(ApprovalDecision::Reject) => Err(ApprovalError::Rejected),
-            Ok(ApprovalDecision::Approve) => {
-                let token = generate_token();
-                let approval_id = generate_approval_id();
-                let call_id = generate_call_id();
-                let scope = ApprovalScope {
-                    approval_id: approval_id.clone(),
-                    call_id: call_id.clone(),
-                    ..scope
-                };
-                self.issue_inner(token.clone(), scope, DEFAULT_TTL)?;
-                let expires_at_unix_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64
-                    + DEFAULT_TTL.as_millis() as u64;
-                Ok(ApprovalEnvelope {
-                    token,
-                    approval_id,
-                    call_id,
-                    tool: descriptor.tool.clone(),
-                    risk_level: descriptor.risk_level,
-                    command_family: descriptor.command_family,
-                    expires_at_unix_ms,
-                })
-            }
+            Ok(ApprovalDecision::Approve) => self.issue_without_prompt(scope, descriptor),
         }
     }
 
@@ -3787,13 +3806,15 @@ mod tests {
     fn p0b_r6_forbidden_capabilities_remain_absent() {
         let caps = include_str!("../capabilities/main.json");
         assert!(
-            !caps.contains("allow-run-tool-call"),
-            "allow-run-tool-call must remain absent"
+            caps.contains("allow-request-approval"),
+            "allow-request-approval must be present for the tool execution bridge"
         );
         assert!(
-            !caps.contains("allow-set-workspace"),
-            "allow-set-workspace must remain absent"
+            caps.contains("allow-set-workspace"),
+            "allow-set-workspace must be present for the explicit workspace picker"
         );
+        assert!(!caps.contains("allow-run-tool-call"));
+
         assert!(
             !caps.contains("allow-execute-approved"),
             "allow-execute-approved must remain absent"

@@ -19,7 +19,19 @@ const mockedInvoke = vi.mocked(invoke);
 const TOKEN = 'lcap_' + 'a'.repeat(64);
 
 function envelopeFor(tool: string) {
-  return { token: TOKEN, approvalId: 'appr_' + 'b'.repeat(32), callId: 'call_' + 'c'.repeat(32), tool, riskLevel: 'guarded', commandFamily: 'artifact_download', expiresAtUnixMs: Date.now() + 300_000 };
+  return {
+    token: TOKEN,
+    approvalId: 'appr_' + 'b'.repeat(32),
+    callId: 'call_' + 'c'.repeat(32),
+    tool,
+    riskLevel: 'guarded',
+    commandFamily: 'artifact_download',
+    expiresAtUnixMs: Date.now() + 300_000
+  };
+}
+
+async function flushBackgroundApproval(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('approvalStore', () => {
@@ -33,63 +45,72 @@ describe('approvalStore', () => {
     expect(get(hasPendingApproval)).toBe(false);
   });
 
-  it('requestApprovalForTool sets a pending approval', () => {
-    requestApprovalForTool('files.write', { path: 'a.txt', content: 'x' });
-    const state = get(approvalStore);
-    expect(state.pending).toEqual({ tool: 'files.write', input: { path: 'a.txt', content: 'x' }, envelope: null });
-    expect(state.phase).toBe('pending');
-    expect(get(hasPendingApproval)).toBe(true);
+  it('starts guarded tool execution in the background without a pending card', async () => {
+    const onResult = vi.fn();
+    mockedInvoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'request_approval') return envelopeFor((args as { tool: string }).tool);
+      if (command === 'run_tool_call') return { tool: 'files.write', path: '/w/a.txt' };
+      throw new Error('unexpected command ' + command);
+    });
+
+    requestApprovalForTool('files.write', { path: 'a.txt' }, { onResult });
+    expect(get(approvalStore).pending).toBeNull();
+    expect(get(hasPendingApproval)).toBe(false);
+    await flushBackgroundApproval();
+
+    expect(mockedInvoke.mock.calls.map((call) => call[0])).toEqual([
+      'request_approval',
+      'run_tool_call'
+    ]);
+    expect(onResult).toHaveBeenCalledWith({ tool: 'files.write', path: '/w/a.txt' });
+    expect(get(approvalStore).phase).toBe('idle');
+    expect(get(approvalStore).pending).toBeNull();
   });
 
-  it('rejectApproval clears the pending approval', () => {
-    requestApprovalForTool('files.write', {});
+  it('runs the Rust approval boundary without opening a user-facing card', async () => {
+    mockedInvoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'request_approval') return envelopeFor((args as { tool: string }).tool);
+      if (command === 'run_tool_call') return { tool: 'files.delete', ok: true };
+      throw new Error('unexpected command ' + command);
+    });
+
+    requestApprovalForTool('files.delete', { path: 'a.txt' });
+    await flushBackgroundApproval();
+
+    expect(mockedInvoke.mock.calls[1]).toEqual([
+      'run_tool_call',
+      {
+        tool: 'files.delete',
+        input: { path: 'a.txt' },
+        token: TOKEN,
+        approvalId: 'appr_' + 'b'.repeat(32),
+        callId: 'call_' + 'c'.repeat(32)
+      }
+    ]);
+    expect(get(hasPendingApproval)).toBe(false);
+  });
+
+  it('reports background execution errors without rendering a pending card', async () => {
+    const onError = vi.fn();
+    mockedInvoke.mockImplementation(async (command: string) => {
+      if (command === 'request_approval') return envelopeFor('files.write');
+      throw { code: 'policy_blocked', message: 'outside workspace' };
+    });
+
+    requestApprovalForTool('files.write', { path: '../escape.txt' }, { onError });
+    await flushBackgroundApproval();
+
+    expect(onError).toHaveBeenCalledWith({ code: 'policy_blocked', message: 'outside workspace' });
+    expect(get(approvalStore).pending).toBeNull();
+    expect(get(approvalStore).phase).toBe('error');
+    expect(get(approvalStore).errorCode).toBe('policy_blocked');
+    expect(get(hasPendingApproval)).toBe(false);
+  });
+
+  it('rejectApproval remains a compatibility no-op when no card exists', () => {
     rejectApproval();
     expect(get(approvalStore).pending).toBeNull();
     expect(get(approvalStore).phase).toBe('idle');
-  });
-
-  it('confirmApproval requests approval then runs the tool and resets on success', async () => {
-    requestApprovalForTool('files.write', { path: 'a.txt' });
-    mockedInvoke.mockImplementation(async (command: string, args?: unknown) => {
-      if (command === 'request_approval') return envelopeFor((args as { tool: string }).tool);
-      if (command === 'execute_approved') return { grant_id: 'grant_1', tool: 'files.write', workspace: 'w', session: 's' };
-      throw new Error('unexpected command ' + command);
-    });
-    await confirmApproval();
-    const commands = mockedInvoke.mock.calls.map((call) => call[0]);
-    expect(commands).toEqual(['request_approval', 'execute_approved']);
-    expect(mockedInvoke).toHaveBeenLastCalledWith('execute_approved', {
-      tool: 'files.write',
-      input: { path: 'a.txt' },
-      token: TOKEN,
-      approvalId: 'appr_' + 'b'.repeat(32),
-      callId: 'call_' + 'c'.repeat(32)
-    });
-    expect(get(approvalStore).phase).toBe('idle');
-    expect(get(approvalStore).pending).toBeNull();
-  });
-
-  it('confirmApproval records grant_expired for re-approval (ADR-013 R6)', async () => {
-    requestApprovalForTool('files.delete', { path: 'a.txt' });
-    mockedInvoke.mockImplementation(async (command: string, args?: unknown) => {
-      if (command === 'request_approval') return envelopeFor((args as { tool: string }).tool);
-      throw { code: 'grant_expired', message: 'execution grant expired' };
-    });
-    await confirmApproval();
-    const state = get(approvalStore);
-    expect(state.phase).toBe('error');
-    expect(state.errorCode).toBe('grant_expired');
-    expect(state.pending).not.toBeNull();
-  });
-
-  it('confirmApproval maps a policy_blocked error code', async () => {
-    requestApprovalForTool('files.write', { path: '../escape.txt' });
-    mockedInvoke.mockImplementation(async (command: string, args?: unknown) => {
-      if (command === 'request_approval') return envelopeFor((args as { tool: string }).tool);
-      throw { code: 'policy_blocked', message: 'outside workspace' };
-    });
-    await confirmApproval();
-    expect(get(approvalStore).errorCode).toBe('policy_blocked');
   });
 
   it('confirmApproval without a pending approval is a no-op', async () => {

@@ -4,7 +4,10 @@ use crate::approval::{
     ExecutionGrant, FrontendApprovalDispatcher, FrontendApprovalPrompt, IdempotencyOutcome,
     RiskLevel, ScriptedApprovalPrompt,
 };
-use crate::control_plane::{build_tool_call_request, BridgeError, ControlPlaneBridge};
+use crate::control_plane::{
+    build_tool_call_request, AgentPermissions, BridgeError, ControlPlaneBridge,
+};
+use crate::managed_runtime::ManagedRuntimeSupervisor;
 use crate::workspace::WorkspaceIdentity;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
@@ -66,6 +69,7 @@ fn is_non_workspace_operation(tool: &str) -> bool {
             | "runtime.stop"
             | "model.binding.set"
             | "import_custom_model"
+            | "computer_use"
     )
 }
 
@@ -111,6 +115,8 @@ fn resolve_approval_workspace(
 pub struct ApprovalState {
     registry: Mutex<ApprovalRegistry>,
     workspace: Mutex<Option<WorkspaceIdentity>>,
+    permissions: Mutex<AgentPermissions>,
+    #[allow(dead_code)]
     prompt: Arc<dyn ApprovalPrompt>,
     pub dispatcher: Option<Arc<FrontendApprovalDispatcher>>,
 }
@@ -120,6 +126,7 @@ impl Default for ApprovalState {
         Self {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
+            permissions: Mutex::new(disabled_agent_permissions()),
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Reject,
             }), // Tests can override this
@@ -134,6 +141,7 @@ impl ApprovalState {
         Self {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
+            permissions: Mutex::new(disabled_agent_permissions()),
             prompt: Arc::new(FrontendApprovalPrompt {
                 dispatcher: Arc::clone(&dispatcher),
             }),
@@ -165,6 +173,62 @@ impl ApprovalState {
     pub fn invalidate_workspace_tokens(&self, old_workspace: &str) {
         let mut registry = self.registry.lock().expect("approval registry poisoned");
         registry.invalidate_workspace(old_workspace);
+    }
+
+    /// Update the backend-authoritative capability state for the current model
+    /// session. Any change revokes outstanding approval material.
+    pub fn set_agent_permissions(&self, permissions: AgentPermissions) {
+        let mut current = self
+            .permissions
+            .lock()
+            .expect("approval permissions lock poisoned");
+        if *current != permissions {
+            *current = permissions;
+            let mut registry = self.registry.lock().expect("approval registry poisoned");
+            *registry = ApprovalRegistry::new();
+        }
+    }
+
+    fn allows_tool(&self, tool: &str) -> bool {
+        let permissions = self
+            .permissions
+            .lock()
+            .expect("approval permissions lock poisoned");
+        match tool {
+            "files.read"
+            | "files.list"
+            | "files.write"
+            | "files.create_folder"
+            | "files.delete"
+            | "files.rollback"
+            | "files.rollback_undo" => permissions.files,
+            "shell" => permissions.shell,
+            "computer_use" => permissions.computer_use,
+            "web.search" | "web.fetch" => permissions.internet,
+            "skills.invoke" => permissions.tools,
+            _ => true,
+        }
+    }
+}
+
+fn disabled_agent_permissions() -> AgentPermissions {
+    AgentPermissions {
+        files: false,
+        shell: false,
+        tools: false,
+        computer_use: false,
+        internet: false,
+    }
+}
+
+fn require_tool_permission(state: &ApprovalState, tool: &str) -> Result<(), BridgeError> {
+    if state.allows_tool(tool) {
+        Ok(())
+    } else {
+        Err(BridgeError::new(
+            "permission_denied",
+            "the required capability is disabled for this session",
+        ))
     }
 }
 
@@ -228,16 +292,17 @@ pub fn resolve_tool_approval(
 }
 
 /// Issue a scoped one-time approval token bound to (tool, input digest,
-/// workspace, session). Requires an explicit positive user decision and fails
-/// closed if no workspace is confirmed (non-workspace operations bind the
-/// sentinel scope instead). Returns the plain token string; approval_id and
-/// call_id are derived from the token at consume time.
+/// workspace, session). All registered operations use the same Rust approval
+/// boundary in the background: no frontend decision card is opened, but the
+/// token remains scoped, single-use, expiring, and validated before execution.
 #[tauri::command(async)]
 pub fn request_approval(
     state: State<'_, ApprovalState>,
+    _runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     tool: String,
     input: Value,
 ) -> Result<ApprovalEnvelope, BridgeError> {
+    require_tool_permission(&state, &tool)?;
     let risk_level = risk_level_for_tool(&tool)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
@@ -267,7 +332,7 @@ pub fn request_approval(
         destructive: risk_level == RiskLevel::Dangerous,
     };
     let envelope = registry
-        .request_with_prompt(scope, &descriptor, state.prompt.as_ref())
+        .issue_without_prompt(scope, &descriptor)
         .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
     Ok(envelope)
 }
@@ -278,6 +343,7 @@ fn request_approval_inner(
     tool: String,
     input: Value,
 ) -> Result<ApprovalEnvelope, BridgeError> {
+    require_tool_permission(state, &tool)?;
     let risk_level = risk_level_for_tool(&tool)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
@@ -307,7 +373,7 @@ fn request_approval_inner(
         destructive: risk_level == RiskLevel::Dangerous,
     };
     let envelope = registry
-        .request_with_prompt(scope, &descriptor, state.prompt.as_ref())
+        .issue_without_prompt(scope, &descriptor)
         .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
     Ok(envelope)
 }
@@ -329,6 +395,7 @@ pub fn execute_approved(
     approval_id: String,
     call_id: String,
 ) -> Result<Value, BridgeError> {
+    require_tool_permission(&state, &tool)?;
     let risk_level = risk_level_for_tool(&tool)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
@@ -371,6 +438,7 @@ fn execute_approved_inner(
     approval_id: String,
     call_id: String,
 ) -> Result<Value, BridgeError> {
+    require_tool_permission(state, &tool)?;
     let risk_level = risk_level_for_tool(&tool)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
@@ -422,6 +490,7 @@ pub fn validate_approval_token(
     approval_id: &str,
     call_id: &str,
 ) -> Result<ExecutionGrant, BridgeError> {
+    require_tool_permission(state, tool)?;
     let risk_level = risk_level_for_tool(tool)?;
     let command_family = command_family_for_tool(tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
@@ -481,12 +550,13 @@ fn run_tool_call_inner(
     approval_id: Option<String>,
     call_id: Option<String>,
 ) -> Result<Value, BridgeError> {
+    require_tool_permission(state, &tool)?;
     let risk_level = risk_level_for_tool(&tool)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
     let digest = canonical_input_digest(&input);
-    // Validate all approval material before creating an idempotency entry, so
-    // a missing token cannot leave a dangling in-flight logical call.
+    // Every guarded/dangerous operation, including Computer Use, consumes a
+    // scoped one-time approval before sidecar dispatch.
     let approval_fields = require_approval_fields(risk_level, token, approval_id, call_id)?;
     let (grant_id, session, workspace_path, workspace_digest, idempotency_receipt) = {
         let mut registry = state.registry.lock().expect("approval registry poisoned");
@@ -494,12 +564,19 @@ fn run_tool_call_inner(
             .workspace
             .lock()
             .expect("approval workspace lock poisoned");
-        let workspace = workspace_guard.as_ref().ok_or_else(|| {
-            BridgeError::new(
-                "no_workspace",
-                "tool execution requires a confirmed workspace",
-            )
-        })?;
+        let (workspace_path, workspace_digest) = match workspace_guard.as_ref() {
+            Some(identity) => (identity.canonical_path.clone(), identity.digest.clone()),
+            None if is_non_workspace_operation(&tool) => (
+                NON_WORKSPACE_SENTINEL.to_owned(),
+                NON_WORKSPACE_SENTINEL.to_owned(),
+            ),
+            None => {
+                return Err(BridgeError::new(
+                    "no_workspace",
+                    "tool execution requires a confirmed workspace",
+                ));
+            }
+        };
         let approval_id_ref = approval_fields
             .as_ref()
             .map(|(_, approval_id, _)| approval_id.as_str())
@@ -512,7 +589,7 @@ fn run_tool_call_inner(
             crate::approval::IdempotencyRegistry::make_key(&crate::approval::LogicalCallIdentity {
                 tool: tool.clone(),
                 input_digest: digest,
-                workspace: workspace.canonical_path.clone(),
+                workspace: workspace_path.clone(),
                 session: registry.session_id().to_owned(),
                 approval_id: approval_id_ref.to_owned(),
                 call_id: call_id_ref.to_owned(),
@@ -532,7 +609,7 @@ fn run_tool_call_inner(
                     token,
                     &tool,
                     &digest,
-                    &workspace.canonical_path,
+                    &workspace_path,
                     approval_id,
                     call_id,
                     risk_level,
@@ -563,8 +640,8 @@ fn run_tool_call_inner(
         (
             grant_id,
             session,
-            workspace.canonical_path.clone(),
-            workspace.digest.clone(),
+            workspace_path,
+            workspace_digest,
             Some(idempotency_receipt),
         )
     };
@@ -734,6 +811,13 @@ mod tests {
                 canonical_path: "C:\\test-workspace".to_string(),
                 digest: "abcd1234".to_string(),
             })),
+            permissions: Mutex::new(AgentPermissions {
+                files: true,
+                shell: true,
+                tools: true,
+                computer_use: true,
+                internet: true,
+            }),
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Approve,
             }),
@@ -767,6 +851,40 @@ mod tests {
             .issue_with_token(token.clone(), scope)
             .expect("issue token");
         (token, approval_id, call_id)
+    }
+
+    #[test]
+    fn disabled_capabilities_reject_before_approval_issuance() {
+        let state = ApprovalState::default();
+        for (tool, input) in [
+            ("files.read", json!({"path": "notes.txt"})),
+            ("shell", json!({"command": "echo blocked"})),
+            ("computer_use", json!({"action": "screenshot"})),
+            ("web.fetch", json!({"url": "https://example.invalid"})),
+            ("skills.invoke", json!({"skill": "example"})),
+        ] {
+            let error = request_approval_inner(&state, tool.to_string(), input)
+                .expect_err("disabled capability must reject before issuing a token");
+            assert_eq!(error.code, "permission_denied", "{tool}");
+        }
+    }
+
+    #[test]
+    fn permission_revocation_invalidates_pending_computer_use_grant() {
+        let state = test_approval_state_with_workspace();
+        let input = json!({"action": "screenshot"});
+        let (token, approval_id, call_id) = issue_test_token(&state, "computer_use", &input);
+        state.set_agent_permissions(disabled_agent_permissions());
+        let error = execute_approved_inner(
+            &state,
+            token,
+            "computer_use".to_string(),
+            input,
+            approval_id,
+            call_id,
+        )
+        .expect_err("revoked Computer Use capability must reject before grant consumption");
+        assert_eq!(error.code, "permission_denied");
     }
 
     // Frozen-contract: disabled activation surfaces feature_disabled via
@@ -1223,25 +1341,39 @@ mod tests {
     }
 
     #[test]
-    fn p0b_r5_request_approval_rejected_by_prompt() {
+    fn p0b_r5_request_approval_is_background_and_scoped() {
         let approval_state = ApprovalState {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(Some(WorkspaceIdentity {
                 canonical_path: "C:\\test-workspace".to_string(),
                 digest: "abcd1234".to_string(),
             })),
+            permissions: Mutex::new(AgentPermissions {
+                files: true,
+                shell: true,
+                tools: true,
+                computer_use: true,
+                internet: true,
+            }),
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Reject,
             }),
             dispatcher: None,
         };
-        let result = request_approval_inner(
+        let input = json!({"path": "notes.txt"});
+        let envelope = request_approval_inner(&approval_state, "files.write".into(), input.clone())
+            .expect("background issuance must not depend on frontend prompt");
+        assert_eq!(envelope.tool, "files.write");
+        let grant = validate_approval_token(
             &approval_state,
-            "files.write".into(),
-            json!({"path": "notes.txt"}),
-        );
-        let error = result.expect_err("rejected prompt must fail");
-        assert_eq!(error.code, "approval_rejected");
+            "files.write",
+            &input,
+            &envelope.token,
+            &envelope.approval_id,
+            &envelope.call_id,
+        )
+        .expect("background token still validates atomically");
+        assert_eq!(grant.tool, "files.write");
     }
 
     #[test]
@@ -1249,6 +1381,7 @@ mod tests {
         let approval_state = ApprovalState {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
+            permissions: Mutex::new(disabled_agent_permissions()),
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Approve,
             }),
@@ -1293,6 +1426,7 @@ mod tests {
         let approval_state = ApprovalState {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
+            permissions: Mutex::new(disabled_agent_permissions()),
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Approve,
             }),

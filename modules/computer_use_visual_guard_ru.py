@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+from modules.json_io import read_json as _read_json, write_json as _write_json
 
 from datetime import datetime
 from pathlib import Path
@@ -33,21 +34,6 @@ def _now() -> str:
 def _ensure_dirs() -> None:
     COMPUTER_USE_DIR.mkdir(parents=True, exist_ok=True)
     VISUAL_GUARD_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def _read_json(path: Path, default: Any) -> Any:
-    try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-    return default
-
-
-def _write_json(path: Path, payload: Any) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def _tokens(text: str) -> List[str]:
@@ -174,10 +160,21 @@ def _element_text_blob(elements: List[Dict[str, Any]]) -> str:
 
 def classify_ui_markers(ui_map: Dict[str, Any]) -> Dict[str, Any]:
     elements = ui_map.get("elements") if isinstance(ui_map.get("elements"), list) else []
-    blob = _element_text_blob(elements)
-    tokens = set(_tokens(blob))
-    dialog_hits = sorted((tokens & DIALOG_MARKERS) | {marker for marker in DIALOG_MARKERS if marker in blob})
-    error_hits = sorted((tokens & ERROR_MARKERS) | {marker for marker in ERROR_MARKERS if marker in blob})
+    dialog_roles = {"dialog", "alertdialog", "modal"}
+    error_roles = {"alert", "alertdialog", "dialog", "status"}
+    dialog_hits: List[str] = []
+    error_hits: List[str] = []
+    for element in elements[:250]:
+        role = str(element.get("role") or element.get("type") or "").strip().lower()
+        text = " ".join(str(element.get(field) or "") for field in ("text", "label", "name", "title", "value", "description")).lower()
+        tokens = set(_tokens(text))
+        is_modal = bool(element.get("modal") or element.get("is_modal"))
+        if role in dialog_roles or is_modal:
+            dialog_hits.extend(sorted((tokens & DIALOG_MARKERS) | ({role} if role else set())))
+        if role in error_roles and ((tokens & ERROR_MARKERS) or role in {"alert", "alertdialog"}):
+            error_hits.extend(sorted((tokens & ERROR_MARKERS) | ({role} if role else set())))
+    dialog_hits = sorted(set(dialog_hits))[:20]
+    error_hits = sorted(set(error_hits))[:20]
     return {
         "dialog_like": bool(dialog_hits),
         "error_like": bool(error_hits),

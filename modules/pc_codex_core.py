@@ -1,3 +1,4 @@
+from modules.json_io import format_payload, write_json as _safe_json_dump
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
@@ -66,11 +67,6 @@ def _ensure_dirs():
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-
-def _safe_json_dump(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def _load_session():
@@ -387,12 +383,6 @@ def report(note=""):
         session["last_report"] = str(md_path)
         _save_session(session)
     return {"ok": True, "report": str(md_path), "json": str(json_path)}
-
-
-def format_payload(payload):
-    if isinstance(payload, str):
-        return payload
-    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def dispatch(command):

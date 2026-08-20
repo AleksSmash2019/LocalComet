@@ -16,6 +16,7 @@ mod single_instance;
 mod skills;
 mod startup;
 mod supervisor;
+mod voice;
 mod windows_job;
 mod workspace;
 
@@ -60,6 +61,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use supervisor::{DesktopSidecarSupervisor, LivenessPolicy, SupervisorError};
 use tauri::Manager;
+use voice::speak_local_text;
 
 const BACKEND_READINESS_TIMEOUT: Duration = Duration::from_secs(8);
 
@@ -201,7 +203,13 @@ pub fn run() {
                 app.handle().exit(1);
                 return Ok(());
             };
-            if window.show().is_err() {
+            let invisible = std::env::var("LOCALCOMET_INVISIBLE").ok().as_deref() == Some("1");
+            let window_result = if invisible {
+                window.hide()
+            } else {
+                window.show()
+            };
+            if window_result.is_err() {
                 let _ = supervisor.shutdown();
                 startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_201");
                 app.handle().exit(1);
@@ -278,6 +286,7 @@ pub fn run() {
             execute_approved,
             resolve_tool_approval,
             run_tool_call,
+            speak_local_text,
             scan_hardware,
             hf_search_models,
             hf_list_repo_files,

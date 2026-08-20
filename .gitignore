@@ -58,3 +58,10 @@ auth.json
 /run_7_cycles.py
 /nul
 .monoide/
+
+# audit probe debris: DOM dumps, probe JSON, screenshots (2026-08-21 cleanup)
+/audit/*.txt
+/audit/*.json
+/audit/*.png
+/localcomet_cdp_*.png
+/*_inference_response.png

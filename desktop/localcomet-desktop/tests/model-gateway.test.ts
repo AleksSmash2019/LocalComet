@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ModelGatewayPanel from '../src/lib/components/model/ModelGatewayPanel.svelte';
 import ManagedRuntimePanel from '../src/lib/components/model/ManagedRuntimePanel.svelte';
+import { t } from '../src/lib/i18n';
 import {
   getModelGatewayCatalog,
   getManagedRuntimeCapability,
@@ -19,7 +20,7 @@ import {
   resetModelGatewayStore,
   setGatewayPortText
 } from '../src/lib/stores/modelGateway';
-import { appendAcceptedChatTurn, resetShellStores } from '../src/lib/stores/shellStore';
+import { appendAcceptedChatTurn, chatMessages, resetShellStores, setAgentPermissions } from '../src/lib/stores/shellStore';
 import type { ModelGatewayEvent } from '../src/lib/types/modelGateway';
 import phaseCContract from '../../../security/contracts/adr015_tool_event_parity_v1.json';
 
@@ -34,6 +35,7 @@ const TRUST_CATALOG = {
 let invokeCalls: { command: string; args?: Record<string, unknown> }[] = [];
 let capabilityResponse: unknown = null;
 let listener: ((event: { payload: unknown }) => void) | null = null;
+let runToolCallResponse: unknown = null;
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
@@ -43,6 +45,7 @@ vi.mock('@tauri-apps/api/core', () => ({
       const familyMap: Record<string, string> = { 'artifact.download': 'artifact_download', 'artifact.remove': 'artifact_remove', 'runtime.start': 'runtime_start', 'runtime.stop': 'runtime_stop', 'model.binding.set': 'model_binding_set' };
       return { token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}`, tool, riskLevel: 'guarded', commandFamily: familyMap[tool] ?? 'model_binding_set', expiresAtUnixMs: Date.now() + 300_000 };
     }
+    if (command === 'run_tool_call') return runToolCallResponse;
     if (command === 'model_gateway_catalog') return catalogFixture();
     if (command === 'managed_runtime_status') return { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_id: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, model_state: 'Unavailable', inference_ready: false, last_error: null };
     if (command === 'managed_runtime_catalog') return { ...TRUST_CATALOG, runtimes: [] };
@@ -61,6 +64,8 @@ vi.mock('@tauri-apps/api/core', () => ({
       model_id: args?.modelId,
       submitted_at_unix_ms: args?.submittedAtUnixMs,
       max_tokens: args?.maxTokens,
+      seed: args?.seed,
+      effort: args?.effort ?? 'off',
       binding_fingerprint: args?.bindingFingerprint,
       ...(Array.isArray(args?.fileIds) && args.fileIds.length > 0 ? {
         file_context: {
@@ -87,6 +92,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 function installTauriMock(): void {
   invokeCalls = [];
   listener = null;
+  runToolCallResponse = { tool: 'computer_use', ok: true, action: 'open_app', target: 'Calculator' };
   capabilityResponse = {
     runtime_id: 'llama-cpp-windows-x86-64-vulkan-bootstrap',
     available: true,
@@ -154,7 +160,7 @@ describe('Local Model Gateway frontend', () => {
     await probeModelGateway(1234);
     await listModelGatewayModels(1234);
     await setModelBinding({ providerId: 'openai-compatible-local', harnessId: 'minimal', port: 1234, modelId: 'local-model' });
-    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] });
+    await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, seed: 42, effort: 'off', prompt: 'hello', locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] });
     expect(invokeCalls.map((call) => call.command)).toEqual([
       'model_gateway_catalog',
       'model_gateway_probe',
@@ -175,6 +181,8 @@ describe('Local Model Gateway frontend', () => {
       modelId: 'local-model',
       submittedAtUnixMs: 1,
       maxTokens: 256,
+      seed: 42,
+      effort: 'off',
       prompt: 'hello',
       fileIds: [],
       locale: 'ru',
@@ -186,6 +194,7 @@ describe('Local Model Gateway frontend', () => {
       'agentPermissions',
       'bindingFingerprint',
       'chatSessionId',
+      'effort',
       'fileIds',
       'locale',
       'maxTokens',
@@ -193,16 +202,17 @@ describe('Local Model Gateway frontend', () => {
       'modelId',
       'prompt',
       'requestId',
+      'seed',
       'submittedAtUnixMs'
     ]);
   });
 
   it('passes only validated opaque file identities to the model command', async () => {
     const fileId = 'd'.repeat(64);
-    const response = await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: [fileId], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] });
+    const response = await startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, seed: 42, prompt: 'hello', fileIds: [fileId], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] });
     expect(invokeCalls.at(-1)?.args?.fileIds).toEqual([fileId]);
     expect(response.file_context).toMatchObject({ included_bytes: 5, truncated: true });
-    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', fileIds: ['C:\\temp\\notes.md'], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] })).rejects.toMatchObject({ code: 'invalid_payload' });
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, seed: 42, prompt: 'hello', fileIds: ['C:\\temp\\notes.md'], locale: 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] })).rejects.toMatchObject({ code: 'invalid_payload' });
     expect(invokeCalls).toHaveLength(1);
   });
 
@@ -214,7 +224,7 @@ describe('Local Model Gateway frontend', () => {
   });
 
   it('rejects an unsupported assistant locale before invoking Tauri', async () => {
-    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] })).rejects.toMatchObject({ code: 'invalid_payload' });
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, seed: 42, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] })).rejects.toMatchObject({ code: 'invalid_payload' });
     expect(invokeCalls).toHaveLength(0);
   });
 
@@ -324,6 +334,73 @@ describe('Local Model Gateway frontend', () => {
     expect(errors).toEqual(['invalid_payload']);
   });
 
+  it('auto-executes allowlisted computer_use when the permission is enabled', async () => {
+    setAgentPermissions({ computerUse: true });
+    modelGatewayStore.update((state) => ({
+      ...state,
+      binding: {
+        provider_id: 'openai-compatible-local',
+        harness_id: 'minimal',
+        host: '127.0.0.1',
+        port: 1234,
+        base_path: '/v1',
+        model_id: 'local-model',
+        binding_fingerprint: FINGERPRINT,
+        discovered_fingerprint: FINGERPRINT,
+        persistence: false
+      }
+    }));
+    inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, effort: 'off', chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
+    appendAcceptedChatTurn(TURN_ID, 'Открой калькулятор');
+
+    applyModelGatewayEvent(modelEvent('model.turn.started', 0));
+    applyModelGatewayEvent(modelEvent('model.tool.request', 1, {
+      tools_executed: 1,
+      tool_calls: [{ id: 'call_1', name: 'computer_use', arguments: { action: 'open_app', target: 'Calculator' } }]
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(invokeCalls.map((call) => call.command)).toContain('run_tool_call');
+    expect(invokeCalls.map((call) => call.command)).not.toContain('request_approval');
+    expect(get(inferenceRequestStore).lifecycle).toBe('completed');
+    const assistant = get(chatMessages);
+    expect(assistant.find((message) => message.role === 'assistant' && message.requestId === TURN_ID)?.toolCalls?.[0]?.status).toBe('PASS');
+  });
+
+  it('marks the computer_use card FAIL when the backend returns an execution error', async () => {
+    setAgentPermissions({ computerUse: true });
+    runToolCallResponse = { tool: 'computer_use', ok: false, reason: 'launcher failed' };
+    modelGatewayStore.update((state) => ({
+      ...state,
+      binding: {
+        provider_id: 'openai-compatible-local',
+        harness_id: 'minimal',
+        host: '127.0.0.1',
+        port: 1234,
+        base_path: '/v1',
+        model_id: 'local-model',
+        binding_fingerprint: FINGERPRINT,
+        discovered_fingerprint: FINGERPRINT,
+        persistence: false
+      }
+    }));
+    inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, effort: 'off', chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
+    appendAcceptedChatTurn(TURN_ID, 'Открой калькулятор');
+
+    applyModelGatewayEvent(modelEvent('model.turn.started', 0));
+    applyModelGatewayEvent(modelEvent('model.tool.request', 1, {
+      tools_executed: 1,
+      tool_calls: [{ id: 'call_1', name: 'computer_use', arguments: { action: 'open_app', target: 'Calculator' } }]
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(get(inferenceRequestStore).lifecycle).toBe('failed');
+    const assistant = get(chatMessages);
+    const tool = assistant.find((message) => message.role === 'assistant' && message.requestId === TURN_ID)?.toolCalls?.[0];
+    expect(tool?.status).toBe('FAIL');
+    expect(tool?.result).toContain('launcher failed');
+  });
+
   it('subscribes to model events and updates truthful telemetry', async () => {
     const seen: string[] = [];
     await subscribeModelGatewayEvents((event) => seen.push(event.method));
@@ -343,7 +420,7 @@ describe('Local Model Gateway frontend', () => {
         persistence: false
       }
     }));
-    inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
+    inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, effort: 'off', chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
     appendAcceptedChatTurn(TURN_ID, 'hello');
     applyModelGatewayEvent(modelEvent('model.turn.started', 0));
     applyModelGatewayEvent(modelEvent('model.output.delta', 1, { text: 'hello' }));
@@ -358,7 +435,7 @@ describe('Local Model Gateway frontend', () => {
 
   it('renders no URL, API key, header, tool or attachment controls', () => {
     const body = render(ModelGatewayPanel).body;
-    expect(body).toContain('OpenAI-compatible local');
+    expect(body).toContain(get(t)('model.openai_compatible_local'));
     expect(body).toContain('127.0.0.1');
     expect(body).not.toMatch(/URL|API key|Headers|Temperature|Attachments|Tool controls/i);
   });

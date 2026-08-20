@@ -1,3 +1,4 @@
+from modules.json_io import write_json as _write_json
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
@@ -180,11 +181,6 @@ def _ensure_dirs():
     REQUESTS_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-
-def _write_json(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def _write_text(path, content):

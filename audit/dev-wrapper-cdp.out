@@ -1,0 +1,53 @@
+
+> localcomet-desktop@0.0.0-v6.84.6 tauri
+> tauri dev
+
+
+> localcomet-desktop@0.0.0-v6.84.6 dev
+> vite dev --host 127.0.0.1 --port 1420 --strictPort
+
+
+  [32m[1mVITE[22m v8.1.4[39m  [2mready in [0m[1m488[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m1420[22m/[39m
+LocalComet launch doctor v6.84.5.1d4
+Legacy engine: v6.84.5.1d2
+Source: C:\Users\DNS\Documents\LocalComet-build-week-clean
+Runtime: C:\Users\DNS\AppData\Local\LocalCometDev
+Development AppData: C:\Users\DNS\AppData\Local\LocalCometDev\app-data
+
+[PASS ] source_layout: required source layout is valid
+[PASS ] legacy_release: v6.84.5.1d2
+[PASS ] python: C:\Users\DNS\AppData\Local\Python\pythoncore-3.14-64\python.exe
+[PASS ] node: C:\Program Files\nodejs\node.exe: v24.19.0
+[PASS ] npm: C:\Program Files\nodejs\npm.cmd: 11.9.0
+[PASS ] cargo: C:\Users\DNS\.cargo\bin\rustup.exe: rustup 1.29.0 (28d1352db 2026-03-05)
+[PASS ] rustc: C:\Users\DNS\.cargo\bin\rustup.exe: rustup 1.29.0 (28d1352db 2026-03-05)
+[PASS ] dev_url: http://localhost:1420
+[PASS ] dev_port: 127.0.0.1:1420 is available
+[PASS ] disk_space: 93.19 GiB free at C:\Users\DNS\AppData\Local\LocalCometDev
+[PASS ] existing_app: no installed or development LocalComet process
+[PASS ] single_instance: no active wrapper lock
+[PASS ] source_generated:desktop/localcomet-desktop/.svelte-kit: present, ignored, and excluded from clean-room sync
+[PASS ] source_generated:desktop/localcomet-desktop/build: present, ignored, and excluded from clean-room sync
+[PASS ] source_generated:desktop/localcomet-desktop/node_modules: present, ignored, and excluded from clean-room sync
+[PASS ] source_generated:desktop/localcomet-desktop/src-tauri/binaries: present, ignored, and excluded from clean-room sync
+[PASS ] source_generated:desktop/localcomet-desktop/src-tauri/target: present, ignored, and excluded from clean-room sync
+[PASS ] dependency_state: REUSED
+
+Result: PASS (errors=0, warnings=0)
+
+Starting the audited external LocalComet development runtime...
+Close the LocalComet window or press Ctrl+C to stop.
+LocalComet Developer Launcher
+
+Source: C:\Users\DNS\Documents\LocalComet-build-week-clean
+Runtime: C:\Users\DNS\AppData\Local\LocalCometDev\workspace
+Dependencies: REUSED
+Cargo cache: C:\Users\DNS\AppData\Local\LocalCometDev\cargo-target
+Development AppData: C:\Users\DNS\AppData\Local\LocalCometDev\app-data
+Sidecar project root: C:\Users\DNS\AppData\Local\LocalCometDev\workspace
+Sidecar Python: C:\Users\DNS\AppData\Local\Python\pythoncore-3.14-64\python.exe
+Sidecar layout: VALID
+
+Starting LocalComet...

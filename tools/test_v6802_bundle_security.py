@@ -20,6 +20,8 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from tools.test_fixtures.assertions import assert_condition
+from tools.test_fixtures.files import write_text
 
 from modules.project_audit_bundle_ru import _json_bytes, create_audit_bundle
 from tools.verify_project_audit_bundle import compare_bundles, verify_bundle
@@ -27,15 +29,6 @@ from tools.verify_project_audit_bundle import compare_bundles, verify_bundle
 
 SECRET_VALUE = "sk-" + "v6802secretfixture000000"
 
-
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
 
 
 def _fixture(extra: dict[str, str] | None = None) -> Path:
@@ -48,11 +41,11 @@ def _fixture(extra: dict[str, str] | None = None) -> Path:
         "tests": [],
         "tools": [],
     }
-    _write(root / "localcomet_runtime_manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
-    _write(root / "main.py", "import modules.runtime\nprint('hello')\n")
-    _write(root / "modules" / "runtime.py", "VALUE = 'one'\n")
+    write_text(root / "localcomet_runtime_manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
+    write_text(root / "main.py", "import modules.runtime\nprint('hello')\n")
+    write_text(root / "modules" / "runtime.py", "VALUE = 'one'\n")
     for rel, text in (extra or {}).items():
-        _write(root / rel, text)
+        write_text(root / rel, text)
     return root
 
 
@@ -68,7 +61,7 @@ def _root_name(zip_path: Path) -> str:
 def _read_json(zip_path: Path, suffix: str):
     with zipfile.ZipFile(zip_path, "r") as zipf:
         names = [name for name in zipf.namelist() if name.endswith(suffix)]
-        _assert(len(names) == 1, f"Expected {suffix}")
+        assert_condition(len(names) == 1, f"Expected {suffix}")
         return json.loads(zipf.read(names[0]).decode("utf-8"))
 
 
@@ -122,7 +115,7 @@ def _manifest_bytes_with(zip_path: Path, update: Callable[[dict], None]) -> byte
 
 def _verify_false(zip_path: Path, **kwargs) -> dict:
     result = verify_bundle(zip_path, **kwargs)
-    _assert(result["ok"] is False, "Tampered bundle unexpectedly verified.")
+    assert_condition(result["ok"] is False, "Tampered bundle unexpectedly verified.")
     return result
 
 
@@ -131,29 +124,29 @@ def test_valid_bundle_and_tamper_detection() -> None:
     try:
         bundle = _bundle(root)
         valid = verify_bundle(bundle)
-        _assert(valid["ok"] is True, "Valid bundle did not verify.")
+        assert_condition(valid["ok"] is True, "Valid bundle did not verify.")
 
         changed = _rewrite_zip(
             bundle,
             lambda n, d, i: (n, b"tampered\n", i) if n.endswith("/source/main.py") else (n, d, i),
         )
-        _assert(_verify_false(changed)["hash_mismatches"], "Modified source did not cause hash failure.")
+        assert_condition(_verify_false(changed)["hash_mismatches"], "Modified source did not cause hash failure.")
 
         missing = _rewrite_zip(bundle, lambda n, d, i: None if n.endswith("/source/main.py") else (n, d, i))
-        _assert(_verify_false(missing)["missing"], "Missing source entry not detected.")
+        assert_condition(_verify_false(missing)["missing"], "Missing source entry not detected.")
 
         root_name = _root_name(bundle)
         unexpected = _rewrite_zip(bundle, lambda n, d, i: (n, d, i), (f"{root_name}/source/unexpected.py", b"x"))
-        _assert(_verify_false(unexpected)["unexpected"], "Unexpected source entry not detected.")
+        assert_condition(_verify_false(unexpected)["unexpected"], "Unexpected source entry not detected.")
 
         duplicate = _rewrite_zip(bundle, lambda n, d, i: (n, d, i), (f"{root_name}/source/main.py", b"x"))
-        _assert("duplicate" in " ".join(_verify_false(duplicate)["warnings"]).lower(), "Duplicate entry not rejected.")
+        assert_condition("duplicate" in " ".join(_verify_false(duplicate)["warnings"]).lower(), "Duplicate entry not rejected.")
 
         legacy = _rewrite_zip(bundle, lambda n, d, i: None if n.endswith("/metadata/bundle_integrity.json") else (n, d, i))
         legacy_result = verify_bundle(legacy)
-        _assert(legacy_result["ok"] is True, "Legacy bundle without integrity metadata did not verify.")
-        _assert(legacy_result["legacy_schema"] is True, "Legacy schema flag missing.")
-        _assert(legacy_result["warnings"], "Legacy schema warning missing.")
+        assert_condition(legacy_result["ok"] is True, "Legacy bundle without integrity metadata did not verify.")
+        assert_condition(legacy_result["legacy_schema"] is True, "Legacy schema flag missing.")
+        assert_condition(legacy_result["warnings"], "Legacy schema warning missing.")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -170,7 +163,7 @@ def test_archive_path_and_schema_rejections() -> None:
         ]
         for name, payload, marker in cases:
             tampered = _rewrite_zip(bundle, lambda n, d, i: (n, d, i), (name, payload))
-            _assert(marker in " ".join(_verify_false(tampered)["warnings"]).lower() or marker == "backslash", f"{marker} path accepted.")
+            assert_condition(marker in " ".join(_verify_false(tampered)["warnings"]).lower() or marker == "backslash", f"{marker} path accepted.")
 
         symlink = Path(tempfile.mkdtemp(prefix="localcomet_v6802_symlink_")) / "symlink.zip"
         with zipfile.ZipFile(bundle, "r") as zin, zipfile.ZipFile(symlink, "w") as zout:
@@ -179,19 +172,19 @@ def test_archive_path_and_schema_rejections() -> None:
             info = zipfile.ZipInfo(f"{root_name}/source/link.py")
             info.external_attr = (0o120777 << 16)
             zout.writestr(info, b"target")
-        _assert("symlink" in " ".join(_verify_false(symlink)["warnings"]).lower(), "Symlink entry accepted.")
+        assert_condition("symlink" in " ".join(_verify_false(symlink)["warnings"]).lower(), "Symlink entry accepted.")
 
         malformed = _rewrite_zip(
             bundle,
             lambda n, d, i: (n, b"{bad json", i) if n.endswith("/metadata/bundle_manifest.json") else (n, d, i),
         )
-        _assert("malformed json" in " ".join(_verify_false(malformed)["warnings"]).lower(), "Malformed manifest accepted.")
+        assert_condition("malformed json" in " ".join(_verify_false(malformed)["warnings"]).lower(), "Malformed manifest accepted.")
 
         wrong_id = _with_integrity_update(
             bundle,
             {"metadata/bundle_manifest.json": _manifest_bytes_with(bundle, lambda m: m.__setitem__("bundle_id", "0" * 16))},
         )
-        _assert("bundle_id" in " ".join(_verify_false(wrong_id)["warnings"]).lower(), "Wrong bundle_id accepted.")
+        assert_condition("bundle_id" in " ".join(_verify_false(wrong_id)["warnings"]).lower(), "Wrong bundle_id accepted.")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -202,8 +195,8 @@ def test_secret_detection_and_limits() -> None:
         bundle = _bundle(root)
         secret_zip = _with_integrity_update(bundle, {"README_AUDIT.md": f"marker {SECRET_VALUE}\n".encode("utf-8")})
         result = verify_bundle(secret_zip)
-        _assert(result["ok"] is True, "Secret marker scan should not corrupt integrity.")
-        _assert(any(item["category"] == "openai_api_key" for item in result["secret_findings"]), "Secret marker not detected.")
+        assert_condition(result["ok"] is True, "Secret marker scan should not corrupt integrity.")
+        assert_condition(any(item["category"] == "openai_api_key" for item in result["secret_findings"]), "Secret marker not detected.")
 
         completed = subprocess.run(
             [sys.executable, "tools/verify_project_audit_bundle.py", str(secret_zip), "--json"],
@@ -215,10 +208,10 @@ def test_secret_detection_and_limits() -> None:
             check=False,
         )
         combined = completed.stdout + completed.stderr
-        _assert(completed.returncode == 0, "Secret marker bundle should verify with findings.")
-        _assert(SECRET_VALUE not in combined, "Secret value leaked in verifier output.")
+        assert_condition(completed.returncode == 0, "Secret marker bundle should verify with findings.")
+        assert_condition(SECRET_VALUE not in combined, "Secret value leaked in verifier output.")
         parsed = json.loads(completed.stdout)
-        _assert(SECRET_VALUE not in json.dumps(parsed), "Secret value leaked in JSON payload.")
+        assert_condition(SECRET_VALUE not in json.dumps(parsed), "Secret value leaked in JSON payload.")
 
         _verify_false(bundle, max_single_file_mb=0.0001)
         _verify_false(bundle, max_uncompressed_mb=0.0001)
@@ -228,7 +221,7 @@ def test_secret_detection_and_limits() -> None:
             lambda n, d, i: (n, d, i),
             (_root_name(bundle) + "/metadata/ratio.txt", b"A" * 200000),
         )
-        _assert("compression" in " ".join(_verify_false(ratio_zip, max_compression_ratio=2)["warnings"]).lower(), "Compression ratio guard did not trigger.")
+        assert_condition("compression" in " ".join(_verify_false(ratio_zip, max_compression_ratio=2)["warnings"]).lower(), "Compression ratio guard did not trigger.")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -238,19 +231,19 @@ def test_compare_and_determinism_no_repo_writes() -> None:
     old_root = _fixture({"old_only.py": "print('old')\n"})
     new_root = _fixture({"new_only.py": "print('new')\n"})
     try:
-        _write(new_root / "main.py", "print('modified')\n")
+        write_text(new_root / "main.py", "print('modified')\n")
         old_bundle = _bundle(old_root)
         new_bundle = _bundle(new_root)
         comparison = compare_bundles(new_bundle, old_bundle)
-        _assert("new_only.py" in comparison["added"], "Compare missed added source.")
-        _assert("main.py" in comparison["modified"], "Compare missed modified source.")
-        _assert("old_only.py" in comparison["removed"], "Compare missed removed source.")
-        _assert("modules/runtime.py" in comparison["unchanged"], "Compare missed unchanged source.")
+        assert_condition("new_only.py" in comparison["added"], "Compare missed added source.")
+        assert_condition("main.py" in comparison["modified"], "Compare missed modified source.")
+        assert_condition("old_only.py" in comparison["removed"], "Compare missed removed source.")
+        assert_condition("modules/runtime.py" in comparison["unchanged"], "Compare missed unchanged source.")
 
         metadata_only = _with_integrity_update(new_bundle, {"metadata/git_status.txt": b"metadata changed\n"})
         metadata_comparison = compare_bundles(metadata_only, new_bundle)
-        _assert(metadata_comparison["summary"]["metadata_only"] is True, "Metadata-only change not separated.")
-        _assert("git_status" in metadata_comparison["metadata_changes"], "Git metadata change not reported.")
+        assert_condition(metadata_comparison["summary"]["metadata_only"] is True, "Metadata-only change not separated.")
+        assert_condition("git_status" in metadata_comparison["metadata_changes"], "Git metadata change not reported.")
 
         invalid_previous = _rewrite_zip(old_bundle, lambda n, d, i: (n, b"x", i) if n.endswith("/source/main.py") else (n, d, i))
         try:
@@ -264,11 +257,11 @@ def test_compare_and_determinism_no_repo_writes() -> None:
         sha_one = hashlib.sha256(repeat_one.read_bytes()).hexdigest()
         repeat_two = _bundle(new_root)
         sha_two = hashlib.sha256(repeat_two.read_bytes()).hexdigest()
-        _assert(_read_json(repeat_one, "/metadata/bundle_manifest.json")["bundle_id"] == _read_json(repeat_two, "/metadata/bundle_manifest.json")["bundle_id"], "Repeated bundle IDs differ.")
-        _assert(sha_one == sha_two, "Repeated deterministic ZIP hashes differ.")
+        assert_condition(_read_json(repeat_one, "/metadata/bundle_manifest.json")["bundle_id"] == _read_json(repeat_two, "/metadata/bundle_manifest.json")["bundle_id"], "Repeated bundle IDs differ.")
+        assert_condition(sha_one == sha_two, "Repeated deterministic ZIP hashes differ.")
 
         after = _repo_snapshot()
-        _assert(before == after, "Verification/comparison created source-repo files.")
+        assert_condition(before == after, "Verification/comparison created source-repo files.")
     finally:
         shutil.rmtree(old_root, ignore_errors=True)
         shutil.rmtree(new_root, ignore_errors=True)
@@ -310,9 +303,9 @@ def test_previous_suites_and_staging() -> None:
     child_env = {**os.environ, "LOCALCOMET_NESTED_SUITE": "1"}
     for command in commands:
         completed = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, timeout=180, check=False, env=child_env)
-        _assert(completed.returncode == 0, f"Regression failed: {' '.join(command)}\n{completed.stdout}\n{completed.stderr}")
+        assert_condition(completed.returncode == 0, f"Regression failed: {' '.join(command)}\n{completed.stdout}\n{completed.stderr}")
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=str(ROOT), capture_output=True, text=True, check=False)
-    _assert(staged.returncode == 0 and staged.stdout.strip() == "", "Staged files are present.")
+    assert_condition(staged.returncode == 0 and staged.stdout.strip() == "", "Staged files are present.")
 
 
 def main() -> None:

@@ -2392,6 +2392,73 @@ pub(crate) fn validate_custom_huggingface_url(
     })
 }
 
+fn validate_local_import_source(
+    value: &str,
+    expected_asset_sha256: &str,
+) -> Result<ValidatedCustomModelSource, ArtifactTrustError> {
+    validate_sha256(expected_asset_sha256)?;
+    let prefix = "local://import/";
+    let suffix = value.strip_prefix(prefix).ok_or_else(|| {
+        ArtifactTrustError::new("invalid_custom_source", "local import source rejected")
+    })?;
+    if value.len() > 2_048
+        || !value.is_ascii()
+        || value.bytes().any(|byte| byte.is_ascii_control())
+        || value.contains(['%', '\\'])
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_source",
+            "local import source rejected",
+        ));
+    }
+    let Some((asset_sha256, filename)) = suffix.split_once('/') else {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_source",
+            "local import source rejected",
+        ));
+    };
+    if suffix.matches('/').count() != 1
+        || asset_sha256 != expected_asset_sha256
+        || validate_sha256(asset_sha256).is_err()
+        || validate_filename(filename).is_err()
+        || !filename.ends_with(".gguf")
+        || value != format!("{prefix}{asset_sha256}/{filename}")
+    {
+        return Err(ArtifactTrustError::new(
+            "invalid_custom_source",
+            "local import source rejected",
+        ));
+    }
+    let model_id = format!("{CUSTOM_MODEL_ID_PREFIX}{}", sha256_bytes(value.as_bytes()));
+    validate_artifact_id(&model_id)?;
+    let managed_relative_path = format!("custom/{model_id}/{filename}");
+    validate_relative_windows_path(&managed_relative_path)?;
+    Ok(ValidatedCustomModelSource {
+        model_id,
+        display_name: filename.to_string(),
+        source_url: value.to_string(),
+        source_repository: "local/import".to_string(),
+        source_revision: asset_sha256.to_string(),
+        asset_filename: filename.to_string(),
+        compatible_runtime_ids: vec![
+            CUSTOM_MODEL_RUNTIME_ID.to_string(),
+            VULKAN_MODEL_RUNTIME_ID.to_string(),
+        ],
+        managed_relative_path,
+    })
+}
+
+fn validate_custom_model_source(
+    source_url: &str,
+    asset_sha256: &str,
+) -> Result<ValidatedCustomModelSource, ArtifactTrustError> {
+    if source_url.starts_with("https://") {
+        validate_custom_huggingface_url(source_url)
+    } else {
+        validate_local_import_source(source_url, asset_sha256)
+    }
+}
+
 fn validate_custom_url_segment(segment: &str) -> Result<(), ArtifactTrustError> {
     if segment.is_empty()
         || segment.len() > 128
@@ -2606,7 +2673,7 @@ fn validate_custom_manifest(
             ));
         }
         previous_id = Some(&model.model_id);
-        let source = validate_custom_huggingface_url(&model.source_url)?;
+        let source = validate_custom_model_source(&model.source_url, &model.asset_sha256)?;
         if source.model_id != model.model_id
             || source.display_name != model.display_name
             || source.source_repository != model.source_repository
@@ -3838,8 +3905,16 @@ pub async fn import_custom_model(
     call_id: String,
 ) -> Result<String, String> {
     let source = std::path::PathBuf::from(&source_path);
-    if !source.exists() {
-        return Err("Source file does not exist".to_string());
+    let source_metadata = std::fs::symlink_metadata(&source)
+        .map_err(|e| format!("Source file metadata unavailable: {e}"))?;
+    if !source_metadata.is_file() || source_metadata.file_type().is_symlink() {
+        return Err("Source must be a regular non-symlink file".to_string());
+    }
+    if source_metadata.len() > MAX_MODEL_BYTES {
+        return Err(format!(
+            "Source file exceeds the {} byte limit",
+            MAX_MODEL_BYTES
+        ));
     }
 
     crate::approval_commands::validate_approval_token(
@@ -3861,25 +3936,35 @@ pub async fn import_custom_model(
         .ok_or("Invalid filename")?
         .to_string();
 
-    let roots = state.roots();
-    let ts = now_unix_ms();
-    let uuid = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0)
-        .to_string();
-    let dest_filename = format!("{}-{}-{}", ts, uuid, safe_filename);
-    let dest_path = roots.model_root.join(&dest_filename);
-
     let state_clone = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let source_url = format!(
-            "https://huggingface.co/local/import/resolve/main/{}",
-            dest_filename
-        );
-        if let Err(e) = crate::artifact_trust::validate_custom_huggingface_url(&source_url) {
-            return Err(e.code().to_string());
+        let source_sha256 = crate::artifact_trust::sha256_file(&source)
+            .map_err(|error| error.code().to_string())?;
+        let source_url = format!("local://import/{source_sha256}/{safe_filename}");
+        let source_metadata =
+            crate::artifact_trust::validate_local_import_source(&source_url, &source_sha256)
+                .map_err(|error| error.code().to_string())?;
+        let model_id = source_metadata.model_id.clone();
+        if state_clone
+            .custom_model(&model_id)
+            .map_err(|error| error.code().to_string())?
+            .is_some()
+        {
+            return Ok(model_id);
         }
+        state_clone
+            .ensure_custom_model_capacity(&model_id)
+            .map_err(|error| error.code().to_string())?;
+        let dest_path = crate::artifact_trust::resolve_contained(
+            &state_clone.roots.model_root,
+            &source_metadata.managed_relative_path,
+        )
+        .map_err(|error| error.code().to_string())?;
+        if dest_path.exists() {
+            return Err("custom_model_destination_exists".to_string());
+        }
+        std::fs::create_dir_all(dest_path.parent().ok_or("invalid_custom_destination")?)
+            .map_err(|error| error.to_string())?;
 
         std::fs::copy(&source, &dest_path).map_err(|e| e.to_string())?;
 
@@ -3890,6 +3975,10 @@ pub async fn import_custom_model(
                 return Err(e.to_string());
             }
         };
+        if bytes > MAX_MODEL_BYTES {
+            let _ = std::fs::remove_file(&dest_path);
+            return Err("custom_model_too_large".to_string());
+        }
         let sha256 = match crate::artifact_trust::sha256_file(&dest_path) {
             Ok(hash) => hash,
             Err(e) => {
@@ -3897,26 +3986,12 @@ pub async fn import_custom_model(
                 return Err(e.code().to_string());
             }
         };
-
-        let model_id = format!("custom-{}", uuid);
-
-        let mut compatible_runtime_ids = Vec::new();
-        for runtime in &state_clone.catalog.runtimes {
-            compatible_runtime_ids.push(runtime.runtime_id.clone());
+        if sha256 != source_sha256 {
+            let _ = std::fs::remove_file(&dest_path);
+            return Err("custom_model_source_changed".to_string());
         }
 
-        let model = CustomModelArtifact {
-            model_id: model_id.clone(),
-            display_name: safe_filename.clone(),
-            source_url,
-            source_repository: "local/import".to_string(),
-            source_revision: "main".to_string(),
-            asset_filename: dest_filename.clone(),
-            asset_bytes: bytes,
-            asset_sha256: sha256,
-            compatible_runtime_ids,
-            managed_relative_path: dest_filename,
-        };
+        let model = source_metadata.into_artifact(bytes, sha256);
 
         if let Err(e) = state_clone.register_custom_model_after_validation(model) {
             let _ = std::fs::remove_file(&dest_path);
@@ -4244,6 +4319,30 @@ mod tests {
                 "must reject {rejected}"
             );
         }
+    }
+
+    #[test]
+    fn local_import_source_is_hash_bound_and_registers_as_a_valid_custom_model() {
+        let workspace = TestWorkspace::new();
+        let catalog = custom_test_catalog();
+        let service = service_for(&catalog, &workspace);
+        let asset_sha256 = sha256_bytes(TEST_MODEL_BYTES);
+        let source_url = format!("local://import/{asset_sha256}/custom.gguf");
+        let source = validate_local_import_source(&source_url, &asset_sha256)
+            .expect("local source must be canonical");
+        let model = source.into_artifact(TEST_MODEL_BYTES.len() as u64, asset_sha256.clone());
+
+        install_custom_model(&workspace, &model, TEST_MODEL_BYTES);
+        service
+            .register_custom_model(model.clone())
+            .expect("valid local import must register");
+
+        assert_eq!(service.custom_models_snapshot(), vec![model]);
+        assert!(validate_local_import_source(
+            "local://import/not-a-sha256/custom.gguf",
+            &asset_sha256
+        )
+        .is_err());
     }
 
     #[test]

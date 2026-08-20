@@ -17,6 +17,7 @@ import {
   stopSelectedManagedRuntime
 } from '../src/lib/stores/modelGateway';
 import type { ApprovedDownloadableArtifact, CustomDownloadableArtifact } from '../src/lib/types/modelGateway';
+import { selectDefaultModelArtifact } from '../src/lib/stores/modelDefault';
 
 function makeModelArtifact(overrides: Partial<ApprovedDownloadableArtifact> = {}): ApprovedDownloadableArtifact {
   return {
@@ -138,6 +139,55 @@ describe('ModelManagerSection multi-model selection', () => {
 
     await setManagedSelectedModel('model-a');
     expect(get(managedRuntimeStore).selectedModelId).toBe('model-a');
+  });
+
+  it('prefers the lightweight Qwen2.5 1.5B baseline when both approved models are installed', () => {
+    const baseModel = makeModelArtifact({
+      artifact_id: 'qwen2.5-1.5b-instruct-q4-k-m',
+      display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+      expected_bytes: 1066
+    });
+    const largerModel = makeModelArtifact({
+      artifact_id: 'qwen2.5-7b-instruct-q4-k-m',
+      display_name: 'Qwen2.5 7B Instruct Q4_K_M',
+      expected_bytes: 4466
+    });
+    artifactAcquisitionStore.set({
+      artifacts: [baseModel, largerModel],
+      downloads: {},
+      setup: { lifecycle: 'idle', artifact_id: null },
+      lastError: null
+    });
+    managedRuntimeStore.set({
+      selectedModelId: '',
+      status: { state: 'Stopped' },
+      catalog: [],
+      runtimeCatalog: [],
+      installedArtifacts: [baseModel, largerModel].map((artifact) => ({
+        artifact_id: artifact.artifact_id,
+        kind: 'model',
+        trust_kind: 'approved_catalog',
+        installation_status: 'valid',
+        expected_bytes: artifact.expected_bytes,
+        expected_sha256: 'a'.repeat(64),
+        observed_bytes: artifact.expected_bytes,
+        observed_sha256: 'a'.repeat(64),
+        validation_code: 'ok',
+        verified_unix_ms: 1
+      })),
+      lastError: null,
+      logs: { stdout_tail: [], stderr_tail: [] },
+      readiness: null,
+      catalogIdentity: null,
+      harnessId: 'minimal',
+      binding: null
+    } as any);
+
+    const selected = selectDefaultModelArtifact(
+      [baseModel, largerModel],
+      new Set([baseModel.artifact_id, largerModel.artifact_id])
+    );
+    expect(selected?.artifact_id).toBe('qwen2.5-1.5b-instruct-q4-k-m');
   });
 
   it('shows custom models separately with warning and invalid-removal guidance', () => {

@@ -45,13 +45,29 @@
   // Managed flow state
   $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
   $: managedSelectedModel = $managedRuntimeStore.catalog.find((m) => m.model_id === $managedRuntimeStore.selectedModelId);
+  // The managed catalog also contains download candidates. The launcher picker
+  // must list only models that exist locally and passed validation, otherwise a
+  // removed catalog artifact is misleadingly presented as selectable.
+  $: visibleManagedModels = $managedRuntimeStore.catalog.filter((model) =>
+    $managedRuntimeStore.installedArtifacts.some((artifact) =>
+      artifact.kind === 'model' &&
+      artifact.artifact_id === model.model_id &&
+      artifact.installation_status === 'valid'
+    )
+  );
   $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === managedSelectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
   $: canBindManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModel);
   $: managedTone = managedState === 'Ready' ? 'ready' : managedState === 'Failed' ? 'danger' : managedState === 'Starting' || managedState === 'Validating' || managedState === 'Stopping' ? 'info' : 'disabled';
   $: managedSetupRunning = $artifactAcquisitionStore.setup.lifecycle === 'running' || $acquisitionBusy;
   $: approvedSetupModels = $artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model' && artifact.trust_kind === 'approved_catalog');
+  // A user-supplied GGUF can already be valid even while the managed runtime is
+  // absent. Prefer it over the catalog download target so setup installs only
+  // the required engine and never hides a real local model behind onboarding.
+  $: selectedManagedCatalogModel = $managedRuntimeStore.catalog.find((model) => model.model_id === $managedRuntimeStore.selectedModelId) ?? null;
   $: setupTargetModel = approvedSetupModels.find((artifact) => artifact.artifact_id === $managedRuntimeStore.selectedModelId) ?? approvedSetupModels[0] ?? null;
-  $: canSetupManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModel);
+  $: setupTargetModelId = selectedManagedCatalogModel?.model_id ?? setupTargetModel?.artifact_id ?? '';
+  $: setupTargetLabel = selectedManagedCatalogModel?.display_name ?? setupTargetModel?.display_name ?? $t('setup.select_local_model');
+  $: canSetupManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModelId);
   $: activeDownload = Object.values($artifactAcquisitionStore.downloads).find(d => !['cancelled', 'completed', 'failed'].includes(d.lifecycle)) ?? null;
 
   $: synthesizedPhase = (() => {
@@ -101,7 +117,7 @@
   }
 
   async function onConfirmManagedBinding() {
-    const targetModelId = $managedRuntimeStore.selectedModelId || setupTargetModel?.artifact_id;
+    const targetModelId = $managedRuntimeStore.selectedModelId || setupTargetModelId;
     if (!targetModelId) return;
     if ($managedRuntimeStore.selectedModelId !== targetModelId) {
       await setManagedSelectedModel(targetModelId);
@@ -133,6 +149,10 @@
 
   onMount(() => {
     portInput = $modelGatewayStore.portText;
+    // The drawer can open before the shell's initial refresh settles. Refresh
+    // here so installed custom models are visible instead of presenting an
+    // empty first-run state.
+    void refreshManagedRuntimeStatus();
     void initializeArtifactAcquisition();
   });
 
@@ -249,9 +269,21 @@
 
           {#if managedState === 'NotInstalled'}
             <div class="hero-empty-state">
+              {#if visibleManagedModels.length > 1}
+                <label class="form-field">
+                  <span>{$t('setup.model')}</span>
+                  <select disabled={$inferenceBusy || managedSetupRunning} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
+                    <option value="">{$t('setup.select_local_model')}</option>
+                    {#each visibleManagedModels as model}
+                      <option value={model.model_id}>{model.display_name}</option>
+                    {/each}
+                  </select>
+                </label>
+              {/if}
               <div class="hero-icon">
                 <Icon name="spark" size={48} />
               </div>
+              <span class="setup-kicker">{$t('setup.recommended_path')}</span>
               <p class="empty-title">{$t('setup.hero_title')}</p>
               <p class="empty-desc">{$t('setup.hero_desc')}</p>
               
@@ -272,11 +304,11 @@
                     disabled={!canSetupManaged}
                     onclick={onConfirmManagedBinding}
                   >
-                    <Icon name="spark" size={24} />
-                    <div class="hero-btn-text">
-                      <span class="btn-title">{$t('models.setup')}</span>
-                      <span class="btn-sub">{setupTargetModel?.display_name ?? 'Qwen2.5 1.5B'}</span>
-                    </div>
+                      <Icon name="spark" size={24} />
+                      <div class="hero-btn-text">
+                        <span class="btn-title">{$t('models.setup')}</span>
+                      <span class="btn-sub">{setupTargetLabel}</span>
+                      </div>
                   </button>
                   <button
                     type="button"
@@ -318,12 +350,12 @@
               {/if}
             </div>
           {:else}
-            {#if $managedRuntimeStore.catalog.length > 1}
+            {#if visibleManagedModels.length > 1}
               <label class="form-field">
                 <span>{$t('setup.model')}</span>
                 <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
                   <option value="">{$t('setup.select_local_model')}</option>
-                  {#each $managedRuntimeStore.catalog as model}
+                  {#each visibleManagedModels as model}
                     <option value={model.model_id}>{model.display_name}</option>
                   {/each}
                 </select>
@@ -334,6 +366,7 @@
               <div class="hero-icon ready-icon">
                 <Icon name="check" size={48} />
               </div>
+              <span class="setup-kicker">{$t('setup.ready_to_launch')}</span>
               <p class="empty-title">{$t('setup.hero_ready_title')}</p>
               <p class="empty-desc">{$t('setup.hero_ready_desc')}</p>
 
@@ -357,9 +390,10 @@
                     <Icon name="play" size={24} />
                     <div class="hero-btn-text">
                       <span class="btn-title">{$t($managedConnectionBusy ? 'chat.model_connecting' : 'setup.connect')}</span>
-                      <span class="btn-sub">{$t('setup.btn_run')}</span>
+                      <span class="btn-sub">{$t('setup.selected_model')}: {setupTargetLabel}</span>
                     </div>
                   </button>
+                  <p class="auto-engine-hint">{$t('setup.auto_engine_hint')}</p>
                   <button
                     type="button"
                     class="secondary-button hero-button"
@@ -501,7 +535,7 @@
   .drawer-content {
     flex: 1;
     overflow-y: auto;
-    padding: 32px;
+    padding: 28px;
     display: flex;
     flex-direction: column;
   }
@@ -518,7 +552,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 20px;
   }
 
   .setup-section h3 {
@@ -695,13 +729,13 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 48px 32px;
+    padding: 32px 24px 24px;
     background: linear-gradient(145deg, var(--lc-accent-dim) 0%, transparent 100%);
     backdrop-filter: blur(12px);
     border-radius: var(--radius-3);
     border: 1px solid var(--lc-line);
     box-shadow: var(--lc-shadow);
-    margin-bottom: 32px;
+    margin-bottom: 20px;
     overflow: hidden;
   }
 
@@ -713,13 +747,8 @@
     width: 200%;
     height: 200%;
     background: radial-gradient(circle at center, var(--lc-accent-dim) 0%, transparent 60%);
-    animation: rotateSlow 20s linear infinite;
+    opacity: 0.7;
     z-index: -1;
-  }
-
-  @keyframes rotateSlow {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
   }
 
   .hero-empty-state.connected-state {
@@ -736,14 +765,13 @@
   .hero-icon {
     display: grid;
     place-items: center;
-    width: 88px;
-    height: 88px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
     background: linear-gradient(135deg, color-mix(in srgb, var(--lc-accent) 20%, transparent), color-mix(in srgb, var(--lc-accent) 5%, transparent));
     border: 1px solid color-mix(in srgb, var(--lc-accent) 35%, transparent);
     color: var(--lc-accent-strong);
-    margin-bottom: 24px;
-    animation: pulseGlow 4s infinite ease-in-out;
+    margin-bottom: 14px;
   }
 
   .ready-icon {
@@ -753,9 +781,9 @@
   }
 
   .empty-title {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 800;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     color: var(--lc-text);
     letter-spacing: -0.01em;
     line-height: 1.2;
@@ -765,15 +793,15 @@
     color: var(--lc-muted);
     font-size: 15px;
     line-height: 1.6;
-    margin-bottom: 32px;
-    max-width: 90%;
+    margin-bottom: 22px;
+    max-width: 460px;
   }
 
   .setup-actions {
     width: 100%;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    gap: 10px;
   }
 
   .run-model-btn {
@@ -781,15 +809,15 @@
   }
 
   .hero-button {
-    height: auto;
-    padding: 20px 16px;
-    font-size: 15px;
-    border-radius: var(--radius-3);
+    min-height: 72px;
+    padding: 12px;
+    font-size: 13px;
+    border-radius: var(--radius-2);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: 8px;
     text-align: center;
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
@@ -827,6 +855,24 @@
     background: color-mix(in srgb, var(--lc-text) 2%, transparent);
     border-color: var(--lc-line);
     color: var(--lc-faint);
+  }
+
+  .setup-kicker {
+    margin-bottom: 8px;
+    color: var(--lc-accent);
+    font-family: var(--lc-mono);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .auto-engine-hint {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--lc-faint);
+    font-size: 12px;
+    line-height: 1.5;
   }
 
   .hero-btn-text {

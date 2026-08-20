@@ -5,6 +5,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
+from modules.text_utils import make_short
 
 from core.state import set_value, get_value
 from modules.self_edit import (
@@ -590,15 +591,7 @@ def _read_tail(path: Path, max_lines: int = 40, max_chars: int = 12000):
     return text
 
 
-def _short_value(value, limit: int = 6000):
-    text = str(value or "")
-
-    if len(text) <= limit:
-        return text
-
-    return text[:limit] + "\n...[обрезано]"
-
-
+_short_value = make_short(6000)
 def _build_error_context():
     keys = [
         "last_error",

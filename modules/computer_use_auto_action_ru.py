@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+from modules.json_io import read_json as _load_json, write_json as _write_json
 
 from datetime import datetime
 from pathlib import Path
@@ -57,21 +58,6 @@ def _now() -> str:
 def _ensure_dirs() -> None:
     AUTO_ACTION_DIR.mkdir(parents=True, exist_ok=True)
     COMPUTER_USE_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def _load_json(path: Path, default: Any) -> Any:
-    try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-    return default
-
-
-def _write_json(path: Path, payload: Any) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def default_auto_policy() -> Dict[str, Any]:
@@ -322,10 +308,72 @@ def _record_history(action: Dict[str, Any], policy_result: Dict[str, Any], execu
     return str(artifact)
 
 
+def _utf16_code_units(text: str) -> List[int]:
+    """Return UTF-16 code units so Windows can emit Cyrillic and emoji directly."""
+    raw = str(text or "").encode("utf-16-le")
+    return [int.from_bytes(raw[index:index + 2], "little") for index in range(0, len(raw), 2)]
+
+
+def _send_unicode_text(text: str) -> Dict[str, Any]:
+    """Type Unicode with Win32 SendInput, preserving the user's clipboard."""
+    if os.name != "nt":
+        return {"ok": False, "executed": False, "error": "unicode_input_requires_windows"}
+    units = _utf16_code_units(text)
+    if not units:
+        return {"ok": False, "executed": False, "error": "empty text"}
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [
+                ("wVk", wintypes.WORD),
+                ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ULONG_PTR),
+            ]
+
+        class INPUT_UNION(ctypes.Union):
+            _fields_ = [("ki", KEYBDINPUT)]
+
+        class INPUT(ctypes.Structure):
+            _anonymous_ = ("data",)
+            _fields_ = [("type", wintypes.DWORD), ("data", INPUT_UNION)]
+
+        send_input = ctypes.windll.user32.SendInput
+        send_input.argtypes = (wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int)
+        send_input.restype = wintypes.UINT
+        INPUT_KEYBOARD = 1
+        KEYEVENTF_UNICODE = 0x0004
+        KEYEVENTF_KEYUP = 0x0002
+        for unit in units:
+            for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
+                event = INPUT(type=INPUT_KEYBOARD)
+                event.ki = KEYBDINPUT(0, unit, flags, 0, 0)
+                if send_input(1, ctypes.byref(event), ctypes.sizeof(INPUT)) != 1:
+                    return {"ok": False, "executed": False, "error": "unicode_sendinput_failed"}
+        return {
+            "ok": True,
+            "executed": True,
+            "primitive": "unicode_sendinput",
+            "char_count": len(text),
+            "clipboard_preserved": True,
+        }
+    except Exception:
+        return {"ok": False, "executed": False, "error": "unicode_input_unavailable"}
+
+
 def _pyautogui_execute(action: Dict[str, Any]) -> Dict[str, Any]:
     kind = action.get("kind")
     target = action.get("target") or {}
     text = str(action.get("text", ""))
+
+    if kind == "type" and any(ord(ch) > 127 for ch in text):
+        return _send_unicode_text(text)
+
     import pyautogui
 
     pyautogui.FAILSAFE = True
@@ -346,8 +394,6 @@ def _pyautogui_execute(action: Dict[str, Any]) -> Dict[str, Any]:
     if kind == "type":
         if not text:
             return {"ok": False, "executed": False, "error": "empty text"}
-        if any(ord(ch) > 127 for ch in text):
-            return {"ok": False, "executed": False, "error": "unicode typing requires clipboard adapter and is not enabled in v6.47d"}
         pyautogui.write(text, interval=0.01)
         return {"ok": True, "executed": True, "primitive": "type", "char_count": len(text)}
 

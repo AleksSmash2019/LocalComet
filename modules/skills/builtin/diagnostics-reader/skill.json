@@ -1,0 +1,12 @@
+{
+  "contract": "localcomet.skill/1.0",
+  "id": "diagnostics-reader",
+  "name": "Диагност логов",
+  "version": "1.0.0",
+  "description": "Читает выбранный UTF-8 лог в рабочей области, выделяет ошибки и возвращает короткий диагностический фрагмент.",
+  "author": "LocalComet",
+  "entrypoint": "entrypoint.py",
+  "permissions": ["filesystem.read"],
+  "capabilities": ["logs.read", "logs.errors"],
+  "dependencies": []
+}

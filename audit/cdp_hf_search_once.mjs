@@ -1,0 +1,10 @@
+const port = process.env.CDP_PORT || '9223';
+const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+const target = targets.find((item) => item.type === 'page');
+if (!target?.webSocketDebuggerUrl) throw new Error('No page target');
+const ws = new WebSocket(target.webSocketDebuggerUrl);
+await new Promise((resolve, reject) => { ws.addEventListener('open', resolve, { once: true }); ws.addEventListener('error', reject, { once: true }); });
+const needle = process.env.HF_QUERY || 'Qwen3 1.7B GGUF';
+const expression = `(async () => { const inputs=[...document.querySelectorAll('input')]; const input=inputs.find(x=>/search|поиск|модель|model/i.test((x.placeholder||'')+' '+(x.ariaLabel||''))) || inputs[0]; if(!input) return JSON.stringify({ok:false,reason:'input-not-found',inputs:inputs.map(x=>({placeholder:x.placeholder,type:x.type}))}); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,${JSON.stringify(needle)}); input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:${JSON.stringify(needle)}})); input.dispatchEvent(new Event('change',{bubbles:true})); await new Promise(r=>setTimeout(r,250)); const button=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Найти'); if(!button || button.disabled) return JSON.stringify({ok:false,reason:'search-button-unavailable',value:input.value,placeholder:input.placeholder,disabled:button?.disabled??null}); button.click(); return JSON.stringify({ok:true,value:input.value,placeholder:input.placeholder,clicked:true}); })()`;
+const result = await new Promise((resolve, reject) => { const timer=setTimeout(()=>reject(new Error('timeout')),15000); const listener=(event)=>{const m=JSON.parse(event.data);if(m.id!==1)return;clearTimeout(timer);ws.removeEventListener('message',listener);if(m.error)reject(new Error(JSON.stringify(m.error)));else resolve(m.result?.result?.value);};ws.addEventListener('message',listener);ws.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression,returnByValue:true}})); });
+console.log(result); ws.close();

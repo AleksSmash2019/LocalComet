@@ -1,3 +1,4 @@
+import ast
 import json
 import subprocess
 import sys
@@ -5,11 +6,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SKILLS_ROOT = ROOT / "modules" / "skills"
+INSTALLED_ROOT = SKILLS_ROOT / "installed"
 ENTRYPOINTS = {
-    "code-runner": ROOT / "modules/skills/installed/code-runner/entrypoint.py",
-    "hf-model-ctl": ROOT / "modules/skills/installed/hf-model-ctl/entrypoint.py",
-    "git-ops": ROOT / "modules/skills/installed/git-ops/entrypoint.py",
+    "code-runner": INSTALLED_ROOT / "code-runner" / "entrypoint.py",
+    "hf-model-ctl": INSTALLED_ROOT / "hf-model-ctl" / "entrypoint.py",
+    "git-ops": INSTALLED_ROOT / "git-ops" / "entrypoint.py",
 }
+ALL_ENTRYPOINTS = tuple(sorted(SKILLS_ROOT.rglob("entrypoint.py")))
+LEGACY_TEST_SKILLS = {"demo-echo", "verify-echo-174869", "verify-echo-655999"}
 
 
 def run_entrypoint(name: str, *args: str) -> dict:
@@ -24,11 +29,23 @@ def run_entrypoint(name: str, *args: str) -> dict:
     return json.loads(completed.stdout)
 
 
-def test_active_skill_entrypoints_do_not_use_shell_true():
-    for path in ENTRYPOINTS.values():
+def uses_shell_true(path: Path) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            for keyword in node.keywords:
+                if keyword.arg == "shell" and isinstance(keyword.value, ast.Constant) and keyword.value.value is True:
+                    return True
+    return False
+
+
+def test_all_skill_entrypoints_reject_shell_execution():
+    assert ALL_ENTRYPOINTS
+    for path in ALL_ENTRYPOINTS:
         source = path.read_text(encoding="utf-8")
-        assert "shell=True" not in source, path
-        assert "shell=False" in source, path
+        assert not uses_shell_true(path), path
+        if "subprocess.run(" in source:
+            assert "shell=False" in source, path
 
 
 def test_code_runner_rejects_arbitrary_shell_commands():
@@ -49,8 +66,14 @@ def test_hf_model_control_handles_local_cache_without_shell():
     assert isinstance(result["items"], list)
 
 
-def test_active_skill_entrypoints_compile():
-    for path in ENTRYPOINTS.values():
+def test_test_only_skills_are_disabled_in_bundled_registry():
+    registry = json.loads((SKILLS_ROOT / "registry.json").read_text(encoding="utf-8"))
+    assert LEGACY_TEST_SKILLS.issubset(registry)
+    assert {registry[skill]["state"] for skill in LEGACY_TEST_SKILLS} == {"DISABLED"}
+
+
+def test_all_skill_entrypoints_compile():
+    for path in ALL_ENTRYPOINTS:
         completed = subprocess.run(
             [sys.executable, "-m", "py_compile", str(path)],
             cwd=ROOT,
@@ -59,3 +82,4 @@ def test_active_skill_entrypoints_compile():
             timeout=30,
         )
         assert completed.returncode == 0, completed.stderr
+

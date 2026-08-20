@@ -69,7 +69,8 @@ RUNTIME_IDENTITY_RELATIVE = (
 )
 RUNTIME_BINARIES_PREFIX = "desktop/localcomet-desktop/src-tauri/binaries/"
 LEGACY_RUNTIME_MANIFEST_RELATIVE = "localcomet_runtime_manifest.json"
-EXPECTED_TAURI_RESOURCE_IDENTITIES = 54
+EXPECTED_TAURI_RESOURCE_IDENTITIES = 69
+
 RUNTIME_IDENTITY_HEADER = "path\tbytes\tsha256\n"
 
 
@@ -1016,9 +1017,11 @@ def build_launch_environment(source_root: Path, paths: RuntimePaths) -> dict[str
     if app_data != expected_app_data:
         raise LauncherHold(f"Development AppData must use the isolated launcher path: {app_data}")
     app_data.mkdir(parents=True, exist_ok=True)
+    env["LOCALCOMET_SOURCE_ROOT"] = str(canonical(source_root))
     env["LOCALCOMET_TEST_PROJECT_ROOT"] = str(project_root)
     env["LOCALCOMET_TEST_PYTHON"] = str(python_executable)
     env["LOCALCOMET_APP_DATA_ROOT"] = str(app_data)
+
     env.pop("LOCALCOMET_KNOWLEDGE_VAULT", None)
     env.pop("LOCALCOMET_KNOWLEDGE_PROJECT_ROOT", None)
     return env

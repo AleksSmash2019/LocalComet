@@ -4,6 +4,7 @@ import { approvalCard, mockCodeBlock, mockToolCall, modeOptions, verificationCar
 import {
   MAX_DRAFT_LENGTH,
   activeWorkspace,
+  computeMode,
   activeInspectorSection,
   appendMockMessage,
   closeCommandPalette,
@@ -27,6 +28,7 @@ import {
   setSelectedMode,
   setSelectedModel,
   setActiveWorkspace,
+  setComputeMode,
   setDiagnosticsPanelOpen,
   setThemeMode,
   settingsPanelOpen,
@@ -75,11 +77,23 @@ describe('shell stores', () => {
       theme: 'light',
       locale: 'ru',
       diagnosticsPanel: 'closed',
-      voiceMode: false,
+            voiceMode: false,
+      effort: 'off',
       ctxSizeOverride: null,
-      gpuLayersOverride: null,
+
+            gpuLayersOverride: null,
+      computeMode: 'gpu',
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
+  });
+
+  it('persists the selected compute mode', () => {
+    setComputeMode('hybrid');
+    expect(get(computeMode)).toBe('hybrid');
+    expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}').computeMode).toBe('hybrid');
+    setComputeMode('cpu');
+    expect(get(computeMode)).toBe('cpu');
+    expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}').computeMode).toBe('cpu');
   });
 
   it('initializes persisted theme and diagnostics state on reset', () => {

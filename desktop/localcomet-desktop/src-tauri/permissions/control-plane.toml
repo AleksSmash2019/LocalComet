@@ -188,6 +188,27 @@ commands.allow = [
 ]
 
 [[permission]]
+identifier = "allow-managed-runtime-start-trusted"
+description = "Allow starting the approved LocalComet managed runtime through the trusted UI path."
+commands.allow = [
+  "managed_runtime_start_trusted",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-stop-trusted"
+description = "Allow stopping the approved LocalComet managed runtime through the trusted UI path."
+commands.allow = [
+  "managed_runtime_stop_trusted",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-capability"
+description = "Allow reading the managed runtime capability status for the trusted UI path."
+commands.allow = [
+  "managed_runtime_capability",
+]
+
+[[permission]]
 identifier = "allow-managed-runtime-stop"
 description = "Allow stopping the active LocalComet managed llama.cpp runtime."
 commands.allow = [
@@ -234,4 +255,11 @@ identifier = "allow-remove-managed-model"
 description = "Allow explicitly confirmed removal of one inactive approved managed model."
 commands.allow = [
   "remove_managed_model",
+]
+
+[[permission]]
+identifier = "allow-speak-local-text"
+description = "Allow LocalComet to speak Russian responses through the local Piper voice only."
+commands.allow = [
+  "speak_local_text",
 ]

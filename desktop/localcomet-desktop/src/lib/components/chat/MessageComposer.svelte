@@ -2,6 +2,7 @@
   import { tick } from 'svelte';
   import Icon from '$lib/components/common/Icon.svelte';
   import KnowledgeToggle from '$lib/components/knowledge/KnowledgeToggle.svelte';
+  import EffortSelector from '$lib/components/chat/EffortSelector.svelte';
   import FilesPanel from '$lib/components/files/FilesPanel.svelte';
   import { composerDraft, openSettings, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import { applyAutoTitle } from '$lib/stores/conversationStore';
@@ -22,14 +23,18 @@
   let textarea: HTMLTextAreaElement;
   let restoreComposerFocus = false;
   let previouslyGenerating = false;
+  let observedConversationId = $selectedConversationId;
   let isListening = false;
   let recognition: any = null;
+  let voiceNotice = '';
 
   $: isGenerating = ['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle);
+  $: if ($selectedConversationId !== observedConversationId) {
+    observedConversationId = $selectedConversationId;
+    setComposerDraft('');
+    if (isGenerating) void cancelLocalModelTurn();
+  }
   $: canSend = $managedModelReady && Boolean($composerDraft.trim()) && !isGenerating;
-  $: requestErrorKey = $inferenceRequestStore.lifecycle === 'timed_out'
-    ? 'chat.request_timed_out_detail'
-    : 'chat.request_failed_detail';
   $: {
     const generatingNow = isGenerating;
     if (previouslyGenerating && !generatingNow) {
@@ -43,30 +48,75 @@
   }
 
   function startListening() {
+    voiceNotice = '';
     if (isListening) {
       recognition?.stop();
       isListening = false;
       return;
     }
+    if (!$managedModelReady || isGenerating) {
+      recognition?.abort();
+      recognition = null;
+      isListening = false;
+      setComposerDraft('');
+      resizeDraftBox();
+      return;
+    }
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert($t('chat.speech_unsupported'));
+      voiceNotice = $t('chat.speech_unsupported');
       return;
     }
     recognition = new SpeechRecognition();
     recognition.lang = 'ru-RU';
     recognition.continuous = false;
     recognition.interimResults = true;
+    let finalTranscript = '';
+    let interimTranscript = '';
+    let autoSendStarted = false;
     recognition.onresult = (event: any) => {
-      let transcript = '';
+      interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
-        transcript += event.results[i][0].transcript;
+        const result = event.results[i];
+        const fragment = String(result?.[0]?.transcript || '').trim();
+        if (!fragment) continue;
+        if (result.isFinal) finalTranscript = `${finalTranscript} ${fragment}`.trim();
+        else interimTranscript = `${interimTranscript} ${fragment}`.trim();
+      }
+      const transcript = `${finalTranscript} ${interimTranscript}`.trim();
+      if (!$managedModelReady || isGenerating) {
+        recognition?.abort();
+        recognition = null;
+        isListening = false;
+        setComposerDraft('');
+        resizeDraftBox();
+        return;
       }
       setComposerDraft(transcript);
       resizeDraftBox();
+      if (finalTranscript && !autoSendStarted) {
+        autoSendStarted = true;
+        isListening = false;
+        recognition.stop();
+        void send(finalTranscript);
+      }
     };
-    recognition.onerror = () => { isListening = false; };
-    recognition.onend = () => { isListening = false; };
+    recognition.onerror = () => {
+      isListening = false;
+      recognition = null;
+      if (!$managedModelReady || isGenerating) {
+        setComposerDraft('');
+        resizeDraftBox();
+      }
+    };
+    recognition.onend = () => {
+      isListening = false;
+      recognition = null;
+      if (!$managedModelReady || isGenerating) {
+        setComposerDraft('');
+        resizeDraftBox();
+      }
+    };
     recognition.start();
     isListening = true;
   }
@@ -96,16 +146,23 @@
     textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
   }
 
-  async function send(): Promise<void> {
+  async function send(draftOverride?: string): Promise<void> {
     if (isGenerating) {
       restoreComposerFocus = true;
       await cancelLocalModelTurn();
       await restoreFocusAfterRequest();
       return;
     }
-    if (!canSend) return;
+    const draft = (draftOverride ?? $composerDraft).trim();
+    if (!draft || isGenerating) return;
+    if (!$managedModelReady) {
+      if (draftOverride) {
+        setComposerDraft('');
+        resizeDraftBox();
+      }
+      return;
+    }
     restoreComposerFocus = true;
-    const draft = $composerDraft;
     applyAutoTitle($selectedConversationId, draft);
     await startLocalModelTurn(draft, $selectedConversationId, $includedFileIds);
     await restoreFocusAfterRequest();
@@ -130,60 +187,70 @@
       a duplicate.
     -->
     <div class="composer pill-surface">
-      <button type="button" class="composer-icon-button" aria-label={$t('files.add')} title={$t('files.add')} onclick={() => void addFiles()}>
-        <Icon name="attach" size={20} />
-      </button>
+      <div class="composer-actions composer-actions-left">
+        <EffortSelector />
 
-      <button type="button" class="composer-icon-button" aria-label={$t('chat.voice_output')} title={$t('chat.voice_output')} onclick={toggleVoiceMode} style="color: {$voiceMode ? 'var(--lc-accent)' : 'var(--lc-muted)'}; margin-right: 8px;">
-        <Icon name="audio" size={20} />
-      </button>
+        <button type="button" class="composer-icon-button" aria-label={$t('files.add')} title={$t('files.add')} onclick={() => void addFiles()}>
+          <Icon name="attach" size={19} />
+        </button>
+      </div>
 
-      <label class="sr-only" for="composer-draft">{$t('chat.type_message')}</label>
-      <textarea
-        id="composer-draft"
-        bind:this={textarea}
-        value={$composerDraft}
-        maxlength="12000"
-        rows="1"
-        placeholder={$managedModelReady ? (isGenerating ? $t('chat.model_responding') : $t('chat.type_message')) : $acquisitionBusy ? $t('chat.model_installing') : $t('chat.connect_model_first')}
-        disabled={!$managedModelReady || isGenerating}
-        oninput={(event) => {
-          setComposerDraft(event.currentTarget.value);
-          resizeDraftBox();
-        }}
-        onkeydown={handleKeydown}
-      ></textarea>
+      <div class="composer-input">
+        <label class="sr-only" for="composer-draft">{$t('chat.type_message')}</label>
+        <textarea
+          id="composer-draft"
+          bind:this={textarea}
+          value={$composerDraft}
+          maxlength="12000"
+          rows="1"
+          placeholder={$managedModelReady ? (isGenerating ? $t('chat.model_responding') : $t('chat.type_message')) : $acquisitionBusy ? $t('chat.model_installing') : $t('chat.connect_model_first')}
+          disabled={!$managedModelReady || isGenerating}
+          oninput={(event) => {
+            setComposerDraft(event.currentTarget.value);
+            resizeDraftBox();
+          }}
+          onkeydown={handleKeydown}
+        ></textarea>
+      </div>
 
-      <button
-        type="button"
-        class="composer-icon-button"
-        class:recording={isListening}
-        aria-label={$t('chat.voice_input')}
-        title={$t('chat.voice_input')}
-        onclick={startListening}
-        style="color: {isListening ? 'var(--lc-danger)' : 'var(--lc-muted)'}; margin-right: 4px;"
-      >
-        <Icon name="microphone" size={20} />
-      </button>
+      <div class="composer-actions composer-actions-right">
+        <button type="button" class="composer-icon-button" class:active-control={$voiceMode} aria-pressed={$voiceMode} aria-label={$t('chat.voice_output')} title={$t('chat.voice_output')} onclick={toggleVoiceMode}>
+          <Icon name="audio" size={19} />
+        </button>
 
-      <button
-        type="button"
-        class="send-button pill-send"
-        aria-label={$t(isGenerating ? 'chat.stop' : 'chat.send')}
-        title={$t(isGenerating ? 'chat.stop' : 'chat.send')}
-        disabled={isGenerating ? false : !canSend}
-        onclick={() => void send()}
-      >
-        <Icon name={isGenerating ? 'stop' : 'send'} size={18} />
-      </button>
+        <button
+          type="button"
+          class="composer-icon-button"
+          class:recording={isListening}
+          aria-pressed={isListening}
+          aria-label={$t('chat.voice_input')}
+          title={$t('chat.voice_input')}
+          disabled={!$managedModelReady || isGenerating}
+          onclick={startListening}
+          style="color: {isListening ? 'var(--lc-danger)' : 'var(--lc-muted)'};"
+        >
+          <Icon name="microphone" size={19} />
+        </button>
+
+        <button
+          type="button"
+          class="send-button pill-send"
+          aria-label={$t(isGenerating ? 'chat.stop' : 'chat.send')}
+          title={$t(isGenerating ? 'chat.stop' : 'chat.send')}
+          disabled={isGenerating ? false : !canSend}
+          onclick={() => void send()}
+        >
+          <Icon name={isGenerating ? 'stop' : 'send'} size={16} />
+        </button>
+      </div>
     </div>
+    {#if voiceNotice}
+      <p class="composer-notice" role="status">{voiceNotice}</p>
+    {/if}
     {#if $composerDraft.length > 500}
       <div class="char-counter" class:warn={$composerDraft.length > 10000}>
         {$composerDraft.length} / 12000
       </div>
-    {/if}
-    {#if $inferenceRequestStore.lastError}
-      <p class="request-error" role="status">{$t(requestErrorKey)}</p>
     {/if}
   </form>
 </div>
@@ -204,9 +271,9 @@
   .composer {
     display: flex;
     align-items: flex-end;
-    gap: 12px;
+    gap: 6px;
     border: 1px solid color-mix(in srgb, var(--lc-line) 60%, transparent);
-    border-radius: 26px;
+    border-radius: 16px;
     padding: 10px 14px;
     background: color-mix(in srgb, var(--lc-panel-soft) 40%, transparent);
     backdrop-filter: blur(24px);
@@ -221,15 +288,37 @@
   }
 
   .composer:focus-within {
-    border-color: color-mix(in srgb, var(--lc-accent) 60%, transparent);
-    background: color-mix(in srgb, var(--lc-panel-soft) 75%, transparent);
-    box-shadow: 0 0 0 3px var(--lc-accent-dim), var(--lc-shadow-e2);
+    border-color: color-mix(in srgb, var(--lc-accent) 62%, var(--lc-line));
+    background: color-mix(in srgb, var(--lc-panel-soft) 58%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--lc-accent) 12%, transparent), var(--lc-shadow-e1);
+  }
+
+  .composer button:focus,
+  .composer textarea:focus {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .composer-actions {
+    display: inline-flex;
+    align-items: flex-end;
+    flex: 0 0 auto;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .composer-input {
+    display: flex;
+    align-items: flex-end;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .composer-icon-button {
-    width: 36px;
-    height: 36px;
-    min-height: 36px;
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+    flex: 0 0 34px;
     display: grid;
     place-items: center;
     border: none;
@@ -247,8 +336,19 @@
     transform: translateY(-1px);
   }
 
+  .composer-icon-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+
   .composer-icon-button.recording {
     animation: pulse-mic 1.5s infinite ease-in-out;
+  }
+
+  .composer-icon-button.active-control {
+    background: var(--lc-accent-dim);
+    color: var(--lc-accent-strong);
   }
 
   @keyframes pulse-mic {
@@ -264,9 +364,11 @@
   }
 
   .send-button.pill-send {
-    width: 36px;
-    height: 36px;
-    min-height: 36px;
+    width: 32px;
+    min-width: 32px;
+    flex: 0 0 32px;
+    height: 32px;
+    min-height: 32px;
     padding: 0;
     display: grid;
     place-items: center;
@@ -278,6 +380,7 @@
     flex: 1;
     min-width: 0;
     min-height: 24px;
+    width: 100%;
     max-height: 240px;
     margin-bottom: 6px;
     margin-top: 6px;
@@ -289,6 +392,13 @@
     line-height: 1.6;
     resize: none;
     outline: none;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  textarea::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
 
   textarea:disabled {
@@ -328,13 +438,6 @@
     color: var(--lc-muted);
   }
 
-  .request-error {
-    margin: var(--lc-space-2) 0 0;
-    color: var(--lc-danger);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
   .char-counter {
     text-align: right;
     font-size: 11px;
@@ -347,6 +450,13 @@
   .char-counter.warn {
     color: var(--lc-warning);
     font-weight: 600;
+  }
+
+  .composer-notice {
+    margin: 8px 8px 0;
+    color: var(--lc-warning);
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .composer-wrap :global(.files-panel) {
@@ -365,6 +475,23 @@
   @media (max-width: 760px) {
     .composer-wrap {
       width: calc(100% - 24px);
+    }
+
+    .composer {
+      gap: 4px;
+      padding: 8px 10px;
+    }
+
+    .composer-actions {
+      gap: 2px;
+    }
+
+    .composer-icon-button {
+      width: 32px;
+      min-width: 32px;
+      height: 32px;
+      min-height: 32px;
+      flex-basis: 32px;
     }
   }
 </style>

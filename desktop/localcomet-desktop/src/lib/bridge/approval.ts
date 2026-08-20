@@ -128,14 +128,15 @@ export async function setWorkspace(path: string): Promise<WorkspaceIdentity> {
 export async function runToolCall(
   tool: string,
   input: unknown,
-  envelope?: Pick<ApprovalEnvelope, 'token' | 'approvalId' | 'callId'>
+  envelope?: Pick<ApprovalEnvelope, 'token' | 'approvalId' | 'callId'>,
+  callId?: string
 ): Promise<ToolCallResult> {
   const result = await invoke<ToolCallResult>('run_tool_call', {
     tool,
     input,
     token: envelope?.token ?? null,
     approvalId: envelope?.approvalId ?? null,
-    callId: envelope?.callId ?? null
+    callId: envelope?.callId ?? callId ?? null
   });
   if (typeof result !== 'object' || result === null || result.tool !== tool) {
     throw { code: 'invalid_payload', message: 'Invalid tool call result' };

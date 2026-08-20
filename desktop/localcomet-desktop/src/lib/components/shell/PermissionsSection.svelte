@@ -46,7 +46,7 @@
         type="button" 
         class="toggle-switch" 
         class:on={$agentPermissions.files} 
-        onclick={toggleFiles}
+        on:click={toggleFiles}
         aria-pressed={$agentPermissions.files}
         title={$t('permissions.files')}
       >
@@ -69,7 +69,7 @@
         type="button" 
         class="toggle-switch" 
         class:on={$agentPermissions.tools} 
-        onclick={toggleTools}
+        on:click={toggleTools}
         aria-pressed={$agentPermissions.tools}
         title={$t('permissions.tools')}
       >
@@ -92,7 +92,7 @@
         type="button" 
         class="toggle-switch" 
         class:on={$agentPermissions.computerUse} 
-        onclick={toggleComputerUse}
+        on:click={toggleComputerUse}
         aria-pressed={$agentPermissions.computerUse}
         title={$t('permissions.computer_use')}
       >
@@ -115,7 +115,7 @@
         type="button" 
         class="toggle-switch" 
         class:on={$agentPermissions.internet} 
-        onclick={toggleInternet}
+        on:click={toggleInternet}
         aria-pressed={$agentPermissions.internet}
         title={$t("permissions.internet")}
       >
@@ -138,7 +138,7 @@
         type="button" 
         class="toggle-switch" 
         class:on={$agentPermissions.shell} 
-        onclick={toggleShell}
+        on:click={toggleShell}
         aria-pressed={$agentPermissions.shell}
         title={$t('permissions.shell')}
       >

@@ -21,6 +21,7 @@ def main():
     manager = SkillsManager(args.root)
     
     try:
+        manager.ensure_builtins()
         if args.action == "list":
             result = manager.list_skills()
         elif args.action == "install":

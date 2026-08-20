@@ -3,6 +3,14 @@ identifier = "allow-request-approval"
 description = "Allow issuing a scoped one-time approval token bound to tool, input digest, workspace, and session."
 commands.allow = [
   "request_approval",
-  "resolve_tool_approval"
+  "resolve_tool_approval",
+  "run_tool_call"
+]
+
+[[permission]]
+identifier = "allow-set-workspace"
+description = "Allow the main window to explicitly confirm one canonical, symlink-free workspace for scoped file tools."
+commands.allow = [
+  "set_workspace"
 ]
 

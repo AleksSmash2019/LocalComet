@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-REAL_ACTIONS_VERSION = "v6.53"
+REAL_ACTIONS_VERSION = "v6.54"
 REAL_ACTIONS_NAME = "Computer Use Real Actions Upgrade RU"
 
 try:
@@ -106,6 +106,26 @@ def _norm(value: Any) -> str:
     return str(value or "").lower().replace("ё", "е").strip()
 
 
+def _canonical_app_id(value: Any) -> str:
+    normalized = _norm(value)
+    if normalized in ALLOWED_APPS:
+        return normalized
+    for app_id, info in ALLOWED_APPS.items():
+        if normalized in {_norm(app_id), *(_norm(alias) for alias in info.get("aliases", []))}:
+            return app_id
+    return normalized
+
+
+def _canonical_folder_id(value: Any) -> str:
+    normalized = _norm(value)
+    if normalized in FOLDER_ALIASES:
+        return normalized
+    for folder_id, aliases in FOLDER_ALIASES.items():
+        if normalized in {_norm(folder_id), *(_norm(alias) for alias in aliases)}:
+            return folder_id
+    return normalized
+
+
 def _safe_preview(value: Any, limit: int = 700) -> str:
     text = str(value or "")
     if len(text) <= limit:
@@ -191,7 +211,7 @@ def _resolve_folder(goal: str) -> str:
     return ""
 
 
-def resolve_folder_path(folder_id: str) -> Path:
+def resolve_folder_path(folder_id: str) -> Optional[Path]:
     folder = _norm(folder_id)
     if folder == "project":
         return ROOT_DIR
@@ -203,7 +223,7 @@ def resolve_folder_path(folder_id: str) -> Path:
         return PROJECTS_DIR / "ChatGPTRelay"
     if folder == "downloads":
         return Path.home() / "Downloads"
-    return ROOT_DIR
+    return None
 
 
 def _strip_quotes(text: str) -> str:
@@ -527,6 +547,7 @@ def press_hotkey(keys: List[str], simulate: bool = False) -> Dict[str, Any]:
         return {"ok": True, "status": "simulated", "mode": "computer_use_real_hotkey", "keys": normalized}
     if os.name != "nt":
         return {"ok": False, "status": "unsupported", "reason": "real hotkey supports Windows in this build", "keys": normalized}
+    pressed_codes: List[int] = []
     try:
         import ctypes
         user32 = ctypes.windll.user32
@@ -539,13 +560,20 @@ def press_hotkey(keys: List[str], simulate: bool = False) -> Dict[str, Any]:
             codes.append(code)
         for code in codes:
             user32.keybd_event(code, 0, 0, 0)
-            time.sleep(0.025)
-        for code in reversed(codes):
-            user32.keybd_event(code, 0, key_up, 0)
+            pressed_codes.append(code)
             time.sleep(0.025)
         return {"ok": True, "status": "executed", "mode": "computer_use_real_hotkey", "keys": normalized}
     except Exception as exc:
         return {"ok": False, "status": "error", "reason": str(exc), "keys": normalized}
+    finally:
+        # Never leave a modifier pressed when an input sequence is interrupted.
+        if pressed_codes:
+            try:
+                for code in reversed(pressed_codes):
+                    ctypes.windll.user32.keybd_event(code, 0, 0x0002, 0)
+                    time.sleep(0.025)
+            except Exception:
+                pass
 
 
 def press_key(key: str, simulate: bool = False) -> Dict[str, Any]:
@@ -577,17 +605,21 @@ def paste_text(text: str, simulate: bool = False) -> Dict[str, Any]:
         return {"ok": False, "status": "requires_confirmation", "requires_confirmation": True, "reason": "text appears to contain secret markers"}
     if simulate:
         return {"ok": True, "status": "simulated", "mode": "computer_use_real_paste_text", "text_preview": _safe_preview(text, 300)}
-    clip = set_clipboard_text(text)
-    if not clip.get("ok"):
-        return clip
-    hotkey = press_hotkey(["ctrl", "v"], simulate=False)
-    hotkey["clipboard"] = clip
-    hotkey["mode"] = "computer_use_real_paste_text"
-    return hotkey
+    try:
+        from modules.computer_use_auto_action_ru import _send_unicode_text
+        typed = _send_unicode_text(text)
+        return {
+            **typed,
+            "status": "executed" if typed.get("ok") else "error",
+            "mode": "computer_use_real_paste_text",
+            "clipboard_preserved": bool(typed.get("clipboard_preserved")),
+        }
+    except Exception:
+        return {"ok": False, "status": "error", "reason": "unicode_input_unavailable", "mode": "computer_use_real_paste_text"}
 
 
 def open_app(app_id: str, simulate: bool = False) -> Dict[str, Any]:
-    app_id = _norm(app_id)
+    app_id = _canonical_app_id(app_id)
     if app_id not in ALLOWED_APPS:
         return {"ok": False, "status": "blocked", "reason": "app is not allowlisted", "app": app_id}
     command = str(ALLOWED_APPS[app_id].get("command") or "")
@@ -597,11 +629,31 @@ def open_app(app_id: str, simulate: bool = False) -> Dict[str, Any]:
         try:
             from modules.pc_agent_actions import open_app as pc_open_app
             result = pc_open_app(app_id, dry_run=False)
-            if isinstance(result, dict) and result.get("ok"):
+            if isinstance(result, dict):
                 result["mode"] = "computer_use_real_open_app"
                 result["app"] = app_id
+                if result.get("ok"):
+                    return result
+                # A GUI shell broker can launch outside the sidecar's process
+                # quota even when CreateProcess is rejected with WinError 1816.
+                if hasattr(os, "startfile"):
+                    try:
+                        os.startfile(command)
+                        return {
+                            "ok": True,
+                            "status": "executed",
+                            "mode": "computer_use_real_open_app_shell_broker",
+                            "app": app_id,
+                            "command": command,
+                            "backend_error": result.get("error", ""),
+                        }
+                    except OSError as fallback_error:
+                        result["fallback_error"] = str(fallback_error)
                 return result
-        except Exception:
+        except ImportError:
+            # Keep the narrow OS fallback only for deployments without the
+            # allowlisted launcher module. Runtime launch failures are returned
+            # as structured results by pc_agent_actions and are not retried.
             pass
         if hasattr(os, "startfile"):
             os.startfile(command)
@@ -612,7 +664,15 @@ def open_app(app_id: str, simulate: bool = False) -> Dict[str, Any]:
 
 
 def open_folder(folder_id: str, simulate: bool = False) -> Dict[str, Any]:
+    folder_id = _canonical_folder_id(folder_id)
     path = resolve_folder_path(folder_id)
+    if path is None:
+        return {
+            "ok": False,
+            "status": "blocked",
+            "reason": "folder is not allowlisted",
+            "folder": str(folder_id),
+        }
     if simulate:
         return {"ok": True, "status": "simulated", "mode": "computer_use_real_open_folder", "folder": str(folder_id), "path": str(path)}
     try:
@@ -720,6 +780,7 @@ def drag(
         return {"ok": True, "status": "simulated", "mode": "computer_use_real_drag", "coordinate": coords}
     if os.name != "nt":
         return {"ok": False, "status": "unsupported", "reason": "real drag supports Windows in this build", "mode": "computer_use_real_drag"}
+    left_button_down = False
     try:
         import ctypes
 
@@ -740,6 +801,7 @@ def drag(
         user32.SetCursorPos(px0, py0)
         time.sleep(0.04)
         user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+        left_button_down = True
         time.sleep(0.04)
         # Interpolate 6 steps for smooth drag
         for step in range(1, 7):
@@ -749,9 +811,58 @@ def drag(
             user32.SetCursorPos(ix, iy)
             time.sleep(0.02)
         user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+        left_button_down = False
         return {"ok": True, "status": "executed", "mode": "computer_use_real_drag", "from": [px0, py0], "to": [px1, py1]}
     except Exception as exc:
         return {"ok": False, "status": "error", "reason": str(exc), "mode": "computer_use_real_drag"}
+    finally:
+        # A failed move must not leave the user with the primary mouse button held.
+        if left_button_down:
+            try:
+                ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+            except Exception:
+                pass
+
+
+def _encode_bgra_png(buffer: Any, orig_w: int, orig_h: int) -> tuple[str, int, int, float]:
+    """Encode a Windows top-down BGRA buffer as a bounded RGB PNG without Pillow."""
+    import base64
+    import struct
+    import zlib
+
+    scale = 1.0
+    long_edge = max(orig_w, orig_h)
+    if long_edge > 1568:
+        scale = min(scale, 1568.0 / float(long_edge))
+    pixels = float(orig_w) * float(orig_h)
+    if pixels > 1_150_000:
+        scale = min(scale, (1_150_000 / pixels) ** 0.5)
+    if orig_w > 1024 or orig_h > 768:
+        scale = min(scale, min(1024.0 / float(orig_w), 768.0 / float(orig_h)))
+    new_w = max(1, int(round(orig_w * scale)))
+    new_h = max(1, int(round(orig_h * scale)))
+    actual_scale = float(new_w) / float(orig_w) if orig_w else 1.0
+    source = memoryview(bytes(buffer))
+    scanlines = bytearray()
+    for y in range(new_h):
+        scanlines.append(0)
+        source_y = min(orig_h - 1, int(y / scale))
+        for x in range(new_w):
+            source_x = min(orig_w - 1, int(x / scale))
+            offset = (source_y * orig_w + source_x) * 4
+            scanlines.extend((source[offset + 2], source[offset + 1], source[offset]))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        payload = kind + data
+        return struct.pack(">I", len(data)) + payload + struct.pack(">I", zlib.crc32(payload) & 0xFFFFFFFF)
+
+    png = (
+        b"\\x89PNG\\r\\n\\x1a\\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", new_w, new_h, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(bytes(scanlines), level=6))
+        + chunk(b"IEND", b"")
+    )
+    return base64.b64encode(png).decode("ascii"), new_w, new_h, actual_scale
 
 
 def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
@@ -775,6 +886,7 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
         }
     # --- capture ---
     image = None
+    raw_bgra = None
     orig_w = orig_h = 0
     try:
         try:
@@ -786,7 +898,7 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
         if image is None:
             if os.name != "nt":
                 return {"ok": False, "status": "unsupported", "reason": "screenshot requires Windows or PIL ImageGrab", "mode": "computer_use_real_screenshot"}
-            # Fallback: ctypes BitBlt -> PIL Image
+            # Fallback: ctypes BitBlt -> pure-Python PNG (Pillow is optional).
             import ctypes
             from ctypes import wintypes
 
@@ -817,9 +929,7 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
                 gdi32.DeleteDC(hdc_mem)
                 user32.ReleaseDC(0, hdc_screen)
                 return {"ok": False, "status": "error", "reason": "BitBlt failed", "mode": "computer_use_real_screenshot"}
-            # Extract bitmap bits via GetDIBits
-            from PIL import Image  # type: ignore
-
+            # Extract bitmap bits via GetDIBits.
             bmi_header_size = 40
             class BITMAPINFOHEADER(ctypes.Structure):
                 _fields_ = [
@@ -855,7 +965,19 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
             user32.ReleaseDC(0, hdc_screen)
             if not ret:
                 return {"ok": False, "status": "error", "reason": "GetDIBits failed", "mode": "computer_use_real_screenshot"}
-            image = Image.frombuffer("RGBA", (width, height), buffer, "raw", "BGRA", 0, 1).convert("RGB")
+            raw_bgra = bytes(buffer)
+            orig_w, orig_h = width, height
+        if raw_bgra is not None:
+            b64, new_w, new_h, actual_scale = _encode_bgra_png(raw_bgra, orig_w, orig_h)
+            return {
+                "ok": True,
+                "status": "executed",
+                "mode": "computer_use_real_screenshot",
+                "screenshot": b64,
+                "width": int(new_w),
+                "height": int(new_h),
+                "scale": float(actual_scale),
+            }
         # --- downscale preserving aspect ---
         import base64
         import io
@@ -905,8 +1027,7 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
         return {
             "ok": False,
             "status": "error",
-            "reason": str(exc),
-            "traceback": traceback.format_exc(),
+            "reason": "screenshot_capture_failed",
             "mode": "computer_use_real_screenshot",
         }
 

@@ -1,5 +1,5 @@
 :root {
-  font-family: Inter, "Segoe UI", Roboto, system-ui, sans-serif;
+  font-family: "Segoe UI Variable", "Segoe UI", Roboto, system-ui, sans-serif;
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -44,7 +44,7 @@
   --shell-header-height: 48px;
   --sidebar-width: 260px;
   --inspector-width: 312px;
-  --content-width: 768px;
+  --content-width: 820px;
   --border-thin: 1px solid var(--lc-line);
   --shadow-panel: var(--lc-shadow);
   --focus-ring: var(--lc-focus-ring);
@@ -127,7 +127,7 @@ body {
   background: var(--lc-bg);
   font-family: var(--font-family);
   color: var(--color-text);
-  line-height: 1.6;
+  line-height: 1.5;
   font-size: 14.5px;
 }
 
@@ -283,6 +283,15 @@ kbd {
 
 button:active {
   transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .icon-button:hover,

@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+from modules.json_io import write_json as _write_json
 
 from datetime import datetime
 from pathlib import Path
@@ -55,11 +56,6 @@ def _ensure_dirs() -> None:
     COMPUTER_USE_DIR.mkdir(parents=True, exist_ok=True)
     FOCUS_DIR.mkdir(parents=True, exist_ok=True)
 
-
-def _write_json(path: Path, payload: Any) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def _tokens(text: str) -> List[str]:

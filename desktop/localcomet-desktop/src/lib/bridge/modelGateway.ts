@@ -1,3 +1,4 @@
+import { isRecord } from './guards';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type {
@@ -37,6 +38,8 @@ import { CONTROL_PLANE_EVENT_CHANNEL } from './controlPlane';
 import { requestApproval } from './approval';
 import { loadUiPreferences } from '$lib/stores/uiPreferences';
 import type { FileContextInclusion, FilesContextReport } from '$lib/types/files';
+import { isEffortLevel, type EffortLevel } from '$lib/types/effort';
+import { computeModeProfile } from '$lib/types/computeMode';
 
 type InvokeArgs = Readonly<Record<string, unknown>>;
 
@@ -252,15 +255,20 @@ export async function startManagedRuntime(
   const isCurrent = typeof customSha256OrIsCurrent === 'function'
     ? customSha256OrIsCurrent
     : maybeIsCurrent;
+  const prefs = loadUiPreferences();
+  const computeProfile = computeModeProfile(prefs.computeMode);
+  const ctxSizeOverride = computeProfile.ctxSizeOverride ?? prefs.ctxSizeOverride;
+  const gpuLayersOverride = computeProfile.gpuLayersOverride ?? prefs.gpuLayersOverride;
   const approvalInput = {
     ...(customSha256 === null ? { model_id: requestedId } : { model_id: requestedId, custom_sha256: customSha256 }),
-    ...(requestedRuntimeId === undefined ? {} : { runtime_id: requestedRuntimeId })
+    ...(requestedRuntimeId === undefined ? {} : { runtime_id: requestedRuntimeId }),
+    ctx_size_override: ctxSizeOverride,
+    gpu_layers_override: gpuLayersOverride
   };
   const envelope = await requestApproval('runtime.start', approvalInput);
   if (isCurrent && !isCurrent()) {
     throw { code: 'stale_request', message: 'Managed runtime start request is no longer current' };
   }
-  const prefs = loadUiPreferences();
   const invokeArgs: Record<string, string | number | null> = {
     modelId: requestedId,
     token: envelope.token,
@@ -269,8 +277,8 @@ export async function startManagedRuntime(
   };
   if (customSha256 !== null) invokeArgs.customSha256 = customSha256;
   if (requestedRuntimeId !== undefined) invokeArgs.runtimeId = requestedRuntimeId;
-  invokeArgs.ctxSizeOverride = prefs.ctxSizeOverride;
-  invokeArgs.gpuLayersOverride = prefs.gpuLayersOverride;
+  invokeArgs.ctxSizeOverride = ctxSizeOverride;
+  invokeArgs.gpuLayersOverride = gpuLayersOverride;
   return validateManagedStart(await invokeExact('managed_runtime_start', invokeArgs));
 }
 
@@ -285,10 +293,11 @@ export async function startManagedRuntimeTrusted(
     throw { code: 'stale_request', message: 'Managed runtime trusted start request is no longer current' };
   }
   const prefs = loadUiPreferences();
+  const computeProfile = computeModeProfile(prefs.computeMode);
   const invokeArgs: Record<string, string | number | null> = {
     modelId: requestedId,
-    ctxSizeOverride: prefs.ctxSizeOverride,
-    gpuLayersOverride: prefs.gpuLayersOverride
+    ctxSizeOverride: computeProfile.ctxSizeOverride ?? prefs.ctxSizeOverride,
+    gpuLayersOverride: computeProfile.gpuLayersOverride ?? prefs.gpuLayersOverride
   };
   if (requestedRuntimeId !== undefined) invokeArgs.runtimeId = requestedRuntimeId;
   return validateManagedStart(await invokeExact('managed_runtime_start_trusted', invokeArgs));
@@ -313,12 +322,16 @@ export async function getManagedRuntimeCapability(runtimeId: string, modelId?: s
   );
 }
 
+export const MODEL_REQUEST_SEED = 42;
+
 export async function startModelTurn(args: {
   requestId: string;
   chatSessionId: string;
   modelId: string;
   submittedAtUnixMs: number;
   maxTokens: number;
+  seed: number;
+  effort?: EffortLevel;
   prompt: string;
   fileIds?: readonly string[];
   locale: AssistantLocale;
@@ -331,6 +344,8 @@ export async function startModelTurn(args: {
   const modelId = validateArtifactId(args.modelId);
   const submittedAtUnixMs = positiveSafeInteger(args.submittedAtUnixMs);
   const maxTokens = validateMaxTokens(args.maxTokens);
+  const seed = validateGenerationSeed(args.seed);
+  const effort = validateEffortLevel(args.effort ?? 'off');
   const fileIds = validateFileIds(args.fileIds ?? []);
   const result = validateTurnStart(
     await invokeExact('model_turn_start', {
@@ -339,6 +354,8 @@ export async function startModelTurn(args: {
       modelId,
       submittedAtUnixMs,
       maxTokens,
+      seed,
+      effort,
       prompt: bounded(args.prompt, 16_384),
       fileIds,
       locale: validateLocale(args.locale),
@@ -354,9 +371,21 @@ export async function startModelTurn(args: {
     result.model_id !== modelId ||
     result.submitted_at_unix_ms !== submittedAtUnixMs ||
     result.max_tokens !== maxTokens ||
+    result.seed !== seed ||
+    result.effort !== effort ||
     result.binding_fingerprint !== args.bindingFingerprint
   ) throw invalid();
   return result;
+}
+
+function validateEffortLevel(value: unknown): EffortLevel {
+  if (!isEffortLevel(value)) throw invalid();
+  return value;
+}
+
+function validateGenerationSeed(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647) throw invalid();
+  return value;
 }
 
 function validateFileIds(value: readonly string[]): readonly string[] {
@@ -881,6 +910,8 @@ function validateTurnStart(value: unknown): ModelTurnStartResponse {
     model_id: validateArtifactId(String(object.model_id)),
     submitted_at_unix_ms: positiveSafeInteger(object.submitted_at_unix_ms),
     max_tokens: validateMaxTokens(object.max_tokens),
+    seed: validateGenerationSeed(object.seed),
+    effort: validateEffortLevel(object.effort ?? 'off'),
     binding_fingerprint: validateFingerprint(String(object.binding_fingerprint))
   };
   return object.file_context === undefined
@@ -1025,6 +1056,10 @@ function parseModelEvent(value: unknown, toolsEnabled: boolean): ModelGatewayEve
     turn_id: turnId,
     state,
     text: typeof object.text === 'string' ? bounded(object.text, 65_536) : null,
+    stream_channel: exactString(
+      object.stream_channel ?? metadata.stream_channel ?? 'content',
+      ['content', 'reasoning']
+    ),
     model_called: exactBoolean(metadata.model_called),
     tools_executed: toolsExecuted,
     ...(toolCalls ? { tool_calls: toolCalls } : {}),
@@ -1387,10 +1422,6 @@ function expectExactRecord(value: unknown, expectedKeys: readonly string[]): Rea
   const expected = [...expectedKeys].sort();
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) throw invalid();
   return object;
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function invalid(): SanitizedGatewayError {

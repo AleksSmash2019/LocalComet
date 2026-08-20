@@ -120,14 +120,19 @@ class ToolExecutionConfinementTests(unittest.TestCase):
             execute_tool_call(_payload(self.workspace, "files.read", {"path": "big.bin"}))
         self.assertEqual(ctx.exception.code, "payload_too_large")
 
-    def test_files_delete_and_create_folder_and_list(self) -> None:
-        execute_tool_call(_payload(self.workspace, "files.create_folder", {"path": "dir"}))
-        self.assertTrue((Path(self.workspace) / "dir").is_dir())
-        (Path(self.workspace) / "dir" / "a.txt").write_text("x", encoding="utf-8")
+    def test_reparse_sensitive_mutations_are_fail_closed_while_listing_remains_available(self) -> None:
+        directory = Path(self.workspace) / "dir"
+        directory.mkdir()
+        (directory / "a.txt").write_text("x", encoding="utf-8")
         listing = execute_tool_call(_payload(self.workspace, "files.list", {"path": "dir"}))
         self.assertEqual(listing["entries"], [{"name": "a.txt", "is_dir": False}])
-        execute_tool_call(_payload(self.workspace, "files.delete", {"path": "dir"}))
-        self.assertFalse((Path(self.workspace) / "dir").exists())
+        with self.assertRaises(ToolExecutionError) as create_ctx:
+            execute_tool_call(_payload(self.workspace, "files.create_folder", {"path": "new-dir"}))
+        self.assertEqual(create_ctx.exception.code, "feature_disabled")
+        with self.assertRaises(ToolExecutionError) as delete_ctx:
+            execute_tool_call(_payload(self.workspace, "files.delete", {"path": "dir"}))
+        self.assertEqual(delete_ctx.exception.code, "feature_disabled")
+        self.assertTrue(directory.is_dir())
 
     def test_files_list_outside_workspace_is_blocked(self) -> None:
         with self.assertRaises(ToolExecutionError) as ctx:
@@ -138,7 +143,7 @@ class ToolExecutionConfinementTests(unittest.TestCase):
         target = Path(self.outside_path) / "newdir"
         with self.assertRaises(ToolExecutionError) as ctx:
             execute_tool_call(_payload(self.workspace, "files.create_folder", {"path": str(target)}))
-        self.assertEqual(ctx.exception.code, "policy_blocked")
+        self.assertEqual(ctx.exception.code, "feature_disabled")
         self.assertFalse(target.exists())
 
     def test_files_delete_outside_workspace_is_blocked(self) -> None:
@@ -146,13 +151,13 @@ class ToolExecutionConfinementTests(unittest.TestCase):
         victim.write_text("x", encoding="utf-8")
         with self.assertRaises(ToolExecutionError) as ctx:
             execute_tool_call(_payload(self.workspace, "files.delete", {"path": str(victim)}))
-        self.assertEqual(ctx.exception.code, "policy_blocked")
+        self.assertEqual(ctx.exception.code, "feature_disabled")
         self.assertTrue(victim.exists())
 
     def test_files_delete_workspace_root_is_rejected(self) -> None:
         with self.assertRaises(ToolExecutionError) as ctx:
             execute_tool_call(_payload(self.workspace, "files.delete", {"path": "."}))
-        self.assertEqual(ctx.exception.code, "invalid_payload")
+        self.assertEqual(ctx.exception.code, "feature_disabled")
         self.assertTrue(Path(self.workspace).exists())
 
     def test_unsupported_tool_is_rejected(self) -> None:

@@ -15,8 +15,11 @@
   // Connection summary for header
   $: connectionSummary = (() => {
     if (['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle)) return { label: $t('conn.request_generating'), tone: 'info' as const };
-    if ($inferenceRequestStore.lifecycle === 'failed' || $inferenceRequestStore.lifecycle === 'timed_out' || $gatewayStatus === 'Failed') return { label: $t('conn.request_error'), tone: 'danger' as const };
+    // The header describes the model connection, not the last turn. Keep a
+    // failed request visible in the chat bubble/retry action without leaving a
+    // stale red badge after the managed model is still ready.
     if ($managedModelReady) return { label: $t('conn.model_ready'), tone: 'ready' as const };
+    if ($inferenceRequestStore.lifecycle === 'failed' || $inferenceRequestStore.lifecycle === 'timed_out' || $gatewayStatus === 'Failed') return { label: $t('conn.request_error'), tone: 'danger' as const };
     if ($managedRuntimeStore.lastError || $managedRuntimeStore.status?.last_error || $managedRuntimeStore.status?.state === 'Failed') return { label: $t('conn.model_unavailable'), tone: 'disabled' as const };
     if ($managedConnectionBusy || ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') || ['Validating', 'Loading', 'Unloading'].includes($managedRuntimeStore.status?.model_state ?? '')) return { label: $t('conn.model_loading'), tone: 'info' as const };
     return { label: $t('conn.model_unavailable'), tone: 'disabled' as const };
@@ -52,9 +55,9 @@
         onclick={() => openModelSetup('managed')}
       >
         <span class="model-chip-name">{safeModelIdentity || $t('chat.model_unavailable')}</span>
-        {#if connectionSummary.tone === 'danger' || connectionSummary.tone === 'disabled'}
+        <span class="connection-state" aria-live="polite">
           <StatusBadge label={connectionSummary.label} tone={connectionSummary.tone} />
-        {/if}
+        </span>
       </button>
     </div>
   </div>
@@ -156,7 +159,19 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), inset 0 1px 2px rgba(255, 255, 255, 0.05);
   }
 
+  .connection-state {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .connection-state :global(.status-badge) {
+    min-height: 22px;
+    padding-inline: 8px;
+    font-size: 10.5px;
+  }
+
   .model-chip-name {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

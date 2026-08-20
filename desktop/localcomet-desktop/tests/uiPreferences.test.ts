@@ -35,7 +35,23 @@ describe('UI preferences', () => {
     expect(UI_PREFERENCES_KEY).toBe('localcomet.ui.preferences.v1');
     expect(loadUiPreferences()).toEqual(DEFAULT_UI_PREFERENCES);
     expect(Object.keys(loadUiPreferences())).toEqual(['theme', 'locale', 'diagnosticsPanel',
-      'voiceMode', 'agentPermissions', 'ctxSizeOverride', 'gpuLayersOverride']);
+      'voiceMode', 'agentPermissions', 'ctxSizeOverride', 'gpuLayersOverride', 'computeMode', 'effort']);
+  });
+
+  it('does not mutate nested default permissions while normalizing stored preferences', () => {
+    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
+      agentPermissions: { files: false, computerUse: true }
+    }));
+    expect(loadUiPreferences().agentPermissions).toEqual({
+      files: false, shell: false, tools: true, computerUse: true, internet: false
+    });
+    installStorage(createMemoryStorage());
+    expect(loadUiPreferences().agentPermissions).toEqual({
+      files: true, shell: false, tools: true, computerUse: false, internet: false
+    });
+    expect(DEFAULT_UI_PREFERENCES.agentPermissions).toEqual({
+      files: true, shell: false, tools: true, computerUse: false, internet: false
+    });
   });
 
   it('loads only valid fields and ignores unknown fields', () => {
@@ -44,6 +60,7 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
       repositoryPath: 'C:\\private',
@@ -54,8 +71,10 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
+      computeMode: 'gpu',
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
@@ -71,8 +90,10 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'closed',
       voiceMode: false,
+      effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
+      computeMode: 'gpu',
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
@@ -91,8 +112,10 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'closed',
       voiceMode: false,
+      effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
+      computeMode: 'gpu',
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(localStorage.getItem(UI_PREFERENCES_KEY)).toBeNull();
@@ -113,8 +136,10 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
+      computeMode: 'gpu',
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
@@ -122,8 +147,10 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
+      computeMode: 'gpu',
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
   });
@@ -147,8 +174,10 @@ describe('UI preferences', () => {
       locale: 'ru',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
+      computeMode: 'gpu',
       agentPermissions: { files: true, shell: false, tools: true, computerUse: false, internet: false }
     });
     expect(Object.keys(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}'))).toEqual([
@@ -158,7 +187,9 @@ describe('UI preferences', () => {
       'voiceMode',
       'agentPermissions',
       'ctxSizeOverride',
-      'gpuLayersOverride'
+      'gpuLayersOverride',
+      'computeMode',
+      'effort'
     ]);
   });
 

@@ -1,6 +1,7 @@
 """Tests for the skills subsystem: manifest validation, archive safety, lifecycle."""
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -125,6 +126,66 @@ class LifecycleTests(unittest.TestCase):
         self.mgr.disable("demo.skill")
         with self.assertRaises(SkillError):
             self.mgr.entrypoint_path("demo.skill")
+
+    def test_mutated_enabled_package_is_rejected_before_entrypoint_resolution(self):
+        self.mgr.install(self.pkg)
+        self.mgr.enable("demo.skill")
+        entrypoint = self.root / "installed" / "demo.skill" / "main.py"
+        entrypoint.write_text("print('tampered')", encoding="utf-8")
+        with self.assertRaises(SkillError) as cm:
+            self.mgr.entrypoint_path("demo.skill")
+        self.assertEqual(cm.exception.code, SkillErrorCode.CHECKSUM_MISMATCH)
+
+    def test_bundled_baseline_is_seeded_once(self):
+        seeded = self.mgr.ensure_builtins()
+        self.assertEqual(
+            seeded,
+            ["diagnostics-reader", "project-inspector", "runtime-doctor", "workspace-inspector"],
+        )
+        listed = self.mgr.list_skills()
+        self.assertEqual(
+            [skill["id"] for skill in listed],
+            ["diagnostics-reader", "project-inspector", "runtime-doctor", "workspace-inspector"],
+        )
+        self.assertTrue(all(skill["state"] == "ENABLED" for skill in listed))
+        self.assertTrue(all(skill["builtin"] for skill in listed))
+        self.assertEqual(self.mgr.ensure_builtins(), [])
+
+    def test_legacy_test_skills_are_hidden_and_disabled(self):
+        legacy = {"demo-echo", "verify-echo-174869", "verify-echo-655999"}
+        self.root.mkdir(parents=True, exist_ok=True)
+        (self.root / "registry.json").write_text(
+            json.dumps({skill_id: {"state": "ENABLED", "hidden": False} for skill_id in legacy}),
+            encoding="utf-8",
+        )
+        self.mgr = SkillsManager(self.root)
+
+        self.mgr.ensure_builtins()
+
+        for skill_id in legacy:
+            self.assertEqual(self.mgr._registry[skill_id]["state"], "DISABLED")
+            self.assertTrue(self.mgr._registry[skill_id]["hidden"])
+
+    def test_builtin_invocation_is_bounded_json(self):
+        from modules.skills.skills_invoker import invoke_skill
+
+        with tempfile.TemporaryDirectory() as skills_root:
+            previous = os.environ.get("LOCALCOMET_SKILLS_ROOT")
+            os.environ["LOCALCOMET_SKILLS_ROOT"] = skills_root
+            try:
+                result = invoke_skill(
+                    "runtime-doctor",
+                    {"checks": ["python"]},
+                    ["settings.read", "process.spawn"],
+                )
+            finally:
+                if previous is None:
+                    os.environ.pop("LOCALCOMET_SKILLS_ROOT", None)
+                else:
+                    os.environ["LOCALCOMET_SKILLS_ROOT"] = previous
+        self.assertEqual(result["skill"], "runtime-doctor")
+        self.assertEqual(result["returncode"], 0, result)
+        self.assertIn('"checks"', result["stdout"])
 
     def test_uninstall_cleanup(self):
         self.mgr.install(self.pkg)

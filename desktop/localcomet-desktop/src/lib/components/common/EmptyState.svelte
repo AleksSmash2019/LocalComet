@@ -27,6 +27,8 @@
 
 <style>
   .empty-state {
+    width: min(100%, 720px);
+    margin: 0 auto;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
@@ -34,9 +36,18 @@
     border: var(--border-thin);
     border-color: color-mix(in srgb, var(--lc-line) 84%, transparent);
     border-radius: var(--lc-radius-lg);
-    background: color-mix(in srgb, var(--lc-panel-solid) 50%, transparent);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--lc-panel-solid) 68%, transparent), color-mix(in srgb, var(--lc-accent-dim) 38%, transparent));
+    box-shadow: var(--lc-shadow-e1);
     padding: 20px;
     animation: empty-in 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @media (max-width: 560px) {
+    .empty-state {
+      grid-template-columns: 1fr;
+      justify-items: center;
+      text-align: center;
+    }
   }
 
   h2,

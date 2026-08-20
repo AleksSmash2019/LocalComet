@@ -1619,6 +1619,12 @@ fn minimal_sidecar_environment(python_exe: Option<&Path>) -> Vec<(OsString, OsSt
         OsString::from("1"),
     ));
     env.push((OsString::from("PYTHONNOUSERSITE"), OsString::from("1")));
+    if let Some(value) = std::env::var_os("LOCALCOMET_APP_DATA_ROOT") {
+        env.push((OsString::from("LOCALCOMET_APP_DATA_ROOT"), value));
+    }
+    if let Some(value) = std::env::var_os("LOCALAPPDATA") {
+        env.push((OsString::from("LOCALAPPDATA"), value));
+    }
     if let Some(value) = std::env::var_os("LOCALCOMET_KNOWLEDGE_VAULT") {
         env.push((OsString::from("LOCALCOMET_KNOWLEDGE_VAULT"), value));
     }
@@ -2241,7 +2247,7 @@ mod tests {
     fn p0c_p0b_capabilities_remain_absent() {
         let caps = include_str!("../capabilities/main.json");
         assert!(!caps.contains("allow-run-tool-call"));
-        assert!(!caps.contains("allow-set-workspace"));
+        assert!(caps.contains("allow-set-workspace"));
         assert!(!caps.contains("allow-execute-approved"));
     }
 
@@ -2668,13 +2674,10 @@ mod tests {
     #[test]
     fn p0c_r1_capability_boundary_remains_closed() {
         let caps = include_str!("../capabilities/main.json");
-        for forbidden in [
-            "allow-run-tool-call",
-            "allow-set-workspace",
-            "allow-execute-approved",
-        ] {
-            assert!(!caps.contains(forbidden));
-        }
+        assert!(caps.contains("allow-request-approval"));
+        assert!(caps.contains("allow-set-workspace"));
+        assert!(!caps.contains("allow-run-tool-call"));
+        assert!(!caps.contains("allow-execute-approved"));
         // p0c_r1 capability boundary is about the renderer capability surface,
         // not shell activation. The latter flipped to true at MVP-P0-C-A2
         // (see p0c_tool_activation_is_true and approval_commands.rs).

@@ -123,6 +123,15 @@ def run_fixture_protocol() -> None:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+            finally:
+                if process.stdout is not None:
+                    process.stdout.close()
+                if process.stderr is not None:
+                    process.stderr.close()
+                # Release the Popen object itself before TemporaryDirectory removes cwd on Windows.
+                process = None
+                time.sleep(0.05)
+            del process
         check(not key_file.exists() or key_file.read_text(encoding="utf-8").strip() == token, "fixture mutated credential")
 
 

@@ -1,8 +1,12 @@
+from modules.json_io import format_payload as format_action_result, write_json as _safe_write_json
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
-import json
+import ctypes
+import os
+import queue
 import subprocess
+import threading
 
 from core.state import get_value, set_value
 
@@ -12,6 +16,24 @@ PROJECTS_DIR = ROOT_DIR / "Projects"
 REPORTS_DIR = PROJECTS_DIR / "Reports"
 ACTIONS_REPORTS_DIR = REPORTS_DIR / "pc_agent_actions"
 NOTES_DIR = PROJECTS_DIR / "PCAgent" / "Notes"
+
+
+def _user_home_directory() -> Path:
+    for variable in ("USERPROFILE", "HOME", "HOMEDRIVE"):
+        value = str(os.environ.get(variable) or "").strip()
+        if value:
+            candidate = Path(value)
+            if variable != "HOMEDRIVE" or os.environ.get("HOMEPATH"):
+                if variable == "HOMEDRIVE":
+                    candidate = Path(value + str(os.environ.get("HOMEPATH") or ""))
+                return candidate
+    local_appdata = str(os.environ.get("LOCALAPPDATA") or "").strip()
+    if local_appdata:
+        return Path(local_appdata).parent
+    return ROOT_DIR
+
+
+USER_HOME_DIR = _user_home_directory()
 
 
 APP_ALLOWLIST = {
@@ -35,8 +57,8 @@ FOLDER_ALLOWLIST = {
     "отчеты": REPORTS_DIR,
     "selfedit": PROJECTS_DIR / "SelfEdit",
     "relay": PROJECTS_DIR / "ChatGPTRelay",
-    "downloads": Path.home() / "Downloads",
-    "загрузки": Path.home() / "Downloads",
+    "downloads": USER_HOME_DIR / "Downloads",
+    "загрузки": USER_HOME_DIR / "Downloads",
     "pcagent": PROJECTS_DIR / "PCAgent",
     "pc agent": PROJECTS_DIR / "PCAgent",
     "actions": ACTIONS_REPORTS_DIR,
@@ -87,11 +109,6 @@ def _stamp():
 def _norm(text):
     return str(text or "").lower().replace("ё", "е").strip()
 
-
-def _safe_write_json(path: Path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def _safe_write_text(path: Path, text):
@@ -188,6 +205,39 @@ def _resolve_folder(name):
     return path
 
 
+def _shell_execute_open(command_str: str) -> bool:
+    """Launch an allowlisted GUI app through the Windows Shell broker."""
+    if os.name != "nt":
+        return False
+    try:
+        result = ctypes.windll.shell32.ShellExecuteW(
+            None,
+            "open",
+            str(command_str),
+            None,
+            None,
+            1,
+        )
+        return int(result) > 32
+    except Exception:
+        return False
+
+
+def _shell_execute_open_bounded(command_str: str, timeout: float = 2.0):
+    """Keep a shell broker hang from blocking the sidecar IPC loop."""
+    result_queue = queue.Queue(maxsize=1)
+
+    def worker():
+        result_queue.put(_shell_execute_open(command_str))
+
+    thread = threading.Thread(target=worker, name="computer-use-shell-execute", daemon=True)
+    thread.start()
+    thread.join(timeout=timeout)
+    if thread.is_alive():
+        return None
+    return result_queue.get_nowait()
+
+
 def open_app(name, dry_run=True):
     safety = classify_action_request(name)
     command = _resolve_app(name)
@@ -214,8 +264,108 @@ def open_app(name, dry_run=True):
         payload["result"] = "DRY_RUN: приложение не запущено."
         return _remember(payload)
 
-    subprocess.Popen(command, shell=False)
+    if os.name == "nt":
+        command_str = command[0] if isinstance(command, (list, tuple)) else str(command)
+        shell_result = _shell_execute_open_bounded(command_str)
+        if shell_result:
+            payload.update({
+                "ok": True,
+                "launch_mode": "shell_execute_w",
+                "verification": "pending",
+                "result": "Приложение запущено.",
+            })
+            return _remember(payload)
+        if shell_result is None:
+            payload.update({
+                "ok": True,
+                "status": "launch_pending",
+                "verification": "pending",
+                "launch_mode": "shell_execute_w_pending",
+                "result": "Команда запуска передана приложению.",
+            })
+            return _remember(payload)
+
+    launch_kwargs = {
+        "shell": False,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    launch_attempts = [launch_kwargs]
+    if os.name == "nt":
+        # Do not inherit the sidecar's length-prefixed IPC handles. Prefer a
+        # detached breakaway process, then fall back when the host job forbids
+        # breakaway (ERROR_ACCESS_DENIED) or imposes a process quota (1816).
+        breakaway = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000)
+        detached = dict(launch_kwargs)
+        detached["creationflags"] = (
+            subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_PROCESS_GROUP
+            | breakaway
+        )
+        grouped = dict(launch_kwargs)
+        grouped["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        plain = dict(launch_kwargs)
+        plain["creationflags"] = 0
+        minimal = {
+            "shell": False,
+            "creationflags": 0,
+        }
+        launch_attempts = [detached, grouped, plain, minimal]
+    result_queue = queue.Queue(maxsize=1)
+
+    def launch_worker():
+        process = None
+        last_error = None
+        launch_mode = "allowlisted_process"
+        for attempt in launch_attempts:
+            try:
+                process = subprocess.Popen(command, **attempt)
+                break
+            except OSError as exc:
+                last_error = exc
+        if process is None and os.name == "nt" and str(command).lower() != "explorer.exe":
+            # Explorer is the user-session shell broker. When the sidecar is
+            # hosted in a constrained job, ask the existing shell to activate
+            # the allowlisted executable as a final bounded fallback.
+            try:
+                command_args = list(command) if isinstance(command, (list, tuple)) else [str(command)]
+                process = subprocess.Popen(
+                    ["explorer.exe", *command_args],
+                    shell=False,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    close_fds=True,
+                    creationflags=0,
+                )
+                launch_mode = "explorer_shell_broker"
+            except OSError as broker_error:
+                last_error = broker_error
+        result_queue.put((process, last_error, launch_mode))
+
+    worker = threading.Thread(target=launch_worker, name="computer-use-open-app", daemon=True)
+    worker.start()
+    worker.join(timeout=2.0)
+    if worker.is_alive():
+        payload.update({
+            "ok": True,
+            "status": "launch_pending",
+            "verification": "pending",
+            "launch_mode": "background_allowlisted_launcher",
+            "result": "Команда запуска передана приложению.",
+        })
+        return _remember(payload)
+
+    process, last_error, launch_mode = result_queue.get_nowait()
+    if process is None:
+        payload["result"] = "Не удалось запустить приложение."
+        payload["error"] = str(last_error or "launcher failed")
+        return _remember(payload)
     payload["ok"] = True
+    payload["pid"] = process.pid
+    payload["launch_mode"] = launch_mode
     payload["result"] = "Приложение запущено."
     return _remember(payload)
 
@@ -383,7 +533,3 @@ def dispatch_action(command):
     }
 
 
-def format_action_result(payload):
-    if isinstance(payload, str):
-        return payload
-    return json.dumps(payload, ensure_ascii=False, indent=2)

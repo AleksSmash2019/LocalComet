@@ -173,9 +173,9 @@ mod tests {
 
         let approval_state = crate::approval_commands::ApprovalState::new(app_handle.clone());
         let approval_dispatcher = approval_state.dispatcher.as_ref().map(Arc::clone);
-        // Auto-approve listener: plays the approving user for the real prompt
-        // roundtrip (runtime.start / model.binding.set), resolving through the
-        // same dispatcher resolve_tool_approval uses.
+        // Legacy listener retained for compatibility with the live harness;
+        // production approval issuance now happens in the Rust background path
+        // and does not open a user-facing card.
         if let Some(dispatcher) = approval_state.dispatcher.as_ref() {
             let dispatcher = Arc::clone(dispatcher);
             app_handle.listen_any("request_tool_approval", move |event| {
@@ -206,9 +206,9 @@ mod tests {
     static TURN_COUNTER: AtomicU64 = AtomicU64::new(1);
 
     /// Confirms the managed binding through the real production flow:
-    /// approval minted via the prompt roundtrip, then the real
-    /// model_binding_set command (the same steps the UI performs after a
-    /// successful start).
+    /// a scoped token is minted by the Rust approval boundary (without a
+    /// second UI prompt after an already approved Ready start), then the real
+    /// model_binding_set command runs exactly as the UI does.
     fn confirm_model_binding(
         harness: &LiveHarness,
         model_id: &str,
@@ -225,10 +225,11 @@ mod tests {
             harness
                 ._app
                 .state::<crate::approval_commands::ApprovalState>(),
+            harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
             "model.binding.set".to_owned(),
             input,
         )
-        .expect("binding approval issued through the real prompt roundtrip");
+        .expect("background binding approval issued by Rust");
         tauri::async_runtime::block_on(crate::control_plane::model_binding_set(
             harness._app.state::<Arc<ControlPlaneBridge>>(),
             harness
@@ -267,6 +268,7 @@ mod tests {
             model_id: model_id.to_owned(),
             submitted_at_unix_ms: now_ms,
             max_tokens,
+            seed: crate::control_plane::DEFAULT_MODEL_SEED,
             binding_fingerprint: binding_fingerprint.to_owned(),
         };
         let assistant_context = AssistantContext::trusted("en", false, None)?;
@@ -280,7 +282,7 @@ mod tests {
         );
         harness
             .bridge
-            .reserve_model_turn(&identity, Vec::new(), wire_digest)?;
+            .reserve_model_turn(&identity, Vec::new(), wire_digest, "off")?;
         crate::control_plane::dispatch_gate_for_model_turn(
             &harness.runtime,
             &harness.bridge,
@@ -292,6 +294,7 @@ mod tests {
             prompt.to_owned(),
             assistant_context,
             Vec::new(),
+            "off".to_owned(),
         )
     }
 
@@ -602,8 +605,9 @@ mod tests {
         .expect_err("forged approval token must be rejected");
         assert_eq!(forged.code, "approval_token_unknown");
 
-        // Auto-approve listener: plays the approving user for the real prompt
-        // roundtrip, resolving through the same dispatcher the UI uses.
+        // Legacy listener retained for compatibility with the live harness;
+        // production approval issuance now happens in the Rust background path
+        // and does not open a user-facing card.
         let dispatcher = harness
             .approval_dispatcher
             .as_ref()
@@ -625,10 +629,11 @@ mod tests {
             .state::<crate::approval_commands::ApprovalState>();
         let envelope = crate::approval_commands::request_approval(
             state_ref,
+            harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
             "runtime.start".to_owned(),
             input.clone(),
         )
-        .expect("approval issued through the real prompt roundtrip");
+        .expect("background approval issued by Rust");
 
         // Consume the token through the same validator the command uses,
         // then prove single-use: a replay of the exact same approval material
@@ -662,6 +667,7 @@ mod tests {
             harness
                 ._app
                 .state::<crate::approval_commands::ApprovalState>(),
+            harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
             "runtime.start".to_owned(),
             input.clone(),
         )

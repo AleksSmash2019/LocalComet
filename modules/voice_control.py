@@ -18,7 +18,8 @@ VOICE_MODELS_DIR = ROOT_DIR / "Projects" / "VoiceModels"
 DEFAULT_VOSK_MODEL_DIR = VOICE_MODELS_DIR / "vosk-model-small-ru-0.22"
 DEFAULT_WHISPER_MODEL_SIZE = "medium"
 DEFAULT_PIPER_EXE = Path.home() / "Documents" / "piper" / "piper.exe"
-DEFAULT_PIPER_VOICE = Path.home() / "Documents" / "piper" / "ru_RU-dmitri-medium.onnx"
+DEFAULT_PIPER_VOICE = Path.home() / "Documents" / "piper" / "ru_RU-denis-medium.onnx"
+DEFAULT_PIPER_LENGTH_SCALE = "1.04"
 
 VOICE_DEPENDENCY_HINT = (
     "Voice dependencies are not installed. Install SpeechRecognition and PyAudio "
@@ -244,7 +245,7 @@ def get_voice_status():
             )
         ),
         "tts_engine": (
-            "Piper ru_RU dmitri medium"
+            "Piper ru_RU denis medium"
             if deps.get("piper_available")
             else ("pyttsx3" if deps.get("pyttsx3_available") else ("Windows SAPI" if deps.get("windows_sapi_available") else "unavailable"))
         ),
@@ -520,11 +521,39 @@ def stop_listening():
     return {"ok": True, "listening": False}
 
 
+def _normalize_tts_text(text):
+    parts = []
+    in_code_block = False
+
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip()
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block or not line:
+            continue
+
+        for prefix in ("### ", "## ", "# ", "- ", "* "):
+            if line.startswith(prefix):
+                line = line[len(prefix):].strip()
+                break
+        for token in ("**", "__", "~~", "`"):
+            line = line.replace(token, "")
+        line = " ".join(
+            word for word in line.split()
+            if not word.startswith(("http://", "https://"))
+        )
+        if line:
+            parts.append(line)
+
+    return " ".join(". ".join(parts).split())[:1200]
+
+
 def speak_text(text, enabled=True):
     if not enabled or bool(get_value("voice_tts_muted", False)):
         return {"ok": False, "error": "TTS is muted.", "engine": "muted"}
 
-    value = str(text or "").strip()
+    value = _normalize_tts_text(text)
 
     if not value:
         return {"ok": False, "error": "Nothing to speak.", "engine": "none"}
@@ -542,7 +571,16 @@ def speak_text(text, enabled=True):
             import sounddevice as sd
 
             subprocess.run(
-                [str(exe), "--model", str(voice), "--output_file", out_path],
+                [
+                    str(exe),
+                    "--model",
+                    str(voice),
+                    "--length_scale",
+                    DEFAULT_PIPER_LENGTH_SCALE,
+                    "--output_file",
+                    out_path,
+                ],
+
                 input=value[:1200].encode("utf-8"),
                 check=True,
                 stdout=subprocess.DEVNULL,
@@ -555,7 +593,7 @@ def speak_text(text, enabled=True):
                 sd.play(audio_np, samplerate=wf.getframerate())
                 sd.wait()
 
-            return {"ok": True, "error": None, "engine": "Piper ru_RU dmitri medium"}
+            return {"ok": True, "error": None, "engine": "Piper ru_RU denis medium"}
         except Exception as exc:
             set_value("last_voice_error", str(exc))
         finally:

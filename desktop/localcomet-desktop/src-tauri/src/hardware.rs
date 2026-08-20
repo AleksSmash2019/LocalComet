@@ -1,5 +1,9 @@
 use serde::Serialize;
+use std::process::Command;
 use sysinfo::{Disks, System};
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 #[derive(Serialize)]
 pub struct OsPart {
@@ -98,6 +102,84 @@ fn cpu_features() -> Vec<String> {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn configure_hidden_command(command: &mut Command) {
+    command.creation_flags(0x0800_0000);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_hidden_command(_command: &mut Command) {}
+
+#[cfg(target_os = "windows")]
+fn detect_gpus_from_dxdiag() -> Vec<GpuPart> {
+    let path = std::env::temp_dir().join(format!("localcomet-dxdiag-{}.txt", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let mut command = Command::new(r"C:\Windows\System32\dxdiag.exe");
+    command.args(["/whql:off", "/t", path.to_string_lossy().as_ref()]);
+    configure_hidden_command(&mut command);
+    let status_ok = command
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
+    if !status_ok {
+        let _ = std::fs::remove_file(&path);
+        return Vec::new();
+    }
+    let contents = match std::fs::read(&path) {
+        Ok(contents) => String::from_utf8_lossy(&contents).into_owned(),
+        Err(_) => {
+            let _ = std::fs::remove_file(&path);
+            return Vec::new();
+        }
+    };
+    let _ = std::fs::remove_file(&path);
+
+    let mut gpus = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_vram_mb: Option<u64> = None;
+    let finish = |gpus: &mut Vec<GpuPart>, name: &mut Option<String>, vram_mb: &mut Option<u64>| {
+        if gpus.len() >= 4 {
+            *name = None;
+            *vram_mb = None;
+            return;
+        }
+        if let Some(raw_name) = name.take() {
+            if raw_name.is_empty() || gpus.iter().any(|gpu| gpu.name == raw_name) {
+                *vram_mb = None;
+                return;
+            }
+            gpus.push(GpuPart {
+                name: raw_name,
+                vram_mb: *vram_mb,
+                integrated: Some(vram_mb.is_none()),
+            });
+        }
+        *vram_mb = None;
+    };
+
+    for line in contents.lines() {
+        let line = line.trim();
+        if let Some(raw_name) = line.strip_prefix("Card name:") {
+            finish(&mut gpus, &mut current_name, &mut current_vram_mb);
+            current_name = Some(sanitize_name(raw_name));
+        } else if let Some(raw_memory) = line.strip_prefix("Dedicated Memory:") {
+            let value = raw_memory
+                .split_whitespace()
+                .next()
+                .and_then(|raw| raw.parse::<u64>().ok())
+                .filter(|value| *value > 0 && *value < 262_144);
+            current_vram_mb = value;
+        }
+    }
+    finish(&mut gpus, &mut current_name, &mut current_vram_mb);
+    gpus
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_gpus_from_dxdiag() -> Vec<GpuPart> {
+    Vec::new()
+}
+
 fn detect_gpus() -> Vec<GpuPart> {
     let mut gpus = Vec::new();
     // Bounded, no shell, fixed args, output capped 8 KiB
@@ -150,6 +232,10 @@ fn detect_gpus() -> Vec<GpuPart> {
         }
     }
 
+    if gpus.is_empty() {
+        gpus = detect_gpus_from_dxdiag();
+    }
+
     #[cfg(target_os = "macos")]
     {
         if gpus.is_empty() && std::env::consts::ARCH == "aarch64" {
@@ -168,9 +254,19 @@ fn detect_gpus() -> Vec<GpuPart> {
 }
 
 #[tauri::command]
-pub fn scan_hardware() -> Result<RawHardware, String> {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+pub async fn scan_hardware() -> Result<RawHardware, String> {
+    tauri::async_runtime::spawn_blocking(scan_hardware_sync)
+        .await
+        .map_err(|error| format!("hardware scan worker failed: {error}"))?
+}
+
+fn scan_hardware_sync() -> Result<RawHardware, String> {
+    // Only refresh the metrics used by ModelFit. `refresh_all()` also walks
+    // processes, networks, users, components and other inventories that are not
+    // part of this contract and can block the UI for many seconds on Windows.
+    let mut sys = System::new();
+    sys.refresh_cpu_all();
+    sys.refresh_memory();
     // Extra refresh for CPU frequency which may be 0 on first refresh on Windows
     std::thread::sleep(std::time::Duration::from_millis(50));
     sys.refresh_cpu_all();

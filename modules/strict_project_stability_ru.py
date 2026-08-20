@@ -6,10 +6,12 @@ import json
 import py_compile
 from datetime import datetime
 from pathlib import Path
+from modules.relative_paths import make_relative_path
 from typing import Any
 
 
 ROOT_PATH = Path(__file__).resolve().parents[1]
+_safe_relative = make_relative_path(ROOT_PATH)
 REPORT_DIR = ROOT_PATH / "Projects" / "Reports" / "strict_project_stability"
 BASELINE_PATH = REPORT_DIR / "strict_project_inventory_baseline.json"
 
@@ -49,13 +51,6 @@ PROJECT_COMMANDS = {
 
 def _now() -> str:
     return datetime.now().replace(microsecond=0).isoformat()
-
-
-def _safe_relative(path: Path) -> str:
-    try:
-        return str(path.relative_to(ROOT_PATH)).replace("\\", "/")
-    except Exception:
-        return str(path).replace("\\", "/")
 
 
 def _is_skipped(path: Path) -> bool:

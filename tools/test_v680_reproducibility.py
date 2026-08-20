@@ -17,11 +17,8 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
+from tools.test_fixtures.assertions import assert_condition
+from tools.test_fixtures.files import write_text
 
 
 def _paths_under(root: Path) -> dict[str, str]:
@@ -61,10 +58,6 @@ def _paths_under(root: Path) -> dict[str, str]:
     return result
 
 
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
 
 def _fixture(extra_manifest: dict | None = None, extra_files: dict[str, str] | None = None) -> Path:
     root = Path(tempfile.mkdtemp(prefix="localcomet_v680_preflight_"))
@@ -79,14 +72,14 @@ def _fixture(extra_manifest: dict | None = None, extra_files: dict[str, str] | N
     }
     if extra_manifest:
         manifest.update(extra_manifest)
-    _write(root / "localcomet_runtime_manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
-    _write(root / "main.py", "import modules.runtime\n")
-    _write(root / "modules" / "runtime.py", "VALUE = 1\n")
-    _write(root / "modules" / "lazy.py", "from modules import runtime\n")
-    _write(root / "tools" / "tool.py", "print('tool')\n")
-    _write(root / "tools" / "test_fixture.py", "print('test')\n")
+    write_text(root / "localcomet_runtime_manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
+    write_text(root / "main.py", "import modules.runtime\n")
+    write_text(root / "modules" / "runtime.py", "VALUE = 1\n")
+    write_text(root / "modules" / "lazy.py", "from modules import runtime\n")
+    write_text(root / "tools" / "tool.py", "print('tool')\n")
+    write_text(root / "tools" / "test_fixture.py", "print('test')\n")
     for rel, text in (extra_files or {}).items():
-        _write(root / rel, text)
+        write_text(root / rel, text)
     return root
 
 
@@ -95,20 +88,20 @@ def test_import_and_root_precedence_are_read_only() -> None:
     import modules.repository_preflight_ru as preflight
 
     after = _paths_under(ROOT)
-    _assert(before == after, "Import created or modified source files.")
+    assert_condition(before == after, "Import created or modified source files.")
     with tempfile.TemporaryDirectory(prefix="localcomet_v680_root_") as temp_text:
         temp_root = Path(temp_text) / "root"
         fallback_root = Path(temp_text) / "fallback"
         os.environ["LOCALCOMET_ROOT"] = str(temp_root)
         os.environ["LOCALCOMET_ROOT_DIR"] = str(fallback_root)
-        _assert(preflight.resolve_project_root() == temp_root.resolve(), "LOCALCOMET_ROOT precedence failed.")
+        assert_condition(preflight.resolve_project_root() == temp_root.resolve(), "LOCALCOMET_ROOT precedence failed.")
         os.environ.pop("LOCALCOMET_ROOT", None)
-        _assert(preflight.resolve_project_root() == fallback_root.resolve(), "LOCALCOMET_ROOT_DIR precedence failed.")
+        assert_condition(preflight.resolve_project_root() == fallback_root.resolve(), "LOCALCOMET_ROOT_DIR precedence failed.")
         before_missing = _paths_under(Path(temp_text))
         result = preflight.run_repository_preflight(fallback_root)
         after_missing = _paths_under(Path(temp_text))
-        _assert(before_missing == after_missing, "Missing root preflight wrote files.")
-        _assert(result["ok"] is False, "Missing root should not pass.")
+        assert_condition(before_missing == after_missing, "Missing root preflight wrote files.")
+        assert_condition(result["ok"] is False, "Missing root should not pass.")
         os.environ.pop("LOCALCOMET_ROOT_DIR", None)
 
 
@@ -117,18 +110,18 @@ def test_real_manifest_static_preflight() -> None:
 
     manifest = preflight.load_runtime_manifest(ROOT)
     for key in ("entrypoints", "runtime", "lazy_runtime", "tests", "tools"):
-        _assert(key in manifest and isinstance(manifest[key], list), f"Manifest key missing: {key}")
-        _assert(manifest[key] == sorted(manifest[key], key=str.lower), f"Manifest list not sorted: {key}")
-        _assert(len(manifest[key]) == len(set(manifest[key])), f"Manifest list not unique: {key}")
+        assert_condition(key in manifest and isinstance(manifest[key], list), f"Manifest key missing: {key}")
+        assert_condition(manifest[key] == sorted(manifest[key], key=str.lower), f"Manifest list not sorted: {key}")
+        assert_condition(len(manifest[key]) == len(set(manifest[key])), f"Manifest list not unique: {key}")
         for rel in manifest[key]:
             normalized, reason = preflight._safe_rel_path(rel)
-            _assert(reason is None and normalized == rel.replace("\\", "/"), f"Unsafe manifest path: {rel}")
+            assert_condition(reason is None and normalized == rel.replace("\\", "/"), f"Unsafe manifest path: {rel}")
     result = preflight.run_repository_preflight(ROOT)
-    _assert(result["summary"]["missing_count"] == 0, "Required manifest files are missing.")
-    _assert(result["summary"]["syntax_error_count"] == 0, "Python syntax errors found.")
-    _assert(result["summary"]["unresolved_import_count"] == 0, "Required local imports unresolved.")
+    assert_condition(result["summary"]["missing_count"] == 0, "Required manifest files are missing.")
+    assert_condition(result["summary"]["syntax_error_count"] == 0, "Python syntax errors found.")
+    assert_condition(result["summary"]["unresolved_import_count"] == 0, "Required local imports unresolved.")
     text = json.dumps(result, ensure_ascii=False, sort_keys=True)
-    _assert(str(Path.home()) not in text and str(ROOT) not in text, "Root/user path leaked.")
+    assert_condition(str(Path.home()) not in text and str(ROOT) not in text, "Root/user path leaked.")
 
 
 def test_synthetic_failures_are_reported_safely() -> None:
@@ -145,13 +138,13 @@ def test_synthetic_failures_are_reported_safely() -> None:
     )
     try:
         result = preflight.run_repository_preflight(root)
-        _assert(result["ok"] is False, "Synthetic invalid manifest passed.")
-        _assert(result["unsafe_paths"], "Traversal path was not rejected.")
-        _assert(result["missing"], "Missing runtime file was not reported.")
-        _assert(result["secret_markers"], "Secret category missing.")
-        _assert(any(item["category"].startswith("windows") for item in result["machine_paths"]), "Machine path missing.")
+        assert_condition(result["ok"] is False, "Synthetic invalid manifest passed.")
+        assert_condition(result["unsafe_paths"], "Traversal path was not rejected.")
+        assert_condition(result["missing"], "Missing runtime file was not reported.")
+        assert_condition(result["secret_markers"], "Secret category missing.")
+        assert_condition(any(item["category"].startswith("windows") for item in result["machine_paths"]), "Machine path missing.")
         text = json.dumps(result, ensure_ascii=False, sort_keys=True)
-        _assert(secret_value not in text, "Secret value leaked.")
+        assert_condition(secret_value not in text, "Secret value leaked.")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -164,10 +157,10 @@ def test_cli_output_and_determinism() -> None:
         command = [sys.executable, str(ROOT / "tools" / "localcomet_preflight_audit.py"), "--root", str(root), "--json"]
         first = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", check=False)
         second = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", check=False)
-        _assert(first.returncode == 0, first.stderr)
-        _assert(json.loads(first.stdout) == json.loads(second.stdout), "Preflight JSON is not deterministic.")
-        _assert(before_root == _paths_under(ROOT), "CLI without --output wrote to source repo.")
-        _assert(before_fixture == _paths_under(root), "CLI without --output wrote to fixture.")
+        assert_condition(first.returncode == 0, first.stderr)
+        assert_condition(json.loads(first.stdout) == json.loads(second.stdout), "Preflight JSON is not deterministic.")
+        assert_condition(before_root == _paths_under(ROOT), "CLI without --output wrote to source repo.")
+        assert_condition(before_fixture == _paths_under(root), "CLI without --output wrote to fixture.")
 
         output_path = Path(tempfile.mkdtemp(prefix="localcomet_v680_output_")) / "preflight.json"
         with_output = subprocess.run(
@@ -178,9 +171,9 @@ def test_cli_output_and_determinism() -> None:
             encoding="utf-8",
             check=False,
         )
-        _assert(with_output.returncode == 0, with_output.stderr)
-        _assert(output_path.exists(), "--output did not write requested file.")
-        _assert(before_root == _paths_under(ROOT), "CLI --output wrote to source repo.")
+        assert_condition(with_output.returncode == 0, with_output.stderr)
+        assert_condition(output_path.exists(), "--output did not write requested file.")
+        assert_condition(before_root == _paths_under(ROOT), "CLI --output wrote to source repo.")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -193,8 +186,8 @@ def test_clean_temp_copy_passes_without_source_access() -> None:
         before_source = _paths_under(ROOT)
         result = preflight.run_repository_preflight(root)
         after_source = _paths_under(ROOT)
-        _assert(result["ok"] is True, "Clean temp-copy preflight failed.")
-        _assert(before_source == after_source, "Temp-copy preflight touched source repo.")
+        assert_condition(result["ok"] is True, "Clean temp-copy preflight failed.")
+        assert_condition(before_source == after_source, "Temp-copy preflight touched source repo.")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -219,9 +212,9 @@ def test_previous_suites_and_staging() -> None:
     child_env = {**os.environ, "LOCALCOMET_NESTED_SUITE": "1"}
     for command in commands:
         completed = subprocess.run(command, cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240, check=False, env=child_env)
-        _assert(completed.returncode == 0, f"Regression failed: {' '.join(command)}")
+        assert_condition(completed.returncode == 0, f"Regression failed: {' '.join(command)}")
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=str(ROOT), capture_output=True, text=True, check=False)
-    _assert(staged.returncode == 0 and staged.stdout.strip() == "", "Staged files are present.")
+    assert_condition(staged.returncode == 0 and staged.stdout.strip() == "", "Staged files are present.")
 
 
 def main() -> None:

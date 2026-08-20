@@ -47,8 +47,48 @@ BUILD_SOURCE_MODULES = (
 
 # The exact Python subset loaded by the desktop sidecar. Keep this list in sync
 # with the bundle assembly step; do not infer it from an already-drifted bundle.
+REQUIRED_SKILL_FILES = frozenset(
+    {
+        "__init__.py",
+        "registry.json",
+        "skills_archive.py",
+        "skills_contract.py",
+        "skills_invoker.py",
+        "skills_manager.py",
+        "builtin/diagnostics-reader/entrypoint.py",
+        "builtin/diagnostics-reader/skill.json",
+        "builtin/project-inspector/entrypoint.py",
+        "builtin/project-inspector/skill.json",
+        "builtin/runtime-doctor/entrypoint.py",
+        "builtin/runtime-doctor/skill.json",
+        "builtin/workspace-inspector/entrypoint.py",
+        "builtin/workspace-inspector/skill.json",
+        "code-runner/entrypoint.py",
+        "git-ops/entrypoint.py",
+        "hf-model-ctl/entrypoint.py",
+        "log-sleuth/entrypoint.py",
+        "patch-forge/entrypoint.py",
+        "system-doctor/entrypoint.py",
+        "installed/browser-pilot/entrypoint.py",
+        "installed/code-runner/entrypoint.py",
+        "installed/demo-echo/entrypoint.py",
+        "installed/git-ops/entrypoint.py",
+        "installed/hf-model-ctl/entrypoint.py",
+        "installed/log-sleuth/entrypoint.py",
+        "installed/patch-forge/entrypoint.py",
+        "installed/project-guru/entrypoint.py",
+        "installed/prompt-lab/entrypoint.py",
+        "installed/system-doctor/entrypoint.py",
+        "installed/verify-echo-174869/entrypoint.py",
+        "installed/verify-echo-655999/entrypoint.py",
+        "installed/workspace-guard/entrypoint.py",
+    }
+)
+
+
 REQUIRED_SIDECAR_MODULES = frozenset(
     {
+        "computer_use_real_actions_ru.py",
         "desktop_control_plane_ru.py",
         "desktop_ipc_contract_ru.py",
         "desktop_sidecar_runtime_ru.py",
@@ -60,10 +100,38 @@ REQUIRED_SIDECAR_MODULES = frozenset(
         "knowledge_injection_ru.py",
         "knowledge_review_ui_projection_ru.py",
         "local_model_gateway_ru.py",
+        "pc_agent_actions.py",
         "tool_execution_ru.py",
         "workspace_policy.py",
     }
 )
+
+
+def check_skill_location(label: str, modules_location: pathlib.Path) -> tuple[int, list[str], list[str], list[str]]:
+    source_root = REPO_MODULES / "skills"
+    shipped_root = modules_location / "skills"
+    stale: list[str] = []
+    missing_in_repo: list[str] = []
+    missing_in_shipped: list[str] = []
+    matched = 0
+    for relative in sorted(REQUIRED_SKILL_FILES, key=str.casefold):
+        source = source_root / pathlib.Path(relative)
+        shipped = shipped_root / pathlib.Path(relative)
+        if not source.is_file():
+            missing_in_repo.append(relative)
+        elif not shipped.is_file():
+            missing_in_shipped.append(relative)
+        elif sha256(source) != sha256(shipped):
+            stale.append(relative)
+        else:
+            matched += 1
+    for relative in stale:
+        print(f"FAIL: [{label}] STALE skill file: {relative}")
+    for relative in missing_in_repo:
+        print(f"FAIL: [{label}] MISSING skill file in repo: {relative}")
+    for relative in missing_in_shipped:
+        print(f"FAIL: [{label}] MISSING skill file in shipped runtime: {relative}")
+    return matched, stale, missing_in_repo, missing_in_shipped
 
 
 def deployed_modules() -> pathlib.Path | None:
@@ -133,10 +201,11 @@ def main() -> int:
             continue
         checked += 1
         matched, stale, missing_in_repo, missing_in_shipped = check_location(label, location)
-        total_matched += matched
-        total_stale += len(stale)
-        total_missing_in_repo += len(missing_in_repo)
-        total_missing_in_shipped += len(missing_in_shipped)
+        skill_matched, skill_stale, skill_missing_in_repo, skill_missing_in_shipped = check_skill_location(label, location)
+        total_matched += matched + skill_matched
+        total_stale += len(stale) + len(skill_stale)
+        total_missing_in_repo += len(missing_in_repo) + len(skill_missing_in_repo)
+        total_missing_in_shipped += len(missing_in_shipped) + len(skill_missing_in_shipped)
 
     if checked == 0:
         print("SKIP: no shipped sidecar module locations found on this machine")

@@ -5,6 +5,7 @@ export type ModelOption = 'Not configured';
 export type MessageRole = 'user' | 'assistant';
 export type ChatMessageState = 'accepted' | 'streaming' | 'completed' | 'cancelled' | 'timed_out' | 'failed';
 export type InspectorSection = 'Обзор' | 'Телеметрия' | 'События' | 'Политика' | 'Проверка';
+import type { EffortLevel } from '$lib/stores/uiPreferences';
 
 export interface MockMessage {
   id: string;
@@ -16,6 +17,8 @@ export interface MockMessage {
   error?: string;
   demo?: boolean;
   toolCalls?: ToolCallMock[];
+  reasoning?: string;
+  effort?: EffortLevel;
 }
 
 export interface ToolCallMock {

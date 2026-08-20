@@ -17,17 +17,8 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def _paths_under(root: Path) -> set[str]:
-    if not root.exists():
-        return set()
-    return {path.relative_to(root).as_posix() for path in root.rglob("*")}
-
+from tools.test_fixtures.assertions import assert_condition
+from tools.test_fixtures.path_inventory import paths_under_set
 
 def _load_panel(temp_root: Path):
     os.environ["LOCALCOMET_ROOT"] = str(temp_root)
@@ -143,25 +134,25 @@ def test_safety_and_reviewer_routes() -> None:
             start = time.perf_counter()
             safety_result = panel.run_panel_chat_command("статус разработки")
             elapsed = time.perf_counter() - start
-            _assert(calls == ["safety"], "Safety command must dispatch exactly once.")
-            _assert(elapsed < 0.5, f"Safety status took {elapsed:.3f}s.")
+            assert_condition(calls == ["safety"], "Safety command must dispatch exactly once.")
+            assert_condition(elapsed < 0.5, f"Safety status took {elapsed:.3f}s.")
             safety_payload = safety_result.get("result", {})
             evaluation = safety_payload.get("evaluation", {})
             gates = evaluation.get("gates", {})
-            _assert(safety_payload.get("mode") == "development_safety_orchestrator_status", "Safety result mode changed.")
-            _assert(evaluation.get("lightweight") is True, "Safety status must stay lightweight.")
-            _assert(gates.get("contracts", {}).get("executed") is False, "Contracts ran during safety status.")
-            _assert(gates.get("strict", {}).get("executed") is False, "Strict ran during safety status.")
-            _assert(
+            assert_condition(safety_payload.get("mode") == "development_safety_orchestrator_status", "Safety result mode changed.")
+            assert_condition(evaluation.get("lightweight") is True, "Safety status must stay lightweight.")
+            assert_condition(gates.get("contracts", {}).get("executed") is False, "Contracts ran during safety status.")
+            assert_condition(gates.get("strict", {}).get("executed") is False, "Strict ran during safety status.")
+            assert_condition(
                 evaluation.get("diff_risk", {}).get("untracked_ignored_for_risk") is True,
                 "Untracked risk flag changed.",
             )
 
             calls.clear()
             reviewer_result = panel.run_panel_chat_command("создай запрос ревью v678_router_smoke")
-            _assert(calls == ["reviewer"], "Reviewer command must dispatch exactly once.")
-            _assert(reviewer_result.get("route") == "modules.reviewer_bridge_ru", "Reviewer route changed.")
-            _assert(reviewer_result.get("result", {}).get("mode") == "reviewer_request_created", "Reviewer schema changed.")
+            assert_condition(calls == ["reviewer"], "Reviewer command must dispatch exactly once.")
+            assert_condition(reviewer_result.get("route") == "modules.reviewer_bridge_ru", "Reviewer route changed.")
+            assert_condition(reviewer_result.get("result", {}).get("mode") == "reviewer_request_created", "Reviewer schema changed.")
         finally:
             for module, name, original in reversed(restore):
                 setattr(module, name, original)
@@ -194,9 +185,9 @@ def test_all_reachable_legacy_routes_dispatch_once() -> None:
             for route_name, command, _handler_name in ROUTE_CASES:
                 calls.clear()
                 result = panel.run_panel_chat_command(command)
-                _assert(calls == [route_name], f"{route_name} dispatched {calls}, expected one call.")
-                _assert(result.get("mode") == "command", f"{route_name} top-level mode changed.")
-                _assert(result.get("route") == route_name, f"{route_name} route changed.")
+                assert_condition(calls == [route_name], f"{route_name} dispatched {calls}, expected one call.")
+                assert_condition(result.get("mode") == "command", f"{route_name} top-level mode changed.")
+                assert_condition(result.get("route") == route_name, f"{route_name} route changed.")
         finally:
             for module, name, original in reversed(restore):
                 setattr(module, name, original)
@@ -207,25 +198,25 @@ def test_fallback_and_empty_input_schema() -> None:
         panel = _load_panel(Path(temp_text))
         for command in ("definitely unknown v678 command", "   ", ""):
             result = panel.run_panel_chat_command(command)
-            _assert(result.get("mode") == "new_menu_only", f"Fallback mode changed for {command!r}.")
-            _assert(result.get("route") == "premium_task_panel_ru", f"Fallback route changed for {command!r}.")
-            _assert(result.get("plan") == {"tool": "premium_task_panel_ru", "action": "chat"}, "Fallback plan changed.")
+            assert_condition(result.get("mode") == "new_menu_only", f"Fallback mode changed for {command!r}.")
+            assert_condition(result.get("route") == "premium_task_panel_ru", f"Fallback route changed for {command!r}.")
+            assert_condition(result.get("plan") == {"tool": "premium_task_panel_ru", "action": "chat"}, "Fallback plan changed.")
 
 
 def test_predicates_are_read_only() -> None:
     with tempfile.TemporaryDirectory(prefix="localcomet_v678_predicates_") as temp_text:
         temp_root = Path(temp_text)
         panel = _load_panel(temp_root)
-        before = _paths_under(temp_root)
+        before = paths_under_set(temp_root)
         for predicate_name, command in PREDICATE_COMMANDS:
             predicate = getattr(panel, predicate_name)
             result = predicate(command)
             if isinstance(result, dict):
-                _assert(any(result.values()), f"{predicate_name} did not recognize {command!r}.")
+                assert_condition(any(result.values()), f"{predicate_name} did not recognize {command!r}.")
             else:
-                _assert(bool(result), f"{predicate_name} did not recognize {command!r}.")
-        after = _paths_under(temp_root)
-        _assert(before == after, f"Predicates wrote to temp root: {sorted(after - before)}")
+                assert_condition(bool(result), f"{predicate_name} did not recognize {command!r}.")
+        after = paths_under_set(temp_root)
+        assert_condition(before == after, f"Predicates wrote to temp root: {sorted(after - before)}")
 
 
 def test_router_ast_shape_when_consolidated() -> None:
@@ -237,28 +228,28 @@ def test_router_ast_shape_when_consolidated() -> None:
         if isinstance(node, ast.FunctionDef) and node.name == "run_panel_chat_command"
     )
     if hasattr(importlib.import_module("LocalComet_Control_Panel"), "PANEL_ROUTES"):
-        _assert(count == 1, f"Consolidated router must have one run_panel_chat_command, found {count}.")
+        assert_condition(count == 1, f"Consolidated router must have one run_panel_chat_command, found {count}.")
 
 
 def test_headless_self_check_version_marker() -> None:
     with tempfile.TemporaryDirectory(prefix="localcomet_v678_self_check_") as temp_text:
         panel = _load_panel(Path(temp_text))
         source = (ROOT / "LocalComet_Control_Panel.py").read_text(encoding="utf-8")
-        _assert(type(panel.LOCALCOMET_VERSION) is str, "Panel version must be a built-in str.")
-        _assert(panel.LOCALCOMET_VERSION.startswith("v6."), "Panel version marker must be an active release.")
-        _assert(json.loads(json.dumps(panel.LOCALCOMET_VERSION)) == panel.LOCALCOMET_VERSION, "Panel version JSON changed.")
-        _assert(f'LOCALCOMET_VERSION = "{panel.LOCALCOMET_VERSION}"' in source, "Active version marker missing.")
-        _assert("_LocalCometVersion" not in source, "Custom version class remains.")
-        _assert('LOCALCOMET_VERSION == "v6.64"' not in source, "Self-check still expects v6.64.")
+        assert_condition(type(panel.LOCALCOMET_VERSION) is str, "Panel version must be a built-in str.")
+        assert_condition(panel.LOCALCOMET_VERSION.startswith("v6."), "Panel version marker must be an active release.")
+        assert_condition(json.loads(json.dumps(panel.LOCALCOMET_VERSION)) == panel.LOCALCOMET_VERSION, "Panel version JSON changed.")
+        assert_condition(f'LOCALCOMET_VERSION = "{panel.LOCALCOMET_VERSION}"' in source, "Active version marker missing.")
+        assert_condition("_LocalCometVersion" not in source, "Custom version class remains.")
+        assert_condition('LOCALCOMET_VERSION == "v6.64"' not in source, "Self-check still expects v6.64.")
 
         result = panel.run_headless_self_check()
-        _assert(result.get("version") == panel.LOCALCOMET_VERSION, "Self-check version does not match LOCALCOMET_VERSION.")
+        assert_condition(result.get("version") == panel.LOCALCOMET_VERSION, "Self-check version does not match LOCALCOMET_VERSION.")
         version_check = next(
             item for item in result.get("checks", [])
             if item.get("name") == "version marker"
         )
-        _assert(version_check.get("ok") is True, "Self-check version marker failed.")
-        _assert(version_check.get("details") == panel.LOCALCOMET_VERSION, "Self-check version details changed.")
+        assert_condition(version_check.get("ok") is True, "Self-check version marker failed.")
+        assert_condition(version_check.get("details") == panel.LOCALCOMET_VERSION, "Self-check version details changed.")
 
         tree = ast.parse(source)
         count = sum(
@@ -266,7 +257,7 @@ def test_headless_self_check_version_marker() -> None:
             for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef) and node.name == "run_panel_chat_command"
         )
-        _assert(count == 1, f"Consolidated router must have one run_panel_chat_command, found {count}.")
+        assert_condition(count == 1, f"Consolidated router must have one run_panel_chat_command, found {count}.")
 
 
 def main() -> None:

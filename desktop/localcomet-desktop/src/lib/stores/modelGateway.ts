@@ -10,6 +10,7 @@ import {
   getManagedRuntimeStatus,
   getModelGatewayCatalog,
   listModelGatewayModels,
+  MODEL_REQUEST_SEED,
   normalizeGatewayError,
   probeModelGateway,
   setModelBinding,
@@ -40,20 +41,31 @@ import type {
   ModelBinding,
   ModelGatewayEvent,
   ModelSummary,
+  ModelToolCall,
   SanitizedGatewayError
 } from '$lib/types/modelGateway';
 import {
   activeWorkspace,
+  computeMode,
   agentPermissions,
   appendAcceptedChatTurn,
   appendAssistantChunk,
+  appendAssistantReasoningChunk,
+  effortLevel,
   setAssistantToolCalls,
+  updateAssistantToolResult,
   chatMessages,
   finalizeAssistantMessage,
+  setComposerDraft,
   setModelConnected
 } from '$lib/stores/shellStore';
 import { assistantLocaleFor, locale } from '$lib/i18n';
 import { reportFilesContextInclusion, reportFilesRequestError } from '$lib/stores/files';
+import { workspaceStore } from '$lib/stores/workspace';
+import { runToolCall } from '$lib/bridge/approval';
+import { requestApprovalForTool } from '$lib/stores/approvalStore';
+import { DEFAULT_BASE_MODEL_ID } from '$lib/stores/modelDefault';
+import { computeModeProfile } from '$lib/types/computeMode';
 
 export const MAX_GENERATED_TEXT = 262_144;
 // Per-turn generation budget sent to the backend. The previous 256 truncated
@@ -65,6 +77,10 @@ export const INFERENCE_TIMEOUTS_MS = Object.freeze({
   firstToken: 30_000,
   inactivity: 10_000,
   cancelAcknowledgement: 5_000
+});
+export const MANAGED_INFERENCE_TIMEOUTS_MS = Object.freeze({
+  firstToken: 180_000,
+  inactivity: 45_000
 });
 export const MANAGED_HEALTH_POLL_MS = 2_000;
 // Live status polling cadence while a managed runtime start is in flight, so
@@ -86,6 +102,7 @@ export interface ModelGatewayState {
   readonly selectedModelId: string;
   readonly binding: ModelBinding | null;
   readonly activeTurnId: string | null;
+  readonly requestId: string | null;
   readonly generatedText: string;
   readonly status: GatewayStatus;
   readonly modelCalled: boolean;
@@ -122,6 +139,7 @@ const initialState: ModelGatewayState = {
   selectedModelId: '',
   binding: null,
   activeTurnId: null,
+  requestId: null,
   generatedText: '',
   status: 'Not configured',
   modelCalled: false,
@@ -151,6 +169,7 @@ const initialInferenceState: InferenceRequestState = {
   requestId: null,
   chatSessionId: null,
   modelId: null,
+  effort: null,
   submittedAtUnixMs: null,
   acceptedAtUnixMs: null,
   firstTokenAtUnixMs: null,
@@ -217,10 +236,8 @@ export async function initializeModelGateway(): Promise<void> {
       modelGatewayStore.update((state) => ({ ...state, catalog, initialized: true, status: 'Binding required' }));
       await refreshManagedRuntimeStatus();
       if (generation !== subscriptionGeneration) return;
-      if (!get(managedModelReady) && get(approvedManagedModelInstalled)) {
-        await connectSelectedManagedModel();
-        if (generation !== subscriptionGeneration) return;
-      }
+      // Model binding is guarded and user-initiated. Boot only refreshes
+      // runtime state; the Model Setup drawer performs explicit connection.
       startManagedHealthMonitor();
       initialized = true;
     } catch (error) {
@@ -277,9 +294,11 @@ function startManagedHealthMonitor(): void {
     if (get(inferenceBusy)) return;
     if (get(managedRuntimeStore).binding) {
       void verifyLiveManagedSession();
-    } else if (get(approvedManagedModelInstalled) && !managedConnectionPromise) {
-      void connectSelectedManagedModel();
     }
+    // Never auto-call connectSelectedManagedModel here: it requests the
+    // guarded model.binding.set approval and would reopen the modal forever
+    // after a user rejection or a closed app. Reconnection is explicit from
+    // the Model Setup UI.
   }, MANAGED_HEALTH_POLL_MS);
 }
 
@@ -510,9 +529,16 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
       ...installedArtifacts.artifacts,
       ...installedArtifacts.custom_artifacts
     ];
-    const selectedModelId = models.some((model) => model.model_id === previous.selectedModelId)
+    const preservedSelectedModelId = models.some((model) => model.model_id === previous.selectedModelId)
       ? previous.selectedModelId
       : '';
+    const reportedModelId = status?.model_id && models.some((model) => model.model_id === status.model_id)
+      ? status.model_id
+      : '';
+    const autoSelectedModelId = preservedSelectedModelId || reportedModelId
+      ? ''
+      : selectStrongestInstalledManagedModelId(models, runtimeCatalog.runtimes, validations);
+    const selectedModelId = preservedSelectedModelId || reportedModelId || autoSelectedModelId;
     const selectedModel = models.find((model) => model.model_id === selectedModelId);
     const bindingTrusted =
       status?.state === 'Ready' &&
@@ -541,7 +567,7 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
     if (!bindingTrusted) clearManagedGatewayBinding();
     if (selectedModelId) await setManagedSelectedModel(selectedModelId);
     const runtimeError = status?.last_error;
-    if (runtimeError && !(!selectedModelId && /No managed model is selected/i.test(runtimeError))) {
+    if (runtimeError && !/No managed model is selected/i.test(runtimeError)) {
       managedRuntimeStore.update((state) => ({
         ...state,
         lastError: { code: 'runtime_unavailable', message: runtimeError }
@@ -587,7 +613,28 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
       clearManagedGatewayBinding();
       return;
     }
-    const requestedRuntimeId = state.preferredRuntimeId ?? readiness.selected_runtime_id;
+    const automaticRuntimeId = selectedModel
+      ? selectPreferredInstalledManagedRuntimeId(
+        selectedModel,
+        state.runtimeCatalog,
+        state.installedArtifacts,
+        readiness.selected_runtime_id
+      )
+      : readiness.selected_runtime_id;
+    const computeProfile = computeModeProfile(get(computeMode));
+    const modeRuntimeId = selectedModel
+      ? state.runtimeCatalog.find((runtime) =>
+        runtime.variant === computeProfile.runtimeVariant &&
+        selectedModel.compatible_runtime_ids.includes(runtime.runtime_id)
+      )?.runtime_id ?? null
+      : null;
+    const preferredRuntime = state.runtimeCatalog.find((runtime) => runtime.runtime_id === state.preferredRuntimeId);
+    // Compute mode is authoritative for the engine variant. A manually selected
+    // runtime is retained only when it matches the requested CPU/Vulkan variant;
+    // this prevents CPU mode from accidentally launching the Vulkan artifact.
+    const requestedRuntimeId = (preferredRuntime?.variant === computeProfile.runtimeVariant
+      ? preferredRuntime.runtime_id
+      : null) ?? modeRuntimeId ?? state.preferredRuntimeId ?? automaticRuntimeId;
     if (!requestedRuntimeId) {
       const error = { code: 'runtime_not_selected', message: 'No compute engine is selected' };
       managedRuntimeStore.update((current) => ({ ...current, readiness, binding: null, lastError: error }));
@@ -696,6 +743,15 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
           ? { code: 'runtime_unavailable', message: status.last_error }
           : null
     }));
+    if (
+      status.state === 'Ready' &&
+      status.model_state === 'Ready' &&
+      status.inference_ready === true &&
+      status.model_id === state.selectedModelId &&
+      typeof status.runtime_instance_id === 'string'
+    ) {
+      await confirmManagedBinding(readiness);
+    }
   } catch (error) {
     if (!stillCurrent()) {
       void refreshManagedRuntimeStatus();
@@ -846,9 +902,11 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
       state.status.model_state === 'Ready' &&
       state.status.inference_ready === true &&
       state.status.model_id === state.selectedModelId;
+    let runtimeWasStarted = false;
     if (!runningSelectedModel) {
       if (state.status?.state === 'Ready') await stopSelectedManagedRuntime();
       if (!stillCurrent()) return false;
+      runtimeWasStarted = true;
       await startSelectedManagedRuntime(readiness);
       if (!stillCurrent()) return false;
     }
@@ -870,7 +928,10 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
       }
       return false;
     }
-    await confirmManagedBinding(readiness);
+    // startSelectedManagedRuntime already confirms the binding after a fresh
+    // start. Confirm here only when the selected runtime was already running;
+    // otherwise one click would create duplicate approval cards.
+    if (!runtimeWasStarted) await confirmManagedBinding(readiness);
     if (!stillCurrent()) return false;
     return get(managedModelReady);
   } catch (error) {
@@ -940,6 +1001,7 @@ async function startClaimedLocalModelTurn(
     return false;
   }
   const submittedAtUnixMs = Date.now();
+  const effort = get(effortLevel);
   clearInferenceTimers();
   bufferedEarlyEvents = [];
   inferenceRequestStore.set({
@@ -947,6 +1009,7 @@ async function startClaimedLocalModelTurn(
     requestId,
     chatSessionId,
     modelId: binding.model_id,
+    effort,
     submittedAtUnixMs,
     acceptedAtUnixMs: null,
     firstTokenAtUnixMs: null,
@@ -963,11 +1026,17 @@ async function startClaimedLocalModelTurn(
   scheduleInferenceTimeout('acceptance', INFERENCE_TIMEOUTS_MS.acceptance, requestId);
 
   try {
-    const messages = get(chatMessages);
+    const messages = get(chatMessages).filter((message) =>
+      message.conversationId === chatSessionId ||
+      (!message.conversationId && chatSessionId === DEFAULT_CONVERSATION_ID)
+    );
     const toolsEnabled = get(agentPermissions).tools;
     const initialSeedIds = new Set(['seed-user', 'seed-assistant']);
     const nonSeedMessages = messages.filter((m) => !initialSeedIds.has(m.id));
-    const recentMessages = nonSeedMessages.slice(-4);
+    // The gateway limit counts the system message and the new prompt too.
+    // Keep two prior messages so system + history + current prompt stays within
+    // GatewayLimits.maximum_messages (4) on the third and later turns.
+    const recentMessages = nonSeedMessages.slice(-2);
     const serializedMessages = recentMessages.map((message) => {
       if (message.role === 'assistant' && toolsEnabled && message.toolCalls && message.toolCalls.length > 0) {
         return { role: message.role, content: message.body || '', tool_calls: message.toolCalls };
@@ -980,6 +1049,8 @@ async function startClaimedLocalModelTurn(
       modelId: binding.model_id,
       submittedAtUnixMs,
       maxTokens: MODEL_REQUEST_MAX_TOKENS,
+       seed: MODEL_REQUEST_SEED,
+      effort,
       prompt: cleanPrompt,
       fileIds,
       // Interface chrome may be in any registered language, but the backend
@@ -998,7 +1069,7 @@ async function startClaimedLocalModelTurn(
       !['submitted', 'cancelling', 'cancelled'].includes(current.lifecycle)
     ) return false;
     clearInferenceTimer('acceptance');
-    if (!appendAcceptedChatTurn(requestId, cleanPrompt, chatSessionId)) {
+    if (!appendAcceptedChatTurn(requestId, cleanPrompt, chatSessionId, effort)) {
       terminalizeCurrentRequest('failed', 'model.turn.failed', {
         code: 'chat_reducer_error',
         message: 'Unable to create the accepted chat response'
@@ -1027,7 +1098,7 @@ async function startClaimedLocalModelTurn(
       persistence: 'Off',
       lastError: null
     }));
-    if (!cancelling) scheduleInferenceTimeout('firstToken', INFERENCE_TIMEOUTS_MS.firstToken, requestId);
+    if (!cancelling) scheduleInferenceTimeout('firstToken', inferenceTimeoutsForCurrentBinding().firstToken, requestId);
     drainBufferedEarlyEvents(requestId);
     return true;
   } catch (error) {
@@ -1041,14 +1112,15 @@ async function startClaimedLocalModelTurn(
     bufferedEarlyEvents = [];
     const normalized = normalizeGatewayError(error);
     reportFilesRequestError(normalized);
-    inferenceRequestStore.update((state) => ({
-      ...state,
-      lifecycle: 'failed',
-      terminalAtUnixMs: Date.now(),
-      terminalMethod: 'model.turn.failed',
-      lastError: normalized
-    }));
-    modelGatewayStore.update((state) => ({ ...state, status: 'Failed', activeTurnId: null, lastError: normalized }));
+    // Acceptance can fail before the reducer has created chat messages. Keep
+    // the failed turn visible and retryable instead of leaving only a red
+    // header badge and an orphaned composer draft.
+    if (!get(chatMessages).some((message) => message.requestId === requestId)) {
+      if (appendAcceptedChatTurn(requestId, cleanPrompt, chatSessionId, effort)) {
+        setComposerDraft(cleanPrompt);
+      }
+    }
+    terminalizeCurrentRequest('failed', 'model.turn.failed', normalized);
     return false;
   }
 }
@@ -1158,9 +1230,13 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
   if (event.method === 'model.output.delta') {
     if (current.lifecycle === 'cancelling') return;
     if (!event.text) return;
-    appendAssistantChunk(event.request_id, event.text);
+    if (event.stream_channel === 'reasoning') {
+      appendAssistantReasoningChunk(event.request_id, event.text);
+    } else {
+      appendAssistantChunk(event.request_id, event.text);
+    }
     clearInferenceTimer('firstToken');
-    scheduleInferenceTimeout('inactivity', INFERENCE_TIMEOUTS_MS.inactivity, event.request_id);
+    scheduleInferenceTimeout('inactivity', inferenceTimeoutsForCurrentBinding().inactivity, event.request_id);
     inferenceRequestStore.update((state) => ({
       ...state,
       lifecycle: 'streaming',
@@ -1172,7 +1248,9 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
       ...state,
       status: 'Generating',
       modelCalled: event.model_called,
-      generatedText: `${state.generatedText}${event.text}`.slice(0, MAX_GENERATED_TEXT)
+      generatedText: event.stream_channel === 'reasoning'
+        ? state.generatedText
+        : `${state.generatedText}${event.text}`.slice(0, MAX_GENERATED_TEXT)
     }));
     return;
   }
@@ -1190,10 +1268,10 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
   if (event.method === 'model.tool.request' || event.method === 'model.turn.tool_calls') {
     if (current.lifecycle === 'cancelling') return;
     if (event.tool_calls) {
-      const toolCalls = event.tool_calls.map(tc => ({
+      const toolCalls = event.tool_calls.map((tc) => ({
         operation: tc.name,
         target: JSON.stringify(tc.arguments),
-        status: event.method === 'model.tool.request' ? 'WAITING' as const : 'PASS' as const,
+        status: 'WAITING' as const,
         elapsed: '-',
         detail: 'Tool execution requested',
         result: ''
@@ -1204,10 +1282,61 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
         lifecycle: 'streaming',
         receivedContent: true
       }));
+
+      // The sidecar emits the request before its terminal `tool_calls` event.
+      // A tool call is no longer a model-token stream, so the response
+      // watchdogs must not race the synchronous Rust -> sidecar execution.
+      if (event.method === 'model.tool.request') {
+        clearInferenceTimer('firstToken');
+        clearInferenceTimer('inactivity');
+        // Computer Use is a standing permission: when enabled, the Rust sidecar
+        // still enforces its allowlist, but the user is not prompted per action.
+        const call = event.tool_calls[0];
+        if (!call) {
+          terminalizeCurrentRequest('failed', 'model.turn.failed', {
+            code: 'invalid_payload',
+            message: 'Computer Use request contained no tool call'
+          });
+          return;
+        }
+        const onResult = (result: unknown): void => {
+          const failed = typeof result === 'object' && result !== null &&
+            'ok' in result && (result as { ok?: unknown }).ok === false;
+          if (failed) {
+            const detail = typeof result === 'object' && result !== null &&
+              'reason' in result ? String((result as { reason?: unknown }).reason ?? 'tool execution failed') : 'tool execution failed';
+            updateAssistantToolResult(event.request_id, 0, 'FAIL', detail);
+            terminalizeCurrentRequest('failed', 'model.turn.failed', {
+              code: 'tool_execution_failed',
+              message: detail
+            });
+            return;
+          }
+          setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
+            index === 0 ? { ...item, status: 'PASS' as const, result: JSON.stringify(result) } : item
+          ));
+          terminalizeCurrentRequest('completed', 'model.turn.completed');
+        };
+        const onError = (error: unknown): void => {
+          const normalized = normalizeGatewayError(error);
+          updateAssistantToolResult(event.request_id, 0, 'FAIL', normalized.message);
+          terminalizeCurrentRequest('failed', 'model.turn.failed', normalized);
+        };
+        const readOnlyWorkspaceTool =
+          (call.name === 'files.list' || call.name === 'files.read') &&
+          get(agentPermissions).files &&
+          get(workspaceStore).status === 'confirmed';
+        if ((call.name === 'computer_use' && get(agentPermissions).computerUse) || readOnlyWorkspaceTool) {
+          void runToolCall(call.name, call.arguments, undefined, call.id).then(onResult).catch(onError);
+        } else {
+          requestApprovalForTool(call.name, call.arguments, { onResult, onError });
+        }
+        return;
+      }
     }
-    if (event.method === 'model.tool.request') {
-      return; // Await real orchestration to continue
-    }
+    // `model.turn.tool_calls` is an informational terminal event for the
+    // current one-shot sidecar contract. It is not a failed model turn.
+    return;
   }
 
   if (event.method === 'model.turn.completed') {
@@ -1290,6 +1419,12 @@ function handleModelProtocolError(): void {
     ...state,
     lastError: { code: 'protocol_mismatch', message: 'Invalid typed model event received' }
   }));
+}
+
+function inferenceTimeoutsForCurrentBinding() {
+  return get(modelGatewayStore).binding?.provider_id === 'managed-llama-cpp'
+    ? { ...INFERENCE_TIMEOUTS_MS, ...MANAGED_INFERENCE_TIMEOUTS_MS }
+    : INFERENCE_TIMEOUTS_MS;
 }
 
 function scheduleInferenceTimeout(name: TimerName, delayMs: number, requestId: string): void {
@@ -1399,6 +1534,62 @@ function catalogIdentityOf(value: ManagedCatalogIdentity): ManagedCatalogIdentit
     catalog_version: value.catalog_version,
     catalog_digest: value.catalog_digest
   };
+}
+
+function selectStrongestInstalledManagedModelId(
+  models: readonly (ManagedModelSummary | ApprovedModelSummary)[],
+  runtimes: readonly ApprovedRuntimeSummary[],
+  installedArtifacts: readonly ManagedArtifactValidationSummary[]
+): string {
+  const installedVulkanRuntimeIds = new Set(
+    runtimes
+      .filter((runtime) => runtime.variant === 'vulkan')
+      .filter((runtime) => installedArtifacts.some((artifact) =>
+        artifact.kind === 'runtime' && artifact.artifact_id === runtime.runtime_id && artifact.installation_status === 'valid'
+      ))
+      .map((runtime) => runtime.runtime_id)
+  );
+  const preferred = models.find((model) => model.model_id === DEFAULT_BASE_MODEL_ID);
+  if (preferred && isInstalledLaunchable(preferred, runtimes, installedArtifacts)) {
+    return preferred.model_id;
+  }
+
+  const candidates = models.filter((model) =>
+    modelTrustKind(model) === 'approved_catalog' &&
+    !/custom(?:-|_)?hf/i.test(model.model_id) &&
+    installedArtifacts.some((artifact) =>
+    artifact.kind === 'model' && artifact.artifact_id === model.model_id && artifact.installation_status === 'valid'
+  ));
+  return [...candidates].sort((left, right) => {
+    const leftVision = /\b(?:vl|vision)\b/i.test(left.model_id) ? 1 : 0;
+    const rightVision = /\b(?:vl|vision)\b/i.test(right.model_id) ? 1 : 0;
+    const leftValidation = installedArtifacts.find((artifact) => artifact.kind === 'model' && artifact.artifact_id === left.model_id);
+    const rightValidation = installedArtifacts.find((artifact) => artifact.kind === 'model' && artifact.artifact_id === right.model_id);
+    const leftBytes = leftValidation?.observed_bytes ?? leftValidation?.expected_bytes ?? left.asset_bytes;
+    const rightBytes = rightValidation?.observed_bytes ?? rightValidation?.expected_bytes ?? right.asset_bytes;
+    const leftGpu = left.compatible_runtime_ids.some((runtimeId) => installedVulkanRuntimeIds.has(runtimeId)) ? 1 : 0;
+    const rightGpu = right.compatible_runtime_ids.some((runtimeId) => installedVulkanRuntimeIds.has(runtimeId)) ? 1 : 0;
+    return rightGpu - leftGpu || leftVision - rightVision || rightBytes - leftBytes || left.model_id.localeCompare(right.model_id);
+  })[0]?.model_id ?? '';
+}
+function selectPreferredInstalledManagedRuntimeId(
+  model: ManagedModelSummary | ApprovedModelSummary,
+  runtimes: readonly ApprovedRuntimeSummary[],
+  installedArtifacts: readonly ManagedArtifactValidationSummary[],
+  fallbackRuntimeId: string | null | undefined
+): string | null {
+  const compatibleInstalledRuntimes = runtimes.filter((runtime) =>
+    model.compatible_runtime_ids.includes(runtime.runtime_id) &&
+    installedArtifacts.some((artifact) =>
+      artifact.kind === 'runtime' &&
+      artifact.artifact_id === runtime.runtime_id &&
+      artifact.installation_status === 'valid'
+    )
+  );
+  return compatibleInstalledRuntimes.find((runtime) => runtime.variant === 'vulkan')?.runtime_id
+    ?? compatibleInstalledRuntimes.find((runtime) => runtime.runtime_id === fallbackRuntimeId)?.runtime_id
+    ?? compatibleInstalledRuntimes[0]?.runtime_id
+    ?? null;
 }
 
 function isInstalledLaunchable(

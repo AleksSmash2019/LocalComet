@@ -18,10 +18,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from modules.skills.skills_manager import SkillsManager
-from modules.skills.skills_contract import SkillError
+from modules.skills.skills_contract import ALLOWED_PERMISSIONS, SkillError
 
 MAX_INVOKE_STDOUT_BYTES = 64 * 1024
 MAX_INVOKE_STDERR_BYTES = 16 * 1024
+MAX_INVOKE_TIMEOUT_SECONDS = 30
 
 
 class SkillInvokeError(Exception):
@@ -68,10 +69,26 @@ def _executable_for_entrypoint(entrypoint: Path) -> list[str]:
 
 
 def invoke_skill(
-    skill_id: str, arguments: Mapping[str, Any] | list[Any] | None
+    skill_id: str,
+    arguments: Mapping[str, Any] | list[Any] | None,
+    requested_permissions: list[str],
 ) -> dict[str, Any]:
     try:
         manager = SkillsManager(_skills_root())
+        manager.ensure_builtins()
+        manifest_permissions = set(manager.inspect_permissions(skill_id))
+        invalid_permissions = sorted(set(requested_permissions) - set(ALLOWED_PERMISSIONS))
+        if invalid_permissions:
+            raise SkillInvokeError(
+                "PERMISSION_UNKNOWN",
+                f"unknown requested skill permissions: {', '.join(invalid_permissions)}",
+            )
+        missing_permissions = sorted(set(requested_permissions) - manifest_permissions)
+        if missing_permissions:
+            raise SkillInvokeError(
+                "PERMISSION_DENIED",
+                f"skill manifest does not grant requested permissions: {', '.join(missing_permissions)}",
+            )
         entrypoint = manager.entrypoint_path(skill_id)
     except SkillError as exc:
         raise SkillInvokeError(exc.code.value, exc.message) from exc
@@ -86,7 +103,7 @@ def invoke_skill(
             capture_output=True,
             shell=False,
             check=False,
-            timeout=180,
+            timeout=MAX_INVOKE_TIMEOUT_SECONDS,
             cwd=str(entrypoint.parent),
             env=_sandbox_env(),
         )
@@ -95,7 +112,7 @@ def invoke_skill(
     except OSError as exc:
         raise SkillInvokeError("internal_error", f"skill invocation failed: {exc}") from exc
     except subprocess.TimeoutExpired as exc:
-        raise SkillInvokeError("tool_timeout", f"skill timed out after 180s: {exc}") from exc
+        raise SkillInvokeError("tool_timeout", f"skill timed out after {MAX_INVOKE_TIMEOUT_SECONDS}s: {exc}") from exc
 
     stdout = _bounded_read(proc.stdout or b"", MAX_INVOKE_STDOUT_BYTES)
     stderr = _bounded_read(proc.stderr or b"", MAX_INVOKE_STDERR_BYTES)
@@ -116,9 +133,21 @@ def invoke_skill(
 
 
 def _skills_root() -> Path:
+    override = os.environ.get("LOCALCOMET_SKILLS_ROOT", "").strip()
+    if override:
+        candidate = Path(override)
+    else:
+        app_data = os.environ.get("LOCALCOMET_APP_DATA_ROOT", "").strip()
+        if app_data:
+            candidate = Path(app_data) / "skills"
+        else:
+            local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+            candidate = Path(local_app_data) / "LocalComet" / "skills" if local_app_data else Path()
+    if candidate and candidate.is_absolute():
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate.resolve()
     root = Path(__file__).resolve().parent.parent / "skills"
-    if not root.exists():
-        root.mkdir(parents=True, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=True)
     return root
 
 

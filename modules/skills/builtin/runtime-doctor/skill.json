@@ -1,0 +1,12 @@
+{
+  "contract": "localcomet.skill/1.0",
+  "id": "runtime-doctor",
+  "name": "Доктор runtime",
+  "version": "1.0.0",
+  "description": "Быстро проверяет версии системных компонентов и доступность базового runtime; команды фиксированы и ограничены.",
+  "author": "LocalComet",
+  "entrypoint": "entrypoint.py",
+  "permissions": ["settings.read", "process.spawn"],
+  "capabilities": ["runtime.health"],
+  "dependencies": []
+}

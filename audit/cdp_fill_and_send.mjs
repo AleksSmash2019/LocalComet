@@ -1,7 +1,9 @@
 const prompt = process.argv.slice(2).join(' ') || 'Кратко ответь по-русски: это проверка локального inference flow LocalComet.';
 
+const cdpPort = process.env.CDP_PORT || '9222';
+
 async function getTarget() {
-  const response = await fetch('http://127.0.0.1:9222/json/list');
+  const response = await fetch(`http://127.0.0.1:${cdpPort}/json/list`);
   const targets = await response.json();
   const target = targets.find((item) => item.type === 'page');
   if (!target?.webSocketDebuggerUrl) throw new Error('No WebView2 page target');

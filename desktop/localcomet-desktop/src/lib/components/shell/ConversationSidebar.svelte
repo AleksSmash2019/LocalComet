@@ -2,7 +2,7 @@
   import Icon from '$lib/components/common/Icon.svelte';
   import LocalCometLogo from '$lib/components/common/LocalCometLogo.svelte';
   import { conversationStore, createConversation, selectConversation } from '$lib/stores/conversationStore';
-  import { activeWorkspace, closeSettings, openSettings, setActiveWorkspace, settingsPanelOpen, sidebarExpanded } from '$lib/stores/shellStore';
+  import { activeWorkspace, closeSettings, openSettings, setActiveWorkspace, setComposerDraft, settingsPanelOpen, sidebarExpanded } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
   type Translate = (key: string) => string;
@@ -10,6 +10,20 @@
   function tTitle(value: string, translate: Translate): string {
     const v = translate('item.' + value);
     return v.startsWith('item.') ? value : v;
+  }
+
+  function startNewConversation(): void {
+    closeSettings();
+    setActiveWorkspace('chat');
+    createConversation();
+    setComposerDraft('');
+  }
+
+  function openConversation(id: string): void {
+    closeSettings();
+    setActiveWorkspace('chat');
+    selectConversation(id);
+    setComposerDraft('');
   }
 
   function openChat(): void {
@@ -51,13 +65,13 @@
       <button
         type="button"
         class="nav-button"
-        aria-label="Подобрать модель"
-        title="Подобрать модель"
+        aria-label={$t('modelfit.title')}
+        title={$t('modelfit.title')}
         class:active={$activeWorkspace === 'modelfit' && !$settingsPanelOpen}
         onclick={() => setActiveWorkspace('modelfit')}
       >
         <Icon name="hardware" size={16} />
-        Подобрать модель
+        {$t('modelfit.title')}
       </button>
     </div>
 
@@ -66,7 +80,7 @@
       class="plain-button new-conversation-button"
       aria-label={$t('sidebar.new_conversation')}
       title={$t('sidebar.new_conversation')}
-      onclick={() => createConversation()}
+      onclick={startNewConversation}
     >
       <div class="new-conv-left">
         <Icon name="add" size={16} />
@@ -96,7 +110,7 @@
             class="conversation-button"
             class:selected={$conversationStore.activeId === conversation.id}
             aria-current={$conversationStore.activeId === conversation.id ? 'page' : undefined}
-            onclick={() => selectConversation(conversation.id)}
+            onclick={() => openConversation(conversation.id)}
           >
             <span>{tTitle(conversation.title, $t)}</span>
           </button>

@@ -89,13 +89,13 @@ describe('component smoke tests', () => {
     expect(html).not.toContain('request-metrics');
   });
 
-  it('renders enabled approval actions for a pending tool call', () => {
+  it('keeps approval card empty while guarded tool calls run in the background', () => {
     requestApprovalForTool('files.write', { path: 'a.txt' });
     const html = render(ApprovalCard).body;
-    expect(html).toContain('Подтверждение действия');
-    expect(html).toContain('files.write');
-    expect(html).toContain('Подтвердить');
-    expect(html).toContain('Отклонить');
+    expect(html).toContain('Нет запросов на подтверждение');
+    expect(html).not.toContain('files.write');
+    expect(html).not.toContain('Подтвердить');
+    expect(html).not.toContain('Отклонить');
   });
 
   it('keeps theme controls accessible in Settings', () => {

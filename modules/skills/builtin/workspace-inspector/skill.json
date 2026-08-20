@@ -1,0 +1,12 @@
+{
+  "contract": "localcomet.skill/1.0",
+  "id": "workspace-inspector",
+  "name": "Проводник рабочей области",
+  "version": "1.0.0",
+  "description": "Безопасно перечисляет файлы только в подтверждённой рабочей области; вывод ограничен и удобен для любой модели.",
+  "author": "LocalComet",
+  "entrypoint": "entrypoint.py",
+  "permissions": ["filesystem.read"],
+  "capabilities": ["workspace.list", "workspace.inspect"],
+  "dependencies": []
+}

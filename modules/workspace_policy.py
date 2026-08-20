@@ -50,7 +50,13 @@ class WorkspacePolicy:
         Resolution happens before the containment check so symlink/junction
         escape is caught (the resolved target, not the raw string, is tested).
         """
-        target = Path(requested).resolve()
+        raw = str(requested)
+        if raw.startswith(("\\\\", "//")):
+            raise WorkspacePolicyError("UNC paths are not allowed")
+        candidate = Path(raw)
+        if candidate.is_absolute() and len(raw) >= 2 and raw[1] != ":":
+            raise WorkspacePolicyError("non-drive absolute paths are not allowed")
+        target = candidate.resolve()
         try:
             target.relative_to(self._path)
         except ValueError as exc:

@@ -149,7 +149,11 @@ class ValidateToolCallTests(unittest.TestCase):
             "computer_use": {"action": "click", "coordinate": [100, 100], "text": "hello"},
             "web.search": {"query": "rust tauri"},
             "web.fetch": {"url": "https://example.com"},
-            "skills.invoke": {"skill_id": "demo-echo", "arguments": ["a", 1]},
+            "skills.invoke": {
+                "skill_id": "demo-echo",
+                "permissions": ["ui.extension"],
+                "arguments": ["a", 1],
+            },
             "system.time": {},
         }
         self.assertEqual(set(valid_arguments), set(TOOL_REGISTRY))
@@ -376,10 +380,8 @@ class MultiTurnMessagesTests(unittest.TestCase):
             ({"role": "system", "content": "s"}, {"role": "user", "content": "u"}),
             tools_enabled=False,
         )
-        _raises(
-            lambda: self._validate(({"role": "assistant", "content": "a"},), tools_enabled=False),
-            "invalid_payload",
-        )
+        # Plain assistant history is valid even when the current turn has no tools.
+        self._validate(({"role": "assistant", "content": "a"},), tools_enabled=False)
         _raises(
             lambda: self._validate(
                 ({"role": "tool", "content": "t", "tool_call_id": "c1"},), tools_enabled=False
@@ -614,6 +616,8 @@ class ToolCallIntegrationTests(unittest.TestCase):
             "model_id": "local-model",
             "submitted_at_unix_ms": 1_700_000_000_000,
             "max_tokens": 128,
+            "seed": 42,
+            "effort": "off",
             "prompt": "hello",
             "assistant_context": trusted_assistant_context_payload("ru", False, tools),
             "binding_fingerprint": binding_fingerprint,
@@ -1175,6 +1179,8 @@ class CrossLayerParityTests(unittest.TestCase):
                 "model_id": identity["modelId"],
                 "submitted_at_unix_ms": identity["submittedAtUnixMs"],
                 "max_tokens": identity["maxTokens"],
+                "seed": 42,
+                "effort": "off",
                 "prompt": "hello",
                 "assistant_context": trusted_assistant_context_payload(
                     "ru", False, tuple(enabled["permittedTools"])

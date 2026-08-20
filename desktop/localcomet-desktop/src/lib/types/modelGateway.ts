@@ -1,4 +1,6 @@
 export type ProviderId = 'openai-compatible-local' | 'managed-llama-cpp';
+import type { EffortLevel } from './effort';
+
 export type HarnessId = 'minimal' | 'native-localcomet';
 export type AssistantLocale = 'ru' | 'en';
 export type GatewayStatus =
@@ -75,6 +77,8 @@ export interface ModelTurnStartResponse {
   readonly model_id: string;
   readonly submitted_at_unix_ms: number;
   readonly max_tokens: number;
+  readonly seed: number;
+  readonly effort: EffortLevel;
   readonly binding_fingerprint: string;
   readonly file_context?: import('./files').FilesContextReport;
 }
@@ -113,6 +117,7 @@ export interface ModelGatewayEvent {
   readonly turn_id: string;
   readonly state: 'Streaming' | 'Completed' | 'Cancelled' | 'TimedOut' | 'Failed' | 'ToolCalls';
   readonly text: string | null;
+  readonly stream_channel?: 'content' | 'reasoning';
   readonly model_called: boolean;
   readonly tools_executed: number;
   readonly tool_calls?: readonly ModelToolCall[];
@@ -155,6 +160,7 @@ export interface InferenceRequestState {
   readonly requestId: string | null;
   readonly chatSessionId: string | null;
   readonly modelId: string | null;
+  readonly effort?: EffortLevel | null;
   readonly submittedAtUnixMs: number | null;
   readonly acceptedAtUnixMs: number | null;
   readonly firstTokenAtUnixMs: number | null;

@@ -1,5 +1,23 @@
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+
+type ModelFitInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+type ModelFitBridgeWindow = Window & { __modelfit_invoke?: ModelFitInvoke };
+
+export function installModelFitBridge(): () => void {
+  const host = window as ModelFitBridgeWindow;
+  const previousInvoke = host.__modelfit_invoke;
+  host.__modelfit_invoke = (command, args) => {
+    if (command !== 'scan_hardware') {
+      return Promise.reject(new Error('ModelFit command is not allowlisted'));
+    }
+    return invoke(command, args);
+  };
+  return () => {
+    if (previousInvoke) host.__modelfit_invoke = previousInvoke;
+    else delete host.__modelfit_invoke;
+  };
+}
 
 export async function openModelFitWindow(): Promise<void> {
   const appWindow = new WebviewWindow('modelfit', {
@@ -18,10 +36,4 @@ export async function openModelFitWindow(): Promise<void> {
   appWindow.once('tauri://error', (e) => {
     console.error('Failed to create ModelFit window:', e);
   });
-}
-
-/** Expose the Tauri invoke function on window so the modelfit iframe can use it. */
-export function exposeInvokeForModelFit(): void {
-  // @ts-ignore
-  window.__modelfit_invoke = invoke;
 }

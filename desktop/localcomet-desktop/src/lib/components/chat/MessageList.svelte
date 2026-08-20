@@ -1,5 +1,6 @@
 <script lang="ts">
   import EmptyState from '$lib/components/common/EmptyState.svelte';
+  import { invoke } from '@tauri-apps/api/core';
   import { chatMessages, composerDraft, openModelSetup, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import {
     inferenceBusy,
@@ -104,6 +105,14 @@
 
   let lastSpokenRequestId: string | null = null;
 
+  async function speakRussianLocally(text: string): Promise<void> {
+    try {
+      await invoke('speak_local_text', { text, language: 'ru-RU' });
+    } catch {
+      // Local-only speech must never fall back to browser/Google synthesis.
+    }
+  }
+
   onDestroy(() => {
     if (copyTimeout) {
       clearTimeout(copyTimeout);
@@ -114,10 +123,8 @@
     if ($voiceMode && $inferenceRequestStore.lifecycle === 'completed' && $inferenceRequestStore.requestId && $inferenceRequestStore.requestId !== lastSpokenRequestId) {
       lastSpokenRequestId = $inferenceRequestStore.requestId;
       const lastMessage = $chatMessages.find(m => m.requestId === lastSpokenRequestId && m.role === 'assistant');
-      if (lastMessage && lastMessage.body) {
-        const utterance = new SpeechSynthesisUtterance(lastMessage.body);
-        utterance.lang = $locale === 'ru' ? 'ru-RU' : 'en-US';
-        window.speechSynthesis.speak(utterance);
+      if (lastMessage && lastMessage.body && $locale === 'ru') {
+        void speakRussianLocally(lastMessage.body);
       }
     }
   }
@@ -179,6 +186,12 @@
                 <p>{block.text}</p>
               {/if}
             {/each}
+            {#if message.reasoning && message.reasoning.length > 0}
+              <details class="reasoning-block">
+                <summary>{$t('reasoning.title')}</summary>
+                <p class="reasoning-text">{message.reasoning}</p>
+              </details>
+            {/if}
           {/if}
           <div class="message-actions">
             <button
@@ -201,9 +214,14 @@
               {/each}
             </div>
           {/if}
-          {#if message.role === 'assistant' && message.state && message.state !== 'completed'}
+            {#if message.role === 'assistant' && message.state && message.state !== 'completed'}
             <div class="request-result">
               <span class="request-state" data-state={message.state}>{$t(stateKey(message.state))}</span>
+              {#if message.error && message.state === 'timed_out'}
+                <span class="request-error-detail">{$t('chat.request_timed_out_detail')}</span>
+              {:else if message.error && message.state === 'failed'}
+                <span class="request-error-detail">{$t('chat.request_failed_detail')}</span>
+              {/if}
               {#if ['cancelled', 'timed_out', 'failed'].includes(message.state)}
                 <button
                   type="button"
@@ -319,6 +337,39 @@
     overflow-x: auto;
   }
 
+  .reasoning-block {
+    margin-top: 12px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--lc-line) 72%, transparent);
+    border-radius: var(--lc-radius-sm);
+    background: color-mix(in srgb, var(--lc-panel-soft) 52%, transparent);
+    color: var(--lc-muted);
+  }
+
+  .reasoning-block summary {
+    color: var(--lc-faint);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    user-select: none;
+  }
+
+  .reasoning-block summary:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--lc-accent) 70%, transparent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .reasoning-text {
+    margin-top: 8px;
+    max-height: 260px;
+    overflow: auto;
+    color: var(--lc-muted);
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+
   .user .bubble {
     border-color: transparent;
     background: var(--lc-accent);
@@ -350,6 +401,14 @@
 
   .user .request-state {
     color: currentColor;
+  }
+
+  .request-error-detail {
+    max-width: min(620px, 100%);
+    overflow-wrap: anywhere;
+    color: var(--lc-danger);
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .request-result {

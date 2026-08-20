@@ -1,0 +1,12 @@
+{
+  "contract": "localcomet.skill/1.0",
+  "id": "project-inspector",
+  "name": "Инспектор проекта",
+  "version": "1.0.0",
+  "description": "Находит релевантные исходники и конфигурацию в рабочей области, возвращая короткую карту проекта без чтения всего дерева.",
+  "author": "LocalComet",
+  "entrypoint": "entrypoint.py",
+  "permissions": ["filesystem.read"],
+  "capabilities": ["project.map", "project.find"],
+  "dependencies": []
+}

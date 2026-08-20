@@ -1,11 +1,11 @@
 
 from __future__ import annotations
+from modules.json_io import read_json as safe_json_load, write_json as safe_json_dump
 
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 import hashlib
-import json
 import uuid
 
 SCHEMA_VERSION = "v6.47d"
@@ -29,21 +29,6 @@ def make_id(prefix: str) -> str:
 
 def sha256_text(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8", errors="replace")).hexdigest()
-
-
-def safe_json_load(path: Path, default: Any) -> Any:
-    try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-    return default
-
-
-def safe_json_dump(path: Path, payload: Any) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def run_dir(run_id: str) -> Path:

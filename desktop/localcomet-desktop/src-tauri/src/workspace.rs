@@ -48,6 +48,12 @@ pub fn validate_workspace_path(raw: &Path) -> Result<PathBuf, WorkspaceError> {
     if raw.as_os_str().is_empty() {
         return Err(WorkspaceError::InvalidPath("empty path".into()));
     }
+    #[cfg(windows)]
+    if raw.to_string_lossy().starts_with(r"\\") {
+        return Err(WorkspaceError::InvalidPath(
+            "UNC workspaces are not allowed".into(),
+        ));
+    }
     // Inspect the caller-supplied path before canonicalization. Canonicalization
     // resolves a link, so checking its metadata afterwards only examines the
     // target and cannot enforce the no-link workspace boundary.
@@ -99,10 +105,21 @@ fn reject_raw_path_links(raw: &Path) -> Result<(), WorkspaceError> {
     Ok(())
 }
 
+fn portable_workspace_path(path: &Path) -> String {
+    let value = path.to_string_lossy().to_string();
+    #[cfg(windows)]
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        if !rest.starts_with(r"UNC\") {
+            return rest.to_string();
+        }
+    }
+    value
+}
+
 pub fn workspace_digest(path: &Path) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(path.to_string_lossy().as_bytes());
+    hasher.update(portable_workspace_path(path).as_bytes());
     let result = hasher.finalize();
     result.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -119,7 +136,7 @@ pub fn change_workspace(
     }
 
     let identity = WorkspaceIdentity {
-        canonical_path: canonical.display().to_string(),
+        canonical_path: portable_workspace_path(&canonical),
         digest: workspace_digest(&canonical),
     };
 

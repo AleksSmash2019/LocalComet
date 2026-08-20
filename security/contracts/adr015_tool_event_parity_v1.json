@@ -7,6 +7,7 @@
     "modelId": "local-model",
     "submittedAtUnixMs": 1700000000000,
     "maxTokens": 128,
+    "seed": 42,
     "bindingFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   },
   "enabled": {

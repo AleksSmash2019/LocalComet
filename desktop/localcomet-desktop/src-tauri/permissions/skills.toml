@@ -1,0 +1,34 @@
+[[permission]]
+identifier = "allow-skills-list"
+description = "Allow listing installed skills (read-only)."
+commands.allow = [
+  "skills_list",
+]
+
+[[permission]]
+identifier = "allow-skills-install"
+description = "Allow installing a skill after explicit approval."
+commands.allow = [
+  "skills_install",
+]
+
+[[permission]]
+identifier = "allow-skills-enable"
+description = "Allow enabling a skill after explicit approval."
+commands.allow = [
+  "skills_enable",
+]
+
+[[permission]]
+identifier = "allow-skills-disable"
+description = "Allow disabling a skill after explicit approval."
+commands.allow = [
+  "skills_disable",
+]
+
+[[permission]]
+identifier = "allow-skills-uninstall"
+description = "Allow uninstalling a skill after explicit approval."
+commands.allow = [
+  "skills_uninstall",
+]

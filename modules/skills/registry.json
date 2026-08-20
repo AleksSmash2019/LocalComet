@@ -2,7 +2,7 @@
   "demo-echo": {
     "name": "Demo Echo",
     "version": "0.1.0",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "permissions": [
       "ui.extension"
     ],
@@ -13,7 +13,7 @@
   "verify-echo-174869": {
     "name": "Verify Echo",
     "version": "0.1.0",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "permissions": [
       "ui.extension"
     ],
@@ -24,7 +24,7 @@
   "verify-echo-655999": {
     "name": "Verify Echo",
     "version": "0.1.0",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "permissions": [
       "ui.extension"
     ],
@@ -117,7 +117,7 @@
       "process.spawn"
     ],
     "entrypoint": "entrypoint.py",
-    "sha256": "fb9a96866c525f4173f7dfd6f83b78578975603a19a28bd75af2fce7f7ed8cec",
+    "sha256": "69cfb53f47c931908551a6a632b28e8dbf7df229f0eff27cd800f8dcff87d643",
     "path": "installed\\log-sleuth"
   },
   "prompt-lab": {

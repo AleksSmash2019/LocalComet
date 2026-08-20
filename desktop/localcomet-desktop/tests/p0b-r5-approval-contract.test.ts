@@ -216,7 +216,7 @@ describe('p0b-r5-approval-contract', () => {
     await startManagedRuntime(modelId, customSha256);
 
     expect(invokeCalls).toEqual([
-      { command: 'request_approval', args: { tool: 'runtime.start', input: { model_id: modelId, custom_sha256: customSha256 } } },
+      { command: 'request_approval', args: { tool: 'runtime.start', input: { model_id: modelId, custom_sha256: customSha256, ctx_size_override: null, gpu_layers_override: null } } },
       {
         command: 'managed_runtime_start',
         args: {

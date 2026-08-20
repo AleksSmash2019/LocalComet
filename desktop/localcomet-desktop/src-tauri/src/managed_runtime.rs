@@ -50,6 +50,7 @@ const REQUIRED_FLAGS: &[&str] = &[
     "--no-webui",
     "--no-agent",
     "--jinja",
+    "--reasoning-format",
     "--ctx-size",
     "--n-predict",
     "--alias",
@@ -399,6 +400,28 @@ impl ManagedRuntimeSupervisor {
             .map_err(BridgeError::from)
     }
 
+    pub(crate) fn runtime_start_approval_input_with_overrides(
+        &self,
+        model_id: &str,
+        custom_sha256: Option<&str>,
+        runtime_id: Option<&str>,
+        ctx_size_override: Option<u32>,
+        gpu_layers_override: Option<u32>,
+    ) -> Result<Value, BridgeError> {
+        let mut input = self.runtime_start_approval_input(model_id, custom_sha256, runtime_id)?;
+        if let Some(object) = input.as_object_mut() {
+            object.insert(
+                "ctx_size_override".into(),
+                serde_json::json!(ctx_size_override),
+            );
+            object.insert(
+                "gpu_layers_override".into(),
+                serde_json::json!(gpu_layers_override),
+            );
+        }
+        Ok(input)
+    }
+
     pub(crate) fn ensure_trusted_model_start(
         &self,
         model_id: &str,
@@ -643,6 +666,12 @@ impl ManagedRuntimeSupervisor {
         Ok(attempt)
     }
 
+    fn is_partial_gpu_offload(accelerated: bool, gpu_layers_override: Option<u32>) -> bool {
+        accelerated
+            && (gpu_layers_override.is_none()
+                || matches!(gpu_layers_override, Some(layers) if (1..99).contains(&layers)))
+    }
+
     fn start_inner(
         &self,
         model_id: &str,
@@ -719,7 +748,15 @@ impl ManagedRuntimeSupervisor {
         let mut sys = sysinfo::System::new_all();
         sys.refresh_memory();
         let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
-        if available_ram_gb < model_size_gb + 0.5 {
+        let accelerated = launch.runtime_id.contains("vulkan");
+        // A partial Vulkan launch intentionally keeps only part of the GGUF on
+        // host RAM. Do not reject it by comparing all file bytes with available
+        // RAM; llama.cpp is authoritative for the actual layer allocation and
+        // readiness probe. CPU-only and full-host paths retain the conservative
+        // guard, while the bounded numeric hybrid profile can proceed.
+        if !Self::is_partial_gpu_offload(accelerated, gpu_layers_override)
+            && available_ram_gb < model_size_gb + 0.5
+        {
             return Err(ManagedRuntimeError::new(
                 "model_does_not_fit",
                 format!(
@@ -1690,6 +1727,8 @@ fn runtime_args(
         // it stops a future runtime bump from silently flipping that default.
         // REQUIRED_FLAGS below makes an engine without the flag fail closed.
         OsString::from("--jinja"),
+        OsString::from("--reasoning-format"),
+        OsString::from("deepseek"),
     ]);
 
     let model_size_bytes = std::fs::metadata(model).map(|m| m.len()).unwrap_or(0);
@@ -1712,26 +1751,52 @@ fn runtime_args(
         }
     }
 
-    let final_ctx_size = ctx_size_override.unwrap_or(ctx_size);
+    let auto_gpu_fit = accelerated && gpu_layers_override.is_none();
+    let auto_context_fit = auto_gpu_fit && ctx_size_override.is_none();
 
-    // Context and generation budgets, dynamically scaled to prevent OOM.
-    args.push(OsString::from("--ctx-size"));
-    args.push(OsString::from(final_ctx_size.to_string()));
+    // Let llama.cpp fit unset GPU/context arguments to the actual device when
+    // GPU mode has no explicit layer override. A bounded fit context prevents a
+    // large model's native context from consuming the whole VRAM budget.
+    if auto_gpu_fit {
+        args.push(OsString::from("--fit"));
+        args.push(OsString::from("on"));
+        if auto_context_fit {
+            args.push(OsString::from("--fit-ctx"));
+            args.push(OsString::from("2048"));
+        } else {
+            args.push(OsString::from("--ctx-size"));
+            args.push(OsString::from(
+                ctx_size_override
+                    .unwrap_or(ctx_size)
+                    .clamp(1024, 131_072)
+                    .to_string(),
+            ));
+        }
+    } else {
+        args.push(OsString::from("--ctx-size"));
+        args.push(OsString::from(
+            ctx_size_override
+                .unwrap_or(ctx_size)
+                .clamp(1024, 131_072)
+                .to_string(),
+        ));
+    }
     args.push(OsString::from("--n-predict"));
     args.push(OsString::from("4096"));
     args.push(OsString::from("--alias"));
     args.push(OsString::from(alias));
     if accelerated {
-        // GPU offload for the Vulkan runtime: move every layer to the device.
-        // The flag is appended last so positional assertions on earlier
-        // arguments stay stable across runtimes.
-        args.push(OsString::from("--gpu-layers"));
-        args.push(OsString::from(
-            gpu_layers_override.unwrap_or(99).to_string(),
-        ));
+        if let Some(layers) = gpu_layers_override {
+            // Explicit Hybrid is reproducible: keep the requested layer count
+            // and disable fit from changing manually selected launch knobs.
+            args.push(OsString::from("--fit"));
+            args.push(OsString::from("off"));
+            args.push(OsString::from("--gpu-layers"));
+            args.push(OsString::from(layers.min(99).to_string()));
+        }
     } else if let Some(layers) = gpu_layers_override {
         args.push(OsString::from("--gpu-layers"));
-        args.push(OsString::from(layers.to_string()));
+        args.push(OsString::from(layers.min(99).to_string()));
     }
     args
 }
@@ -2549,6 +2614,12 @@ pub async fn managed_runtime_start_trusted(
     ctx_size_override: Option<u32>,
     gpu_layers_override: Option<u32>,
 ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
+    if ctx_size_override.is_some() || gpu_layers_override.is_some() {
+        return Err(BridgeError::new(
+            "runtime_override_requires_approval",
+            "trusted runtime start does not accept unapproved overrides",
+        ));
+    }
     if model_id.is_empty() || model_id.len() > 96 || model_id.chars().any(char::is_whitespace) {
         return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
     }
@@ -2602,10 +2673,12 @@ pub async fn managed_runtime_start(
     }) {
         return Err(ManagedRuntimeError::new("invalid_payload", "invalid runtime id").into());
     }
-    let input = runtime.runtime_start_approval_input(
+    let input = runtime.runtime_start_approval_input_with_overrides(
         &model_id,
         custom_sha256.as_deref(),
         runtime_id.as_deref(),
+        ctx_size_override,
+        gpu_layers_override,
     )?;
     crate::approval_commands::validate_approval_token(
         &approval,
@@ -2824,7 +2897,24 @@ mod tests {
     }
 
     #[test]
-    fn accelerated_runtime_args_request_full_gpu_offload() {
+    fn gpu_fit_bypasses_full_file_size_host_ram_preflight_only_for_vulkan() {
+        assert!(ManagedRuntimeSupervisor::is_partial_gpu_offload(
+            true,
+            Some(8)
+        ));
+        assert!(!ManagedRuntimeSupervisor::is_partial_gpu_offload(
+            false,
+            Some(8)
+        ));
+        assert!(!ManagedRuntimeSupervisor::is_partial_gpu_offload(
+            true,
+            Some(0)
+        ));
+        assert!(ManagedRuntimeSupervisor::is_partial_gpu_offload(true, None));
+    }
+
+    #[test]
+    fn accelerated_runtime_args_use_llama_auto_fit_when_unset() {
         let args = runtime_args(
             Path::new(r"C:\m\model.gguf"),
             None,
@@ -2840,7 +2930,31 @@ mod tests {
             .map(|item| item.to_string_lossy())
             .collect::<Vec<_>>()
             .join(" ");
-        assert!(joined.contains("--gpu-layers 99"));
+        assert!(joined.contains("--fit on"));
+        assert!(joined.contains("--fit-ctx 2048"));
+        assert!(!joined.contains("--gpu-layers"));
+    }
+
+    #[test]
+    fn explicit_hybrid_runtime_args_keep_manual_layer_override() {
+        let args = runtime_args(
+            Path::new(r"C:\m\model.gguf"),
+            None,
+            12345,
+            Path::new(r"C:\k\key.txt"),
+            "alias",
+            true,
+            Some(2048),
+            Some(8),
+        );
+        let joined = args
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--fit off"));
+        assert!(joined.contains("--gpu-layers 8"));
+        assert!(joined.contains("--ctx-size 2048"));
     }
 
     #[test]

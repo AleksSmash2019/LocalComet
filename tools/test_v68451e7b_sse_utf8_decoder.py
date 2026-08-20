@@ -18,6 +18,8 @@ from typing import Any
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from tools.test_fixtures.assertions import assert_condition
+from tools.test_fixtures.assertions import make_gateway_error_assertion
 
 from modules.local_model_gateway_ru import (
     GatewayError,
@@ -27,19 +29,7 @@ from modules.local_model_gateway_ru import (
 )
 
 
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def _raises(fn, code: str | None = None) -> None:
-    try:
-        fn()
-    except GatewayError as exc:
-        if code is not None:
-            _assert(exc.code == code, f"Expected {code}, got {exc.code}")
-        return
-    raise AssertionError("Expected GatewayError")
+assert_gateway_error = make_gateway_error_assertion(GatewayError)
 
 
 def _make_delta_event(content: str) -> bytes:
@@ -49,7 +39,7 @@ def _make_delta_event(content: str) -> bytes:
         ensure_ascii=False,
     ).encode("utf-8")
     result = b"data: " + payload + b"\n\n"
-    _assert(b"\xff" not in result and b"\xfe" not in result,
+    assert_condition(b"\xff" not in result and b"\xfe" not in result,
             "delta event contains raw control bytes")
     return result
 
@@ -131,7 +121,7 @@ def test_ascii_split_across_chunks() -> None:
     event = _make_delta_event("hello") + _make_done_event()
     for split_pos in range(1, len(event)):
         deltas = _simulate_stream([event[:split_pos], event[split_pos:]])
-        _assert(deltas == ["hello"], f"ASCII split at {split_pos} produced {deltas!r}")
+        assert_condition(deltas == ["hello"], f"ASCII split at {split_pos} produced {deltas!r}")
     print("PASS test_ascii_split_across_chunks")
 
 
@@ -144,10 +134,10 @@ def test_cyrillic_split_after_first_byte() -> None:
     content_bytes = cyrillic_text.encode("utf-8")  # \xd0\x9f
     # Position where \xd0 appears in the full event
     pos = event.find(content_bytes)
-    _assert(pos >= 0, "could not locate Cyrillic bytes in event")
+    assert_condition(pos >= 0, "could not locate Cyrillic bytes in event")
     split_at = pos + 1  # Split after \xd0, before \x9f
     deltas = _simulate_stream([event[:split_at], event[split_at:]])
-    _assert(deltas == ["П"], f"Cyrillic split after byte 1 produced {deltas!r}")
+    assert_condition(deltas == ["П"], f"Cyrillic split after byte 1 produced {deltas!r}")
     print("PASS test_cyrillic_split_after_first_byte")
 
 
@@ -157,11 +147,11 @@ def test_cyrillic_split_before_final_byte() -> None:
     # Find bytes for 'е' (U+0435 = \xd0\xb5) — split between bytes
     content_bytes = "е".encode("utf-8")
     pos = event.find(content_bytes)
-    _assert(pos >= 0, "could not locate Cyrillic bytes in event")
+    assert_condition(pos >= 0, "could not locate Cyrillic bytes in event")
     # Split at the boundary between the two bytes of 'е'
     split_at = pos + 1
     deltas = _simulate_stream([event[:split_at], event[split_at:]])
-    _assert(deltas == ["тест"], f"Cyrillic 'е' split produced {deltas!r}")
+    assert_condition(deltas == ["тест"], f"Cyrillic 'е' split produced {deltas!r}")
     print("PASS test_cyrillic_split_before_final_byte")
 
 
@@ -174,13 +164,13 @@ def test_multiple_cyrillic_split_different_boundaries() -> None:
     p_bytes = "П".encode("utf-8")  # \xd0\x9f
     r_bytes = "р".encode("utf-8")  # \xd1\x80
     pos = event.find(p_bytes)
-    _assert(pos >= 0, "could not locate П in event")
+    assert_condition(pos >= 0, "could not locate П in event")
     pos_r = event.find(r_bytes, pos)
-    _assert(pos_r >= 0, "could not locate р in event")
+    assert_condition(pos_r >= 0, "could not locate р in event")
     # Split at the first byte boundary of 'р'
     split_at = pos_r + 1
     deltas = _simulate_stream([event[:split_at], event[split_at:]])
-    _assert(deltas == ["Привет"], f"Multiple Cyrillic split produced {deltas!r}")
+    assert_condition(deltas == ["Привет"], f"Multiple Cyrillic split produced {deltas!r}")
     print("PASS test_multiple_cyrillic_split_different_boundaries")
 
 
@@ -189,14 +179,14 @@ def test_emoji_split_across_4byte_boundary() -> None:
     emoji = "\U0001F600"
     event = _make_delta_event(emoji) + _make_done_event()
     emoji_bytes = emoji.encode("utf-8")
-    _assert(len(emoji_bytes) == 4, "emoji should be 4 bytes")
+    assert_condition(len(emoji_bytes) == 4, "emoji should be 4 bytes")
     pos = event.find(emoji_bytes)
-    _assert(pos >= 0, "could not locate emoji bytes in event")
+    assert_condition(pos >= 0, "could not locate emoji bytes in event")
     # Split after byte 1, 2, and 3 of the 4-byte sequence
     for byte_offset in range(1, 4):
         split_at = pos + byte_offset
         deltas = _simulate_stream([event[:split_at], event[split_at:]])
-        _assert(deltas == ["\U0001F600"],
+        assert_condition(deltas == ["\U0001F600"],
                 f"Emoji split at byte {byte_offset} produced {deltas!r}")
     print("PASS test_emoji_split_across_4byte_boundary")
 
@@ -214,7 +204,7 @@ def test_mixed_ascii_cyrillic_emoji_split() -> None:
         event[quarter * 3 :],
     ]
     deltas = _simulate_stream(chunks)
-    _assert(deltas == [text], f"Mixed text split produced {deltas!r}")
+    assert_condition(deltas == [text], f"Mixed text split produced {deltas!r}")
     print("PASS test_mixed_ascii_cyrillic_emoji_split")
 
 
@@ -224,12 +214,12 @@ def test_sse_line_split_across_chunks() -> None:
     # Split at the middle of the data: line (before the closing \n)
     data_prefix = b"data: "
     pos = event.find(data_prefix)
-    _assert(pos >= 0, "could not find data: prefix")
+    assert_condition(pos >= 0, "could not find data: prefix")
     # Split right after 'data: {"choices...' (at a comma boundary)
     comma_pos = event.find(b",", pos)
     split_at = comma_pos
     deltas = _simulate_stream([event[:split_at], event[split_at:]])
-    _assert(deltas == ["hello"], f"SSE line split produced {deltas!r}")
+    assert_condition(deltas == ["hello"], f"SSE line split produced {deltas!r}")
     print("PASS test_sse_line_split_across_chunks")
 
 
@@ -240,10 +230,10 @@ def test_sse_data_payload_split_across_chunks() -> None:
     # Split in the content value after the opening quote
     content_val = b'"world"'
     pos = event.find(content_val)
-    _assert(pos >= 0, "could not find content value in event")
+    assert_condition(pos >= 0, "could not find content value in event")
     split_at = pos + 2  # Split inside the content value
     deltas = _simulate_stream([event[:split_at], event[split_at:]])
-    _assert(deltas == ["world"], f"SSE data payload split produced {deltas!r}")
+    assert_condition(deltas == ["world"], f"SSE data payload split produced {deltas!r}")
     print("PASS test_sse_data_payload_split_across_chunks")
 
 
@@ -256,7 +246,7 @@ def test_multiple_sse_events_in_one_chunk() -> None:
         + _make_done_event()
     )
     deltas = _simulate_stream([events])
-    _assert(deltas == ["one", "two", "three"],
+    assert_condition(deltas == ["one", "two", "three"],
             f"Multiple events in one chunk produced {deltas!r}")
     print("PASS test_multiple_sse_events_in_one_chunk")
 
@@ -264,8 +254,8 @@ def test_multiple_sse_events_in_one_chunk() -> None:
 def test_partial_final_multibyte_at_eof() -> None:
     """Incomplete trailing UTF-8 at EOF should raise GatewayError."""
     event = b'data: {"choices":[{"index":0,"delta":{"content":"\xd0"}]}\n\n'
-    _assert(event.endswith(b"\n\n"), "event should end with double newline")
-    _raises(lambda: _simulate_stream([event]), "invalid_payload")
+    assert_condition(event.endswith(b"\n\n"), "event should end with double newline")
+    assert_gateway_error(lambda: _simulate_stream([event]), "invalid_payload")
     print("PASS test_partial_final_multibyte_at_eof")
 
 
@@ -273,7 +263,7 @@ def test_decoder_flush_at_normal_eof() -> None:
     """Normal [DONE] terminates properly; decoder flush not needed."""
     event = _make_delta_event("normal") + _make_done_event()
     deltas = _simulate_stream([event])
-    _assert(deltas == ["normal"], f"Normal EOF produced {deltas!r}")
+    assert_condition(deltas == ["normal"], f"Normal EOF produced {deltas!r}")
     print("PASS test_decoder_flush_at_normal_eof")
 
 
@@ -284,10 +274,10 @@ def test_no_replacement_character_corruption() -> None:
     # Split between EVERY byte pair to stress-test all boundaries
     for split_pos in range(1, len(bytes_all)):
         deltas = _simulate_stream([bytes_all[:split_pos], bytes_all[split_pos:]])
-        _assert(len(deltas) == 1, f"Split at {split_pos} produced {len(deltas)} deltas")
-        _assert("\ufffd" not in deltas[0],
+        assert_condition(len(deltas) == 1, f"Split at {split_pos} produced {len(deltas)} deltas")
+        assert_condition("\ufffd" not in deltas[0],
                 f"Replacement char found at split {split_pos}: {deltas[0]!r}")
-        _assert(deltas[0] == text,
+        assert_condition(deltas[0] == text,
                 f"Split at {split_pos} produced {deltas[0]!r}, expected {text!r}")
     print("PASS test_no_replacement_character_corruption")
 
@@ -300,7 +290,7 @@ def test_stream_delta_ordering_preserved() -> None:
     )
     # Split at various positions
     deltas = _simulate_stream([events[:40], events[40:80], events[80:]])
-    _assert(deltas == ["first", "second", "third"],
+    assert_condition(deltas == ["first", "second", "third"],
             f"Delta ordering produced {deltas!r}")
     print("PASS test_stream_delta_ordering_preserved")
 
@@ -310,7 +300,7 @@ def test_cancellation_path_preserved() -> None:
     event = _make_delta_event("before")
     # Without [DONE], the stream continues; cancellation stops reads
     deltas = _simulate_stream([event])
-    _assert(deltas == ["before"], f"Cancellation test produced {deltas!r}")
+    assert_condition(deltas == ["before"], f"Cancellation test produced {deltas!r}")
     print("PASS test_cancellation_path_preserved")
 
 
@@ -323,7 +313,7 @@ def test_exactly_one_terminal_outcome() -> None:
         + _make_done_event()
     )
     deltas = _simulate_stream([events])
-    _assert(deltas == ["hello", " ", "world"],
+    assert_condition(deltas == ["hello", " ", "world"],
             f"Terminal outcome produced {deltas!r}")
     print("PASS test_exactly_one_terminal_outcome")
 
@@ -406,8 +396,8 @@ def test_integration_small_read_chunks_cyrillic() -> None:
             threading.Event(),
             lambda: called.append(True),
         ))
-    _assert(result == text, f"Integration Cyrillic got {result!r}")
-    _assert(called == [True], "on_request_started not called")
+    assert_condition(result == text, f"Integration Cyrillic got {result!r}")
+    assert_condition(called == [True], "on_request_started not called")
     print("PASS test_integration_small_read_chunks_cyrillic")
 
 
@@ -427,7 +417,7 @@ def test_integration_emoji_small_reads() -> None:
             threading.Event(),
             lambda: called.append(True),
         ))
-    _assert(result == emoji, f"Integration emoji got {result!r}")
+    assert_condition(result == emoji, f"Integration emoji got {result!r}")
     print("PASS test_integration_emoji_small_reads")
 
 
@@ -445,7 +435,7 @@ def test_integration_byte_by_byte_read() -> None:
             threading.Event(),
             lambda: called.append(True),
         ))
-    _assert(result == text, f"Byte-by-byte got {result!r}")
+    assert_condition(result == text, f"Byte-by-byte got {result!r}")
     print("PASS test_integration_byte_by_byte_read")
 
 
@@ -465,7 +455,7 @@ def test_integration_multiple_events_split() -> None:
             threading.Event(),
             lambda: called.append(True),
         ))
-    _assert(result == text, f"Multiple events split got {result!r}")
+    assert_condition(result == text, f"Multiple events split got {result!r}")
     print("PASS test_integration_multiple_events_split")
 
 
@@ -474,7 +464,7 @@ def test_integration_non_streaming_unchanged() -> None:
     with FakeServerSSE([]) as server:
         adapter = ProviderAdapter(server.port, GatewayLimits())
         models = adapter.list_models()
-    _assert(models == ("local-model",), f"list_models got {models!r}")
+    assert_condition(models == ("local-model",), f"list_models got {models!r}")
     print("PASS test_integration_non_streaming_unchanged")
 
 
@@ -484,14 +474,14 @@ def test_integration_non_streaming_unchanged() -> None:
 
 def test_provider_registry_unchanged() -> None:
     from modules.local_model_gateway_ru import PROVIDER_REGISTRY
-    _assert(PROVIDER_REGISTRY == ("openai-compatible-local", "managed-llama-cpp"),
+    assert_condition(PROVIDER_REGISTRY == ("openai-compatible-local", "managed-llama-cpp"),
             "Provider registry changed")
     print("PASS test_provider_registry_unchanged")
 
 
 def test_harness_registry_unchanged() -> None:
     from modules.local_model_gateway_ru import HARNESS_REGISTRY
-    _assert(HARNESS_REGISTRY == ("minimal", "native-localcomet"),
+    assert_condition(HARNESS_REGISTRY == ("minimal", "native-localcomet"),
             "Harness registry changed")
     print("PASS test_harness_registry_unchanged")
 
@@ -499,16 +489,16 @@ def test_harness_registry_unchanged() -> None:
 def test_tool_function_rejection_unchanged() -> None:
     """Tool/function call markers still rejected."""
     from modules.local_model_gateway_ru import _reject_tool_markers
-    _raises(lambda: _reject_tool_markers({"tool_calls": []}), "invalid_payload")
-    _raises(lambda: _reject_tool_markers({"function_call": {}}), "invalid_payload")
-    _raises(lambda: _reject_tool_markers({"role": "tool"}), "invalid_payload")
-    _raises(lambda: _reject_tool_markers({"choices": [{"index": 0, "delta": {"tool_calls": []}}]}),
+    assert_gateway_error(lambda: _reject_tool_markers({"tool_calls": []}), "invalid_payload")
+    assert_gateway_error(lambda: _reject_tool_markers({"function_call": {}}), "invalid_payload")
+    assert_gateway_error(lambda: _reject_tool_markers({"role": "tool"}), "invalid_payload")
+    assert_gateway_error(lambda: _reject_tool_markers({"choices": [{"index": 0, "delta": {"tool_calls": []}}]}),
             "invalid_payload")
     # Valid calls should not raise
     try:
         _reject_tool_markers({"choices": [{"index": 0, "delta": {"content": "hello"}}]})
     except GatewayError:
-        _assert(False, "Valid delta raised rejection")
+        assert_condition(False, "Valid delta raised rejection")
     print("PASS test_tool_function_rejection_unchanged")
 
 

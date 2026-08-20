@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from modules.relative_paths import make_relative_path
 from typing import Any, Dict, List
 
 
@@ -11,6 +12,7 @@ REPO_ANALYZER_VERSION = "v6.59b"
 REPO_ANALYZER_NAME = "LocalComet Repo Analyzer RU"
 
 ROOT_PATH = Path(__file__).resolve().parents[1]
+_safe_relative = make_relative_path(ROOT_PATH)
 REPORT_DIR = ROOT_PATH / "Projects" / "Reports" / "repo_analyzer"
 
 CURRENT_VERSION = "v6.59"
@@ -24,13 +26,6 @@ BLOCKED_PREFIXES = {".", "_backup", "backup_", "opencode_backup"}
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
-
-
-def _safe_relative(path: Path) -> str:
-    try:
-        return str(path.relative_to(ROOT_PATH)).replace("\\", "/")
-    except Exception:
-        return str(path).replace("\\", "/")
 
 
 def _is_skipped(path: Path) -> bool:

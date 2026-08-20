@@ -1,3 +1,4 @@
+import { isRecord } from './guards';
 import { invoke } from '@tauri-apps/api/core';
 import type {
   BoundedFindingDetailsProjection,
@@ -1283,10 +1284,6 @@ function exactRecord(value: unknown, keys: readonly string[], label: string): Js
     invalid(`${label} has an unexpected shape`);
   }
   return value;
-}
-
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function arrayValue(value: unknown, limit: number, label: string): readonly unknown[] {

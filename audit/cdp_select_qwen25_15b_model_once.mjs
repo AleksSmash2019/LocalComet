@@ -1,0 +1,10 @@
+const port = process.env.CDP_PORT || '9223';
+const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+const target = targets.find((item) => item.type === 'page');
+if (!target?.webSocketDebuggerUrl) throw new Error('No page target');
+const ws = new WebSocket(target.webSocketDebuggerUrl);
+await new Promise((resolve, reject) => { ws.addEventListener('open', resolve, { once: true }); ws.addEventListener('error', reject, { once: true }); });
+const modelNeedle = 'Qwen2.5 1.5B Instruct Q4_K_M';
+const expression = `(() => { const selects=[...document.querySelectorAll('select')]; const select=selects.find(x=>[...x.options].some(o=>o.textContent.includes(${JSON.stringify(modelNeedle)}))); if(!select) return JSON.stringify({ok:false,reason:'model-select-not-found'}); const option=[...select.options].find(o=>o.textContent.includes(${JSON.stringify(modelNeedle)})); const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set; setter.call(select,option.value); select.dispatchEvent(new Event('change',{bubbles:true})); return JSON.stringify({ok:true,value:select.value,text:option.textContent.trim()}); })()`;
+const result = await new Promise((resolve, reject) => { const timer=setTimeout(()=>reject(new Error('timeout')),15000); const listener=(event)=>{const m=JSON.parse(event.data);if(m.id!==1)return;clearTimeout(timer);ws.removeEventListener('message',listener);if(m.error)reject(new Error(JSON.stringify(m.error)));else resolve(m.result?.result?.value);};ws.addEventListener('message',listener);ws.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression,returnByValue:true}})); });
+console.log(result); ws.close();

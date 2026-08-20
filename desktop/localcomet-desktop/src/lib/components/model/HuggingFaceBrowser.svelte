@@ -198,6 +198,7 @@
       type="text"
       bind:value={query}
       placeholder={$t('hf.search_placeholder')}
+      aria-label={$t('hf.search_placeholder')}
       onkeydown={handleKeydown}
       class="hf-search-input"
     />

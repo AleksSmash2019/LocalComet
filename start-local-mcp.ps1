@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
   start-local-mcp.ps1  (v2)
   ====================
@@ -143,6 +143,9 @@ try {
   Write-Host "==> Node.js: OK"
 
   # ---------- 2. cloudflared ----------
+  # SECURITY: This explicit script intentionally creates a public quick tunnel
+  # for local MCP sharing; the desktop app never launches it implicitly.
+  # Do not pass credentials or expose non-local services through this path.
   if (-not (Get-Command cloudflared.exe -ErrorAction SilentlyContinue)) {
     Write-Host "==> cloudflared не найден, ставлю через winget (разреши установку, если спросит)..."
     winget install --id Cloudflare.cloudflared -e --accept-source-agreements --accept-package-agreements

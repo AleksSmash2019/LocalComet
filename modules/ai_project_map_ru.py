@@ -6,10 +6,12 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from modules.relative_paths import make_relative_path
 from typing import Any
 
 
 ROOT_PATH = Path(__file__).resolve().parents[1]
+_safe_relative = make_relative_path(ROOT_PATH)
 MEMORY_DIR = ROOT_PATH / "Projects" / "AgentMemory"
 PROJECT_MAP_PATH = MEMORY_DIR / "project_map.json"
 
@@ -37,13 +39,6 @@ COMMAND_HINT_RE = re.compile(
 
 def _now() -> str:
     return datetime.now().replace(microsecond=0).isoformat()
-
-
-def _safe_relative(path: Path) -> str:
-    try:
-        return str(path.relative_to(ROOT_PATH)).replace("\\", "/")
-    except Exception:
-        return str(path).replace("\\", "/")
 
 
 def _is_skipped(path: Path) -> bool:

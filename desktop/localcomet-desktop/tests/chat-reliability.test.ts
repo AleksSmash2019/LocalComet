@@ -2,6 +2,7 @@ import { get } from 'svelte/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   INFERENCE_TIMEOUTS_MS,
+  MANAGED_INFERENCE_TIMEOUTS_MS,
   applyModelGatewayEvent,
   cancelLocalModelTurn,
   inferenceRequestStore,
@@ -77,6 +78,7 @@ function acceptance(args: Record<string, unknown>) {
     model_id: args.modelId,
     submitted_at_unix_ms: args.submittedAtUnixMs,
     max_tokens: args.maxTokens,
+    seed: 42,
     binding_fingerprint: args.bindingFingerprint
   };
 }
@@ -305,7 +307,10 @@ describe('typed real-model chat lifecycle', () => {
     startHandler = async (args) => ({ ...acceptance(args), binding_fingerprint: '0'.repeat(64) });
     expect(await startLocalModelTurn('bad acceptance', 'local-chat')).toBe(false);
     expect(get(inferenceRequestStore)).toMatchObject({ lifecycle: 'failed', lastError: { code: 'invalid_payload' } });
-    expect(get(chatMessages)).toHaveLength(0);
+    expect(get(chatMessages)).toEqual([
+      expect.objectContaining({ role: 'user', body: 'bad acceptance', requestId: expect.any(String) }),
+      expect.objectContaining({ role: 'assistant', state: 'failed', error: expect.any(String) })
+    ]);
 
     startHandler = async (args) => acceptance(args);
     await startAccepted('bad event');
@@ -446,13 +451,13 @@ describe('typed real-model chat lifecycle', () => {
     startHandler = async (args) => acceptance(args);
     expect(await startLocalModelTurn('retry me', 'local-chat')).toBe(true);
     applyModelGatewayEvent(event('model.turn.started', 0));
-    await vi.advanceTimersByTimeAsync(INFERENCE_TIMEOUTS_MS.firstToken);
+    await vi.advanceTimersByTimeAsync(MANAGED_INFERENCE_TIMEOUTS_MS.firstToken);
     expect(get(inferenceRequestStore)).toMatchObject({ lifecycle: 'timed_out', lastError: { code: 'first_token_timeout' } });
 
     expect(await startLocalModelTurn('third', 'local-chat')).toBe(true);
     applyModelGatewayEvent(event('model.turn.started', 0));
     applyModelGatewayEvent(event('model.output.delta', 1, 'partial'));
-    await vi.advanceTimersByTimeAsync(INFERENCE_TIMEOUTS_MS.inactivity);
+    await vi.advanceTimersByTimeAsync(MANAGED_INFERENCE_TIMEOUTS_MS.inactivity);
     expect(get(inferenceRequestStore)).toMatchObject({ lifecycle: 'timed_out', lastError: { code: 'stream_inactivity_timeout' } });
     expect(get(chatMessages).at(-1)).toMatchObject({ body: 'partial', state: 'timed_out' });
   });

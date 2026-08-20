@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+    import { onMount, tick } from 'svelte';
   import '../../../app.css';
+
   import CommandPalette from '$lib/components/common/CommandPalette.svelte';
   import ApprovalModal from './ApprovalModal.svelte';
   import Diagnostics from '$lib/components/agent/Diagnostics.svelte';
@@ -32,17 +33,16 @@
   import { initializeModelGateway, shutdownModelGateway } from '$lib/stores/modelGateway';
   import { initializeArtifactAcquisition, resetArtifactAcquisitionStore } from '$lib/stores/artifactAcquisition';
   import { initializeKnowledgePreviewEvents, shutdownKnowledgePreviewEvents } from '$lib/stores/knowledgePreview';
-  import { exposeInvokeForModelFit } from '$lib/bridge/modelfit';
   import { locale, t } from '$lib/i18n';
   import type { ResolvedTheme } from '$lib/data/mockData';
   import { followTranscriptToEnd, isTranscriptNearBottom } from '$lib/components/chat/transcriptScroll';
+  import { installModelFitBridge } from '$lib/bridge/modelfit';
 
   let systemDark = false;
   let resolvedTheme: ResolvedTheme = 'light';
   let transcriptViewport: HTMLDivElement;
   let followTranscript = true;
   let transcriptRevision = 0;
-  
 
   $: document.documentElement.lang = $locale;
 
@@ -147,9 +147,11 @@
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
+  onMount(() => installModelFitBridge());
+
   onMount(() => {
-    exposeInvokeForModelFit();
     void initializeControlPlaneBridge();
+
     void initializeModelGateway();
     void initializeArtifactAcquisition();
     void initializeKnowledgePreviewEvents();
@@ -228,9 +230,16 @@
 
 <style>
   .app-shell {
+    position: relative;
     height: 100dvh;
     max-height: 100dvh;
     overflow: hidden;
+    background:
+      radial-gradient(ellipse 84% 66% at 2% -22%, color-mix(in srgb, var(--lc-accent) 13%, transparent), transparent 64%),
+      radial-gradient(ellipse 70% 58% at 104% 116%, color-mix(in srgb, var(--lc-accent) 10%, transparent), transparent 66%),
+      radial-gradient(ellipse 52% 48% at 52% 48%, color-mix(in srgb, var(--lc-accent) 4%, transparent), transparent 78%),
+      linear-gradient(140deg, color-mix(in srgb, var(--lc-bg) 92%, #052e24) 0%, color-mix(in srgb, var(--lc-bg) 98%, #0b1814) 48%, color-mix(in srgb, var(--lc-bg) 94%, #062e21) 100%);
+    box-shadow: inset 0 0 156px color-mix(in srgb, #000 48%, transparent);
   }
 
   .shell-body {
@@ -245,6 +254,7 @@
     height: 100%;
     grid-template-rows: auto minmax(0, 1fr) auto;
     overflow: hidden;
+    background: transparent;
   }
 
   .chat-scroll {
