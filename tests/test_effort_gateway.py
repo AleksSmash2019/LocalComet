@@ -73,3 +73,28 @@ def test_plain_assistant_history_is_allowed_without_tools():
         GatewayLimits(),
         tools_enabled=False,
     )
+
+def test_common_provider_finish_reasons_are_accepted():
+    """incident.013: managed llama.cpp / external backends emit non-OpenAI finish
+    reasons during reasoning+tool-call; they must not fail the stream."""
+    for reason in ("function_call", "end_turn", "max_tokens", "stop_sequence", "eos", "pause"):
+        delta, tc, done = _parse_sse_event(
+            [json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": reason}]})],
+            tools_enabled=True,
+            include_reasoning=True,
+        )
+        assert done is False
+
+
+def test_unknown_finish_reason_still_rejected():
+    """fail-closed preserved: a truly unknown finish reason is still rejected."""
+    try:
+        _parse_sse_event(
+            [json.dumps({"choices": [{"index": 0, "delta": {}, "finish_reason": "bogus_xyz"}]})],
+            tools_enabled=True,
+        )
+    except Exception:
+        pass
+    else:
+        raise AssertionError("unknown finish_reason must be rejected")
+

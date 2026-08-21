@@ -31,7 +31,21 @@ HARNESS_MINIMAL = "minimal"
 HARNESS_NATIVE = "native-localcomet"
 PROVIDER_REGISTRY = (PROVIDER_ID, MANAGED_PROVIDER_ID)
 HARNESS_REGISTRY = (HARNESS_MINIMAL, HARNESS_NATIVE)
-SUPPORTED_FINISH_REASONS = (None, "stop", "length", "content_filter", "tool_calls")
+SUPPORTED_FINISH_REASONS = (
+    None,
+    "stop",
+    "length",
+    "content_filter",
+    "tool_calls",
+    # Common provider aliases (rejected before incident.013): keep the parser tolerant
+    # of legitimate end-of-stream signals from managed llama.cpp and external backends.
+    "function_call",  # legacy OpenAI tool-call finish
+    "end_turn",       # Anthropic-style
+    "max_tokens",     # common alias for length
+    "stop_sequence",  # common provider alias
+    "eos",            # local model EOF token
+    "pause",          # Anthropic pause_turn
+)
 TURN_ID_RE = re.compile(r"^[0-9a-f]{24}$")
 CHAT_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
@@ -2468,7 +2482,7 @@ def _parse_sse_event(
         raise GatewayError("invalid_payload", "SSE choice index is invalid")
     finish_reason = choice.get("finish_reason")
     if finish_reason not in SUPPORTED_FINISH_REASONS:
-        raise GatewayError("invalid_payload", "SSE finish reason is unsupported")
+        raise GatewayError("invalid_payload", f"SSE finish reason is unsupported: {finish_reason!r}")
     delta = choice.get("delta", {})
     if delta is None:
         delta = {}
