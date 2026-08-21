@@ -1913,9 +1913,10 @@ class ProviderAdapter:
                             except GatewayError as exc:
                                 if exc.code in {"payload_too_large", "budget_exceeded"}:
                                     raise
+                                raw_preview = "\n".join(event_lines)[:400]
                                 raise GatewayError(
                                     "stream_protocol_error",
-                                    f"model stream event is invalid: {exc.code} - {exc.message}",
+                                    f"model stream event is invalid: {exc.code} - {exc.message} (raw: {raw_preview!r})",
                                 ) from exc
                             event_lines = []
                             event_bytes = 0
