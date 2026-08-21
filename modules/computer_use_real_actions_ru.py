@@ -283,6 +283,58 @@ def _extract_text_payload(goal: str) -> str:
     return _strip_quotes(payload)
 
 
+def _extract_search_query(goal: str) -> str:
+    """Extract a web-search query from a find/search intent, or empty string.
+
+    Natural phrasings ("найди X", "поищи X", "погугли X", "search for X") are
+    mapped to a real browser-search flow, so they must not fall through to the
+    non-executing delegate_multistep fallback.
+    """
+    raw = str(goal or "").strip()
+    lowered = _norm(raw)
+    # Longest-first so compound markers ("найди в интернете") win over "найди".
+    markers = [
+        "найди в интернете",
+        "поищи в интернете",
+        "найди в браузере",
+        "поищи в браузере",
+        "найди в гугле",
+        "поищи в гугле",
+        "погугли",
+        "найди",
+        "поищи",
+        "ищи",
+        "search for",
+        "find",
+        "google",
+    ]
+    best_index = -1
+    best_len = -1
+    for marker in markers:
+        index = lowered.find(marker)
+        if index >= 0 and len(marker) > best_len:
+            best_index = index
+            best_len = len(marker)
+    if best_index < 0:
+        return ""
+    payload = raw[best_index + best_len:].strip(" :,-")
+    cut_markers = [
+        " после этого ",
+        " затем ",
+        " потом ",
+        " и нажми ",
+        " and press ",
+        " and hit ",
+        " and ",
+    ]
+    for marker in cut_markers:
+        pos = _norm(payload).find(marker.strip())
+        if pos > 0:
+            payload = payload[:pos].strip(" :,-")
+            break
+    return _strip_quotes(payload)
+
+
 def _extract_type_target(goal: str) -> str:
     lowered = _norm(goal)
     explicit_patterns = [
@@ -468,6 +520,41 @@ def build_real_action_plan(goal: str, max_steps: int = 16) -> Dict[str, Any]:
                 "reason": "typed payload extracted for active window paste",
                 "real_action": True,
             })
+
+    search_query = _extract_search_query(goal)
+    if search_query:
+        if not app_id:
+            actions.insert(0, {
+                "kind": "open_app",
+                "target": "chrome",
+                "confidence": 0.92,
+                "reason": "browser required for web search goal",
+                "real_action": True,
+            })
+            actions.insert(1, {
+                "kind": "wait_for_window",
+                "target": "chrome",
+                "seconds": 0.8,
+                "confidence": 0.86,
+                "reason": "wait for browser before search",
+                "real_action": True,
+            })
+        actions.append({
+            "kind": "type_element",
+            "target": "Поиск",
+            "text": search_query,
+            "confidence": 0.9,
+            "reason": "web search query typed into browser search bar",
+            "real_action": True,
+        })
+        actions.append({
+            "kind": "press_key",
+            "target": "enter",
+            "key": "enter",
+            "confidence": 0.9,
+            "reason": "submit the web search query",
+            "real_action": True,
+        })
 
     hotkey = _extract_hotkey(goal)
     if hotkey:

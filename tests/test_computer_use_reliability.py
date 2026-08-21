@@ -69,6 +69,30 @@ class ComputerUseReliabilityTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["clipboard_preserved"])
 
+    def test_find_intent_plans_real_browser_search(self) -> None:
+        plan = build_real_action_plan("найди погоду в екатеринбурге", max_steps=8)
+        self.assertTrue(plan["ok"])
+        self.assertFalse(plan.get("blocked"))
+        kinds = [a["kind"] for a in plan["actions"]]
+        self.assertEqual(kinds, ["open_app", "wait_for_window", "type_element", "press_key"])
+        self.assertEqual(plan["actions"][0]["target"], "chrome")
+        self.assertEqual(plan["actions"][2]["target"], "Поиск")
+        self.assertEqual(plan["actions"][2]["text"], "погоду в екатеринбурге")
+        self.assertEqual(plan["actions"][3]["key"], "enter")
+        self.assertTrue(all(a["real_action"] for a in plan["actions"]))
+
+    def test_compound_search_marker_strips_locator(self) -> None:
+        plan = build_real_action_plan("найди в интернете новости спорта", max_steps=8)
+        typed = [a for a in plan["actions"] if a["kind"] == "type_element"]
+        self.assertEqual(len(typed), 1)
+        self.assertEqual(typed[0]["text"], "новости спорта")
+
+    def test_search_intent_still_blocks_secrets(self) -> None:
+        plan = build_real_action_plan("найди мой пароль", max_steps=8)
+        self.assertTrue(plan["blocked"])
+        self.assertEqual(plan["reason"], "secrets")
+        self.assertEqual(plan["actions"], [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
