@@ -27,7 +27,7 @@ def test_invalid_effort_falls_back_to_off():
 def test_managed_opaque_model_ids_keep_reasoning_channel():
     assert _is_reasoning_model("custom-hf-e7cb624491843a8f27cac1e728539ed6bc64e7dbca8f8c373eb53dc4b4a602ff", "managed-llama-cpp")
     assert _is_reasoning_model("qwen3.8-27b", "openai-compatible-local")
-    assert not _is_reasoning_model("qwen2.5-1.5b", "openai-compatible-local")
+    assert not _is_reasoning_model("qwen3-1.7b", "openai-compatible-local")
 
 
 def test_qwen_reasoning_options_map_effort_to_supported_template_values():

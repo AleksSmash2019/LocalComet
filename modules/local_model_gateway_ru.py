@@ -56,7 +56,7 @@ DEFAULT_MAX_TOKENS = 4096
 DEFAULT_GENERATION_SEED = 42
 VALID_EFFORT_LEVELS = frozenset(("off", "low", "medium", "high"))
 EFFORT_BUDGET_TOKENS = {"off": 0, "low": 512, "medium": 2048, "high": 8192}
-THINKING_MODEL_MARKERS = ("qwen3", "deepseek-r1", "qwq")
+THINKING_MODEL_MARKERS = ("qwen3.8", "deepseek-r1", "qwq")
 
 
 def _is_reasoning_model(model_id: str, provider_id: str) -> bool:
