@@ -63,5 +63,7 @@ auth.json
 /audit/*.txt
 /audit/*.json
 /audit/*.png
+/audit/*.ps1
+/tests/hidden_llama_runtime_smoke.ps1
 /localcomet_cdp_*.png
 /*_inference_response.png

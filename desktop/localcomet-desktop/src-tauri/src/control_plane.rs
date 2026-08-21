@@ -491,7 +491,7 @@ impl AssistantContext {
                         t.push("web.fetch".into());
                     }
                     if permissions.map(|p| p.tools).unwrap_or(false) {
-                        // In future, sidecar tools could be added here
+                        t.push("skills.invoke".into());
                     }
                     t
                 },
@@ -1880,7 +1880,7 @@ impl ControlPlaneBridge {
 
     fn ensure_ready(&self) -> Result<(), BridgeError> {
         let snapshot = self.supervisor.snapshot();
-        if snapshot.running && snapshot.saw_python_hello {
+        if snapshot.running && snapshot.saw_python_hello && snapshot.saw_health_ok {
             Ok(())
         } else {
             Err(BridgeError::unavailable("sidecar is not ready"))

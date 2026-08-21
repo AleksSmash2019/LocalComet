@@ -9,6 +9,8 @@
     "model_binding_set",
     "tool_filesystem_read",
     "tool_filesystem_write",
-    "tool_filesystem_delete"
+    "tool_filesystem_delete",
+    "computer_use",
+    "skills_invoke"
   ]
 }

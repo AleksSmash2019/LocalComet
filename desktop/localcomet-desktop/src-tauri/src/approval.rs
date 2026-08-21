@@ -681,7 +681,7 @@ impl IdempotencyRegistry {
                 IdempotencyState::Completed => Err(ApprovalError::DuplicateLogicalCall),
             };
         }
-        if self.entries.len() >= MAX_IDEMPOTENCY_PENDING {
+        if self.pending_len() >= MAX_IDEMPOTENCY_PENDING {
             return Err(ApprovalError::IdempotencyRegistryFull);
         }
         self.entries.insert(
@@ -725,6 +725,13 @@ impl IdempotencyRegistry {
         self.entries
             .values()
             .filter(|entry| matches!(entry.state, IdempotencyState::Completed))
+            .count()
+    }
+
+    fn pending_len(&self) -> usize {
+        self.entries
+            .values()
+            .filter(|entry| matches!(entry.state, IdempotencyState::Pending))
             .count()
     }
 
@@ -1064,6 +1071,23 @@ mod tests {
             registry.begin(&key),
             Err(ApprovalError::DuplicateLogicalCall)
         ));
+    }
+
+    #[test]
+    fn idempotency_registry_completed_entries_do_not_block_new_calls() {
+        // F-04: completed entries must not count toward the pending limit.
+        let mut registry = IdempotencyRegistry::new();
+        for i in 0..(MAX_IDEMPOTENCY_PENDING + 4) {
+            let mut key = [0u8; 32];
+            key[..8].copy_from_slice(&(i as u64).to_be_bytes());
+            let receipt = registry.begin(&key).expect("fresh key must be accepted");
+            registry.complete(receipt, IdempotencyOutcome::Completed);
+        }
+        let fresh = [0xffu8; 32];
+        let receipt = registry
+            .begin(&fresh)
+            .expect("a new call must not be blocked by completed entries");
+        registry.complete(receipt, IdempotencyOutcome::Completed);
     }
 
     #[test]
@@ -3716,6 +3740,8 @@ mod tests {
             CommandFamily::ToolFilesystemRead,
             CommandFamily::ToolFilesystemWrite,
             CommandFamily::ToolFilesystemDelete,
+            CommandFamily::ComputerUse,
+            CommandFamily::SkillsInvoke,
         ];
         let mut rust_set: Vec<String> = all_variants
             .iter()
@@ -3749,8 +3775,8 @@ mod tests {
         }
         assert_eq!(
             values.len(),
-            8,
-            "manifest must contain exactly 8 family values"
+            10,
+            "manifest must contain exactly 10 family values"
         );
     }
 
@@ -3771,6 +3797,8 @@ mod tests {
             CommandFamily::ToolFilesystemRead,
             CommandFamily::ToolFilesystemWrite,
             CommandFamily::ToolFilesystemDelete,
+            CommandFamily::ComputerUse,
+            CommandFamily::SkillsInvoke,
         ];
         for variant in &all_variants {
             let serialized = serde_json::to_value(variant).unwrap();

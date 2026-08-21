@@ -165,6 +165,23 @@ describe('control-plane bridge and store', () => {
     expect(state.recentEvents.at(-1)?.method).toBe('model.turn.timed_out');
   });
 
+  it('accepts model tool events through the bridge validator', async () => {
+    const seen: string[] = [];
+    const cleanup = await subscribeControlPlaneEvents((payload) => seen.push(payload.method));
+    listener?.({ payload: event('model.tool.request', 0, { reply_to: 'tool-r' }) });
+    listener?.({ payload: event('model.turn.tool_calls', 1, { reply_to: 'tool-r', state: 'RUNNING' }) });
+    cleanup();
+    expect(seen).toEqual(['model.tool.request', 'model.turn.tool_calls']);
+  });
+
+  it('store accepts model tool events without rejecting them as unknown', () => {
+    applyControlPlaneEvent(event('model.tool.request', 0, { reply_to: 'tool-r2' }));
+    expect(get(controlPlaneStore).lastError).toBeNull();
+    applyControlPlaneEvent(event('model.turn.tool_calls', 1, { reply_to: 'tool-r2', state: 'RUNNING' }));
+    expect(get(controlPlaneStore).lastError).toBeNull();
+    expect(get(controlPlaneStore).recentEvents.at(-1)?.method).toBe('model.turn.tool_calls');
+  });
+
   it('updates session, thread, turn and items from ordered events', () => {
     applyControlPlaneEvent(event('session.created', 0, { reply_to: 'r1', metadata: { title: 'Demo' } }));
     applyControlPlaneEvent(event('thread.created', 0, { reply_to: 'r2', metadata: { title: 'Thread' } }));

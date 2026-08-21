@@ -2280,14 +2280,11 @@ fn random_bytes(len: usize) -> Result<Vec<u8>, ManagedRuntimeError> {
 
 #[cfg(not(windows))]
 fn random_bytes(len: usize) -> Result<Vec<u8>, ManagedRuntimeError> {
-    let now = Instant::now();
-    let seed = format!("{now:?}:{len}");
-    let mut out = Vec::with_capacity(len);
-    while out.len() < len {
-        out.extend_from_slice(sha256_text(&format!("{seed}:{}", out.len())).as_bytes());
-    }
-    out.truncate(len);
-    Ok(out)
+    let _ = len;
+    Err(ManagedRuntimeError::new(
+        "internal_error",
+        "non-Windows credential generation requires an OS CSPRNG; refusing to derive credentials from time",
+    ))
 }
 
 fn sha256_text(text: &str) -> String {

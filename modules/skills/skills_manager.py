@@ -16,7 +16,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from modules.skills.skills_archive import extract_archive, parse_manifest, read_manifest_bytes
+from modules.skills.skills_archive import (
+    extract_archive_from_data,
+    parse_manifest,
+    read_manifest_bytes,
+    read_manifest_bytes_from_data,
+)
 from modules.skills.skills_contract import (
     MAX_ARCHIVE_BYTES,
     SkillError,
@@ -174,8 +179,12 @@ class SkillsManager:
         if path.stat().st_size > MAX_ARCHIVE_BYTES:
             raise SkillError(SkillErrorCode.ARCHIVE_TOO_LARGE, "archive exceeds maximum size")
 
-        sha = hashlib.sha256(path.read_bytes()).hexdigest()
-        manifest = self.validate_package(path)
+        data = path.read_bytes()
+        if len(data) > MAX_ARCHIVE_BYTES:
+            raise SkillError(SkillErrorCode.ARCHIVE_TOO_LARGE, "archive exceeds maximum size")
+        sha = hashlib.sha256(data).hexdigest()
+        manifest_bytes = read_manifest_bytes_from_data(data, path.name)
+        manifest = validate_manifest_dict(parse_manifest(manifest_bytes))
         if manifest.checksum and manifest.checksum != sha:
             raise SkillError(SkillErrorCode.CHECKSUM_MISMATCH, "package checksum mismatch")
 
@@ -185,7 +194,7 @@ class SkillsManager:
         install_dir = self._root / "installed" / manifest.skill_id
         staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=self._root / "installed"))
         try:
-            written = extract_archive(path, staging)
+            written = extract_archive_from_data(data, path.name, staging)
             if manifest.entrypoint not in written:
                 raise SkillError(SkillErrorCode.ENTRYPOINT_MISSING, f"entrypoint '{manifest.entrypoint}' not in package")
             installed_tree_sha = _hash_skill_tree(staging)

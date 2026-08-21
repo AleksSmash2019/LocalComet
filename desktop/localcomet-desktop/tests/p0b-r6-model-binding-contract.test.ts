@@ -193,7 +193,9 @@ describe('p0b-r6-model-binding-contract', () => {
       'model_binding_set',
       'tool_filesystem_read',
       'tool_filesystem_write',
-      'tool_filesystem_delete'
+      'tool_filesystem_delete',
+      'computer_use',
+      'skills_invoke'
     ];
     for (const family of rustFamilies) {
       const envelope = validEnvelope({ commandFamily: family, tool: 'artifact.download' });
