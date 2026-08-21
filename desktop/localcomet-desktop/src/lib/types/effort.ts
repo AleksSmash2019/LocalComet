@@ -21,7 +21,7 @@ export function effortBudgetTokens(level: EffortLevel): number {
  */
 export function modelMaySupportThinking(modelId: string): boolean {
   const normalized = modelId.toLowerCase();
-  return normalized.includes('qwen3') ||
+  return normalized.includes('qwen3.8') ||
     normalized.includes('deepseek-r1') ||
     normalized.includes('qwq') ||
     normalized.includes('phi-4-reasoning') ||
