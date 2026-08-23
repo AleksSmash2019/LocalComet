@@ -22,7 +22,7 @@
 //! LOCALCOMET_TEST_PROJECT_ROOT  repo root (sidecar runner + modules)
 //! LOCALCOMET_TEST_PYTHON        system python executable
 //! LOCALCOMET_LIVE_MODEL_ROOT    app-data root with installed model+runtime
-//! LOCALCOMET_LIVE_MODEL_ID      optional, default qwen3-1.7b-instruct-q4-k-m
+//! LOCALCOMET_LIVE_MODEL_ID      optional, default qwen2.5-1.5b-instruct-q4-k-m
 //! LOCALCOMET_LIVE_RUNTIME_ID    optional, default llama-cpp-windows-x86-64-cpu-bootstrap
 //! LOCALCOMET_LIVE_CUSTOM_MODEL_ID  optional, enables the custom approval path
 //! LOCALCOMET_REQUIRE_LIVE_MODEL=1  hard-fails when the env is incomplete
@@ -79,7 +79,7 @@ mod tests {
         let python = std::env::var_os("LOCALCOMET_TEST_PYTHON").map(PathBuf::from);
         let model_root = std::env::var_os("LOCALCOMET_LIVE_MODEL_ROOT").map(PathBuf::from);
         let model_id = env_or_warn("LOCALCOMET_LIVE_MODEL_ID")
-            .unwrap_or_else(|| "qwen3-1.7b-instruct-q4-k-m".to_owned());
+            .unwrap_or_else(|| "qwen2.5-1.5b-instruct-q4-k-m".to_owned());
         let runtime_id = env_or_warn("LOCALCOMET_LIVE_RUNTIME_ID")
             .unwrap_or_else(|| "llama-cpp-windows-x86-64-cpu-bootstrap".to_owned());
         match (project_root, python, model_root) {
@@ -173,9 +173,9 @@ mod tests {
 
         let approval_state = crate::approval_commands::ApprovalState::new(app_handle.clone());
         let approval_dispatcher = approval_state.dispatcher.as_ref().map(Arc::clone);
-        // Legacy listener retained for compatibility with the live harness;
-        // production approval issuance now happens in the Rust background path
-        // and does not open a user-facing card.
+        // Auto-approve listener: plays the approving user for the real prompt
+        // roundtrip (runtime.start / model.binding.set), resolving through the
+        // same dispatcher resolve_tool_approval uses.
         if let Some(dispatcher) = approval_state.dispatcher.as_ref() {
             let dispatcher = Arc::clone(dispatcher);
             app_handle.listen_any("request_tool_approval", move |event| {
@@ -206,9 +206,9 @@ mod tests {
     static TURN_COUNTER: AtomicU64 = AtomicU64::new(1);
 
     /// Confirms the managed binding through the real production flow:
-    /// a scoped token is minted by the Rust approval boundary (without a
-    /// second UI prompt after an already approved Ready start), then the real
-    /// model_binding_set command runs exactly as the UI does.
+    /// approval minted via the prompt roundtrip, then the real
+    /// model_binding_set command (the same steps the UI performs after a
+    /// successful start).
     fn confirm_model_binding(
         harness: &LiveHarness,
         model_id: &str,
@@ -221,15 +221,14 @@ mod tests {
             "model_id": model_id,
             "runtime_instance_id": runtime_instance_id,
         });
-        let envelope = tauri::async_runtime::block_on(crate::approval_commands::request_approval(
+        let envelope = crate::approval_commands::request_approval(
             harness
                 ._app
                 .state::<crate::approval_commands::ApprovalState>(),
-            harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
             "model.binding.set".to_owned(),
             input,
-        ))
-        .expect("background binding approval issued by Rust");
+        )
+        .expect("binding approval issued through the real prompt roundtrip");
         tauri::async_runtime::block_on(crate::control_plane::model_binding_set(
             harness._app.state::<Arc<ControlPlaneBridge>>(),
             harness
@@ -282,7 +281,7 @@ mod tests {
         );
         harness
             .bridge
-            .reserve_model_turn(&identity, Vec::new(), wire_digest, "off")?;
+            .reserve_model_turn(&identity, Vec::new(), wire_digest)?;
         crate::control_plane::dispatch_gate_for_model_turn(
             &harness.runtime,
             &harness.bridge,
@@ -294,7 +293,6 @@ mod tests {
             prompt.to_owned(),
             assistant_context,
             Vec::new(),
-            "off".to_owned(),
         )
     }
 
@@ -369,11 +367,6 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let harness = build_harness(&project_root, &python, &model_root);
-        let custom_sha256 = harness
-            .artifacts
-            .custom_model(&model_id)
-            .expect("custom model lookup")
-            .map(|model| model.asset_sha256.clone());
 
         // --- capability report for the selected engine (P0-6) ---
         let capability = harness
@@ -390,7 +383,7 @@ mod tests {
         // --- start -> ready (P0-2) ---
         let first = match harness.runtime.start(
             &model_id,
-            custom_sha256.as_deref(),
+            None,
             Some(&runtime_id),
             &harness.bridge,
             None,
@@ -434,7 +427,7 @@ mod tests {
             .runtime
             .start(
                 &model_id,
-                custom_sha256.as_deref(),
+                None,
                 Some(&runtime_id),
                 &harness.bridge,
                 None,
@@ -504,7 +497,7 @@ mod tests {
             .runtime
             .start(
                 &model_id,
-                custom_sha256.as_deref(),
+                None,
                 Some(&runtime_id),
                 &harness.bridge,
                 None,
@@ -610,9 +603,8 @@ mod tests {
         .expect_err("forged approval token must be rejected");
         assert_eq!(forged.code, "approval_token_unknown");
 
-        // Legacy listener retained for compatibility with the live harness;
-        // production approval issuance now happens in the Rust background path
-        // and does not open a user-facing card.
+        // Auto-approve listener: plays the approving user for the real prompt
+        // roundtrip, resolving through the same dispatcher the UI uses.
         let dispatcher = harness
             .approval_dispatcher
             .as_ref()
@@ -632,13 +624,12 @@ mod tests {
         let state_ref = harness
             ._app
             .state::<crate::approval_commands::ApprovalState>();
-        let envelope = tauri::async_runtime::block_on(crate::approval_commands::request_approval(
+        let envelope = crate::approval_commands::request_approval(
             state_ref,
-            harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
             "runtime.start".to_owned(),
             input.clone(),
-        ))
-        .expect("background approval issued by Rust");
+        )
+        .expect("approval issued through the real prompt roundtrip");
 
         // Consume the token through the same validator the command uses,
         // then prove single-use: a replay of the exact same approval material
@@ -668,16 +659,14 @@ mod tests {
         assert_eq!(replay.code, "approval_token_consumed");
 
         // Fresh approval, then the real command start with exact approval.
-        let envelope_two =
-            tauri::async_runtime::block_on(crate::approval_commands::request_approval(
-                harness
-                    ._app
-                    .state::<crate::approval_commands::ApprovalState>(),
-                harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
-                "runtime.start".to_owned(),
-                input.clone(),
-            ))
-            .expect("second approval issued");
+        let envelope_two = crate::approval_commands::request_approval(
+            harness
+                ._app
+                .state::<crate::approval_commands::ApprovalState>(),
+            "runtime.start".to_owned(),
+            input.clone(),
+        )
+        .expect("second approval issued");
 
         let started = tauri::async_runtime::block_on(managed_runtime_start(
             harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),

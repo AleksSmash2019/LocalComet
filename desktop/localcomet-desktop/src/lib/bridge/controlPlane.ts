@@ -125,9 +125,7 @@ function isEventMethod(value: unknown): boolean {
     'model.turn.completed',
     'model.turn.cancelled',
     'model.turn.timed_out',
-    'model.turn.failed',
-    'model.tool.request',
-    'model.turn.tool_calls'
+    'model.turn.failed'
   ]);
 }
 

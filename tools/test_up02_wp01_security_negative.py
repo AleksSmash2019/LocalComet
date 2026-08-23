@@ -83,7 +83,6 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "hf_search_models",    # read-only HF metadata; approved by owner 2026-08-05
     "select_files",
     "set_workspace",  # INV-APPROVAL-001/002 (security/invariants/invariants.toml)
-    "speak_local_text",  # local Piper TTS (voice.rs): fixed path, stdin text, bounded 8k, Windows-only
     "start_approved_artifact_download",
 ))
 
@@ -120,8 +119,6 @@ REVIEWED_EXTERNAL_AUTHORITY_LINES: frozenset[str] = frozenset((
     'let result = std::process::Command::new("xdg-open").arg(path).spawn();',
     'use std::process::Command;',
     'let mut cmd = Command::new(python);',
-    'let mut command = Command::new(r"C:\\Windows\\System32\\dxdiag.exe");',
-    'let mut child = Command::new(&piper)',
 ))
 
 

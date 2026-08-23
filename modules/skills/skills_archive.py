@@ -49,19 +49,16 @@ def detect_archive_kind(data: bytes, filename: str) -> str:
     raise SkillError(SkillErrorCode.ARCHIVE_TYPE_DENIED, "unsupported archive type or magic bytes")
 
 
-def read_manifest_bytes_from_data(data: bytes, filename: str) -> bytes:
-    """Return skill.json bytes from an in-memory archive buffer (no execution)."""
+def read_manifest_bytes(archive_path: Path) -> bytes:
+    """Read and return skill.json bytes from a validated archive (no execution)."""
+    data = archive_path.read_bytes()
     if len(data) > MAX_ARCHIVE_BYTES:
         raise SkillError(SkillErrorCode.ARCHIVE_TOO_LARGE, "archive exceeds maximum size")
-    kind = detect_archive_kind(data, filename)
+    kind = detect_archive_kind(data, archive_path.name)
+
     if kind == "zip":
         return _read_manifest_zip(data)
     return _read_manifest_targz(data)
-
-
-def read_manifest_bytes(archive_path: Path) -> bytes:
-    """Read and return skill.json bytes from a validated archive (no execution)."""
-    return read_manifest_bytes_from_data(archive_path.read_bytes(), archive_path.name)
 
 
 def _read_manifest_zip(data: bytes) -> bytes:
@@ -143,11 +140,12 @@ def parse_manifest(manifest_bytes: bytes) -> dict:
     return obj
 
 
-def extract_archive_from_data(data: bytes, filename: str, dest_dir: Path) -> list[str]:
-    """Extract an in-memory archive buffer into dest_dir. Returns relative file paths."""
+def extract_archive(archive_path: Path, dest_dir: Path) -> list[str]:
+    """Extract a validated archive into dest_dir. Returns relative file paths."""
+    data = archive_path.read_bytes()
     if len(data) > MAX_ARCHIVE_BYTES:
         raise SkillError(SkillErrorCode.ARCHIVE_TOO_LARGE, "archive exceeds maximum size")
-    kind = detect_archive_kind(data, filename)
+    kind = detect_archive_kind(data, archive_path.name)
     dest_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
     if kind == "zip":
@@ -155,11 +153,6 @@ def extract_archive_from_data(data: bytes, filename: str, dest_dir: Path) -> lis
     else:
         _extract_targz(data, dest_dir, written)
     return written
-
-
-def extract_archive(archive_path: Path, dest_dir: Path) -> list[str]:
-    """Extract a validated archive into dest_dir. Returns relative file paths."""
-    return extract_archive_from_data(archive_path.read_bytes(), archive_path.name, dest_dir)
 
 
 def _extract_zip(data: bytes, dest_dir: Path, written: list[str]) -> None:

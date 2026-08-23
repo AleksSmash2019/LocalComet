@@ -37,7 +37,7 @@ import type { ArtifactInstallationStatus, ManagedRuntimeStatus } from '../src/li
 
 const RUNTIME_ID = 'llama-cpp-windows-x86-64-cpu-bootstrap';
 const GPU_RUNTIME_ID = 'llama-cpp-windows-x86-64-vulkan-bootstrap';
-const MODEL_ID = 'custom-hf-72962196cbe48a1dc6b432301cb3666a0aad360a53a43139094d52aa62b0f4f6';
+const MODEL_ID = 'qwen2.5-1.5b-instruct-q4-k-m';
 const CATALOG_DIGEST = 'a'.repeat(64);
 const RUNTIME_SHA256 = 'b'.repeat(64);
 const GPU_RUNTIME_SHA256 = '6'.repeat(64);
@@ -133,13 +133,13 @@ function modelFixture() {
   return {
     model_id: MODEL_ID,
     provider: 'Qwen',
-    family: 'Qwen3',
-    display_name: 'Qwen3 1.7B Instruct Q4_K_M',
+    family: 'Qwen2.5',
+    display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
     format: 'GGUF',
     quantization: 'Q4_K_M',
-    upstream_repository: 'https://huggingface.co/Qwen/Qwen3-1.7B-GGUF',
+    upstream_repository: 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF',
     upstream_revision: 'main',
-    asset_filename: 'qwen3-1.7b-instruct-q4_k_m.gguf',
+    asset_filename: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
     asset_bytes: MODEL_BYTES,
     asset_sha256: MODEL_SHA256,
     license_id: 'apache-2.0',
@@ -254,8 +254,8 @@ function downloadableArtifactFixture(kind: 'runtime' | 'model') {
     artifact_id: artifactId,
     kind,
     trust_kind: 'approved_catalog',
-    display_name: kind === 'runtime' ? 'llama.cpp b6000' : 'Qwen3 1.7B Instruct Q4_K_M',
-    source_identity: kind === 'runtime' ? 'ggml-org/llama.cpp' : 'Qwen/Qwen3-1.7B-GGUF',
+    display_name: kind === 'runtime' ? 'llama.cpp b6000' : 'Qwen2.5 1.5B Instruct Q4_K_M',
+    source_identity: kind === 'runtime' ? 'ggml-org/llama.cpp' : 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
     expected_bytes: kind === 'runtime' ? RUNTIME_BYTES : MODEL_BYTES,
     license_id: kind === 'runtime' ? 'MIT' : 'Apache-2.0',
     format: kind === 'runtime' ? 'zip' : 'GGUF',
@@ -319,7 +319,7 @@ function installResponses(): void {
       inference_ready: true,
       provider_id: 'managed-llama-cpp',
       model_id: MODEL_ID,
-      model_display_name: 'Qwen3 1.7B Instruct Q4_K_M',
+      model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
       runtime_id: RUNTIME_ID,
       runtime_instance_id: 'd'.repeat(32),
       runtime_instance_fingerprint: 'e'.repeat(64)
@@ -577,7 +577,7 @@ describe('managed artifact trust frontend contract', () => {
       runtime_instance_id: runtimeInstanceId,
       runtime_instance_fingerprint: '8'.repeat(64),
       model_id: MODEL_ID,
-      model_display_name: 'Qwen3 1.7B Instruct Q4_K_M',
+      model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
       binding_fingerprint: attachFingerprint
     };
 
@@ -599,7 +599,7 @@ describe('managed artifact trust frontend contract', () => {
       runtime_instance_id: 'd'.repeat(32),
       runtime_instance_fingerprint: 'e'.repeat(64),
       model_id: MODEL_ID,
-      model_display_name: 'Qwen3 1.7B Instruct Q4_K_M',
+      model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
       binding_fingerprint: '9'.repeat(64)
     };
     responses.managed_runtime_start = () => {
@@ -610,7 +610,7 @@ describe('managed artifact trust frontend contract', () => {
         inference_ready: true,
         provider_id: 'managed-llama-cpp',
         model_id: MODEL_ID,
-        model_display_name: 'Qwen3 1.7B Instruct Q4_K_M',
+        model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
         runtime_id: RUNTIME_ID,
         runtime_instance_id: 'd'.repeat(32),
         runtime_instance_fingerprint: 'e'.repeat(64)
@@ -640,7 +640,7 @@ describe('managed artifact trust frontend contract', () => {
       runtime_instance_id: 'd'.repeat(32),
       runtime_instance_fingerprint: 'e'.repeat(64),
       model_id: MODEL_ID,
-      model_display_name: 'Qwen3 1.7B Instruct Q4_K_M',
+      model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
       binding_fingerprint: '9'.repeat(64)
     };
     await refreshManagedRuntimeStatus();
@@ -731,7 +731,7 @@ describe('managed artifact trust frontend contract', () => {
     expect(state.lastError).toBeNull();
 
     const body = render(ManagedRuntimePanel).body;
-    expect(body).toContain('Qwen3 1.7B Instruct Q4_K_M');
+    expect(body).toContain('Qwen2.5 1.5B Instruct Q4_K_M');
     expect(body).toContain('Start Runtime');
     expect(body).toContain('Stop Runtime');
     expect(body).toContain('Confirm Binding');

@@ -2,36 +2,12 @@ import { writable } from 'svelte/store';
 import { requestApproval } from '$lib/bridge/approval';
 import { invoke } from '@tauri-apps/api/core';
 
-export type SkillState = 'installed' | 'enabled' | 'disabled' | 'failed';
-
 export interface Skill {
   id: string;
   name: string;
   version: string;
-  state: SkillState;
+  state: 'installed' | 'enabled' | 'disabled';
   permissions: string[];
-  description?: string;
-  capabilities?: string[];
-  builtin?: boolean;
-}
-
-function normalizeSkillState(value: unknown): SkillState {
-  const normalized = String(value ?? '').toLowerCase();
-  if (normalized === 'enabled' || normalized === 'disabled' || normalized === 'failed') return normalized;
-  return 'installed';
-}
-
-function normalizeSkill(value: any): Skill {
-  return {
-    id: String(value?.id ?? ''),
-    name: String(value?.name ?? ''),
-    version: String(value?.version ?? ''),
-    state: normalizeSkillState(value?.state),
-    permissions: Array.isArray(value?.permissions) ? value.permissions.map(String) : [],
-    description: typeof value?.description === 'string' ? value.description : '',
-    capabilities: Array.isArray(value?.capabilities) ? value.capabilities.map(String) : [],
-    builtin: value?.builtin === true
-  };
 }
 
 export interface SkillsStore {
@@ -52,10 +28,8 @@ function createSkillsStore() {
     try {
       const res: any = await invoke('skills_list');
       if (res.success) {
-        const rawSkills = Array.isArray(res.result) ? res.result : [];
-        update(s => ({ ...s, skills: rawSkills.map(normalizeSkill), loading: false }));
+        update(s => ({ ...s, skills: res.result || [], loading: false }));
       } else {
-
         update(s => ({ ...s, error: res.error?.message || 'Failed to load skills', loading: false }));
       }
     } catch (err: any) {
