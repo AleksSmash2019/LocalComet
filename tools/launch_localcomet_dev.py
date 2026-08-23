@@ -26,6 +26,8 @@ APP_DATA_NAME = "app-data"
 RESOURCE_CACHE_NAME = "runtime-cache"
 STATE_NAME = "state.json"
 LOGS_NAME = "logs"
+BUILDCACHE_RELATIVE = Path("LocalComet") / "BuildCache"
+CANONICAL_CARGO_TARGET_NAME = "CargoTarget"
 
 SYNC_ROOTS = ("desktop", "modules", "tools")
 SYNC_FILES = ("third_party/llama.cpp/LICENSE-MIT.txt",)
@@ -996,11 +998,72 @@ def run_npm_ci(app_dir: Path, state_path: Path, state: dict[str, object], packag
     save_state(state_path, state)
 
 
+def canonical_cargo_target_base(env: dict[str, str] | None = None) -> Path:
+    """Single source of truth for the external Cargo target base (plan §3.1).
+
+    Resolves from LOCALAPPDATA so the path never depends on the checkout
+    location or the current working directory. Tests override via the env
+    mapping; production callers pass nothing.
+    """
+    data = os.environ if env is None else env
+    local_app_data = data.get("LOCALAPPDATA")
+    if not local_app_data:
+        raise LauncherHold("LOCALAPPDATA is not set; cannot resolve canonical Cargo target base")
+    local_root = canonical(Path(local_app_data))
+    return require_within(
+        local_root / BUILDCACHE_RELATIVE / CANONICAL_CARGO_TARGET_NAME,
+        local_root,
+        "Canonical Cargo target base",
+    )
+
+
+def resolve_canonical_cargo_target_dir(
+    source_root: Path,
+    env: dict[str, str] | None = None,
+    subkey: str | None = None,
+) -> Path:
+    """Resolve and fail-close the canonical external CARGO_TARGET_DIR.
+
+    The optional subkey must stay inside the canonical base (used by hidden
+    isolated runs: BuildCache\\CargoTarget\\isolated\\<stable-root-name>).
+    Any path inside the repository is rejected before a build can start.
+    Directory creation is deferred to real build operations by callers.
+    """
+    base = canonical_cargo_target_base(env)
+    target = base
+    if subkey:
+        candidate = canonical(base / str(subkey))
+        if candidate == base or not is_relative_to(candidate, base):
+            raise LauncherHold(f"Cargo target subkey escapes canonical base: {subkey}")
+        target = candidate
+    repo_root = canonical(Path(source_root))
+    if (
+        target == repo_root
+        or is_relative_to(target, repo_root)
+        or is_relative_to(repo_root, target)
+    ):
+        # Bidirectional guard: the target must never sit inside the sources,
+        # and the sources must never sit inside (or equal) the target.
+        raise LauncherHold(f"CARGO_TARGET_DIR must be outside source repository: {target}")
+    return target
+
+
+def cargo_target_evidence(target: Path, mode: str, subkey: str | None = None) -> dict[str, str]:
+    """Parity evidence (plan §3.3): resolved path + owner/mode, no secrets."""
+    payload = {
+        "resolved_path": str(canonical(target)),
+        "owner": "localcomet-buildcache",
+        "mode": mode,
+        "schema_version": "localcomet.cargo-target.v1",
+    }
+    if subkey:
+        payload["subkey"] = str(subkey)
+    return payload
+
+
 def build_launch_environment(source_root: Path, paths: RuntimePaths) -> dict[str, str]:
     env = os.environ.copy()
-    cargo_target = require_within(paths.cargo_target, paths.root, "Cargo cache")
-    if is_relative_to(cargo_target, canonical(source_root)):
-        raise LauncherHold(f"CARGO_TARGET_DIR must be outside source repository: {cargo_target}")
+    cargo_target = resolve_canonical_cargo_target_dir(source_root)
     cargo_target.mkdir(parents=True, exist_ok=True)
     env["CARGO_TARGET_DIR"] = str(cargo_target)
     project_root = require_within(paths.workspace, paths.root, "Sidecar project root")
@@ -1089,7 +1152,8 @@ def print_startup_summary(
     print(f"Source: {source_root}")
     print(f"Runtime: {paths.workspace}")
     print(f"Dependencies: {dependency}")
-    print(f"Cargo cache: {paths.cargo_target}")
+    print(f"Cargo cache: {paths.cargo_target} (legacy display)")
+    print(f"Canonical CARGO_TARGET_DIR: {env['CARGO_TARGET_DIR']}")
     print(f"Development AppData: {paths.app_data}")
     print(f"Sidecar project root: {env['LOCALCOMET_TEST_PROJECT_ROOT']}")
     print(f"Sidecar Python: {env['LOCALCOMET_TEST_PYTHON']}")
@@ -1153,6 +1217,14 @@ def main() -> int:
         write_log(log_path, f"source={source_root}")
         write_log(log_path, f"runtime_workspace={paths.workspace}")
         write_log(log_path, f"cargo_target={paths.cargo_target}")
+        write_log(
+            log_path,
+            "cargo_target_evidence="
+            + json.dumps(
+                cargo_target_evidence(resolve_canonical_cargo_target_dir(source_root), "normal"),
+                sort_keys=True,
+            ),
+        )
         write_log(log_path, f"development_app_data={paths.app_data}")
         write_log(log_path, f"package_lock_sha256={package_lock_hash}")
         if malformed_state:

@@ -1,0 +1,27 @@
+# EditorConfig — LocalComet (https://editorconfig.org)
+#
+# Repository line-ending policy lives in .gitattributes (`* text=auto eol=lf`):
+# text files are stored LF. This file keeps editors aligned with that canon so
+# saves do not flip endings, except for the legacy modules that were committed
+# with CRLF bytes and are preserved byte-exact (see .gitattributes `-text`).
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = false
+
+# Legacy modules stored with CRLF bytes (byte-preserved; do not convert)
+[modules/computer_use_full_control_mission_ru.py]
+end_of_line = crlf
+
+[modules/computer_use_observe_vision_ru.py]
+end_of_line = crlf
+
+[modules/computer_use_safety_ru.py]
+end_of_line = crlf
+
+[modules/premium_task_panel_ru.py]
+end_of_line = crlf

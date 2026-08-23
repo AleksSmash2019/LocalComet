@@ -1,6 +1,6 @@
 import { render } from 'svelte/server';
 import { get } from 'svelte/store';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import ModelGatewayPanel from '../src/lib/components/model/ModelGatewayPanel.svelte';
 import ManagedRuntimePanel from '../src/lib/components/model/ManagedRuntimePanel.svelte';
 import { t } from '../src/lib/i18n';
@@ -15,8 +15,11 @@ import {
 } from '../src/lib/bridge/modelGateway';
 import {
   applyModelGatewayEvent,
+  cancelLocalModelTurn,
   inferenceRequestStore,
+  managedRuntimeStore,
   modelGatewayStore,
+  startLocalModelTurn,
   resetModelGatewayStore,
   setGatewayPortText
 } from '../src/lib/stores/modelGateway';
@@ -36,18 +39,27 @@ let invokeCalls: { command: string; args?: Record<string, unknown> }[] = [];
 let capabilityResponse: unknown = null;
 let listener: ((event: { payload: unknown }) => void) | null = null;
 let runToolCallResponse: unknown = null;
+let observeResponse: unknown = null;
+let runtimeStatusResponse: unknown = null;
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
     invokeCalls.push({ command, args });
+    if (command === 'cu_broker_observe') return observeResponse;
     if (command === 'request_approval') {
       const tool = (args as { tool: string }).tool;
       const familyMap: Record<string, string> = { 'artifact.download': 'artifact_download', 'artifact.remove': 'artifact_remove', 'runtime.start': 'runtime_start', 'runtime.stop': 'runtime_stop', 'model.binding.set': 'model_binding_set' };
       return { token: `lcap_${'a'.repeat(64)}`, approvalId: `appr_${'b'.repeat(32)}`, callId: `call_${'c'.repeat(32)}`, tool, riskLevel: 'guarded', commandFamily: familyMap[tool] ?? 'model_binding_set', expiresAtUnixMs: Date.now() + 300_000 };
     }
-    if (command === 'run_tool_call') return runToolCallResponse;
+    if (command === 'run_tool_call') {
+      const input = args?.input as { action?: unknown } | undefined;
+      if (input?.action === 'type') {
+        return { ...(runToolCallResponse as Record<string, unknown>), action: { kind: 'type', target: 'notepad' } };
+      }
+      return runToolCallResponse;
+    }
     if (command === 'model_gateway_catalog') return catalogFixture();
-    if (command === 'managed_runtime_status') return { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_id: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, model_state: 'Unavailable', inference_ready: false, last_error: null };
+    if (command === 'managed_runtime_status') return runtimeStatusResponse ?? { engine: 'llama.cpp', state: 'NotInstalled', installation: 'Not installed', runtime_version: null, runtime_id: null, runtime_instance_id: null, runtime_instance_fingerprint: null, model_id: null, model_display_name: null, binding_fingerprint: null, model_state: 'Unavailable', inference_ready: false, last_error: null };
     if (command === 'managed_runtime_catalog') return { ...TRUST_CATALOG, runtimes: [] };
     if (command === 'managed_model_catalog') return { ...TRUST_CATALOG, engine: 'llama.cpp', model_root: '<MANAGED_MODEL_ROOT>', models: [], maximum_models: 32 };
     if (command === 'managed_installed_artifacts') return { ...TRUST_CATALOG, artifacts: [] };
@@ -92,7 +104,19 @@ vi.mock('@tauri-apps/api/event', () => ({
 function installTauriMock(): void {
   invokeCalls = [];
   listener = null;
-  runToolCallResponse = { tool: 'computer_use', ok: true, action: 'open_app', target: 'Calculator' };
+  observeResponse = null;
+  runtimeStatusResponse = null;
+  // Full verified v1 envelope: the only shape the shared classifier accepts
+  // as a PASS; the legacy bare ok=true now stays honestly UNVERIFIED.
+  runToolCallResponse = {
+    tool: 'computer_use',
+    schema_version: 'computer_use.result.v1',
+    status: 'completed',
+    terminal: true,
+    succeeded: true,
+    verification: 'verified',
+    action: { kind: 'open_app', target: 'Calculator' }
+  };
   capabilityResponse = {
     runtime_id: 'llama-cpp-windows-x86-64-vulkan-bootstrap',
     available: true,
@@ -150,9 +174,14 @@ function modelEvent(method: ModelGatewayEvent['method'], sequence: number, patch
 
 describe('Local Model Gateway frontend', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     resetModelGatewayStore();
     resetShellStores();
     installTauriMock();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('uses exactly the fixed model gateway commands', async () => {
@@ -334,7 +363,7 @@ describe('Local Model Gateway frontend', () => {
     expect(errors).toEqual(['invalid_payload']);
   });
 
-  it('auto-executes allowlisted computer_use when the permission is enabled', async () => {
+  it('routes allowlisted computer_use through scoped approval when enabled', async () => {
     setAgentPermissions({ computerUse: true });
     modelGatewayStore.update((state) => ({
       ...state,
@@ -361,10 +390,141 @@ describe('Local Model Gateway frontend', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(invokeCalls.map((call) => call.command)).toContain('run_tool_call');
-    expect(invokeCalls.map((call) => call.command)).not.toContain('request_approval');
+    expect(invokeCalls.map((call) => call.command)).toContain('request_approval');
     expect(get(inferenceRequestStore).lifecycle).toBe('completed');
     const assistant = get(chatMessages);
     expect(assistant.find((message) => message.role === 'assistant' && message.requestId === TURN_ID)?.toolCalls?.[0]?.status).toBe('PASS');
+  });
+
+  it('executes exactly one correlated type continuation after verified Notepad open', async () => {
+    setAgentPermissions({ computerUse: true, tools: true });
+    const runtimeId = 'a'.repeat(32);
+    const runtimeInstanceId = 'b'.repeat(32);
+    const runtimeStatus = {
+      engine: 'llama.cpp' as const,
+      state: 'Ready' as const,
+      installation: 'Installed' as const,
+      runtime_version: 'test',
+      runtime_id: runtimeId,
+      runtime_instance_id: runtimeInstanceId,
+      runtime_instance_fingerprint: 'f'.repeat(64),
+      model_id: 'local-model',
+      model_display_name: 'Local test model',
+      binding_fingerprint: FINGERPRINT,
+      model_state: 'Ready' as const,
+      inference_ready: true as const,
+      last_error: null,
+      loading_phase: null
+    };
+    runtimeStatusResponse = runtimeStatus;
+    const runtimeBinding = {
+      provider_id: 'managed-llama-cpp' as const,
+      harness_id: 'minimal' as const,
+      host: '127.0.0.1' as const,
+      port: 1234,
+      base_path: '/v1' as const,
+      model_id: 'local-model',
+      runtime_instance_id: runtimeInstanceId,
+      binding_fingerprint: FINGERPRINT,
+      discovered_fingerprint: FINGERPRINT,
+      persistence: false as const
+    };
+    managedRuntimeStore.update((state) => ({
+      ...state,
+      selectedModelId: 'local-model',
+      harnessId: 'minimal',
+      status: runtimeStatus,
+      catalog: [{
+        model_id: 'local-model', provider: 'test', family: 'test', display_name: 'Local test model', format: 'GGUF', quantization: 'Q4_K_M',
+        upstream_repository: 'test', upstream_revision: 'test', asset_filename: 'test.gguf', asset_bytes: 1, asset_sha256: 'd'.repeat(64),
+        license_id: 'test', compatible_runtime_ids: [runtimeId], public_distribution: false, installer_bundled: false,
+        bootstrap_purpose: 'INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION', status: 'approved_internal_bootstrap', trust_kind: 'approved_catalog'
+      }],
+      runtimeCatalog: [{
+        runtime_id: runtimeId, provider: 'test', release_tag: 'test', platform: 'windows', architecture: 'x86-64', variant: 'cpu',
+        upstream_repository: 'test', upstream_revision: 'test', asset_filename: 'test.zip', asset_bytes: 1, asset_sha256: 'e'.repeat(64),
+        archive_format: 'zip', permitted_bind_scope: 'loopback-only', supported_api_protocol: 'openai-compatible-v1', license_id: 'test',
+        public_distribution: false, status: 'approved_internal_bootstrap'
+      }],
+      installedArtifacts: [
+        { schema_version: 1, catalog_id: 'localcomet-approved-artifacts', catalog_version: '1.0.0', catalog_digest: 'c'.repeat(64), artifact_id: 'local-model', kind: 'model', catalog_status: 'approved_internal_bootstrap', installation_status: 'valid', expected_bytes: 1, expected_sha256: 'd'.repeat(64), observed_bytes: 1, observed_sha256: 'd'.repeat(64), validation_code: 'ok', verified_unix_ms: 1 },
+        { schema_version: 1, catalog_id: 'localcomet-approved-artifacts', catalog_version: '1.0.0', catalog_digest: 'c'.repeat(64), artifact_id: runtimeId, kind: 'runtime', catalog_status: 'approved_internal_bootstrap', installation_status: 'valid', expected_bytes: 1, expected_sha256: 'e'.repeat(64), observed_bytes: 1, observed_sha256: 'e'.repeat(64), validation_code: 'ok', verified_unix_ms: 1 }
+      ],
+      readiness: {
+        schema_version: 1, catalog_id: 'localcomet-approved-artifacts', catalog_version: '1.0.0', catalog_digest: 'c'.repeat(64), model_id: 'local-model',
+        model_trust_kind: 'approved_catalog', model_status: 'valid', compatible_runtime_ids: [runtimeId], selected_runtime_id: runtimeId,
+        runtime_status: 'valid', compatibility: 'compatible', readiness: 'ready', launchable: true
+      },
+      binding: runtimeBinding
+    }));
+    modelGatewayStore.update((state) => ({ ...state, binding: runtimeBinding }));
+
+    const accepted = await startLocalModelTurn('Открой Блокнот и напечатай в нём: LocalComet isolated smoke test.', 'local-chat');
+    expect(accepted).toBe(true);
+    const requestId = get(inferenceRequestStore).requestId;
+    expect(requestId).toMatch(/^[0-9a-f]{24}$/);
+    const eventForTurn = (method: ModelGatewayEvent['method'], sequence: number, patch: Partial<ModelGatewayEvent> = {}): ModelGatewayEvent => ({
+      ...modelEvent(method, sequence, patch),
+      request_id: requestId!,
+      reply_to: requestId!,
+      turn_id: requestId!,
+      provider_id: 'managed-llama-cpp'
+    });
+    applyModelGatewayEvent(eventForTurn('model.turn.started', 0));
+    applyModelGatewayEvent(eventForTurn('model.tool.request', 1, {
+      tools_executed: 1,
+      tool_calls: [{ id: 'call_11111111111111111111111111111111', name: 'computer_use', arguments: { action: 'open_app', target: 'notepad' } }]
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const toolInvokes = invokeCalls.filter((call) => call.command === 'run_tool_call');
+    expect(toolInvokes).toHaveLength(2);
+    expect((toolInvokes[0].args?.input as Record<string, unknown>).action).toBe('open_app');
+    expect((toolInvokes[1].args?.input as Record<string, unknown>)).toEqual({ action: 'type', text: 'LocalComet isolated smoke test.' });
+    expect(toolInvokes[0].args?.requestId).toBe(requestId);
+    expect(toolInvokes[1].args?.requestId).toBe(requestId);
+    expect(toolInvokes[0].args?.actionId).toBe('call_11111111111111111111111111111111');
+    expect(toolInvokes[1].args?.actionId).toMatch(/^call_[0-9a-f]{32}$/);
+    expect(toolInvokes[1].args?.actionId).not.toBe(toolInvokes[0].args?.actionId);
+    expect(get(inferenceRequestStore).lifecycle).toBe('completed');
+    const assistant = get(chatMessages).find((message) => message.role === 'assistant' && message.requestId === requestId);
+    expect(assistant?.toolCalls).toHaveLength(2);
+    expect(assistant?.toolCalls?.map((item) => item.status)).toEqual(['PASS', 'PASS']);
+  });
+
+  it('keeps a legacy unverified computer_use result out of PASS and completed', async () => {
+    setAgentPermissions({ computerUse: true });
+    runToolCallResponse = { tool: 'computer_use', ok: true, action: 'open_app', target: 'Calculator' };
+    modelGatewayStore.update((state) => ({
+      ...state,
+      binding: {
+        provider_id: 'openai-compatible-local',
+        harness_id: 'minimal',
+        host: '127.0.0.1',
+        port: 1234,
+        base_path: '/v1',
+        model_id: 'local-model',
+        binding_fingerprint: FINGERPRINT,
+        discovered_fingerprint: FINGERPRINT,
+        persistence: false
+      }
+    }));
+    inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, effort: 'off', chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
+    appendAcceptedChatTurn(TURN_ID, 'Открой калькулятор');
+
+    applyModelGatewayEvent(modelEvent('model.turn.started', 0));
+    applyModelGatewayEvent(modelEvent('model.tool.request', 1, {
+      tools_executed: 1,
+      tool_calls: [{ id: 'call_1', name: 'computer_use', arguments: { action: 'open_app', target: 'Calculator' } }]
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // ok=true without the v1 envelope is at most an unverified success: the
+    // turn must not claim completion and the card must not wear a PASS pill.
+    expect(get(inferenceRequestStore).lifecycle).toBe('awaiting_verification');
+    const assistant = get(chatMessages);
+    expect(assistant.find((message) => message.role === 'assistant' && message.requestId === TURN_ID)?.toolCalls?.[0]?.status).toBe('UNVERIFIED');
   });
 
   it('marks the computer_use card FAIL when the backend returns an execution error', async () => {
@@ -448,11 +608,11 @@ describe('Local Model Gateway frontend', () => {
   });
 
   it('invokes the capability command with exact args and a validated payload', async () => {
-    const capability = await getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap', 'qwen2.5-1.5b-instruct-q4-k-m');
+    const capability = await getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap', 'qwen3-1.7b-instruct-q4-k-m');
 
     expect(invokeCalls.at(-1)).toEqual({
       command: 'managed_runtime_capability',
-      args: { runtimeId: 'llama-cpp-windows-x86-64-vulkan-bootstrap', modelId: 'qwen2.5-1.5b-instruct-q4-k-m' }
+      args: { runtimeId: 'llama-cpp-windows-x86-64-vulkan-bootstrap', modelId: 'qwen3-1.7b-instruct-q4-k-m' }
     });
     expect(capability.available).toBe(true);
     expect(capability.safe_to_start).toBe(true);
@@ -496,10 +656,105 @@ describe('Local Model Gateway frontend', () => {
       device_summary: null
     };
 
-    const capability = await getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap', 'qwen2.5-1.5b-instruct-q4-k-m');
+    const capability = await getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap', 'qwen3-1.7b-instruct-q4-k-m');
 
     expect(capability.available).toBe(false);
     expect(capability.reason_code).toBe('VULKAN_DEVICE_UNAVAILABLE');
     expect(capability.fallback_runtime_ids).toEqual(['llama-cpp-windows-x86-64-cpu-bootstrap']);
+  });
+
+  describe('bounded launch continuation (plan P0.2)', () => {
+    function launchPendingEnvelope(): Record<string, unknown> {
+      return {
+        tool: 'computer_use',
+        schema_version: 'computer_use.result.v1',
+        action: { kind: 'open_app', target: 'Calculator' },
+        status: 'launch_pending',
+        terminal: false,
+        succeeded: false,
+        verification: 'pending',
+        request_id: TURN_ID,
+        reason: 'spawn accepted but the readiness postcondition has not been observed yet'
+      };
+    }
+
+    async function startTurnWithPendingLaunch(): Promise<void> {
+      vi.useFakeTimers();
+      setAgentPermissions({ computerUse: true });
+      modelGatewayStore.update((state) => ({
+        ...state,
+        binding: {
+          provider_id: 'openai-compatible-local',
+          harness_id: 'minimal',
+          host: '127.0.0.1',
+          port: 1234,
+          base_path: '/v1',
+          model_id: 'local-model',
+          binding_fingerprint: FINGERPRINT,
+          discovered_fingerprint: FINGERPRINT,
+          persistence: false
+        }
+      }));
+      inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, effort: 'off', chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
+      appendAcceptedChatTurn(TURN_ID, 'Открой калькулятор');
+      runToolCallResponse = launchPendingEnvelope();
+      applyModelGatewayEvent(modelEvent('model.turn.started', 0));
+      applyModelGatewayEvent(modelEvent('model.tool.request', 1, {
+        tools_executed: 1,
+        tool_calls: [{ id: 'call_1', name: 'computer_use', arguments: { action: 'open_app', target: 'Calculator' } }]
+      }));
+      // Flush approval + run_tool_call microtasks before any timer fires.
+      await vi.advanceTimersByTimeAsync(0);
+    }
+
+    const observeCalls = (): number =>
+      invokeCalls.filter((call) => call.command === 'cu_broker_observe').length;
+
+    it('polls cu_broker_observe to a verified terminal without respawn or new token', async () => {
+      await startTurnWithPendingLaunch();
+      expect(get(inferenceRequestStore).lifecycle).toBe('awaiting_verification');
+      expect(observeCalls()).toBe(0);
+
+      observeResponse = {
+        found: true,
+        envelope: {
+          ...launchPendingEnvelope(),
+          status: 'completed',
+          terminal: true,
+          succeeded: true,
+          verification: 'verified'
+        }
+      };
+      await vi.advanceTimersByTimeAsync(4000);
+
+      expect(observeCalls()).toBe(1);
+      expect(invokeCalls.find((call) => call.command === 'cu_broker_observe')?.args).toEqual({ requestId: TURN_ID });
+      expect(get(inferenceRequestStore).lifecycle).toBe('completed');
+      const assistant = get(chatMessages);
+      expect(assistant.find((message) => message.role === 'assistant' && message.requestId === TURN_ID)?.toolCalls?.[0]?.status).toBe('PASS');
+
+      // Terminal state stops the loop: no further observation calls.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(observeCalls()).toBe(1);
+    });
+
+    it('keeps polling while pending and Stop revokes the continuation loop', async () => {
+      await startTurnWithPendingLaunch();
+      observeResponse = { found: true, envelope: launchPendingEnvelope() };
+
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(observeCalls()).toBe(1);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(observeCalls()).toBe(2);
+      expect(get(inferenceRequestStore).lifecycle).toBe('awaiting_verification');
+
+      await cancelLocalModelTurn();
+      expect(get(inferenceRequestStore).lifecycle).toBe('cancelled');
+
+      const afterCancel = observeCalls();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(observeCalls()).toBe(afterCancel);
+      expect(get(inferenceRequestStore).lifecycle).toBe('cancelled');
+    });
   });
 });

@@ -1447,6 +1447,48 @@ def _run_computer_use_command(output_widget, command, status_message):
     output_widget.configure(state="disabled")
     output_widget.update_idletasks()
 
+    # Legacy GUI bridge: real desktop actions need explicit user consent
+    # (deny-by-default, mirroring the Rust approval card for the app path).
+    try:
+        from modules.computer_use_console_gate_ru import bridge_gate_decision
+
+        gate = bridge_gate_decision(command)
+        if gate["requires_confirmation"]:
+            import tkinter.messagebox as messagebox
+
+            confirmed = messagebox.askyesno(
+                "Computer Use",
+                "Выполнить реальное действие на этом компьютере?\n\n" + str(command),
+            )
+            if not confirmed:
+                result = {
+                    "ok": False,
+                    "blocked": True,
+                    "reason": "user_rejected",
+                }
+                text = _format_computer_use_result(result)
+                _set_status("Computer Use: отклонено пользователем")
+                output_widget.configure(state="normal")
+                output_widget.delete("1.0", "end")
+                output_widget.insert("end", text)
+                output_widget.configure(state="disabled")
+                return
+    except Exception as exc:
+        # Fail-closed: if the consent gate itself is unavailable, the real
+        # action must not run.
+        result = {
+            "ok": False,
+            "blocked": True,
+            "reason": f"consent gate unavailable: {exc}",
+        }
+        text = _format_computer_use_result(result)
+        _set_status("Computer Use: гейт подтверждения недоступен")
+        output_widget.configure(state="normal")
+        output_widget.delete("1.0", "end")
+        output_widget.insert("end", text)
+        output_widget.configure(state="disabled")
+        return
+
     try:
         from modules.computer_use_core_ru import dispatch
 

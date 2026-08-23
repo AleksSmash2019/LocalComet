@@ -112,6 +112,10 @@ export interface ControlPlaneEvent {
   readonly kind: ItemKind | null;
   readonly text: string | null;
   readonly metadata: Readonly<Record<string, string | number | boolean | null>>;
+  /** Store-stamped monotonic id; unique per accepted event even when the
+   *  control plane emits duplicate/zero sequences, and stable across list
+   *  window slides so keyed-each row identity survives inserts/deletes. */
+  readonly ingestion_id?: number;
 }
 
 export interface ControlPlaneItem {

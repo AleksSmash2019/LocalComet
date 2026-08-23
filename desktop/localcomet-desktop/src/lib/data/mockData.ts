@@ -3,7 +3,7 @@ export type ResolvedTheme = 'light' | 'dark';
 export type ModeOption = 'Chat' | 'Plan' | 'Agent';
 export type ModelOption = 'Not configured';
 export type MessageRole = 'user' | 'assistant';
-export type ChatMessageState = 'accepted' | 'streaming' | 'completed' | 'cancelled' | 'timed_out' | 'failed';
+export type ChatMessageState = 'accepted' | 'streaming' | 'completed' | 'awaiting_verification' | 'cancelled' | 'timed_out' | 'failed';
 export type InspectorSection = 'Обзор' | 'Телеметрия' | 'События' | 'Политика' | 'Проверка';
 import type { EffortLevel } from '$lib/stores/uiPreferences';
 
@@ -24,7 +24,7 @@ export interface MockMessage {
 export interface ToolCallMock {
   operation: string;
   target: string;
-  status: 'PASS' | 'WAITING' | 'SKIPPED' | 'FAIL';
+  status: 'PASS' | 'WAITING' | 'BLOCKED' | 'SKIPPED' | 'FAIL' | 'UNVERIFIED';
   elapsed: string;
   detail: string;
   result: string;

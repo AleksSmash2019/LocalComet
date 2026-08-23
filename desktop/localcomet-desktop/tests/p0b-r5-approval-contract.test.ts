@@ -149,8 +149,8 @@ describe('p0b-r5-approval-contract', () => {
   it('p0b_r5_remove_passes_all_three_identifiers', async () => {
     const { removeManagedModel } = await import('../src/lib/bridge/modelGateway');
     approvalResponse = validEnvelope('artifact.remove');
-    protectedResponse = { model_id: 'qwen2.5-1.5b-instruct-q4-k-m', removed: true };
-    await removeManagedModel('qwen2.5-1.5b-instruct-q4-k-m');
+    protectedResponse = { model_id: 'qwen3-1.7b-instruct-q4-k-m', removed: true };
+    await removeManagedModel('qwen3-1.7b-instruct-q4-k-m');
     const protectedCall = invokeCalls.find((c) => c.command === 'remove_managed_model');
     expect(protectedCall?.args?.token).toBe(sharedFixture.token);
     expect(protectedCall?.args?.approvalId).toBe(sharedFixture.approvalId);
@@ -162,9 +162,9 @@ describe('p0b-r5-approval-contract', () => {
     approvalResponse = validEnvelope('runtime.start');
     protectedResponse = {
       state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
-      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+      model_id: 'qwen3-1.7b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
     };
-    await startManagedRuntime('qwen2.5-1.5b-instruct-q4-k-m');
+    await startManagedRuntime('qwen3-1.7b-instruct-q4-k-m');
     const protectedCall = invokeCalls.find((c) => c.command === 'managed_runtime_start');
     expect(protectedCall?.args?.token).toBe(sharedFixture.token);
     expect(protectedCall?.args?.approvalId).toBe(sharedFixture.approvalId);
@@ -177,12 +177,12 @@ describe('p0b-r5-approval-contract', () => {
     const { startManagedRuntimeTrusted } = await import('../src/lib/bridge/modelGateway');
     protectedResponse = {
       state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
-      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+      model_id: 'qwen3-1.7b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
     };
-    await startManagedRuntimeTrusted('qwen2.5-1.5b-instruct-q4-k-m');
+    await startManagedRuntimeTrusted('qwen3-1.7b-instruct-q4-k-m');
     expect(invokeCalls.map((call) => call.command)).toEqual(['managed_runtime_start_trusted']);
     expect(invokeCalls[0]?.args).toEqual({
-      modelId: 'qwen2.5-1.5b-instruct-q4-k-m',
+      modelId: 'qwen3-1.7b-instruct-q4-k-m',
       ctxSizeOverride: null,
       gpuLayersOverride: null
     });
@@ -192,12 +192,12 @@ describe('p0b-r5-approval-contract', () => {
     const { startManagedRuntimeTrusted } = await import('../src/lib/bridge/modelGateway');
     protectedResponse = {
       state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
-      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+      model_id: 'qwen3-1.7b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
     };
-    await startManagedRuntimeTrusted('qwen2.5-1.5b-instruct-q4-k-m');
+    await startManagedRuntimeTrusted('qwen3-1.7b-instruct-q4-k-m');
     expect(invokeCalls.map((call) => call.command)).toEqual(['managed_runtime_start_trusted']);
     expect(invokeCalls[0]?.args).toEqual({
-      modelId: 'qwen2.5-1.5b-instruct-q4-k-m',
+      modelId: 'qwen3-1.7b-instruct-q4-k-m',
       ctxSizeOverride: null,
       gpuLayersOverride: null
     });
@@ -233,7 +233,7 @@ describe('p0b-r5-approval-contract', () => {
   it('p0b_r5_runtime_start_refuses_stale_selection_after_approval', async () => {
     const { startManagedRuntime } = await import('../src/lib/bridge/modelGateway');
     approvalResponse = validEnvelope('runtime.start');
-    await expect(startManagedRuntime('qwen2.5-1.5b-instruct-q4-k-m', () => false)).rejects.toMatchObject({
+    await expect(startManagedRuntime('qwen3-1.7b-instruct-q4-k-m', () => false)).rejects.toMatchObject({
       code: 'stale_request'
     });
     expect(invokeCalls.map((call) => call.command)).toEqual(['request_approval']);
@@ -254,10 +254,10 @@ describe('p0b-r5-approval-contract', () => {
     const { setModelBinding } = await import('../src/lib/bridge/modelGateway');
     approvalResponse = validEnvelope('model.binding.set');
     protectedResponse = {
-      provider_id: 'managed-llama-cpp', harness_id: 'minimal', model_id: 'qwen2.5-1.5b-instruct-q4-k-m',
+      provider_id: 'managed-llama-cpp', harness_id: 'minimal', model_id: 'qwen3-1.7b-instruct-q4-k-m',
       binding_fingerprint: 'f'.repeat(64), discovered_fingerprint: '9'.repeat(64), persistence: false, runtime_instance_id: 'd'.repeat(32)
     };
-    await setModelBinding({ providerId: 'managed-llama-cpp', harnessId: 'minimal', modelId: 'qwen2.5-1.5b-instruct-q4-k-m', runtimeInstanceId: 'd'.repeat(32) });
+    await setModelBinding({ providerId: 'managed-llama-cpp', harnessId: 'minimal', modelId: 'qwen3-1.7b-instruct-q4-k-m', runtimeInstanceId: 'd'.repeat(32) });
     const protectedCall = invokeCalls.find((c) => c.command === 'model_binding_set');
     expect(protectedCall?.args?.token).toBe(sharedFixture.token);
     expect(protectedCall?.args?.approvalId).toBe(sharedFixture.approvalId);
@@ -287,7 +287,7 @@ describe('p0b-r5-approval-contract', () => {
   it('p0b_r5_prompt_failure_prevents_protected_invoke', async () => {
     const { removeManagedModel } = await import('../src/lib/bridge/modelGateway');
     approvalResponse = new Error('prompt dismissed');
-    await expect(removeManagedModel('qwen2.5-1.5b-instruct-q4-k-m')).rejects.toBeTruthy();
+    await expect(removeManagedModel('qwen3-1.7b-instruct-q4-k-m')).rejects.toBeTruthy();
     expect(invokeCalls.filter((c) => c.command === 'remove_managed_model')).toHaveLength(0);
   });
 
@@ -300,23 +300,23 @@ describe('p0b-r5-approval-contract', () => {
     };
     await startApprovedArtifactDownload('llama-cpp-windows-x86-64-cpu-bootstrap');
     approvalResponse = validEnvelope('artifact.remove');
-    protectedResponse = { model_id: 'qwen2.5-1.5b-instruct-q4-k-m', removed: true };
-    await removeManagedModel('qwen2.5-1.5b-instruct-q4-k-m');
+    protectedResponse = { model_id: 'qwen3-1.7b-instruct-q4-k-m', removed: true };
+    await removeManagedModel('qwen3-1.7b-instruct-q4-k-m');
     approvalResponse = validEnvelope('runtime.start');
     protectedResponse = {
       state: 'Ready', model_state: 'Ready', inference_ready: true, provider_id: 'managed-llama-cpp',
-      model_id: 'qwen2.5-1.5b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
+      model_id: 'qwen3-1.7b-instruct-q4-k-m', model_display_name: 'Test', runtime_id: 'llama-cpp-windows-x86-64-cpu-bootstrap', runtime_instance_id: 'd'.repeat(32), runtime_instance_fingerprint: 'e'.repeat(64)
     };
-    await startManagedRuntime('qwen2.5-1.5b-instruct-q4-k-m');
+    await startManagedRuntime('qwen3-1.7b-instruct-q4-k-m');
     approvalResponse = validEnvelope('runtime.stop');
     protectedResponse = {};
     await stopManagedRuntime();
     approvalResponse = validEnvelope('model.binding.set');
     protectedResponse = {
-      provider_id: 'managed-llama-cpp', harness_id: 'minimal', model_id: 'qwen2.5-1.5b-instruct-q4-k-m',
+      provider_id: 'managed-llama-cpp', harness_id: 'minimal', model_id: 'qwen3-1.7b-instruct-q4-k-m',
       binding_fingerprint: 'f'.repeat(64), discovered_fingerprint: '9'.repeat(64), persistence: false, runtime_instance_id: 'd'.repeat(32)
     };
-    await setModelBinding({ providerId: 'managed-llama-cpp', harnessId: 'minimal', modelId: 'qwen2.5-1.5b-instruct-q4-k-m', runtimeInstanceId: 'd'.repeat(32) });
+    await setModelBinding({ providerId: 'managed-llama-cpp', harnessId: 'minimal', modelId: 'qwen3-1.7b-instruct-q4-k-m', runtimeInstanceId: 'd'.repeat(32) });
     expect(invokeCalls.map((c) => c.command)).not.toContain('run_tool_call');
   });
 

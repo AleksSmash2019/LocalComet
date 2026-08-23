@@ -79,6 +79,21 @@ def _is_computer_use_command_bridge(command: str) -> bool:
 
 
 def _run_computer_use_command_bridge(command: str) -> Dict[str, Any]:
+    from modules.computer_use_console_gate_ru import bridge_gate_decision, confirm_interactively
+    # Legacy console bridge: real desktop actions need explicit user consent
+    # (deny-by-default, mirroring the Rust approval card for the app path).
+    gate = bridge_gate_decision(command)
+    if gate["requires_confirmation"] and not confirm_interactively(command):
+        return {
+            "mode": "command",
+            "route": "computer_use_core_ru",
+            "plan": {"tool": "computer_use_core_ru", "action": "dispatch"},
+            "result": {
+                "ok": False,
+                "blocked": True,
+                "reason": "user_rejected" if sys.stdin.isatty() else gate["reason"],
+            },
+        }
     from modules.computer_use_core_ru import dispatch
     result = dispatch(command)
     return {

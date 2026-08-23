@@ -63,16 +63,16 @@
   $: approvedModelArtifacts = modelArtifacts.filter((artifact): artifact is ApprovedDownloadableArtifact => artifact.trust_kind === 'approved_catalog');
   $: customModelArtifacts = modelArtifacts.filter((artifact) => artifact.trust_kind === 'user_supplied');
   $: selectedModelArtifact = modelArtifacts.find((artifact) => artifact.artifact_id === selectedModelId) ?? null;
-  // The first-run baseline is the light 1.5B model. Prefer it when installed;
-  // otherwise keep it selected so the UI offers the intended one-click setup.
+  // The first-run baseline is the installed Qwen3 1.7B custom model. Keep the
+  // preferred model selected when it is present; never use the legacy fallback.
   // A user selection is never overwritten after this one-time initialization.
   $: if (
     !defaultModelAutoSelected &&
-    approvedModelArtifacts.length > 0 &&
+    modelArtifacts.length > 0 &&
     (!selectedModelId || modelArtifacts.find((artifact) => artifact.artifact_id === selectedModelId)?.trust_kind === 'approved_catalog')
   ) {
     const defaultModel = selectDefaultModelArtifact(
-      approvedModelArtifacts,
+      modelArtifacts,
       new Set(
         $managedRuntimeStore.installedArtifacts
           .filter((artifact) => installationState(artifact.artifact_id) === 'valid')
@@ -470,6 +470,9 @@
         {/each}
       </select>
     </label>
+    {#if $managedRuntimeStore.fallbackSelectionNotice}
+      <p class="fallback-selection-notice" role="status">{$t('models.fallback_selection')} — {$managedRuntimeStore.fallbackSelectionNotice}</p>
+    {/if}
     <dl>
       <div><dt>{$t('models.model_id')}</dt><dd>{selectedModelArtifact?.artifact_id ?? '—'}</dd></div>
       <div><dt>{$t('models.format')}</dt><dd>{selectedModelArtifact ? `${selectedModelArtifact.format ?? '—'} · ${selectedModelArtifact.quantization ?? '—'}` : '—'}</dd></div>
@@ -728,5 +731,10 @@
   @keyframes stepIndeterminate {
     0% { margin-left: -30%; }
     100% { margin-left: 100%; }
+  }
+  .fallback-selection-notice {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--lc-warning, #b98a00);
   }
 </style>

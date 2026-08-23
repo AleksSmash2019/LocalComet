@@ -9,6 +9,7 @@ const CALL_ID_PREFIX: &str = "call_";
 const MAX_ACTIVE_TOKENS: usize = 64;
 const DEFAULT_TTL: Duration = Duration::from_secs(300);
 const GRANT_TTL: Duration = Duration::from_secs(30);
+const PROMPT_TIMEOUT_SECS: u64 = 120;
 const MAX_CONSUMED_TOMBSTONES: usize = 4096;
 const TOMBSTONE_TTL: Duration = Duration::from_secs(300);
 const MAX_IDEMPOTENCY_PENDING: usize = 128;
@@ -61,13 +62,11 @@ pub enum ApprovalDecision {
     Reject,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApprovalPromptError {
     Unavailable(String),
 }
 
-#[allow(dead_code)]
 pub trait ApprovalPrompt: Send + Sync {
     fn decide(
         &self,
@@ -105,7 +104,6 @@ pub struct FrontendApprovalPrompt {
     pub dispatcher: std::sync::Arc<FrontendApprovalDispatcher>,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, serde::Serialize)]
 struct ApprovalRequestPayload {
     pub request_id: String,
@@ -114,9 +112,9 @@ struct ApprovalRequestPayload {
     pub target_summary: String,
     pub side_effect_category: String,
     pub destructive: bool,
+    pub expires_at_unix_ms: u64,
 }
 
-#[allow(dead_code)]
 impl ApprovalPrompt for FrontendApprovalPrompt {
     fn decide(
         &self,
@@ -142,6 +140,11 @@ impl ApprovalPrompt for FrontendApprovalPrompt {
             target_summary: descriptor.target_summary.clone(),
             side_effect_category: descriptor.side_effect_category.clone(),
             destructive: descriptor.destructive,
+            expires_at_unix_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64
+                + PROMPT_TIMEOUT_SECS * 1000,
         };
 
         use tauri::Emitter;
@@ -151,7 +154,7 @@ impl ApprovalPrompt for FrontendApprovalPrompt {
             )));
         }
 
-        match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+        match rx.recv_timeout(std::time::Duration::from_secs(PROMPT_TIMEOUT_SECS)) {
             Ok(decision) => Ok(decision),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(ApprovalDecision::Reject),
             Err(_) => Err(ApprovalPromptError::Unavailable(
@@ -754,10 +757,9 @@ pub struct ExecutionGrant {
     pub grant_id: String,
     pub tool: String,
     // input_digest and nonce are part of the grant's authorization material.
-    // They are consumed by a downstream tool-execution path when one exists
-    // (the desktop sidecar currently performs no filesystem tool execution);
-    // retained so the grant is self-describing and verifiable at that boundary.
-    #[allow(dead_code)]
+    // input_digest travels to the Python execution boundary, which re-verifies
+    // it against the canonical input digest before executing dangerous tools;
+    // nonce/approval_id/call_id are retained for future downstream checks.
     pub input_digest: [u8; 32],
     pub workspace: String,
     pub session: String,
@@ -773,6 +775,22 @@ pub struct ExecutionGrant {
 impl ExecutionGrant {
     pub fn is_expired(&self) -> bool {
         Instant::now() >= self.valid_until
+    }
+
+    /// Hex encoding of the bound input digest for the IPC grant payload.
+    pub fn input_digest_hex(&self) -> String {
+        hex_encode(&self.input_digest)
+    }
+
+    /// Wall-clock expiry (ms since Unix epoch) for downstream verifiers that
+    /// cannot compare Rust `Instant` values.
+    pub fn expires_at_unix_ms(&self) -> u64 {
+        let remaining = self.valid_until.saturating_duration_since(Instant::now());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        now + remaining.as_millis() as u64
     }
 }
 
@@ -895,6 +913,27 @@ mod tests {
 
     const TEST_APPROVAL_ID: &str = "appr_00000000000000000000000000000000";
     const TEST_CALL_ID: &str = "call_00000000000000000000000000000000";
+
+    /// Shared canonicalization parity vector with the Python execution
+    /// boundary (modules/tool_execution_ru.py::_canonicalize_tool_input):
+    /// sorted keys, no whitespace, minimal escaping with non-ASCII literal,
+    /// ryu-style float exponents. Both sides must produce these exact bytes,
+    /// so the input digests compared across IPC always match.
+    #[test]
+    fn canonical_json_parity_vector_python_boundary() {
+        let value = json!({
+            "b": 1,
+            "a": "привет",
+            "c": [1.5, true, null],
+            "d": {"й": "э"},
+            "e": 1e30,
+            "f": 1.5e-7
+        });
+        assert_eq!(
+            canonicalize_json(&value),
+            r#"{"a":"привет","b":1,"c":[1.5,true,null],"d":{"й":"э"},"e":1e+30,"f":1.5e-7}"#
+        );
+    }
 
     fn test_scope(tool: &str, digest: [u8; 32], workspace: &str, session: &str) -> ApprovalScope {
         ApprovalScope {

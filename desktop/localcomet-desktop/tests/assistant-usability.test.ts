@@ -7,7 +7,7 @@ import { setLocale } from '../src/lib/i18n';
 import { managedRuntimeStore, modelGatewayStore, resetModelGatewayStore } from '../src/lib/stores/modelGateway';
 import { chatMessages, resetShellStores } from '../src/lib/stores/shellStore';
 
-const MODEL_ID = 'qwen2.5-1.5b-instruct-q4-k-m';
+const MODEL_ID = 'qwen3-1.7b-instruct-q4-k-m';
 const RUNTIME_ID = 'llama-cpp-windows-x86-64-cpu-bootstrap';
 const INSTANCE_ID = 'd'.repeat(32);
 const FINGERPRINT = 'b'.repeat(64);
@@ -23,7 +23,7 @@ function status(state: 'NotInstalled' | 'Starting' | 'Ready', modelState: 'Unava
     runtime_instance_id: state === 'Ready' ? INSTANCE_ID : null,
     runtime_instance_fingerprint: state === 'Ready' ? 'e'.repeat(64) : null,
     model_id: state === 'Ready' ? MODEL_ID : null,
-    model_display_name: state === 'Ready' ? 'Qwen2.5 1.5B Instruct Q4_K_M' : null,
+    model_display_name: state === 'Ready' ? 'Qwen3 1.7B Instruct Q4_K_M' : null,
     binding_fingerprint: state === 'Ready' ? 'f'.repeat(64) : null,
     model_state: modelState,
     inference_ready: state === 'Ready',
@@ -46,7 +46,7 @@ function seedReady(): void {
     status: status('Ready', 'Ready'),
     catalogIdentity: { schema_version: 1, catalog_id: 'localcomet-approved-artifacts', catalog_version: '1.0.0', catalog_digest: CATALOG_DIGEST },
     runtimeCatalog: [],
-    catalog: [{ model_id: MODEL_ID, provider: 'Qwen', family: 'Qwen2.5', display_name: 'Qwen2.5 1.5B Instruct Q4_K_M', format: 'GGUF', quantization: 'Q4_K_M', upstream_repository: 'local', upstream_revision: 'revision', asset_filename: 'model.gguf', asset_bytes: 2, asset_sha256: '2'.repeat(64), license_id: 'apache-2.0', compatible_runtime_ids: [RUNTIME_ID], public_distribution: false, installer_bundled: false, bootstrap_purpose: 'INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION', status: 'approved_internal_bootstrap' }],
+    catalog: [{ model_id: MODEL_ID, provider: 'Qwen', family: 'Qwen3', display_name: 'Qwen3 1.7B Instruct Q4_K_M', format: 'GGUF', quantization: 'Q4_K_M', upstream_repository: 'local', upstream_revision: 'revision', asset_filename: 'model.gguf', asset_bytes: 2, asset_sha256: '2'.repeat(64), license_id: 'apache-2.0', compatible_runtime_ids: [RUNTIME_ID], public_distribution: false, installer_bundled: false, bootstrap_purpose: 'INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION', status: 'approved_internal_bootstrap' }],
     installedArtifacts: [
       { schema_version: 1, catalog_id: 'localcomet-approved-artifacts', catalog_version: '1.0.0', catalog_digest: CATALOG_DIGEST, artifact_id: RUNTIME_ID, kind: 'runtime', catalog_status: 'approved_internal_bootstrap', installation_status: 'valid', expected_bytes: 1, expected_sha256: '1'.repeat(64), observed_bytes: 1, observed_sha256: '1'.repeat(64), validation_code: 'valid', verified_unix_ms: 1 },
       { schema_version: 1, catalog_id: 'localcomet-approved-artifacts', catalog_version: '1.0.0', catalog_digest: CATALOG_DIGEST, artifact_id: MODEL_ID, kind: 'model', catalog_status: 'approved_internal_bootstrap', installation_status: 'valid', expected_bytes: 2, expected_sha256: '2'.repeat(64), observed_bytes: 2, observed_sha256: '2'.repeat(64), validation_code: 'valid', verified_unix_ms: 1 }
@@ -56,7 +56,8 @@ function seedReady(): void {
     harnessId: 'minimal',
     binding,
     logs: { stdout_tail: [], stderr_tail: [] },
-    lastError: null
+    lastError: null,
+    fallbackSelectionNotice: null
   });
   modelGatewayStore.update((value) => ({ ...value, binding, status: 'Bound' }));
 }

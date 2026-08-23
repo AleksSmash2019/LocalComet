@@ -5,8 +5,8 @@ repository source byte-for-byte (SHA-256). Two locations are checked:
 
   1. BUILD SOURCE: desktop/localcomet-desktop/src-tauri/binaries/app/modules
      (tauri.conf.json bundles binaries/app/ -> app/; this is what a build packs).
-  2. DEPLOYED RUNTIME: %LOCALAPPDATA%\\LocalComet\\DevRuntime\\cargo-target\\debug\\
-     app\\modules (the running sidecar; override with LOCALCOMET_BUNDLE_MODULES).
+  2. DEPLOYED RUNTIME: %LOCALAPPDATA%\\LocalCometDev\\workspace\\modules
+     (the running sidecar; override with LOCALCOMET_BUNDLE_MODULES).
 
 A stale bundle (repo != shipped) is the root cause of Bug #1
 (request_model_turn_reserved -> invalid_payload): the running sidecar loaded an
@@ -23,9 +23,9 @@ This catches both directions of drift: stale shipped bytes and an accidentally
 omitted shipped module.
 
 Exit codes:
-  0 - all present shipped locations match source (absent locations -> SKIP)
+  0 - all required shipped locations match source
   1 - one or more shipped modules diverge (STALE) or are missing in repo
-  2 - environment error (repo modules dir missing)
+  2 - environment error (a required source or deployed location is missing)
 """
 
 import hashlib
@@ -35,6 +35,7 @@ import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 REPO_MODULES = REPO_ROOT / "modules"
+VENDOR_RELATIVE = pathlib.Path("_vendor")
 BUILD_SOURCE_MODULES = (
     REPO_ROOT
     / "desktop"
@@ -135,25 +136,59 @@ def check_skill_location(label: str, modules_location: pathlib.Path) -> tuple[in
 
 
 def deployed_modules() -> pathlib.Path | None:
+    """Return the modules directory used by the supported LocalComet runtime.
+
+    The normal launcher uses %LOCALAPPDATA%\\LocalCometDev\\workspace as its
+    runtime workspace. The old LocalComet\\DevRuntime tree is intentionally not
+    accepted here: checking it can produce a green result for a stale runtime.
+    Tests and explicitly isolated runs may provide LOCALCOMET_BUNDLE_MODULES.
+    """
     override = os.environ.get("LOCALCOMET_BUNDLE_MODULES")
     if override:
         return pathlib.Path(override)
     base = os.environ.get("LOCALAPPDATA")
     if not base:
         return None
-    return (
-        pathlib.Path(base)
-        / "LocalComet"
-        / "DevRuntime"
-        / "cargo-target"
-        / "debug"
-        / "app"
-        / "modules"
-    )
+    return pathlib.Path(base) / "LocalCometDev" / "workspace" / "modules"
 
 
 def sha256(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def check_vendor_location(label: str, location: pathlib.Path) -> tuple[int, list[str], list[str]]:
+    """Check every shipped file in the approved third-party vendor tree."""
+    source_root = REPO_MODULES / VENDOR_RELATIVE
+    shipped_root = location / VENDOR_RELATIVE
+    source_files = {
+        path.relative_to(source_root): path
+        for path in source_root.rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts
+    } if source_root.is_dir() else {}
+    shipped_files = {
+        path.relative_to(shipped_root): path
+        for path in shipped_root.rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts
+    } if shipped_root.is_dir() else {}
+    stale: list[str] = []
+    missing: list[str] = []
+    matched = 0
+    for relative, source in sorted(source_files.items(), key=lambda item: str(item[0]).casefold()):
+        shipped = shipped_files.get(relative)
+        display = str(VENDOR_RELATIVE / relative)
+        if shipped is None:
+            missing.append(display)
+        elif sha256(source) != sha256(shipped):
+            stale.append(display)
+        else:
+            matched += 1
+    for relative in sorted(set(shipped_files) - set(source_files), key=str.casefold):
+        stale.append(str(VENDOR_RELATIVE / relative))
+    for relative in stale:
+        print(f"FAIL: [{label}] STALE vendor file: {relative}")
+    for relative in missing:
+        print(f"FAIL: [{label}] MISSING vendor file: {relative}")
+    return matched, stale, missing
 
 
 def check_location(label: str, location: pathlib.Path) -> tuple[int, list[str], list[str], list[str]]:
@@ -187,29 +222,42 @@ def main() -> int:
 
     targets: list[tuple[str, pathlib.Path]] = [("build-source", BUILD_SOURCE_MODULES)]
     deployed = deployed_modules()
-    if deployed is not None:
-        targets.append(("deployed", deployed))
+    if deployed is None:
+        print("FAIL: LOCALAPPDATA is not set; supported deployed runtime cannot be resolved")
+        return 2
+    targets.append(("deployed", deployed))
 
     checked = 0
+    missing_locations: list[tuple[str, pathlib.Path]] = []
     total_matched = 0
     total_stale = 0
     total_missing_in_repo = 0
     total_missing_in_shipped = 0
     for label, location in targets:
         if not location.is_dir():
-            print(f"SKIP: [{label}] shipped modules not found: {location}")
+            print(f"FAIL: [{label}] required shipped modules not found: {location}")
+            missing_locations.append((label, location))
             continue
         checked += 1
         matched, stale, missing_in_repo, missing_in_shipped = check_location(label, location)
         skill_matched, skill_stale, skill_missing_in_repo, skill_missing_in_shipped = check_skill_location(label, location)
-        total_matched += matched + skill_matched
-        total_stale += len(stale) + len(skill_stale)
+        vendor_matched, vendor_stale, vendor_missing = check_vendor_location(label, location)
+        total_matched += matched + skill_matched + vendor_matched
+        total_stale += len(stale) + len(skill_stale) + len(vendor_stale)
         total_missing_in_repo += len(missing_in_repo) + len(skill_missing_in_repo)
-        total_missing_in_shipped += len(missing_in_shipped) + len(skill_missing_in_shipped)
+        total_missing_in_shipped += len(missing_in_shipped) + len(skill_missing_in_shipped) + len(vendor_missing)
+
+    if missing_locations:
+        print(
+            "Required shipped module location(s) are missing; parity cannot be "
+            "considered green: "
+            + ", ".join(label for label, _location in missing_locations)
+        )
+        return 2
 
     if checked == 0:
-        print("SKIP: no shipped sidecar module locations found on this machine")
-        return 0
+        print("FAIL: no required shipped sidecar module locations found")
+        return 2
 
     if total_stale or total_missing_in_repo or total_missing_in_shipped:
         print(

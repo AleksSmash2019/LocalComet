@@ -297,15 +297,24 @@ def screenshot_metadata():
         from modules.desktop_observer import observe_desktop
 
         observed = observe_desktop()
+        screenshot_path = observed.get("screenshot_path", "")
+        screenshot_meta = observed.get("screenshot_meta", {}) or {}
         payload = {
-            "ok": True,
+            "ok": bool(observed.get("ok")) and bool(screenshot_path),
             "mode": "desktop_screenshot_metadata",
             "generated_at": _now(),
-            "screenshot_path": observed.get("screenshot_path", ""),
+            "screenshot_path": screenshot_path,
             "screenshot_error": observed.get("screenshot_error", ""),
+            "screenshot_backend": observed.get("screenshot_backend", ""),
+            "screenshot_scope": screenshot_meta.get("capture_scope", ""),
+            "screenshot_sha256": screenshot_meta.get("sha256", ""),
+            "screenshot_bytes": screenshot_meta.get("bytes", 0),
+            "observation_state": observed.get("observation_state", "failed"),
             "report_path": observed.get("report_path", ""),
             "active_window": observed.get("active_window", {}),
             "windows_count": len(observed.get("windows", []) or []),
+            "ui_elements_count": len(observed.get("ui_elements", []) or []),
+            "uia_status": observed.get("uia_status", ""),
         }
     except Exception as exc:
         payload = {

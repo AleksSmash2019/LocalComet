@@ -66,6 +66,51 @@ class BundleParityGateTests(unittest.TestCase):
             self.assertEqual(matched, 2)
             self.assertEqual((stale, missing_in_repo, missing_in_shipped), ([], [], []))
 
+    def test_default_deployed_root_is_the_supported_runtime(self) -> None:
+        with patch.dict(check_bundle_parity.os.environ, {"LOCALAPPDATA": r"C:\\Users\\Test"}, clear=True):
+            self.assertEqual(
+                check_bundle_parity.deployed_modules(),
+                Path(r"C:\\Users\\Test\\LocalCometDev\\workspace\\modules"),
+            )
+
+    def test_missing_localappdata_is_hard_failure(self) -> None:
+        with patch.dict(check_bundle_parity.os.environ, {}, clear=True):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = check_bundle_parity.main()
+            self.assertEqual(result, 2)
+            self.assertIn("FAIL: LOCALAPPDATA is not set", output.getvalue())
+            self.assertNotIn("SKIP:", output.getvalue())
+
+    def test_missing_required_location_is_hard_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo_modules = root / "repo"
+            build_modules = root / "build"
+            missing_deployed_modules = root / "missing-deployed"
+            repo_modules.mkdir()
+            build_modules.mkdir()
+            required = {"alpha.py"}
+            self._write_modules(repo_modules, required)
+            self._write_modules(build_modules, required)
+            output = io.StringIO()
+            with (
+                patch.object(check_bundle_parity, "REPO_MODULES", repo_modules),
+                patch.object(check_bundle_parity, "BUILD_SOURCE_MODULES", build_modules),
+                patch.object(check_bundle_parity, "REQUIRED_SIDECAR_MODULES", frozenset(required)),
+                patch.object(check_bundle_parity, "REQUIRED_SKILL_FILES", frozenset()),
+                patch.object(
+                    check_bundle_parity,
+                    "deployed_modules",
+                    lambda: missing_deployed_modules,
+                ),
+                contextlib.redirect_stdout(output),
+            ):
+                result = check_bundle_parity.main()
+            self.assertEqual(result, 2)
+            self.assertIn("FAIL: [deployed] required shipped modules not found", output.getvalue())
+            self.assertNotIn("SKIP:", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

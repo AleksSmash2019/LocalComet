@@ -11,8 +11,10 @@ export type GatewayStatus =
   | 'Binding required'
   | 'Bound'
   | 'Generating'
+  | 'Awaiting approval'
   | 'Cancelling'
   | 'Completed'
+  | 'Pending verification'
   | 'Cancelled'
   | 'Failed';
 
@@ -21,7 +23,9 @@ export type InferenceLifecycle =
   | 'submitted'
   | 'accepted'
   | 'streaming'
+  | 'awaiting_approval'
   | 'completed'
+  | 'awaiting_verification'
   | 'cancelling'
   | 'cancelled'
   | 'timed_out'

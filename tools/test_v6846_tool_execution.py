@@ -8,9 +8,11 @@ escape are rejected because resolution happens before the containment check.
 """
 from __future__ import annotations
 
+import itertools
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -25,19 +27,46 @@ from modules.desktop_sidecar_runtime_ru import DesktopSidecarRuntime  # noqa: E4
 from modules.tool_execution_ru import (  # noqa: E402
     MAX_TOOL_FILE_BYTES,
     ToolExecutionError,
+    canonical_input_digest_hex,
     execute_tool_call,
 )
 from modules.workspace_policy import workspace_digest  # noqa: E402
 
+_DANGEROUS_TOOLS = {"files.delete", "shell", "computer_use", "skills.invoke"}
+_GRANT_SEQUENCE = itertools.count(1)
+
 
 def _payload(workspace: str, tool: str, input_obj: dict) -> dict:
-    return {
+    payload = {
         "tool": tool,
         "input": input_obj,
         "workspace": workspace,
         "workspace_digest": workspace_digest(workspace),
         "session": "s" * 64,
     }
+    if tool in _DANGEROUS_TOOLS:
+        # P0-2: dangerous tools must carry a Rust execution grant at the Python
+        # boundary; tests mint a structurally valid one so confinement and
+        # hostile-input semantics below the grant gate stay exercised.
+        try:
+            digest = canonical_input_digest_hex(input_obj)
+        except ToolExecutionError:
+            # Unencodable inputs (lone surrogates) have no real digest; a
+            # placeholder keeps the payload flowing so the boundary itself
+            # rejects it with invalid_payload, preserving the original
+            # frame-encodability assertions.
+            digest = "0" * 64
+        grant = {
+            "grant_id": f"{next(_GRANT_SEQUENCE):032x}",
+            "tool": tool,
+            "input_digest": digest,
+            "workspace": workspace,
+            "session": "s" * 64,
+            "expires_at_unix_ms": int(time.time() * 1000) + 30_000,
+        }
+        payload["grant"] = grant
+        payload["grant_id"] = grant["grant_id"]
+    return payload
 
 
 class ToolExecutionConfinementTests(unittest.TestCase):

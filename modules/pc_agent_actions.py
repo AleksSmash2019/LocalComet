@@ -3,10 +3,12 @@ from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
 import ctypes
+import json
 import os
 import queue
 import subprocess
 import threading
+import time
 
 from core.state import get_value, set_value
 
@@ -238,6 +240,142 @@ def _shell_execute_open_bounded(command_str: str, timeout: float = 2.0):
     return result_queue.get_nowait()
 
 
+def _process_has_visible_window(pid: int) -> bool:
+    """Return whether a Windows process currently owns a visible top-level window."""
+    if os.name != "nt" or pid <= 0:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        found = False
+        enum_windows = user32.EnumWindows
+        callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+        def callback(hwnd, _lparam):
+            nonlocal found
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            process_id = ctypes.c_ulong(0)
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+            if int(process_id.value) == pid:
+                found = True
+                return False
+            return True
+
+        enum_windows(callback_type(callback), 0)
+        return found
+    except Exception:
+        return False
+
+
+def _find_visible_process_for_image(image_name: str) -> bool:
+    """Find a visible top-level window for an allowlisted executable image."""
+    if os.name != "nt":
+        return False
+    expected = Path(str(image_name)).name.lower()
+    if not expected:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        found = False
+        enum_windows = user32.EnumWindows
+        callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+        def callback(hwnd, _lparam):
+            nonlocal found
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            process_id = ctypes.c_ulong(0)
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+            if not process_id.value:
+                return True
+            handle = kernel32.OpenProcess(0x1000, False, process_id.value)  # QUERY_LIMITED_INFORMATION
+            if not handle:
+                return True
+            try:
+                buffer = ctypes.create_unicode_buffer(512)
+                size = ctypes.c_ulong(len(buffer))
+                if kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+                    found = Path(buffer.value).name.lower() == expected
+            finally:
+                kernel32.CloseHandle(handle)
+            return not found
+
+        enum_windows(callback_type(callback), 0)
+        return found
+    except Exception:
+        return False
+
+
+# The shell's own always-visible windows (taskbar, tray) satisfy any
+# image-name scan for explorer.exe, so an image match can never verify an
+# Explorer launch: only the exact spawned pid or a folder-window title
+# check is accepted as readiness evidence.
+_SHELL_IMAGE_NAMES = {"explorer.exe"}
+
+
+def _wait_for_app_readiness(*, image_name: str, pid: int | None = None, timeout: float = 1.5) -> bool:
+    """Bounded post-launch verification; never turns ShellExecute acceptance into success."""
+    deadline = time.monotonic() + max(0.1, min(float(timeout), 3.0))
+    accept_by_image = Path(str(image_name)).name.lower() not in _SHELL_IMAGE_NAMES
+    while time.monotonic() < deadline:
+        if (pid is not None and _process_has_visible_window(pid)) or (
+            pid is None and accept_by_image and _find_visible_process_for_image(image_name)
+        ):
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def _folder_window_visible(folder_name: str) -> bool:
+    """Return whether a visible Explorer window currently shows the folder.
+
+    Explorer reuses a single broker process, so process spawn proves nothing;
+    readiness must be a visible CabinetWClass/ExploreWClass window whose title
+    contains the folder name (Explorer titles windows by folder name).
+    """
+    if os.name != "nt":
+        return False
+    needle = str(folder_name or "").strip().lower()
+    if not needle:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        found = False
+        enum_windows = user32.EnumWindows
+        callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+        def callback(hwnd, _lparam):
+            nonlocal found
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            class_buffer = ctypes.create_unicode_buffer(64)
+            user32.GetClassNameW(hwnd, class_buffer, len(class_buffer))
+            if class_buffer.value not in ("CabinetWClass", "ExploreWClass"):
+                return True
+            title_buffer = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, title_buffer, len(title_buffer))
+            if needle in title_buffer.value.lower():
+                found = True
+                return False
+            return True
+
+        enum_windows(callback_type(callback), 0)
+        return found
+    except Exception:
+        return False
+
+
+def _wait_for_folder_readiness(*, folder_name: str, timeout: float = 1.5) -> bool:
+    """Bounded post-launch verification for Explorer folder windows."""
+    deadline = time.monotonic() + max(0.1, min(float(timeout), 3.0))
+    while time.monotonic() < deadline:
+        if _folder_window_visible(folder_name):
+            return True
+        time.sleep(0.1)
+    return False
+
+
 def open_app(name, dry_run=True):
     safety = classify_action_request(name)
     command = _resolve_app(name)
@@ -268,11 +406,13 @@ def open_app(name, dry_run=True):
         command_str = command[0] if isinstance(command, (list, tuple)) else str(command)
         shell_result = _shell_execute_open_bounded(command_str)
         if shell_result:
+            ready = _wait_for_app_readiness(image_name=command_str)
             payload.update({
-                "ok": True,
+                "ok": ready,
+                "status": "completed" if ready else "launch_pending",
                 "launch_mode": "shell_execute_w",
-                "verification": "pending",
-                "result": "Приложение запущено.",
+                "verification": "verified" if ready else "pending",
+                "result": "Приложение запущено и окно подтверждено." if ready else "Команда запуска передана; окно ещё не подтверждено.",
             })
             return _remember(payload)
         if shell_result is None:
@@ -363,10 +503,13 @@ def open_app(name, dry_run=True):
         payload["result"] = "Не удалось запустить приложение."
         payload["error"] = str(last_error or "launcher failed")
         return _remember(payload)
-    payload["ok"] = True
+    ready = _wait_for_app_readiness(image_name=str(command[0] if isinstance(command, (list, tuple)) else command), pid=process.pid)
+    payload["ok"] = ready
     payload["pid"] = process.pid
+    payload["status"] = "completed" if ready else "launch_pending"
     payload["launch_mode"] = launch_mode
-    payload["result"] = "Приложение запущено."
+    payload["verification"] = "verified" if ready else "pending"
+    payload["result"] = "Приложение запущено и окно подтверждено." if ready else "Процесс запущен; окно ещё не подтверждено."
     return _remember(payload)
 
 
@@ -396,9 +539,19 @@ def open_folder(name, dry_run=True):
         payload["result"] = "DRY_RUN: папка не открыта."
         return _remember(payload)
 
-    subprocess.Popen(["explorer.exe", str(path)], shell=False)
-    payload["ok"] = True
-    payload["result"] = "Папка открыта."
+    try:
+        subprocess.Popen(["explorer.exe", str(path)], shell=False)
+    except OSError as exc:
+        payload["result"] = "Не удалось открыть папку."
+        payload["error"] = str(exc)
+        return _remember(payload)
+    # Explorer reuses a broker process, so spawn acceptance alone is not
+    # readiness: verify a visible folder window within a bounded wait.
+    ready = _wait_for_folder_readiness(folder_name=Path(path).name)
+    payload["ok"] = ready
+    payload["status"] = "completed" if ready else "launch_pending"
+    payload["verification"] = "verified" if ready else "pending"
+    payload["result"] = "Папка открыта, окно подтверждено." if ready else "Команда открытия передана; окно папки ещё не подтверждено."
     return _remember(payload)
 
 

@@ -38,7 +38,36 @@ from modules.local_model_gateway_ru import (
     LocalModelGateway,
     validate_gateway_payload,
 )
+
+
+def _trace_tool_call_failure(code: str, message: str) -> None:
+    """Env-gated one-line trace of tool failures (no payload content).
+
+    LOCALCOMET_TOOLCALL_TRACE must point to a writable file; when unset this
+    is a no-op. Only the error code and message are recorded — never tool
+    input, workspace paths, or grant material.
+    """
+    trace_path = os.environ.get("LOCALCOMET_TOOLCALL_TRACE", "").strip()
+    if not trace_path:
+        return
+    try:
+        with open(trace_path, "a", encoding="utf-8") as trace:
+            trace.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')}\t{code}\t{message[:300]}\n")
+    except OSError:
+        pass
 from modules.tool_execution_ru import ToolExecutionError, execute_tool_call
+
+# Startup boundary for DPI awareness: the sidecar process must share one
+# coordinate space across screenshots, UIA/window bounds, grounding and click
+# execution from the very first call, instead of flipping to per-monitor-aware
+# mid-flight inside the BitBlt screenshot fallback.
+if os.name == "nt":
+    try:
+        import ctypes
+
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 
 DESKTOP_SIDECAR_RUNTIME_VERSION = "v6.84.3"
@@ -375,6 +404,7 @@ class DesktopSidecarRuntime:
             response = execute_tool_call(message["payload"])
         except ToolExecutionError as exc:
             code = exc.code if exc.code in ERROR_CODES else "invalid_payload"
+            _trace_tool_call_failure(code, exc.message)
             return (self._error(request_id, code, exc.message),)
         return (
             make_response(

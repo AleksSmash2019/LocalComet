@@ -1,5 +1,6 @@
 import { derived, get, writable } from 'svelte/store';
 import { DEFAULT_CONVERSATION_ID } from './conversationStore';
+import { parseToolCallResult } from '$lib/tools/computerUseEnvelope';
 import {
   cancelModelTurn,
   getManagedInstalledArtifacts,
@@ -63,7 +64,9 @@ import { assistantLocaleFor, locale } from '$lib/i18n';
 import { reportFilesContextInclusion, reportFilesRequestError } from '$lib/stores/files';
 import { workspaceStore } from '$lib/stores/workspace';
 import { runToolCall } from '$lib/bridge/approval';
-import { requestApprovalForTool } from '$lib/stores/approvalStore';
+import { deriveBoundedNotepadTypeContinuation } from '$lib/tools/computerUseContinuation';
+import { invoke } from '@tauri-apps/api/core';
+import { rejectActiveApproval, requestApprovalForTool, setApprovalCorrelation } from '$lib/stores/approvalStore';
 import { DEFAULT_BASE_MODEL_ID } from '$lib/stores/modelDefault';
 import { computeModeProfile } from '$lib/types/computeMode';
 
@@ -129,6 +132,8 @@ export interface ManagedRuntimePanelState {
   readonly binding: ModelBinding | null;
   readonly logs: ManagedRuntimeLogs;
   readonly lastError: SanitizedGatewayError | null;
+  /** Non-null when auto-selection fell back to a model other than the pinned baseline. */
+  readonly fallbackSelectionNotice: string | null;
 }
 
 const initialState: ModelGatewayState = {
@@ -161,7 +166,8 @@ const initialManagedState: ManagedRuntimePanelState = {
   harnessId: 'minimal',
   binding: null,
   logs: { stdout_tail: [], stderr_tail: [] },
-  lastError: null
+  lastError: null,
+  fallbackSelectionNotice: null
 };
 
 const initialInferenceState: InferenceRequestState = {
@@ -198,11 +204,35 @@ let bufferedEarlyEvents: ModelGatewayEvent[] = [];
 type TimerName = 'acceptance' | 'firstToken' | 'inactivity' | 'cancelAcknowledgement';
 const inferenceTimers: Partial<Record<TimerName, ReturnType<typeof setTimeout>>> = {};
 
+// Bounded launch continuation (plan P0.2): a launch_pending computer_use
+// spawn is re-observed through cu_broker_observe until the broker reports a
+// terminal envelope or its own TTL expires - never respawned, never granted
+// a new token. The registry lets Stop/cancel/new-turn revoke the loop so a
+// finished turn can never mutate cards afterwards.
+const CONTINUATION_FIRST_CHECK_MS = 4000;
+const CONTINUATION_POLL_INTERVAL_MS = 2000;
+// Safety cap only; the broker's 600s continuation TTL is the real bound and
+// answers with a terminal failed envelope when it expires.
+const CONTINUATION_MAX_ATTEMPTS = 320;
+const activeContinuationRequests = new Set<string>();
+const activeTurnPrompts = new Map<string, string>();
+const activeTurnCalls = new Map<string, ModelToolCall>();
+
+export function cancelComputerUseContinuations(requestId?: string): void {
+  if (requestId === undefined) {
+    activeContinuationRequests.clear();
+    activeTurnPrompts.clear();
+    activeTurnCalls.clear();
+    return;
+  }
+  activeContinuationRequests.delete(requestId);
+}
+
 export const modelGatewayStore = writable<ModelGatewayState>(initialState);
 export const managedRuntimeStore = writable<ManagedRuntimePanelState>(initialManagedState);
 export const inferenceRequestStore = writable<InferenceRequestState>(initialInferenceState);
 export const inferenceBusy = derived(inferenceRequestStore, (state) =>
-  ['submitted', 'accepted', 'streaming', 'cancelling'].includes(state.lifecycle)
+  ['submitted', 'accepted', 'streaming', 'awaiting_approval', 'awaiting_verification', 'cancelling'].includes(state.lifecycle)
 );
 export const managedConnectionBusy = writable(false);
 export const managedModelReady = derived(
@@ -539,6 +569,11 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
       ? ''
       : selectStrongestInstalledManagedModelId(models, runtimeCatalog.runtimes, validations);
     const selectedModelId = preservedSelectedModelId || reportedModelId || autoSelectedModelId;
+    // Truthful fallback signal: silently swapping the pinned baseline model
+    // for another installed model must be visible to the user.
+    const fallbackSelectionNotice = autoSelectedModelId && autoSelectedModelId !== DEFAULT_BASE_MODEL_ID
+      ? autoSelectedModelId
+      : null;
     const selectedModel = models.find((model) => model.model_id === selectedModelId);
     const bindingTrusted =
       status?.state === 'Ready' &&
@@ -554,6 +589,7 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
     managedRuntimeStore.update((state) => ({
       ...state,
       status,
+      fallbackSelectionNotice,
       catalogIdentity: catalogIdentityOf(runtimeCatalog),
       runtimeCatalog: runtimeCatalog.runtimes,
       catalog: models,
@@ -1002,6 +1038,9 @@ async function startClaimedLocalModelTurn(
   }
   const submittedAtUnixMs = Date.now();
   const effort = get(effortLevel);
+  // A new turn revokes any launch continuation still running for an older
+  // turn: a superseded continuation can never mutate cards or lifecycle.
+  cancelComputerUseContinuations();
   clearInferenceTimers();
   bufferedEarlyEvents = [];
   inferenceRequestStore.set({
@@ -1024,6 +1063,7 @@ async function startClaimedLocalModelTurn(
     lastError: null
   });
   scheduleInferenceTimeout('acceptance', INFERENCE_TIMEOUTS_MS.acceptance, requestId);
+  activeTurnPrompts.set(requestId, cleanPrompt);
 
   try {
     const messages = get(chatMessages).filter((message) =>
@@ -1126,9 +1166,17 @@ async function startClaimedLocalModelTurn(
 }
 
 export async function cancelLocalModelTurn(): Promise<void> {
+  await rejectActiveApproval();
   const current = get(inferenceRequestStore);
   const requestId = current.requestId;
-  if (!requestId || !['submitted', 'accepted', 'streaming'].includes(current.lifecycle)) return;
+  // Stop during a launch continuation revokes it: the bounded poll loop must
+  // not mutate cards after the user cancelled the turn (plan P0.2).
+  if (requestId) cancelComputerUseContinuations(requestId);
+  if (!requestId || !['submitted', 'accepted', 'streaming', 'awaiting_approval', 'awaiting_verification'].includes(current.lifecycle)) return;
+  if (current.lifecycle === 'awaiting_verification') {
+    terminalizeCurrentRequest('cancelled', 'model.turn.cancelled');
+    return;
+  }
   clearInferenceTimer('acceptance');
   clearInferenceTimer('firstToken');
   clearInferenceTimer('inactivity');
@@ -1193,7 +1241,7 @@ export function applyModelGatewayEvent(event: ModelGatewayEvent): void {
     failProtocol('Model event binding does not match the active request');
     return;
   }
-  if (isInferenceTerminal(current.lifecycle)) {
+  if (isInferenceTerminal(current.lifecycle) || current.lifecycle === 'awaiting_verification') {
     inferenceRequestStore.update((state) => ({ ...state, rejectedEventCount: state.rejectedEventCount + 1 }));
     return;
   }
@@ -1289,8 +1337,8 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
       if (event.method === 'model.tool.request') {
         clearInferenceTimer('firstToken');
         clearInferenceTimer('inactivity');
-        // Computer Use is a standing permission: when enabled, the Rust sidecar
-        // still enforces its allowlist, but the user is not prompted per action.
+        // Computer Use is dangerous in the Rust risk registry, so every action
+        // must receive a scoped approval token before sidecar execution.
         const call = event.tool_calls[0];
         if (!call) {
           terminalizeCurrentRequest('failed', 'model.turn.failed', {
@@ -1299,25 +1347,72 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
           });
           return;
         }
+        activeTurnCalls.set(event.request_id, call);
         const onResult = (result: unknown): void => {
-          const failed = typeof result === 'object' && result !== null &&
-            'ok' in result && (result as { ok?: unknown }).ok === false;
-          if (failed) {
-            const detail = typeof result === 'object' && result !== null &&
-              'reason' in result ? String((result as { reason?: unknown }).reason ?? 'tool execution failed') : 'tool execution failed';
-            updateAssistantToolResult(event.request_id, 0, 'FAIL', detail);
+          if (!canAcceptToolCallback(event.request_id)) return;
+          const outcome = parseToolCallResult(call.name, result);
+          if (outcome.kind === 'pending') {
+            if (!canAcceptToolCallback(event.request_id)) return;
+            setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
+              index === 0 ? { ...item, status: 'WAITING' as const, result: JSON.stringify(result) } : item
+            ));
+            // launch_pending is never terminal success: the turn stops in the
+            // truthful awaiting-verification state instead of claiming
+            // completion over an unverified action.
+            if (!canAcceptToolCallback(event.request_id)) return;
+            terminalizeCurrentRequest('awaiting_verification', 'model.turn.completed');
+            // Bounded continuation (plan P0.2): re-observe the recorded spawn
+            // through cu_broker_observe - observation-only, no respawn, no new
+            // token - until the broker reports a terminal envelope or its own
+            // continuation TTL expires with an honest failed answer.
+            runBoundedLaunchContinuation(
+              event.request_id,
+              toolCalls[0],
+              call.name
+            );
+            return;
+          }
+          if (outcome.kind === 'blocked') {
+            if (!canAcceptToolCallback(event.request_id)) return;
+            setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
+              index === 0 ? { ...item, status: 'BLOCKED' as const, result: JSON.stringify(result) } : item
+            ));
             terminalizeCurrentRequest('failed', 'model.turn.failed', {
-              code: 'tool_execution_failed',
-              message: detail
+              code: 'tool_execution_blocked',
+              message: outcome.reason || 'tool action was blocked by policy'
             });
             return;
           }
+          if (outcome.kind === 'failed' || outcome.kind === 'malformed') {
+            if (!canAcceptToolCallback(event.request_id)) return;
+            updateAssistantToolResult(event.request_id, 0, 'FAIL', outcome.reason || 'tool returned no confirmed success');
+            terminalizeCurrentRequest('failed', 'model.turn.failed', {
+              code: outcome.kind === 'malformed' ? 'invalid_payload' : 'tool_execution_failed',
+              message: outcome.reason || 'tool returned no confirmed success'
+            });
+            return;
+          }
+          if (outcome.kind === 'verified_success' && call.name === 'computer_use') {
+            if (maybeStartBoundedNotepadTypeContinuation(event.request_id, toolCalls[0], call, result)) return;
+          }
+          if (outcome.kind === 'unverified_success' && call.name === 'computer_use') {
+            if (!canAcceptToolCallback(event.request_id)) return;
+            // Legacy adapter result (ok=true without the v1 envelope): at most
+            // an unverified success - never a PASS pill or a completed turn.
+            setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
+              index === 0 ? { ...item, status: 'UNVERIFIED' as const, result: JSON.stringify(result) } : item
+            ));
+            terminalizeCurrentRequest('awaiting_verification', 'model.turn.completed');
+            return;
+          }
+          if (!canAcceptToolCallback(event.request_id)) return;
           setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
             index === 0 ? { ...item, status: 'PASS' as const, result: JSON.stringify(result) } : item
           ));
           terminalizeCurrentRequest('completed', 'model.turn.completed');
         };
         const onError = (error: unknown): void => {
+          if (!canAcceptToolCallback(event.request_id)) return;
           const normalized = normalizeGatewayError(error);
           updateAssistantToolResult(event.request_id, 0, 'FAIL', normalized.message);
           terminalizeCurrentRequest('failed', 'model.turn.failed', normalized);
@@ -1326,10 +1421,25 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
           (call.name === 'files.list' || call.name === 'files.read') &&
           get(agentPermissions).files &&
           get(workspaceStore).status === 'confirmed';
-        if ((call.name === 'computer_use' && get(agentPermissions).computerUse) || readOnlyWorkspaceTool) {
-          void runToolCall(call.name, call.arguments, undefined, call.id).then(onResult).catch(onError);
+        if (readOnlyWorkspaceTool) {
+          void runToolCall(call.name, call.arguments, undefined, call.id, event.request_id, call.id).then(onResult).catch(onError);
         } else {
-          requestApprovalForTool(call.name, call.arguments, { onResult, onError });
+          // Dangerous and guarded tools go through the approval flow so Rust
+          // can mint and consume the scoped token. Keep the turn explicitly
+          // busy while the modal is open; otherwise the composer says the
+          // model is responding and allows a misleading second action.
+          inferenceRequestStore.update((state) => ({
+            ...state,
+            lifecycle: 'awaiting_approval'
+          }));
+          modelGatewayStore.update((state) => ({ ...state, status: 'Awaiting approval' }));
+          setApprovalCorrelation({ modelRequestId: event.request_id, modelActionId: call.id });
+          requestApprovalForTool(call.name, call.arguments, {
+            onResult,
+            onError,
+            requestId: event.request_id,
+            actionId: call.id
+          });
         }
         return;
       }
@@ -1377,13 +1487,251 @@ function drainBufferedEarlyEvents(requestId: string): void {
   }
 }
 
+/**
+ * Bounded observation continuation for a launch_pending computer_use spawn
+ * (plan P0.2). Polls cu_broker_observe - which can never spawn or consume a
+ * token - until the broker answers with a terminal envelope:
+ *   verified_success -> PASS card + completed turn;
+ *   failed/blocked   -> FAIL card + failed turn (incl. honest TTL expiry);
+ *   still pending    -> bounded re-observe.
+ * The loop is revoked by Stop/cancel/new-turn via the continuation registry;
+ * a revoked or exhausted loop keeps the truthful awaiting-verification state
+ * and never invents readiness.
+ */
+function maybeStartBoundedNotepadTypeContinuation(
+  requestId: string,
+  firstToolCard: import('$lib/data/mockData').ToolCallMock,
+  firstCall: ModelToolCall,
+  firstResult: unknown
+): boolean {
+  const originalPrompt = activeTurnPrompts.get(requestId);
+  const derivedContinuation = originalPrompt
+    ? deriveBoundedNotepadTypeContinuation(originalPrompt, firstCall)
+    : null;
+  if (!derivedContinuation) return false;
+  let continuationCall: ModelToolCall;
+  try {
+    continuationCall = { ...derivedContinuation, id: createModelActionId() };
+  } catch (error) {
+    terminalizeCurrentRequest('failed', 'model.turn.failed', normalizeGatewayError(error));
+    return true;
+  }
+  const current = get(inferenceRequestStore);
+  if (current.requestId === requestId && current.lifecycle === 'awaiting_verification') {
+    inferenceRequestStore.update((state) => ({ ...state, lifecycle: 'streaming' }));
+    modelGatewayStore.update((state) => ({ ...state, status: 'Generating' }));
+  }
+  startBoundedNotepadTypeContinuation(requestId, firstToolCard, firstResult, continuationCall);
+  return true;
+}
+
+function createModelActionId(): string {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw { code: 'runtime_unavailable', message: 'Secure model action identifier generation is unavailable' };
+  }
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return `call_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function startBoundedNotepadTypeContinuation(
+  requestId: string,
+  firstToolCard: import('$lib/data/mockData').ToolCallMock,
+  firstResult: unknown,
+  continuationCall: ModelToolCall
+): void {
+  const continuationToolCard: import('$lib/data/mockData').ToolCallMock = {
+    operation: continuationCall.name,
+    target: JSON.stringify(continuationCall.arguments),
+    status: 'WAITING',
+    elapsed: '-',
+    detail: 'Bounded continuation requested after verified Notepad open',
+    result: ''
+  };
+  setAssistantToolCalls(requestId, [
+    { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
+    continuationToolCard
+  ]);
+
+  const onContinuationResult = (rawResult: unknown): void => {
+    if (!canAcceptToolCallback(requestId)) return;
+    const outcome = parseToolCallResult(continuationCall.name, rawResult);
+    if (outcome.kind === 'verified_success') {
+      updateAssistantToolResult(requestId, 1, 'PASS', JSON.stringify(rawResult));
+      terminalizeCurrentRequest('completed', 'model.turn.completed');
+      return;
+    }
+    if (outcome.kind === 'blocked') {
+      setAssistantToolCalls(requestId, [
+        { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
+        { ...continuationToolCard, status: 'BLOCKED', detail: outcome.reason || continuationToolCard.detail, result: JSON.stringify(rawResult) }
+      ]);
+      terminalizeCurrentRequest('failed', 'model.turn.failed', {
+        code: 'tool_execution_blocked',
+        message: outcome.reason || 'bounded continuation was blocked by policy'
+      });
+      return;
+    }
+    if (outcome.kind === 'pending') {
+      setAssistantToolCalls(requestId, [
+        { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
+        { ...continuationToolCard, status: 'WAITING', detail: outcome.reason || continuationToolCard.detail, result: JSON.stringify(rawResult) }
+      ]);
+      terminalizeCurrentRequest('failed', 'model.turn.failed', {
+        code: 'tool_execution_pending',
+        message: outcome.reason || 'bounded continuation returned without terminal verification'
+      });
+      return;
+    }
+    if (outcome.kind === 'unverified_success') {
+      setAssistantToolCalls(requestId, [
+        { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
+        { ...continuationToolCard, status: 'UNVERIFIED', detail: outcome.reason || continuationToolCard.detail, result: JSON.stringify(rawResult) }
+      ]);
+    } else {
+      setAssistantToolCalls(requestId, [
+        { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
+        { ...continuationToolCard, status: 'FAIL', detail: outcome.reason || continuationToolCard.detail, result: JSON.stringify(rawResult) }
+      ]);
+    }
+    terminalizeCurrentRequest(
+      outcome.kind === 'unverified_success' ? 'awaiting_verification' : 'failed',
+      outcome.kind === 'unverified_success' ? 'model.turn.completed' : 'model.turn.failed',
+      outcome.kind === 'unverified_success' ? null : {
+        code: outcome.kind === 'malformed' ? 'invalid_payload' : 'tool_execution_failed',
+        message: outcome.reason || 'bounded continuation failed'
+      }
+    );
+  };
+  const onContinuationError = (error: unknown): void => {
+    if (!canAcceptToolCallback(requestId)) return;
+    const normalized = normalizeGatewayError(error);
+    setAssistantToolCalls(requestId, [
+      { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
+      { ...continuationToolCard, status: 'FAIL', detail: normalized.message, result: normalized.message }
+    ]);
+    terminalizeCurrentRequest('failed', 'model.turn.failed', normalized);
+  };
+
+  // Defer until the first approval callback has returned. This prevents the
+  // approval store's first-flow cleanup from clearing the second flow state.
+  queueMicrotask(() => {
+    if (!canAcceptToolCallback(requestId)) return;
+    setApprovalCorrelation({ modelRequestId: requestId, modelActionId: continuationCall.id });
+    requestApprovalForTool(continuationCall.name, continuationCall.arguments, {
+      onResult: onContinuationResult,
+      onError: onContinuationError,
+      requestId,
+      actionId: continuationCall.id
+    });
+  });
+}
+
+function runBoundedLaunchContinuation(
+  requestId: string,
+  toolCall: import('$lib/data/mockData').ToolCallMock,
+  toolName: string
+): void {
+  activeContinuationRequests.add(requestId);
+  let attempts = 0;
+  const finish = (status: 'PASS' | 'FAIL', envelope: Record<string, unknown>, lifecycle: 'completed' | 'failed'): void => {
+    activeContinuationRequests.delete(requestId);
+    if (!isActiveInferenceRequest(requestId)) return;
+    setAssistantToolCalls(requestId, [{ ...toolCall, status, result: JSON.stringify(envelope) }]);
+    if (lifecycle === 'completed') {
+      terminalizeCurrentRequest('completed', 'model.turn.completed');
+    } else {
+      const reason = typeof envelope.reason === 'string' ? envelope.reason : 'continuation observed failure';
+      terminalizeCurrentRequest('failed', 'model.turn.failed', {
+        code: 'tool_execution_failed',
+        message: reason
+      });
+    }
+  };
+  const tick = (): void => {
+    // Revoked by Stop/reject/reload/new-turn: keep the truthful state only.
+    if (!activeContinuationRequests.has(requestId) || !isActiveInferenceRequest(requestId)) {
+      activeContinuationRequests.delete(requestId);
+      return;
+    }
+    attempts += 1;
+    if (attempts > CONTINUATION_MAX_ATTEMPTS) {
+      activeContinuationRequests.delete(requestId);
+      // Honest local expiry (broker TTL should have answered first).
+      setAssistantToolCalls(requestId, [{
+        ...toolCall,
+        status: 'FAIL' as const,
+        result: JSON.stringify({
+          status: 'failed',
+          reason: 'launch continuation window expired without observed readiness'
+        })
+      }]);
+      terminalizeCurrentRequest('failed', 'model.turn.failed', {
+        code: 'tool_execution_failed',
+        message: 'launch continuation expired without verified readiness'
+      });
+      return;
+    }
+    void invoke('cu_broker_observe', { requestId })
+      .then((raw) => {
+        if (!activeContinuationRequests.has(requestId)) return;
+        const res = raw as { found: boolean; envelope?: Record<string, unknown> };
+        if (!res?.found || !res.envelope) {
+          scheduleNextTick();
+          return;
+        }
+        const outcome = parseToolCallResult(toolName, res.envelope);
+        if (outcome.kind === 'verified_success') {
+          const firstCall = activeTurnCalls.get(requestId);
+          if (firstCall && maybeStartBoundedNotepadTypeContinuation(requestId, toolCall, firstCall, res.envelope)) {
+            activeContinuationRequests.delete(requestId);
+            return;
+          }
+          finish('PASS', res.envelope, 'completed');
+        } else if (outcome.kind === 'failed' || outcome.kind === 'blocked') {
+          finish('FAIL', res.envelope, 'failed');
+        } else {
+          // Still pending -> bounded re-observe; card stays WAITING/truthful.
+          scheduleNextTick();
+        }
+      })
+      .catch(() => {
+        // Infrastructure miss keeps the truthful pending card and retries
+        // within the same bound.
+        if (activeContinuationRequests.has(requestId)) {
+          scheduleNextTick();
+        }
+      });
+  };
+  const scheduleNextTick = (): void => {
+    setTimeout(() => {
+      tick();
+    }, CONTINUATION_POLL_INTERVAL_MS);
+  };
+  setTimeout(() => {
+    tick();
+  }, CONTINUATION_FIRST_CHECK_MS);
+}
+
 function terminalizeCurrentRequest(
-  lifecycle: 'completed' | 'cancelled' | 'timed_out' | 'failed',
+  lifecycle: 'completed' | 'awaiting_verification' | 'cancelled' | 'timed_out' | 'failed',
   method: ModelGatewayEvent['method'],
   error: SanitizedGatewayError | null = null
 ): boolean {
   const current = get(inferenceRequestStore);
-  if (!current.requestId || isInferenceTerminal(current.lifecycle)) return false;
+  // Any terminal transition revokes a still-running launch continuation so
+  // timeouts/protocol failures/cancellations cannot race the poll loop.
+  if (current.requestId) cancelComputerUseContinuations(current.requestId);
+  if (lifecycle !== 'awaiting_verification' && current.requestId) {
+    activeTurnPrompts.delete(current.requestId);
+    activeTurnCalls.delete(current.requestId);
+  }
+  // awaiting_verification is TRANSIENT (plan P0.2/P1.3): it must stay busy
+  // for composers/timers, yet always allow an authoritative move into
+  // completed/failed/cancelled — otherwise a verified launch could never be
+  // published and Stop during verification silently did nothing.
+  const blocked = !current.requestId || isInferenceTerminal(current.lifecycle);
+  if (blocked) return false;
   clearInferenceTimers();
   bufferedEarlyEvents = [];
   finalizeAssistantMessage(current.requestId, lifecycle, error?.message);
@@ -1396,7 +1744,13 @@ function terminalizeCurrentRequest(
   });
   modelGatewayStore.update((state) => ({
     ...state,
-    status: lifecycle === 'completed' ? 'Completed' : lifecycle === 'cancelled' ? 'Cancelled' : 'Failed',
+    status: lifecycle === 'completed'
+      ? 'Completed'
+      : lifecycle === 'awaiting_verification'
+        ? 'Pending verification'
+        : lifecycle === 'cancelled'
+          ? 'Cancelled'
+          : 'Failed',
     activeTurnId: null,
     lastError: error
   }));
@@ -1459,7 +1813,21 @@ function clearInferenceTimers(): void {
   clearInferenceTimer('cancelAcknowledgement');
 }
 
-function isInferenceTerminal(lifecycle: InferenceRequestState['lifecycle']): boolean {
+export function isActiveInferenceRequest(requestId: string): boolean {
+  return requestId.length > 0 && get(inferenceRequestStore).requestId === requestId;
+}
+
+export function canAcceptToolCallback(requestId: string): boolean {
+  const current = get(inferenceRequestStore);
+  return isActiveInferenceRequest(requestId) &&
+    !isInferenceTerminal(current.lifecycle) &&
+    current.lifecycle !== 'awaiting_verification' &&
+    current.lifecycle !== 'cancelling';
+}
+
+export function isInferenceTerminal(lifecycle: InferenceRequestState['lifecycle']): boolean {
+  // awaiting_verification is deliberately transient: the broker continuation
+  // may still publish an authoritative completed/failed outcome.
   return lifecycle === 'completed' || lifecycle === 'cancelled' || lifecycle === 'timed_out' || lifecycle === 'failed';
 }
 
@@ -1541,36 +1909,12 @@ function selectStrongestInstalledManagedModelId(
   runtimes: readonly ApprovedRuntimeSummary[],
   installedArtifacts: readonly ManagedArtifactValidationSummary[]
 ): string {
-  const installedVulkanRuntimeIds = new Set(
-    runtimes
-      .filter((runtime) => runtime.variant === 'vulkan')
-      .filter((runtime) => installedArtifacts.some((artifact) =>
-        artifact.kind === 'runtime' && artifact.artifact_id === runtime.runtime_id && artifact.installation_status === 'valid'
-      ))
-      .map((runtime) => runtime.runtime_id)
-  );
+  // Selection is intentionally fail-closed. A missing or invalid pinned
+  // baseline must stop setup rather than silently launching another model.
   const preferred = models.find((model) => model.model_id === DEFAULT_BASE_MODEL_ID);
-  if (preferred && isInstalledLaunchable(preferred, runtimes, installedArtifacts)) {
-    return preferred.model_id;
-  }
-
-  const candidates = models.filter((model) =>
-    modelTrustKind(model) === 'approved_catalog' &&
-    !/custom(?:-|_)?hf/i.test(model.model_id) &&
-    installedArtifacts.some((artifact) =>
-    artifact.kind === 'model' && artifact.artifact_id === model.model_id && artifact.installation_status === 'valid'
-  ));
-  return [...candidates].sort((left, right) => {
-    const leftVision = /\b(?:vl|vision)\b/i.test(left.model_id) ? 1 : 0;
-    const rightVision = /\b(?:vl|vision)\b/i.test(right.model_id) ? 1 : 0;
-    const leftValidation = installedArtifacts.find((artifact) => artifact.kind === 'model' && artifact.artifact_id === left.model_id);
-    const rightValidation = installedArtifacts.find((artifact) => artifact.kind === 'model' && artifact.artifact_id === right.model_id);
-    const leftBytes = leftValidation?.observed_bytes ?? leftValidation?.expected_bytes ?? left.asset_bytes;
-    const rightBytes = rightValidation?.observed_bytes ?? rightValidation?.expected_bytes ?? right.asset_bytes;
-    const leftGpu = left.compatible_runtime_ids.some((runtimeId) => installedVulkanRuntimeIds.has(runtimeId)) ? 1 : 0;
-    const rightGpu = right.compatible_runtime_ids.some((runtimeId) => installedVulkanRuntimeIds.has(runtimeId)) ? 1 : 0;
-    return rightGpu - leftGpu || leftVision - rightVision || rightBytes - leftBytes || left.model_id.localeCompare(right.model_id);
-  })[0]?.model_id ?? '';
+  return preferred && isInstalledLaunchable(preferred, runtimes, installedArtifacts)
+    ? preferred.model_id
+    : '';
 }
 function selectPreferredInstalledManagedRuntimeId(
   model: ManagedModelSummary | ApprovedModelSummary,

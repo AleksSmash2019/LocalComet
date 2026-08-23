@@ -5,7 +5,7 @@ use crate::approval::{
     RiskLevel, ScriptedApprovalPrompt,
 };
 use crate::control_plane::{
-    build_tool_call_request, AgentPermissions, BridgeError, ControlPlaneBridge,
+    build_tool_call_request_with_correlation, AgentPermissions, BridgeError, ControlPlaneBridge,
 };
 use crate::managed_runtime::ManagedRuntimeSupervisor;
 use crate::workspace::WorkspaceIdentity;
@@ -116,7 +116,6 @@ pub struct ApprovalState {
     registry: Mutex<ApprovalRegistry>,
     workspace: Mutex<Option<WorkspaceIdentity>>,
     permissions: Mutex<AgentPermissions>,
-    #[allow(dead_code)]
     prompt: Arc<dyn ApprovalPrompt>,
     pub dispatcher: Option<Arc<FrontendApprovalDispatcher>>,
 }
@@ -291,50 +290,264 @@ pub fn resolve_tool_approval(
     }
 }
 
-/// Issue a scoped one-time approval token bound to (tool, input digest,
-/// workspace, session). All registered operations use the same Rust approval
-/// boundary in the background: no frontend decision card is opened, but the
-/// token remains scoped, single-use, expiring, and validated before execution.
-#[tauri::command(async)]
-pub fn request_approval(
-    state: State<'_, ApprovalState>,
-    _runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
-    tool: String,
-    input: Value,
-) -> Result<ApprovalEnvelope, BridgeError> {
-    require_tool_permission(&state, &tool)?;
-    let risk_level = risk_level_for_tool(&tool)?;
-    let command_family = command_family_for_tool(&tool)
+fn computer_use_risk_for_input(input: &Value) -> Result<(RiskLevel, String, bool), BridgeError> {
+    let action = input
+        .get("action")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| BridgeError::new("invalid_payload", "computer_use action is required"))?;
+    // `text` is intentionally excluded. Typing a sentence that happens to
+    // contain "delete" or "password" is not an external side effect. Semantic
+    // escalation comes from the action target/control metadata instead.
+    let semantic_context = [
+        "target",
+        "control",
+        "field",
+        "label",
+        "window",
+        "url",
+        "destination",
+        "button",
+        "role",
+        "title",
+    ]
+    .iter()
+    .filter_map(|key| input.get(*key).and_then(Value::as_str))
+    .map(|value| value.trim().to_ascii_lowercase())
+    .filter(|value| !value.is_empty())
+    .collect::<Vec<_>>()
+    .join(" ");
+    let path_context = [
+        "target",
+        "path",
+        "file_path",
+        "folder",
+        "directory",
+        "destination",
+    ]
+    .iter()
+    .filter_map(|key| input.get(*key).and_then(Value::as_str))
+    .map(|value| value.trim().to_ascii_lowercase())
+    .filter(|value| !value.is_empty())
+    .collect::<Vec<_>>()
+    .join(" ");
+    let target_is_path =
+        path_context.contains('\\') || path_context.contains('/') || path_context.contains(':');
+    let system_target = target_is_path
+        || [
+            "system32",
+            "\\windows",
+            "/windows",
+            "program files",
+            "programdata",
+            "system volume information",
+            "registry",
+            "hkey_",
+            "$recycle.bin",
+            "boot",
+        ]
+        .iter()
+        .any(|marker| path_context.contains(marker));
+    let sensitive_or_external = [
+        "password",
+        "passcode",
+        "otp",
+        "verification code",
+        "captcha",
+        "login",
+        "log in",
+        "sign in",
+        "send",
+        "submit",
+        "purchase",
+        "checkout",
+        "payment",
+        "credit card",
+        "delete",
+        "remove",
+        "format",
+        "shutdown",
+        "restart",
+        "install",
+        "uninstall",
+        "administrator",
+        "admin",
+        "grant access",
+        "allow access",
+        "publish",
+    ]
+    .iter()
+    .any(|marker| semantic_context.contains(marker));
+
+    if system_target {
+        return Ok((
+            RiskLevel::Dangerous,
+            "computer_use_system_or_unallowlisted_path".to_owned(),
+            true,
+        ));
+    }
+    if sensitive_or_external {
+        return Ok((
+            RiskLevel::Dangerous,
+            "computer_use_sensitive_or_external_effect".to_owned(),
+            false,
+        ));
+    }
+
+    match action.as_str() {
+        "screenshot" | "wait" | "observe" | "cursor_position" | "mouse_move" | "scroll" => Ok((
+            RiskLevel::ReadOnly,
+            "computer_use_observation".to_owned(),
+            false,
+        )),
+        "open_app" => Ok((
+            RiskLevel::Guarded,
+            "computer_use_application_launch".to_owned(),
+            false,
+        )),
+        "open_folder" => Ok((
+            RiskLevel::Guarded,
+            "computer_use_folder_open".to_owned(),
+            false,
+        )),
+        "click" | "double_click" | "type" | "paste" | "key" | "hotkey" | "drag" => Ok((
+            RiskLevel::Guarded,
+            "computer_use_ui_interaction".to_owned(),
+            false,
+        )),
+        _ => Err(BridgeError::new(
+            "unsupported_action",
+            "computer_use action is not registered in the risk policy",
+        )),
+    }
+}
+
+/// Validate the request and build the approval scope plus the descriptor the
+/// consent card renders (tool, risk, target summary, side-effect category).
+fn effective_risk_level(tool: &str, input: &Value) -> Result<RiskLevel, BridgeError> {
+    if tool == "computer_use" {
+        return computer_use_risk_for_input(input).map(|(risk, _, _)| risk);
+    }
+    risk_level_for_tool(tool)
+}
+
+fn build_approval_scope_and_descriptor(
+    state: &ApprovalState,
+    tool: &str,
+    input: &Value,
+) -> Result<(ApprovalScope, ApprovalDescriptor), BridgeError> {
+    require_tool_permission(state, tool)?;
+    let tool_risk_level = risk_level_for_tool(tool)?;
+    let command_family = command_family_for_tool(tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
-    let digest = canonical_input_digest(&input);
-    let mut registry = state.registry.lock().expect("approval registry poisoned");
+    let (risk_level, side_effect_category, destructive) = if tool == "computer_use" {
+        computer_use_risk_for_input(input)?
+    } else {
+        (
+            tool_risk_level,
+            format!("{command_family:?}"),
+            tool_risk_level == RiskLevel::Dangerous,
+        )
+    };
+    let digest = canonical_input_digest(input);
+    let session = {
+        let registry = state.registry.lock().expect("approval registry poisoned");
+        registry.session_id().to_owned()
+    };
     let workspace_guard = state
         .workspace
         .lock()
         .expect("approval workspace lock poisoned");
-    let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
+    let workspace = resolve_approval_workspace(&workspace_guard, tool)?;
+    if tool == "computer_use" {
+        if let Some(action) = crate::cu_broker::broker_action(input) {
+            crate::cu_broker::validate_broker_action(action, input, Some(workspace.as_str()))
+                .map_err(|reason| {
+                    BridgeError::new(
+                        "computer_use_blocked",
+                        &format!("broker blocked action: {reason}"),
+                    )
+                })?;
+        }
+    }
     let scope = ApprovalScope {
-        tool: tool.clone(),
+        tool: tool.to_string(),
         input_digest: digest,
         workspace,
-        session: registry.session_id().to_owned(),
+        session,
         risk_level,
         command_family,
         approval_id: String::new(),
         call_id: String::new(),
     };
     let descriptor = ApprovalDescriptor {
-        tool: tool.clone(),
+        tool: tool.to_string(),
         command_family,
         risk_level,
-        target_summary: serde_json::to_string(&input).unwrap_or_default(),
-        side_effect_category: format!("{command_family:?}"),
-        destructive: risk_level == RiskLevel::Dangerous,
+        target_summary: serde_json::to_string(input).unwrap_or_default(),
+        side_effect_category,
+        destructive,
     };
-    let envelope = registry
-        .issue_without_prompt(scope, &descriptor)
-        .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
-    Ok(envelope)
+    Ok((scope, descriptor))
+}
+
+fn issue_scoped_envelope(
+    state: &ApprovalState,
+    scope: ApprovalScope,
+    descriptor: &ApprovalDescriptor,
+) -> Result<ApprovalEnvelope, BridgeError> {
+    let mut registry = state.registry.lock().expect("approval registry poisoned");
+    registry
+        .issue_without_prompt(scope, descriptor)
+        .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))
+}
+
+/// Issue a scoped one-time approval token bound to (tool, input digest,
+/// workspace, session).
+///
+/// Guarded and read-only operations use the background boundary: the frontend
+/// reaches this command only from an explicit user action for that exact
+/// operation (button click) or a session capability the user granted, and the
+/// token stays scoped, single-use, expiring and validated before execution.
+/// Dangerous tools additionally require an explicit user decision: the
+/// approval prompt emits a `request_tool_approval` card to the frontend, and
+/// issuance happens only after an Approve decision; reject, prompt timeout
+/// and frontend disconnect all deny issuance.
+#[tauri::command(async)]
+pub async fn request_approval(
+    state: State<'_, ApprovalState>,
+    _runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    tool: String,
+    input: Value,
+) -> Result<ApprovalEnvelope, BridgeError> {
+    let (scope, descriptor) = build_approval_scope_and_descriptor(&state, &tool, &input)?;
+    if descriptor.risk_level == RiskLevel::Dangerous {
+        // The prompt blocks for up to PROMPT_TIMEOUT_SECS on a user decision;
+        // run it on the blocking pool so no async worker is parked.
+        let prompt = Arc::clone(&state.prompt);
+        let prompt_descriptor = descriptor.clone();
+        let decision =
+            tauri::async_runtime::spawn_blocking(move || prompt.decide(&prompt_descriptor))
+                .await
+                .map_err(|_| {
+                    BridgeError::new("approval_prompt_failed", "approval prompt task failed")
+                })?
+                .map_err(|_| {
+                    BridgeError::new("approval_prompt_unavailable", "approval prompt unavailable")
+                })?;
+        match decision {
+            ApprovalDecision::Approve => {}
+            ApprovalDecision::Reject => {
+                return Err(BridgeError::new(
+                    "approval_rejected",
+                    "the user rejected the requested tool action",
+                ));
+            }
+        }
+    }
+    issue_scoped_envelope(&state, scope, &descriptor)
 }
 
 #[cfg(test)]
@@ -343,39 +556,25 @@ fn request_approval_inner(
     tool: String,
     input: Value,
 ) -> Result<ApprovalEnvelope, BridgeError> {
-    require_tool_permission(state, &tool)?;
-    let risk_level = risk_level_for_tool(&tool)?;
-    let command_family = command_family_for_tool(&tool)
-        .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
-    let digest = canonical_input_digest(&input);
-    let mut registry = state.registry.lock().expect("approval registry poisoned");
-    let workspace_guard = state
-        .workspace
-        .lock()
-        .expect("approval workspace lock poisoned");
-    let workspace = resolve_approval_workspace(&workspace_guard, &tool)?;
-    let scope = ApprovalScope {
-        tool: tool.clone(),
-        input_digest: digest,
-        workspace,
-        session: registry.session_id().to_owned(),
-        risk_level,
-        command_family,
-        approval_id: String::new(),
-        call_id: String::new(),
-    };
-    let descriptor = ApprovalDescriptor {
-        tool: tool.clone(),
-        command_family,
-        risk_level,
-        target_summary: serde_json::to_string(&input).unwrap_or_default(),
-        side_effect_category: format!("{command_family:?}"),
-        destructive: risk_level == RiskLevel::Dangerous,
-    };
-    let envelope = registry
-        .issue_without_prompt(scope, &descriptor)
-        .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
-    Ok(envelope)
+    let (scope, descriptor) = build_approval_scope_and_descriptor(state, &tool, &input)?;
+    if descriptor.risk_level == RiskLevel::Dangerous {
+        match state.prompt.decide(&descriptor) {
+            Ok(ApprovalDecision::Approve) => {}
+            Ok(ApprovalDecision::Reject) => {
+                return Err(BridgeError::new(
+                    "approval_rejected",
+                    "the user rejected the requested tool action",
+                ));
+            }
+            Err(_) => {
+                return Err(BridgeError::new(
+                    "approval_prompt_unavailable",
+                    "approval prompt unavailable",
+                ));
+            }
+        }
+    }
+    issue_scoped_envelope(state, scope, &descriptor)
 }
 
 /// Atomically validate scope and consume a one-time token, returning an
@@ -396,7 +595,7 @@ pub fn execute_approved(
     call_id: String,
 ) -> Result<Value, BridgeError> {
     require_tool_permission(&state, &tool)?;
-    let risk_level = risk_level_for_tool(&tool)?;
+    let risk_level = effective_risk_level(&tool, &input)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
     let digest = canonical_input_digest(&input);
@@ -439,7 +638,7 @@ fn execute_approved_inner(
     call_id: String,
 ) -> Result<Value, BridgeError> {
     require_tool_permission(state, &tool)?;
-    let risk_level = risk_level_for_tool(&tool)?;
+    let risk_level = effective_risk_level(&tool, &input)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
     let digest = canonical_input_digest(&input);
@@ -491,7 +690,7 @@ pub fn validate_approval_token(
     call_id: &str,
 ) -> Result<ExecutionGrant, BridgeError> {
     require_tool_permission(state, tool)?;
-    let risk_level = risk_level_for_tool(tool)?;
+    let risk_level = effective_risk_level(tool, input)?;
     let command_family = command_family_for_tool(tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
     let digest = canonical_input_digest(input);
@@ -526,6 +725,11 @@ pub fn validate_approval_token(
 /// BEFORE the sidecar dispatch (INV-APPROVAL-001: no bypass path). The grant and
 /// confirmed workspace are forwarded so the sidecar can confine execution to the
 /// workspace. Registry/workspace locks are released before the blocking IPC call.
+///
+/// The explicit metadata parameters keep model-turn correlation out of the
+/// schema-validated input object. This command already has six authorization
+/// fields, so the clippy exception is intentionally local to this Tauri seam.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn run_tool_call(
     state: State<'_, ApprovalState>,
@@ -535,30 +739,44 @@ pub fn run_tool_call(
     token: Option<String>,
     approval_id: Option<String>,
     call_id: Option<String>,
+    request_id: Option<String>,
+    action_id: Option<String>,
 ) -> Result<Value, BridgeError> {
     activation_gate(is_tool_execution_enabled())?;
-    run_tool_call_inner(&state, &bridge, tool, input, token, approval_id, call_id)
+    run_tool_call_inner(
+        &state,
+        Some(&bridge),
+        tool,
+        input,
+        token,
+        approval_id,
+        call_id,
+        request_id,
+        action_id,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
 fn run_tool_call_inner(
     state: &ApprovalState,
-    bridge: &ControlPlaneBridge,
+    bridge: Option<&ControlPlaneBridge>,
     tool: String,
     input: Value,
     token: Option<String>,
     approval_id: Option<String>,
     call_id: Option<String>,
+    request_id: Option<String>,
+    action_id: Option<String>,
 ) -> Result<Value, BridgeError> {
     require_tool_permission(state, &tool)?;
-    let risk_level = risk_level_for_tool(&tool)?;
+    let risk_level = effective_risk_level(&tool, &input)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
     let digest = canonical_input_digest(&input);
     // Every guarded/dangerous operation, including Computer Use, consumes a
     // scoped one-time approval before sidecar dispatch.
     let approval_fields = require_approval_fields(risk_level, token, approval_id, call_id)?;
-    let (grant_id, session, workspace_path, workspace_digest, idempotency_receipt) = {
+    let (grant, session, workspace_path, workspace_digest, idempotency_receipt) = {
         let mut registry = state.registry.lock().expect("approval registry poisoned");
         let workspace_guard = state
             .workspace
@@ -599,7 +817,7 @@ fn run_tool_call_inner(
         let idempotency_receipt = registry
             .begin_idempotent_call(&idempotency_key)
             .map_err(|error| BridgeError::new(approval_error_code(&error), &error.to_string()))?;
-        let grant_id: Option<String> = match risk_level {
+        let grant: Option<ExecutionGrant> = match risk_level {
             RiskLevel::ReadOnly => None,
             RiskLevel::Guarded | RiskLevel::Dangerous => {
                 let (token, approval_id, call_id) = approval_fields
@@ -622,7 +840,7 @@ fn run_tool_call_inner(
                         );
                         return Err(BridgeError::new("grant_expired", "execution grant expired"));
                     }
-                    Ok(grant) => Some(grant.grant_id),
+                    Ok(grant) => Some(grant),
                     Err(error) => {
                         registry.complete_idempotent_call(
                             idempotency_receipt,
@@ -638,20 +856,53 @@ fn run_tool_call_inner(
         };
         let session = registry.session_id().to_owned();
         (
-            grant_id,
+            grant,
             session,
             workspace_path,
             workspace_digest,
             Some(idempotency_receipt),
         )
     };
-    let (method, payload) = match build_tool_call_request(
+    // Computer Use spawn-class actions (open_app/open_folder) execute in this
+    // host process, OUTSIDE the sidecar's single-process containment job — the
+    // sidecar job forbids any child spawn (WinError 1816). The grant consumed
+    // above is re-verified inside the broker against the exact input bytes.
+    // Hidden-desktop binding comes from the harness environment: when present,
+    // every spawn is desktop-bound BEFORE process creation.
+    if tool == "computer_use" {
+        if let Some(action) = crate::cu_broker::broker_action(&input) {
+            let hidden_desktop = std::env::var("LC_HIDDEN_DESKTOP_NAME")
+                .ok()
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty());
+            let envelope = crate::cu_broker::execute_broker_action(
+                action,
+                &input,
+                grant.as_ref(),
+                request_id.as_deref(),
+                action_id.as_deref(),
+                Some(workspace_path.as_str()),
+                hidden_desktop.as_deref(),
+            );
+            if let Some(receipt) = idempotency_receipt {
+                state
+                    .registry
+                    .lock()
+                    .expect("approval registry poisoned")
+                    .complete_idempotent_call(receipt, IdempotencyOutcome::Completed);
+            }
+            return Ok(envelope);
+        }
+    }
+    let (method, payload) = match build_tool_call_request_with_correlation(
         &tool,
         &input,
         &workspace_path,
         &workspace_digest,
         &session,
-        grant_id.as_deref(),
+        grant.as_ref(),
+        request_id.as_deref(),
+        action_id.as_deref(),
     ) {
         Ok(request) => request,
         Err(error) => {
@@ -664,6 +915,19 @@ fn run_tool_call_inner(
             }
             return Err(error);
         }
+    };
+    let Some(bridge) = bridge else {
+        if let Some(receipt) = idempotency_receipt {
+            state
+                .registry
+                .lock()
+                .expect("approval registry poisoned")
+                .complete_idempotent_call(receipt, IdempotencyOutcome::Failed);
+        }
+        return Err(BridgeError::new(
+            "bridge_unavailable",
+            "sidecar bridge is required for non-broker tool execution",
+        ));
     };
     let result = bridge.request(method, payload);
     if let Some(receipt) = idempotency_receipt {
@@ -679,6 +943,24 @@ fn run_tool_call_inner(
             .complete_idempotent_call(receipt, outcome);
     }
     result
+}
+
+/// Continuation observation for a broker-spawned launch. Observation-only:
+/// never spawns, never consumes grants; identified purely by request_id and
+/// bounded by the broker's continuation TTL.
+#[tauri::command]
+pub fn cu_broker_observe(request_id: String) -> Result<Value, BridgeError> {
+    activation_gate(is_tool_execution_enabled())?;
+    if !crate::cu_broker::valid_request_id(&request_id) {
+        return Err(BridgeError::new(
+            "invalid_payload",
+            "broker continuation request_id is invalid",
+        ));
+    }
+    match crate::cu_broker::observe_broker_action(&request_id) {
+        Some(envelope) => Ok(json!({ "found": true, "envelope": envelope })),
+        None => Ok(json!({ "found": false })),
+    }
 }
 
 /// Confirm a workspace: validate the path, invalidate tokens bound to the
@@ -805,6 +1087,10 @@ mod tests {
     }
 
     fn test_approval_state_with_workspace() -> ApprovalState {
+        test_approval_state_with_prompt(ApprovalDecision::Approve)
+    }
+
+    fn test_approval_state_with_prompt(decision: ApprovalDecision) -> ApprovalState {
         ApprovalState {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(Some(WorkspaceIdentity {
@@ -818,9 +1104,7 @@ mod tests {
                 computer_use: true,
                 internet: true,
             }),
-            prompt: Arc::new(ScriptedApprovalPrompt {
-                decision: ApprovalDecision::Approve,
-            }),
+            prompt: Arc::new(ScriptedApprovalPrompt { decision }),
             dispatcher: None,
         }
     }
@@ -842,7 +1126,7 @@ mod tests {
             input_digest: digest,
             workspace: ws.canonical_path.clone(),
             session: registry.session_id().to_owned(),
-            risk_level: risk_level_for_tool(tool).expect("known tool"),
+            risk_level: effective_risk_level(tool, input).expect("known tool/action"),
             command_family: command_family_for_tool(tool).expect("known tool"),
             approval_id: approval_id.clone(),
             call_id: call_id.clone(),
@@ -927,6 +1211,45 @@ mod tests {
         assert_eq!(grant["tool"], "files.write");
         assert_eq!(grant["workspace"], "C:\\test-workspace");
         assert!(grant.get("session").and_then(Value::as_str).is_some());
+    }
+
+    #[test]
+    fn p0b_run_tool_call_broker_evidence_echoes_transport_ids_without_spawn() {
+        let state = test_approval_state_with_workspace();
+        let input = json!({
+            "action": "open_app",
+            "target": "definitely-not-allowlisted",
+            "text": "raw arguments remain unchanged"
+        });
+        let (token, approval_id, call_id) = issue_test_token(&state, "computer_use", &input);
+        let request_id = "0123456789abcdef01234567";
+        let action_id = "call_0123456789abcdef0123456789abcdef";
+        let expected_digest = canonical_input_digest(&input);
+        let expected_digest_hex: String = expected_digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+
+        let result = run_tool_call_inner(
+            &state,
+            None,
+            "computer_use".to_owned(),
+            input,
+            Some(token),
+            Some(approval_id.clone()),
+            Some(call_id.clone()),
+            Some(request_id.to_owned()),
+            Some(action_id.to_owned()),
+        )
+        .expect("invalid allowlist target returns a truthful broker envelope");
+
+        assert_eq!(result["schema_version"], crate::cu_broker::ENVELOPE_SCHEMA);
+        assert_eq!(result["status"], "blocked");
+        assert_eq!(result["request_id"], request_id);
+        assert_eq!(result["action_id"], action_id);
+        assert_eq!(result["execution"]["approval_id"], approval_id);
+        assert_eq!(result["execution"]["approval_call_id"], call_id);
+        assert_eq!(result["execution"]["input_digest"], expected_digest_hex);
     }
 
     #[test]
@@ -1376,6 +1699,56 @@ mod tests {
         assert_eq!(grant.tool, "files.write");
     }
 
+    /// Dangerous tools must not receive a token until the approval prompt
+    /// returns an Approve decision. The scripted prompt plays the user.
+    #[test]
+    fn dangerous_tool_prompt_approval_issues_envelope() {
+        let approval_state = test_approval_state_with_workspace();
+        let envelope = request_approval_inner(
+            &approval_state,
+            "computer_use".into(),
+            json!({"action": "click", "target": "Submit payment"}),
+        )
+        .expect("scripted approve issues a dangerous envelope");
+        assert_eq!(envelope.tool, "computer_use");
+        assert_eq!(envelope.risk_level, RiskLevel::Dangerous);
+        assert_eq!(envelope.command_family, CommandFamily::ComputerUse);
+    }
+
+    #[test]
+    fn dangerous_tool_prompt_rejection_denies_issuance() {
+        let approval_state = test_approval_state_with_prompt(ApprovalDecision::Reject);
+        let error = request_approval_inner(
+            &approval_state,
+            "computer_use".into(),
+            json!({"action": "click", "target": "Submit payment"}),
+        )
+        .expect_err("prompt rejection must deny token issuance");
+        assert_eq!(error.code, "approval_rejected");
+        let error = request_approval_inner(
+            &approval_state,
+            "files.delete".into(),
+            json!({"path": "notes.txt"}),
+        )
+        .expect_err("every dangerous tool must consult the prompt");
+        assert_eq!(error.code, "approval_rejected");
+    }
+
+    /// Guarded tools stay on the background boundary even when the prompt
+    /// would reject: their consent is the explicit user action that triggered
+    /// the request (UI button for that exact operation).
+    #[test]
+    fn guarded_tool_ignores_prompt_and_issues_in_background() {
+        let approval_state = test_approval_state_with_prompt(ApprovalDecision::Reject);
+        let envelope = request_approval_inner(
+            &approval_state,
+            "files.write".into(),
+            json!({"path": "notes.txt"}),
+        )
+        .expect("guarded issuance must not depend on the dangerous-tool prompt");
+        assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+    }
+
     #[test]
     fn p0b_r4_non_workspace_operations_use_sentinel() {
         let approval_state = ApprovalState {
@@ -1514,5 +1887,142 @@ mod tests {
         );
         let error = replay.expect_err("replay must be rejected");
         assert_eq!(error.code, "approval_token_consumed");
+    }
+
+    #[test]
+    fn computer_use_risk_is_action_aware() {
+        let cases = [
+            (
+                json!({"action": "open_app", "target": "notepad"}),
+                RiskLevel::Guarded,
+                "computer_use_application_launch",
+                false,
+            ),
+            (
+                json!({"action": "screenshot"}),
+                RiskLevel::ReadOnly,
+                "computer_use_observation",
+                false,
+            ),
+            (
+                json!({"action": "open_folder", "target": "C:\\\\Windows\\\\System32"}),
+                RiskLevel::Dangerous,
+                "computer_use_system_or_unallowlisted_path",
+                true,
+            ),
+            (
+                json!({"action": "click", "target": "Submit payment"}),
+                RiskLevel::Dangerous,
+                "computer_use_sensitive_or_external_effect",
+                false,
+            ),
+            (
+                json!({"action": "type", "text": "hello in Notepad"}),
+                RiskLevel::Guarded,
+                "computer_use_ui_interaction",
+                false,
+            ),
+            (
+                json!({"action": "type", "text": "delete password later"}),
+                RiskLevel::Guarded,
+                "computer_use_ui_interaction",
+                false,
+            ),
+            (
+                json!({"action": "type", "text": "secret", "field": "Password"}),
+                RiskLevel::Dangerous,
+                "computer_use_sensitive_or_external_effect",
+                false,
+            ),
+            (
+                json!({"action": "open_app", "target": "chrome", "url": "https://example.com"}),
+                RiskLevel::Guarded,
+                "computer_use_application_launch",
+                false,
+            ),
+        ];
+
+        for (input, expected_risk, expected_category, expected_destructive) in cases {
+            let (risk, category, destructive) =
+                computer_use_risk_for_input(&input).expect("known Computer Use action");
+            assert_eq!(risk, expected_risk, "input={input}");
+            assert_eq!(category, expected_category, "input={input}");
+            assert_eq!(destructive, expected_destructive, "input={input}");
+        }
+    }
+
+    #[test]
+    fn unallowlisted_computer_use_launch_is_blocked_before_prompt() {
+        let approval_state = test_approval_state_with_prompt(ApprovalDecision::Approve);
+        for target in ["cmd.exe", "C:\\Windows\\System32\\notepad.exe"] {
+            let error = request_approval_inner(
+                &approval_state,
+                "computer_use".into(),
+                json!({"action": "open_app", "target": target}),
+            )
+            .expect_err("broker must block unallowlisted launch before approval");
+            assert_eq!(error.code, "computer_use_blocked", "target={target}");
+        }
+    }
+
+    #[test]
+    fn routine_computer_use_actions_skip_dangerous_prompt() {
+        let approval_state = test_approval_state_with_prompt(ApprovalDecision::Reject);
+        let envelope = request_approval_inner(
+            &approval_state,
+            "computer_use".into(),
+            json!({"action": "open_app", "target": "notepad"}),
+        )
+        .expect("allowlisted app launch must not depend on dangerous prompt");
+        assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+
+        let screenshot = request_approval_inner(
+            &approval_state,
+            "computer_use".into(),
+            json!({"action": "screenshot"}),
+        )
+        .expect("screenshot must not depend on dangerous prompt");
+        assert_eq!(screenshot.risk_level, RiskLevel::ReadOnly);
+    }
+
+    #[test]
+    fn effective_computer_use_risk_is_used_for_execution() {
+        let approval_state = test_approval_state_with_workspace();
+        let input = json!({"action": "open_app", "target": "notepad"});
+        let envelope =
+            request_approval_inner(&approval_state, "computer_use".into(), input.clone())
+                .expect("allowlisted app launch must issue a guarded envelope");
+        assert_eq!(envelope.risk_level, RiskLevel::Guarded);
+        let grant = execute_approved_inner(
+            &approval_state,
+            envelope.token,
+            "computer_use".into(),
+            input,
+            envelope.approval_id,
+            envelope.call_id,
+        )
+        .expect("guarded Computer Use envelope must validate with the same effective risk");
+        assert_eq!(grant["tool"], "computer_use");
+
+        let screenshot = json!({"action": "screenshot"});
+        assert_eq!(
+            effective_risk_level("computer_use", &screenshot).expect("known action"),
+            RiskLevel::ReadOnly
+        );
+        assert!(require_approval_fields(
+            effective_risk_level("computer_use", &screenshot).expect("known action"),
+            None,
+            None,
+            None,
+        )
+        .expect("read-only Computer Use needs no approval")
+        .is_none());
+    }
+
+    #[test]
+    fn computer_use_unknown_action_fails_closed() {
+        let error = computer_use_risk_for_input(&json!({"action": "run_shell"}))
+            .expect_err("unknown Computer Use action must be rejected");
+        assert_eq!(error.code, "unsupported_action");
     }
 }

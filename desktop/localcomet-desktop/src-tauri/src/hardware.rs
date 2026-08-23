@@ -111,72 +111,70 @@ fn configure_hidden_command(command: &mut Command) {
 fn configure_hidden_command(_command: &mut Command) {}
 
 #[cfg(target_os = "windows")]
-fn detect_gpus_from_dxdiag() -> Vec<GpuPart> {
-    let path = std::env::temp_dir().join(format!("localcomet-dxdiag-{}.txt", std::process::id()));
-    let _ = std::fs::remove_file(&path);
-    let mut command = Command::new(r"C:\Windows\System32\dxdiag.exe");
-    command.args(["/whql:off", "/t", path.to_string_lossy().as_ref()]);
+fn registry_value(subkey: &str, value_name: &str) -> Option<String> {
+    let mut command = Command::new(r"C:\Windows\System32\reg.exe");
+    command.args(["query", subkey, "/v", value_name]);
     configure_hidden_command(&mut command);
-    let status_ok = command
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false);
-    if !status_ok {
-        let _ = std::fs::remove_file(&path);
-        return Vec::new();
+    let output = command.output().ok()?;
+    if !output.status.success() || output.stdout.len() > 4096 {
+        return None;
     }
-    let contents = match std::fs::read(&path) {
-        Ok(contents) => String::from_utf8_lossy(&contents).into_owned(),
-        Err(_) => {
-            let _ = std::fs::remove_file(&path);
-            return Vec::new();
-        }
-    };
-    let _ = std::fs::remove_file(&path);
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let rest = trimmed.strip_prefix(value_name)?.trim_start();
+        let value = rest
+            .strip_prefix("REG_SZ")
+            .or_else(|| rest.strip_prefix("REG_DWORD"))
+            .or_else(|| rest.strip_prefix("REG_QWORD"))?
+            .trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
 
+#[cfg(target_os = "windows")]
+fn registry_integer(subkey: &str, value_name: &str) -> Option<u64> {
+    let raw = registry_value(subkey, value_name)?;
+    raw.strip_prefix("0x")
+        .and_then(|value| u64::from_str_radix(value, 16).ok())
+        .or_else(|| raw.parse::<u64>().ok())
+}
+
+#[cfg(target_os = "windows")]
+fn detect_gpus_from_registry() -> Vec<GpuPart> {
+    const DISPLAY_CLASS: &str =
+        r"HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
     let mut gpus = Vec::new();
-    let mut current_name: Option<String> = None;
-    let mut current_vram_mb: Option<u64> = None;
-    let finish = |gpus: &mut Vec<GpuPart>, name: &mut Option<String>, vram_mb: &mut Option<u64>| {
+    for index in 0..32 {
+        let subkey = format!(r"{DISPLAY_CLASS}\{index:04}");
+        let Some(name) = registry_value(&subkey, "DriverDesc")
+            .or_else(|| registry_value(&subkey, "AdapterString"))
+            .map(|value| sanitize_name(&value))
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if gpus.iter().any(|gpu: &GpuPart| gpu.name == name) {
+            continue;
+        }
+        let vram_mb = registry_integer(&subkey, "HardwareInformation.qwMemorySize")
+            .or_else(|| registry_integer(&subkey, "HardwareInformation.MemorySize"))
+            .map(|bytes| bytes / (1024 * 1024))
+            .filter(|value| *value > 0 && *value < 262_144);
+        gpus.push(GpuPart {
+            name,
+            vram_mb,
+            integrated: Some(vram_mb.is_none()),
+        });
         if gpus.len() >= 4 {
-            *name = None;
-            *vram_mb = None;
-            return;
-        }
-        if let Some(raw_name) = name.take() {
-            if raw_name.is_empty() || gpus.iter().any(|gpu| gpu.name == raw_name) {
-                *vram_mb = None;
-                return;
-            }
-            gpus.push(GpuPart {
-                name: raw_name,
-                vram_mb: *vram_mb,
-                integrated: Some(vram_mb.is_none()),
-            });
-        }
-        *vram_mb = None;
-    };
-
-    for line in contents.lines() {
-        let line = line.trim();
-        if let Some(raw_name) = line.strip_prefix("Card name:") {
-            finish(&mut gpus, &mut current_name, &mut current_vram_mb);
-            current_name = Some(sanitize_name(raw_name));
-        } else if let Some(raw_memory) = line.strip_prefix("Dedicated Memory:") {
-            let value = raw_memory
-                .split_whitespace()
-                .next()
-                .and_then(|raw| raw.parse::<u64>().ok())
-                .filter(|value| *value > 0 && *value < 262_144);
-            current_vram_mb = value;
+            break;
         }
     }
-    finish(&mut gpus, &mut current_name, &mut current_vram_mb);
     gpus
 }
 
 #[cfg(not(target_os = "windows"))]
-fn detect_gpus_from_dxdiag() -> Vec<GpuPart> {
+fn detect_gpus_from_registry() -> Vec<GpuPart> {
     Vec::new()
 }
 
@@ -188,13 +186,13 @@ fn detect_gpus() -> Vec<GpuPart> {
         if gpus.len() >= 4 {
             break;
         }
-        let output = match std::process::Command::new(bin)
-            .args([
-                "--query-gpu=name,memory.total",
-                "--format=csv,noheader,nounits",
-            ])
-            .output()
-        {
+        let mut command = std::process::Command::new(bin);
+        command.args([
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ]);
+        configure_hidden_command(&mut command);
+        let output = match command.output() {
             Ok(o) => o,
             Err(_) => continue,
         };
@@ -233,7 +231,7 @@ fn detect_gpus() -> Vec<GpuPart> {
     }
 
     if gpus.is_empty() {
-        gpus = detect_gpus_from_dxdiag();
+        gpus = detect_gpus_from_registry();
     }
 
     #[cfg(target_os = "macos")]

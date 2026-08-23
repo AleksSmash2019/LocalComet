@@ -113,7 +113,15 @@ def _rect_value(element: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(rect, dict):
         return dict(rect)
     if isinstance(rect, (list, tuple)) and len(rect) >= 4:
-        return {"x": rect[0], "y": rect[1], "width": rect[2], "height": rect[3]}
+        # A 4-list is interpreted ONLY as [x, y, width, height]; non-positive
+        # sizes are rejected rather than silently misread.
+        try:
+            x, y, width, height = int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])
+        except Exception:
+            return {}
+        if width <= 0 or height <= 0:
+            return {}
+        return {"x": x, "y": y, "width": width, "height": height}
     return {}
 
 
@@ -319,10 +327,34 @@ def observe_screen_vision(goal: str = "", write_report: bool = True, simulate: b
             ],
             "windows": [{"title": "Synthetic LocalComet", "app": "LocalComet"}],
         }
-        desktop_snapshot = {"ok": True, "source": "synthetic", "payload": {"active_window": {"title": "Synthetic LocalComet", "app": "LocalComet"}}}
+        desktop_snapshot = {
+            "ok": True,
+            "source": "synthetic",
+            "payload": {"active_window": {"title": "Synthetic LocalComet", "app": "LocalComet"}},
+        }
+        observation_state = "available"
+        screenshot_evidence = {"path": "", "sha256": "", "bytes": 0, "backend": "synthetic", "scope": "synthetic", "error": ""}
     else:
         ui_map = _load_latest_ui_map()
         desktop_snapshot = _desktop_observe_snapshot()
+        snapshot_payload = (
+            desktop_snapshot.get("payload")
+            if isinstance(desktop_snapshot.get("payload"), dict)
+            else {}
+        )
+        screenshot_meta = snapshot_payload.get("screenshot_meta")
+        if not isinstance(screenshot_meta, dict):
+            screenshot_meta = {}
+        screenshot_evidence = {
+            "path": snapshot_payload.get("screenshot_path", ""),
+            "sha256": screenshot_meta.get("sha256", ""),
+            "bytes": screenshot_meta.get("bytes", 0),
+            "backend": snapshot_payload.get("screenshot_backend", ""),
+            "scope": screenshot_meta.get("capture_scope", ""),
+            "error": snapshot_payload.get("screenshot_error", ""),
+        }
+        observation_state = str(snapshot_payload.get("observation_state") or "failed")
+
     ui_quality = _ui_map_quality(ui_map)
     active_window = _active_window_from_snapshot(desktop_snapshot, ui_map)
     fingerprint = _fingerprint_observation(ui_quality, active_window)
@@ -330,7 +362,7 @@ def observe_screen_vision(goal: str = "", write_report: bool = True, simulate: b
     stuck = _stuck_status(fingerprint, previous)
     candidates = find_target_candidates(goal, ui_map) if goal else []
     payload: Dict[str, Any] = {
-        "ok": True,
+        "ok": bool(simulate or observation_state == "available"),
         "handled": True,
         "mode": "computer_use_observe_vision",
         "version": VERSION,
@@ -338,13 +370,19 @@ def observe_screen_vision(goal: str = "", write_report: bool = True, simulate: b
         "timestamp": _iso_now(),
         "goal": goal,
         "desktop_snapshot": desktop_snapshot,
+        "observation_state": observation_state,
+        "screenshot_evidence": screenshot_evidence,
         "active_window": active_window,
         "ui_map_quality": ui_quality,
         "target_candidates": candidates,
         "fingerprint": fingerprint,
         "repeat_count": stuck.get("repeat_count", 0),
         "stuck": stuck,
-        "next_decision": "continue" if not stuck.get("possibly_stuck") else "replan_or_ask_user",
+        "next_decision": (
+            "continue"
+            if not stuck.get("possibly_stuck") and observation_state == "available"
+            else "replan_or_ask_user"
+        ),
         "report": "",
     }
     if write_report:
@@ -357,7 +395,6 @@ def observe_screen_vision(goal: str = "", write_report: bool = True, simulate: b
         _write_markdown_report(payload, md_report)
         LATEST_REPORT_FILE.write_text(md_report.read_text(encoding="utf-8"), encoding="utf-8")
     return payload
-
 
 def get_latest_observation() -> Dict[str, Any]:
     _ensure_dirs()

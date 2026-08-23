@@ -79,6 +79,8 @@ struct ModelToolArgumentSchema {
     required_array_fields: &'static [&'static str],
     optional_array_fields: &'static [&'static str],
     optional_json_fields: &'static [&'static str],
+    // Bounded numeric fields: (name, inclusive min, inclusive max).
+    optional_number_fields: &'static [(&'static str, f64, f64)],
 }
 
 fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
@@ -90,6 +92,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
                 required_array_fields: &[],
                 optional_array_fields: &[],
                 optional_json_fields: &[],
+                optional_number_fields: &[],
             })
         }
         "files.write" => Some(ModelToolArgumentSchema {
@@ -98,6 +101,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_array_fields: &[],
             optional_array_fields: &[],
             optional_json_fields: &[],
+            optional_number_fields: &[],
         }),
         "shell" => Some(ModelToolArgumentSchema {
             required_string_fields: &["command"],
@@ -105,6 +109,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_array_fields: &[],
             optional_array_fields: &[],
             optional_json_fields: &[],
+            optional_number_fields: &[],
         }),
         "computer_use" => Some(ModelToolArgumentSchema {
             required_string_fields: &["action"],
@@ -112,6 +117,9 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_array_fields: &[],
             optional_array_fields: &["coordinate"],
             optional_json_fields: &[],
+            // Canonical bounded wait: one format (seconds, 0.1..=30.0)
+            // shared by the intent parser, this schema, and the executor.
+            optional_number_fields: &[("seconds", 0.1, 30.0)],
         }),
         "skills.invoke" => Some(ModelToolArgumentSchema {
             required_string_fields: &["skill_id"],
@@ -119,6 +127,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_array_fields: &["permissions"],
             optional_array_fields: &[],
             optional_json_fields: &["arguments"],
+            optional_number_fields: &[],
         }),
         "web.search" => Some(ModelToolArgumentSchema {
             required_string_fields: &["query"],
@@ -126,6 +135,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_array_fields: &[],
             optional_array_fields: &[],
             optional_json_fields: &[],
+            optional_number_fields: &[],
         }),
         "web.fetch" => Some(ModelToolArgumentSchema {
             required_string_fields: &["url"],
@@ -133,6 +143,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_array_fields: &[],
             optional_array_fields: &[],
             optional_json_fields: &[],
+            optional_number_fields: &[],
         }),
         "system.time" => Some(ModelToolArgumentSchema {
             required_string_fields: &[],
@@ -140,6 +151,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             required_array_fields: &[],
             optional_array_fields: &[],
             optional_json_fields: &[],
+            optional_number_fields: &[],
         }),
         _ => None,
     }
@@ -156,6 +168,10 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
             && !schema.optional_string_fields.contains(&key.as_str())
             && !schema.optional_array_fields.contains(&key.as_str())
             && !schema.optional_json_fields.contains(&key.as_str())
+            && !schema
+                .optional_number_fields
+                .iter()
+                .any(|(field, _, _)| *field == key.as_str())
         {
             let message = format!("tool {name} has unknown argument field {key}");
             return Err(BridgeError::new("protocol_mismatch", &message));
@@ -208,6 +224,19 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
             if !val.is_object() && !val.is_array() {
                 let message =
                     format!("tool {name} argument field {field} must be an object or array");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            }
+        }
+    }
+    for (field, min, max) in schema.optional_number_fields {
+        if let Some(val) = object.get(*field) {
+            let Some(number) = val.as_f64() else {
+                let message = format!("tool {name} argument field {field} must be a number");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            };
+            if !(*min..=*max).contains(&number) || number.is_nan() {
+                let message =
+                    format!("tool {name} argument field {field} must be within {min}..={max}");
                 return Err(BridgeError::new("protocol_mismatch", &message));
             }
         }
@@ -4045,7 +4074,15 @@ fn validate_payload_for_method(
 
 fn validate_tool_call_payload(payload: &Value) -> Result<(), BridgeError> {
     const REQUIRED: [&str; 5] = ["tool", "input", "workspace", "workspace_digest", "session"];
-    const OPTIONAL: [&str; 1] = ["grant_id"];
+    const OPTIONAL: [&str; 4] = ["grant_id", "grant", "request_id", "action_id"];
+    const GRANT_KEYS: [&str; 6] = [
+        "grant_id",
+        "tool",
+        "input_digest",
+        "workspace",
+        "session",
+        "expires_at_unix_ms",
+    ];
     let Some(object) = payload.as_object() else {
         return Err(BridgeError::new(
             "invalid_payload",
@@ -4088,16 +4125,109 @@ fn validate_tool_call_payload(payload: &Value) -> Result<(), BridgeError> {
             "grant_id must be a string",
         ));
     }
+    if let Some(request_id) = object.get("request_id") {
+        let Some(request_id) = request_id.as_str() else {
+            return Err(BridgeError::new(
+                "invalid_payload",
+                "request_id must be a string",
+            ));
+        };
+        ensure_request_id(request_id)?;
+    }
+    if let Some(action_id) = object.get("action_id") {
+        let Some(action_id) = action_id.as_str() else {
+            return Err(BridgeError::new(
+                "invalid_payload",
+                "action_id must be a string",
+            ));
+        };
+        if !crate::cu_broker::valid_action_id(action_id) {
+            return Err(BridgeError::new("invalid_payload", "action_id is invalid"));
+        }
+    }
+    if let Some(grant) = object.get("grant") {
+        let Some(grant_object) = grant.as_object() else {
+            return Err(BridgeError::new(
+                "invalid_payload",
+                "grant must be an object",
+            ));
+        };
+        if grant_object
+            .keys()
+            .any(|key| !GRANT_KEYS.contains(&key.as_str()))
+        {
+            return Err(BridgeError::new(
+                "invalid_payload",
+                "unexpected grant shape",
+            ));
+        }
+        for key in &GRANT_KEYS[..5] {
+            let present_nonempty = grant_object
+                .get(*key)
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.is_empty());
+            if !present_nonempty {
+                return Err(BridgeError::new(
+                    "invalid_payload",
+                    &format!("grant.{key} must be a non-empty string"),
+                ));
+            }
+        }
+        let expires_valid = grant_object
+            .get("expires_at_unix_ms")
+            .and_then(Value::as_u64)
+            .is_some_and(|value| value > 0);
+        if !expires_valid {
+            return Err(BridgeError::new(
+                "invalid_payload",
+                "grant.expires_at_unix_ms must be a positive integer",
+            ));
+        }
+        if let (Some(outer), Some(inner)) = (
+            payload.get("grant_id").and_then(Value::as_str),
+            grant_object.get("grant_id").and_then(Value::as_str),
+        ) {
+            if outer != inner {
+                return Err(BridgeError::new(
+                    "invalid_payload",
+                    "grant_id must match the grant envelope",
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn build_tool_call_request(
     tool: &str,
     input: &Value,
     workspace: &str,
     workspace_digest: &str,
     session: &str,
-    grant_id: Option<&str>,
+    grant: Option<&crate::approval::ExecutionGrant>,
+) -> Result<(ControlPlaneMethod, Value), BridgeError> {
+    build_tool_call_request_with_correlation(
+        tool,
+        input,
+        workspace,
+        workspace_digest,
+        session,
+        grant,
+        None,
+        None,
+    )
+}
+
+pub(crate) fn build_tool_call_request_with_correlation(
+    tool: &str,
+    input: &Value,
+    workspace: &str,
+    workspace_digest: &str,
+    session: &str,
+    grant: Option<&crate::approval::ExecutionGrant>,
+    request_id: Option<&str>,
+    action_id: Option<&str>,
 ) -> Result<(ControlPlaneMethod, Value), BridgeError> {
     let mut payload = json!({
         "tool": tool,
@@ -4106,8 +4236,22 @@ pub(crate) fn build_tool_call_request(
         "workspace_digest": workspace_digest,
         "session": session,
     });
-    if let Some(grant_id) = grant_id {
-        payload["grant_id"] = json!(grant_id);
+    if let Some(request_id) = request_id.filter(|value| !value.is_empty()) {
+        payload["request_id"] = json!(request_id);
+    }
+    if let Some(action_id) = action_id.filter(|value| !value.is_empty()) {
+        payload["action_id"] = json!(action_id);
+    }
+    if let Some(grant) = grant {
+        payload["grant_id"] = json!(grant.grant_id);
+        payload["grant"] = json!({
+            "grant_id": grant.grant_id,
+            "tool": grant.tool,
+            "input_digest": grant.input_digest_hex(),
+            "workspace": grant.workspace,
+            "session": grant.session,
+            "expires_at_unix_ms": grant.expires_at_unix_ms(),
+        });
     }
     validate_tool_call_payload(&payload)?;
     Ok((ControlPlaneMethod::ToolCall, payload))
@@ -4798,6 +4942,38 @@ mod tests {
     }
 
     #[test]
+    fn build_tool_call_request_with_correlation_keeps_raw_input_unchanged() {
+        let input = json!({"action": "type", "text": "LocalComet hidden marker"});
+        let request_id = "0123456789abcdef01234567";
+        let action_id = "call_0123456789abcdef0123456789abcdef";
+        let (method, payload) = build_tool_call_request_with_correlation(
+            "computer_use",
+            &input,
+            "/workspace",
+            "digest",
+            "session-1",
+            None,
+            Some(request_id),
+            Some(action_id),
+        )
+        .unwrap();
+
+        assert_eq!(method, ControlPlaneMethod::ToolCall);
+        assert_eq!(payload["input"], input);
+        assert_eq!(payload["request_id"], request_id);
+        assert_eq!(payload["action_id"], action_id);
+        assert!(validate_payload_for_method(method, &payload).is_ok());
+        assert!(!payload["input"]
+            .as_object()
+            .unwrap()
+            .contains_key("request_id"));
+        assert!(!payload["input"]
+            .as_object()
+            .unwrap()
+            .contains_key("action_id"));
+    }
+
+    #[test]
     fn build_tool_call_request_builds_exact_payloads() {
         let input = json!({"path": "notes.txt"});
         let (method, payload) = build_tool_call_request(
@@ -4828,22 +5004,82 @@ mod tests {
             "/workspace",
             "digest",
             "session-1",
-            Some("grant-abc"),
+            Some(&crate::approval::ExecutionGrant {
+                grant_id: "grant-abc".to_string(),
+                tool: "files.write".to_string(),
+                input_digest: [0u8; 32],
+                workspace: "/workspace".to_string(),
+                session: "session-1".to_string(),
+                nonce: [0u8; 16],
+                valid_until: std::time::Instant::now() + std::time::Duration::from_secs(30),
+                approval_id: String::new(),
+                call_id: String::new(),
+            }),
         )
         .unwrap();
         assert_eq!(grant_method, ControlPlaneMethod::ToolCall);
+        assert_eq!(grant_payload["tool"], "files.write");
+        assert_eq!(grant_payload["grant_id"], "grant-abc");
+        let grant_object = grant_payload
+            .get("grant")
+            .and_then(Value::as_object)
+            .expect("grant object present");
         assert_eq!(
-            grant_payload,
-            json!({
-                "tool": "files.write",
-                "input": {"path": "notes.txt"},
-                "workspace": "/workspace",
-                "workspace_digest": "digest",
-                "session": "session-1",
-                "grant_id": "grant-abc",
-            })
+            grant_object.get("grant_id").and_then(Value::as_str),
+            Some("grant-abc")
+        );
+        assert_eq!(
+            grant_object.get("tool").and_then(Value::as_str),
+            Some("files.write")
+        );
+        assert_eq!(
+            grant_object.get("input_digest").and_then(Value::as_str),
+            Some("0".repeat(64).as_str())
+        );
+        assert_eq!(
+            grant_object.get("workspace").and_then(Value::as_str),
+            Some("/workspace")
+        );
+        assert_eq!(
+            grant_object.get("session").and_then(Value::as_str),
+            Some("session-1")
+        );
+        let expires = grant_object
+            .get("expires_at_unix_ms")
+            .and_then(Value::as_u64)
+            .expect("expiry present");
+        assert!(
+            expires > 0
+                && expires
+                    <= std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64
+                        + 31_000
         );
         assert!(validate_payload_for_method(grant_method, &grant_payload).is_ok());
+    }
+
+    /// Canonical bounded wait: `seconds` (0.1..=30.0) is the single wait format
+    /// accepted end-to-end (intent parser -> this schema -> executor).
+    #[test]
+    fn computer_use_wait_seconds_schema_canonical() {
+        let valid = json!({"action": "wait", "seconds": 2.5});
+        assert!(validate_model_tool_arguments("computer_use", &valid).is_ok());
+        let integer_form = json!({"action": "wait", "seconds": 3});
+        assert!(validate_model_tool_arguments("computer_use", &integer_form).is_ok());
+        for invalid in [
+            json!({"action": "wait", "seconds": 0.01}),
+            json!({"action": "wait", "seconds": 31.0}),
+            json!({"action": "wait", "seconds": "2"}),
+            json!({"action": "wait", "seconds": null}),
+            json!({"action": "wait", "duration_ms": 500}),
+        ] {
+            assert!(
+                validate_model_tool_arguments("computer_use", &invalid).is_err(),
+                "must reject {invalid}"
+            );
+        }
     }
 
     #[test]
@@ -5190,7 +5426,7 @@ mod tests {
         ModelRequestIdentity {
             request_id: "0123456789abcdef01234567".into(),
             chat_session_id: "chat_session_1".into(),
-            model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
+            model_id: "qwen3-1.7b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_000,
             max_tokens: 128,
             seed: DEFAULT_MODEL_SEED,
@@ -6414,7 +6650,7 @@ mod tests {
         let identity_b = ModelRequestIdentity {
             request_id: "fedcba9876543210fedcba98".into(),
             chat_session_id: "chat_session_2".into(),
-            model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
+            model_id: "qwen3-1.7b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
             seed: DEFAULT_MODEL_SEED,
@@ -6769,7 +7005,7 @@ mod tests {
         let identity_b = ModelRequestIdentity {
             request_id: "fedcba9876543210fedcba98".into(),
             chat_session_id: "chat_session_2".into(),
-            model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
+            model_id: "qwen3-1.7b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
             seed: DEFAULT_MODEL_SEED,
@@ -7185,7 +7421,7 @@ mod tests {
         let identity_b = ModelRequestIdentity {
             request_id: "fedcba9876543210fedcba98".into(),
             chat_session_id: "chat_session_2".into(),
-            model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
+            model_id: "qwen3-1.7b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
             seed: DEFAULT_MODEL_SEED,
@@ -7511,7 +7747,7 @@ mod tests {
         let identity_b = ModelRequestIdentity {
             request_id: "fedcba9876543210fedcba98".into(),
             chat_session_id: "chat_session_2".into(),
-            model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
+            model_id: "qwen3-1.7b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
             seed: DEFAULT_MODEL_SEED,
@@ -8731,7 +8967,7 @@ mod tests {
         let identity_b = ModelRequestIdentity {
             request_id: "fedcba9876543210fedcba98".into(),
             chat_session_id: "chat_session_2".into(),
-            model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
+            model_id: "qwen3-1.7b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
             seed: DEFAULT_MODEL_SEED,

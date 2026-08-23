@@ -31,7 +31,7 @@
     selectedManagedModel?.asset_filename
   ].filter(Boolean).join(' ');
   $: supportsThinking = modelMaySupportThinking(modelCapabilityText);
-  $: isGenerating = ['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle);
+  $: isGenerating = ['submitted', 'accepted', 'streaming', 'awaiting_approval', 'awaiting_verification', 'cancelling'].includes($inferenceRequestStore.lifecycle);
   $: disabled = isGenerating || !supportsThinking;
   $: selectedIndex = Math.max(0, EFFORT_LEVELS.indexOf($effortLevel));
 

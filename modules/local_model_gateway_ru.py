@@ -132,7 +132,7 @@ _COMPUTER_USE_CLICK_RE = re.compile(
     re.IGNORECASE,
 )
 _COMPUTER_USE_TYPE_RE = re.compile(
-    r"(?:^|\s)(?:введи|набери|напечатай|type)\s+(?:текст\s+)?(?P<text>[^.!?]{1,240})[.!?]*$",
+    r"(?:^|\s)(?:введи|набери|напечатай|type)\s+(?:текст\s+)?(?P<text>[^.!?]{1,240})",
     re.IGNORECASE,
 )
 _COMPUTER_USE_KEY_RE = re.compile(
@@ -177,7 +177,8 @@ def _deterministic_computer_use_call(prompt: str) -> dict[str, Any] | None:
     wait_match = _COMPUTER_USE_WAIT_RE.search(normalized)
     if wait_match:
         seconds = float((wait_match.group("seconds") or "0.6").replace(",", "."))
-        return {"name": "computer_use", "arguments": {"action": "wait", "seconds": max(0.1, min(seconds, 5.0))}}
+        # Canonical bounded wait shared with the Rust schema and the executor.
+        return {"name": "computer_use", "arguments": {"action": "wait", "seconds": max(0.1, min(seconds, 30.0))}}
     key_match = _COMPUTER_USE_KEY_RE.search(normalized)
     if key_match:
         key = re.sub(r"\s+", "", key_match.group("key"))
@@ -187,9 +188,24 @@ def _deterministic_computer_use_call(prompt: str) -> dict[str, Any] | None:
     click_match = _COMPUTER_USE_CLICK_RE.search(normalized)
     if click_match:
         return {"name": "computer_use", "arguments": {"action": "click", "target": click_match.group("target").strip()}}
-    type_match = _COMPUTER_USE_TYPE_RE.search(normalized)
+    prompt_with_original_case = " ".join(str(prompt or "").split())
+    type_match = _COMPUTER_USE_TYPE_RE.search(prompt_with_original_case)
     if type_match:
-        return {"name": "computer_use", "arguments": {"action": "type", "text": type_match.group("text").strip()}}
+        text = type_match.group("text").strip(" :,-—")
+        for prefix in (
+            "с текстом только этого маркера",
+            "с текстом",
+            "только этот маркер",
+            "только маркер",
+            "этот маркер",
+            "маркер",
+            "text",
+        ):
+            if text.casefold().startswith(prefix):
+                text = text[len(prefix):].lstrip(" :,-—")
+                break
+        if text:
+            return {"name": "computer_use", "arguments": {"action": "type", "text": text}}
     list_match = _COMPUTER_USE_LIST_FILES_RE.search(normalized)
     if list_match:
         folder = (list_match.group("folder") or ".").replace("рабочей области", ".").replace("рабочей папке", ".").replace("проектах", "projects").replace("проекте", "project").replace("отчётах", "reports").replace("отчетах", "reports").replace("загрузках", "downloads")
@@ -200,6 +216,26 @@ def _deterministic_computer_use_call(prompt: str) -> dict[str, Any] | None:
         if path:
             return {"name": "files.read", "arguments": {"path": path}}
     return None
+
+
+def _correlate_tool_calls(request: Any, calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Preserve raw model tool arguments and correlate only in the event envelope.
+
+    P0.2 invariant: ``request_id`` and the model ``call.id`` are transport
+    metadata, not fields in the model's tool schema. Mutating
+    ``computer_use.arguments`` makes a valid model call invalid at schema
+    validation (and changes the approval input digest). The request already
+    carries the authoritative ID, while the emitted event carries the same
+    request identity plus the call ID; Rust receives those as separate
+    ``run_tool_call`` parameters.
+
+    Keep this helper as an explicit identity-preserving boundary so the event
+    and terminal payload can still be correlated without changing arguments.
+    ``request`` is retained in the signature for call-site/documentation
+    symmetry and future envelope construction.
+    """
+    del request
+    return [dict(call) for call in calls]
 
 
 PUBLIC_TIMEOUT_ERROR_CODES = {
@@ -1055,6 +1091,7 @@ class LocalModelGateway:
                 # keep it correlated to the request so a synthetic call is just
                 # as traceable as a provider-emitted OpenAI tool call.
                 fallback_call["id"] = f"call_{secrets.token_hex(16)}"
+                correlated_fallback = _correlate_tool_calls(request, [fallback_call])
                 _cu_debug(
                     "deterministic_intent_fallback",
                     {"request_id": request.request_id, "tool_call": fallback_call},
@@ -1073,14 +1110,14 @@ class LocalModelGateway:
                                 model_called=True,
                                 text=None,
                                 tools_executed=1,
-                                audit_metadata={"tool_calls": [fallback_call]},
+                                audit_metadata={"tool_calls": correlated_fallback},
                             ),
                         )
                         terminal = self._queue_terminal_locked(
                             active,
                             "model.turn.tool_calls",
                             "ToolCalls",
-                            tool_calls=[fallback_call],
+                            tool_calls=correlated_fallback,
                             tools_executed=1,
                         )
                         drain_events = queued or terminal
@@ -1162,6 +1199,13 @@ class LocalModelGateway:
             accumulated_calls = tool_accumulator.build() if tool_accumulator is not None else []
             tool_validation_error: GatewayError | None = None
             for call in accumulated_calls:
+                call_id = call.get("id")
+                if not isinstance(call_id, str) or not call_id.strip():
+                    tool_validation_error = GatewayError(
+                        "invalid_payload",
+                        "tool call id is required for out-of-band correlation",
+                    )
+                    break
                 try:
                     validate_tool_call(call["name"], call["arguments"])
                 except GatewayError as exc:
@@ -1195,7 +1239,10 @@ class LocalModelGateway:
                             tool_validation_error,
                         )
                     elif accumulated_calls:
-                        for idx, call in enumerate(accumulated_calls):
+                        # Correlate once before emission so the event stream
+                        # and the terminal payload stay byte-identical.
+                        emitted_calls = _correlate_tool_calls(request, accumulated_calls)
+                        for idx, call in enumerate(emitted_calls):
                             queued = self._queue_turn_event_locked(
                                 active,
                                 "model.tool.request",
@@ -1215,7 +1262,7 @@ class LocalModelGateway:
                             active,
                             "model.turn.tool_calls",
                             "ToolCalls",
-                            tool_calls=accumulated_calls,
+                            tool_calls=emitted_calls,
                             tools_executed=len(accumulated_calls),
                             text=accumulated_text or None,
                         )
@@ -2636,7 +2683,7 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "files.create_folder": {"required": ("path",), "properties": {"path": str}},
     "files.delete": {"required": ("path",), "properties": {"path": str}},
     "shell": {"required": ("command",), "properties": {"command": str}},
-    "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str, "target": str}},
+    "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str, "target": str, "seconds": (int, float)}},
     "web.search": {"required": ("query",), "properties": {"query": str}},
     "web.fetch": {"required": ("url",), "properties": {"url": str}},
     "skills.invoke": {"required": ("skill_id", "permissions"), "properties": {"skill_id": str, "permissions": list, "arguments": (dict, list)}},
@@ -2675,7 +2722,9 @@ def build_tool_schemas(for_tools: tuple[str, ...] | None = None) -> list[dict[st
             continue
         properties = {}
         for field_name, expected_type in spec["properties"].items():
-            if isinstance(expected_type, tuple):
+            if expected_type == (int, float):
+                properties[field_name] = {"type": "number"}
+            elif isinstance(expected_type, tuple):
                 properties[field_name] = {"anyOf": [{"type": "object"}, {"type": "array"}]}
             elif expected_type == list:
                 item_type = "string" if field_name == "permissions" else "number"
@@ -2717,6 +2766,11 @@ def validate_tool_call(name: str, arguments: object) -> None:
     for field_name, expected_type in properties.items():
         if field_name in arguments and not isinstance(arguments[field_name], expected_type):
             raise GatewayError("invalid_payload", f"tool {name} field {field_name} has invalid type")
+    # Bounded numeric fields must mirror the Rust schema range exactly.
+    if name == "computer_use" and "seconds" in arguments:
+        seconds = arguments["seconds"]
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not (0.1 <= float(seconds) <= 30.0):
+            raise GatewayError("invalid_payload", "tool computer_use field seconds must be within 0.1..30.0")
 
 
 MAX_ARGUMENT_BYTES = 65_536

@@ -23,6 +23,7 @@ import type {
   ManagedDownloadableArtifact,
   SanitizedGatewayError
 } from '$lib/types/modelGateway';
+import { selectDefaultModelArtifact } from '$lib/stores/modelDefault';
 
 export type { ArtifactDownloadState } from '$lib/types/modelGateway';
 
@@ -113,8 +114,22 @@ export async function cancelApprovedArtifactDownload(artifactId: string): Promis
 
 export async function setUpLocalAi(): Promise<boolean> {
   const artifacts = get(artifactAcquisitionStore).artifacts;
-  const model = artifacts.find((artifact) => artifact.kind === 'model' && artifact.trust_kind === 'approved_catalog');
-  if (!model) return false;
+  const installedIds = new Set(
+    get(managedRuntimeStore).installedArtifacts
+      .filter((artifact) => artifact.installation_status === 'valid')
+      .map((artifact) => artifact.artifact_id)
+  );
+  const model = selectDefaultModelArtifact(artifacts, installedIds);
+  if (!model || model.kind !== 'model') {
+    artifactAcquisitionStore.update((state) => ({
+      ...state,
+      lastError: {
+        code: 'pinned_model_unavailable',
+        message: 'Pinned Qwen3 1.7B model is not present in the managed catalog'
+      }
+    }));
+    return false;
+  }
   return setUpManagedArtifactsForModel(artifacts, model);
 }
 

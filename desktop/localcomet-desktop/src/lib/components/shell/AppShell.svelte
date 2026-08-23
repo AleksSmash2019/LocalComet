@@ -27,12 +27,14 @@
     openSettings,
     settingsPanelOpen,
     sidebarExpanded,
-    themeMode
+    themeMode,
+    resetShellStores
   } from '$lib/stores/shellStore';
   import { initializeControlPlaneBridge, shutdownControlPlaneBridge } from '$lib/stores/controlPlane';
-  import { initializeModelGateway, shutdownModelGateway } from '$lib/stores/modelGateway';
+  import { initializeModelGateway, resetModelGatewayStore, shutdownModelGateway } from '$lib/stores/modelGateway';
   import { initializeArtifactAcquisition, resetArtifactAcquisitionStore } from '$lib/stores/artifactAcquisition';
   import { initializeKnowledgePreviewEvents, shutdownKnowledgePreviewEvents } from '$lib/stores/knowledgePreview';
+  import { rejectActiveApproval, resetApprovalStore } from '$lib/stores/approvalStore';
   import { locale, t } from '$lib/i18n';
   import type { ResolvedTheme } from '$lib/data/mockData';
   import { followTranscriptToEnd, isTranscriptNearBottom } from '$lib/components/chat/transcriptScroll';
@@ -150,6 +152,12 @@
   onMount(() => installModelFitBridge());
 
   onMount(() => {
+    // A mounted frontend is a new UI session. Never inherit an approval prompt
+    // or an in-flight local lifecycle from a previous WebView/remount.
+    void rejectActiveApproval();
+    resetShellStores();
+    resetApprovalStore();
+    resetModelGatewayStore();
     void initializeControlPlaneBridge();
 
     void initializeModelGateway();
@@ -157,7 +165,10 @@
     void initializeKnowledgePreviewEvents();
     document.documentElement.lang = $locale;
     return () => {
+      void rejectActiveApproval();
       shutdownModelGateway();
+      resetModelGatewayStore();
+      resetApprovalStore();
       resetArtifactAcquisitionStore();
       shutdownKnowledgePreviewEvents();
       shutdownControlPlaneBridge();

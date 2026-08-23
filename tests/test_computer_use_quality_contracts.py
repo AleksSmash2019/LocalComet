@@ -53,10 +53,34 @@ class ComputerUseQualityContracts(unittest.TestCase):
         self.assertTrue(result["requires_confirmation"])
 
     def test_allowlisted_hotkey_is_simulated_without_visible_input(self) -> None:
-        result = press_hotkey(["ctrl", "s"], simulate=True)
+        result = press_hotkey(["ctrl", "f"], simulate=True)
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "simulated")
-        self.assertEqual(result["keys"], ["ctrl", "s"])
+        self.assertEqual(result["keys"], ["ctrl", "f"])
+
+    def test_non_allowlisted_hotkey_is_blocked_even_in_simulation(self) -> None:
+        # ctrl+s (save file) is deliberately outside the allowlist: the unified
+        # hotkey policy applies at the execution primitive for every caller,
+        # and simulation must reflect what real execution would do.
+        result = press_hotkey(["ctrl", "s"], simulate=True)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "blocked")
+        self.assertIn("allowlist", result["reason"])
+
+    def test_mission_hotkey_delegates_to_the_shared_allowlist(self) -> None:
+        # The mission module must not keep a private keybd_event path: its
+        # hotkey executor delegates to the shared primitive, so the same
+        # allowlist verdicts apply to mission plans.
+        from modules.computer_use_full_control_mission_ru import _press_hotkey
+
+        blocked = _press_hotkey(["ctrl", "s"], simulate=True)
+        self.assertFalse(blocked["ok"])
+        self.assertEqual(blocked["status"], "blocked")
+        self.assertIn("allowlist", blocked["reason"])
+
+        allowed = _press_hotkey(["ctrl", "f"], simulate=True)
+        self.assertTrue(allowed["ok"])
+        self.assertEqual(allowed["status"], "simulated")
 
     def test_plain_goal_uses_non_executing_grounded_fallback(self) -> None:
         plan = build_real_action_plan("разберись с открытым окном")

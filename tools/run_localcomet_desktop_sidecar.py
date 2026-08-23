@@ -11,8 +11,14 @@ def _prepare_import_path() -> None:
         raise RuntimeError("sidecar runner symlink is not allowed")
     root = runner.resolve(strict=True).parents[1]
     root_text = str(root)
+    vendor_text = str(root / "modules" / "_vendor")
+    # Keep the sidecar isolated from user-site packages while making its
+    # explicitly shipped native UIA dependency available in normal and hidden
+    # runs. The vendor directory is part of the signed/bundled runtime tree.
+    if vendor_text not in sys.path:
+        sys.path.insert(0, vendor_text)
     if root_text not in sys.path:
-        sys.path.insert(0, root_text)
+        sys.path.insert(1, root_text)
 
 
 _prepare_import_path()

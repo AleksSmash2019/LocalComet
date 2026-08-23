@@ -73,7 +73,7 @@ def rust_bridge_assistant_contexts() -> list[tuple[str, dict]]:
     if not env.get("CARGO_TARGET_DIR"):
         local_app_data = env.get("LOCALAPPDATA")
         target = (
-            Path(local_app_data) / "LocalComet" / "DevRuntime" / "cargo-target"
+            Path(local_app_data) / "LocalComet" / "BuildCache" / "CargoTarget"
             if local_app_data
             else Path(tempfile.gettempdir()) / "localcomet-cargo-target"
         )
@@ -131,22 +131,14 @@ def assert_binding_preserves_validation_cache() -> None:
     )
 
 
-def deployed_bundle_modules_dir() -> Path | None:
+def deployed_bundle_modules_dir() -> Path:
+    override = os.environ.get("LOCALCOMET_BUNDLE_MODULES")
+    if override:
+        return Path(override)
     base = os.environ.get("LOCALAPPDATA")
     if not base:
-        return None
-    candidate = (
-        Path(base)
-        / "LocalComet"
-        / "DevRuntime"
-        / "cargo-target"
-        / "debug"
-        / "app"
-        / "modules"
-    )
-    if (candidate / "local_model_gateway_ru.py").is_file():
-        return candidate
-    return None
+        raise RuntimeError("LOCALAPPDATA is not set; deployed runtime cannot be resolved")
+    return Path(base) / "LocalCometDev" / "workspace" / "modules"
 
 
 def check_source_parity(payloads: list[tuple[str, dict]]) -> None:
@@ -161,13 +153,12 @@ def check_source_parity(payloads: list[tuple[str, dict]]) -> None:
 
 def check_deployed_bundle(payloads: list[tuple[str, dict]]) -> bool:
     bundle_modules = deployed_bundle_modules_dir()
-    if bundle_modules is None:
+    if not bundle_modules.is_dir() or not (bundle_modules / "local_model_gateway_ru.py").is_file():
         print(
-            "PART B SKIP: deployed bundle gateway not found under "
-            "%LOCALAPPDATA%\\LocalComet\\DevRuntime; cannot reproduce the "
-            "running-sidecar bug on this machine"
+            "PART B FAIL: deployed bundle gateway not found under the supported "
+            f"LocalCometDev runtime: {bundle_modules}"
         )
-        return True
+        return False
     bundle_root = bundle_modules.parent
     for case, payload in payloads:
         result = validate_with_root(bundle_root, payload)

@@ -19,6 +19,7 @@
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
   import { includedFileIds, addFiles } from '$lib/stores/files';
   import { voiceMode, setVoiceMode } from '$lib/stores/shellStore';
+  import { stopLocalText } from '$lib/bridge/voice';
 
   let textarea: HTMLTextAreaElement;
   let restoreComposerFocus = false;
@@ -28,7 +29,7 @@
   let recognition: any = null;
   let voiceNotice = '';
 
-  $: isGenerating = ['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle);
+  $: isGenerating = ['submitted', 'accepted', 'streaming', 'awaiting_approval', 'awaiting_verification', 'cancelling'].includes($inferenceRequestStore.lifecycle);
   $: if ($selectedConversationId !== observedConversationId) {
     observedConversationId = $selectedConversationId;
     setComposerDraft('');
@@ -43,8 +44,14 @@
     previouslyGenerating = generatingNow;
   }
 
-  function toggleVoiceMode() {
-    setVoiceMode(!$voiceMode);
+  async function toggleVoiceMode(): Promise<void> {
+    const enabled = !$voiceMode;
+    setVoiceMode(enabled);
+    voiceNotice = '';
+    if (!enabled) {
+      const stopped = await stopLocalText();
+      if (!stopped) voiceNotice = $t('chat.speech_stop_failed');
+    }
   }
 
   function startListening() {
@@ -203,7 +210,7 @@
           value={$composerDraft}
           maxlength="12000"
           rows="1"
-          placeholder={$managedModelReady ? (isGenerating ? $t('chat.model_responding') : $t('chat.type_message')) : $acquisitionBusy ? $t('chat.model_installing') : $t('chat.connect_model_first')}
+          placeholder={$managedModelReady ? ($inferenceRequestStore.lifecycle === 'awaiting_approval' ? $t('chat.awaiting_approval') : $inferenceRequestStore.lifecycle === 'awaiting_verification' ? $t('chat.awaiting_verification') : isGenerating ? $t('chat.model_responding') : $t('chat.type_message')) : $acquisitionBusy ? $t('chat.model_installing') : $t('chat.connect_model_first')}
           disabled={!$managedModelReady || isGenerating}
           oninput={(event) => {
             setComposerDraft(event.currentTarget.value);
@@ -214,7 +221,7 @@
       </div>
 
       <div class="composer-actions composer-actions-right">
-        <button type="button" class="composer-icon-button" class:active-control={$voiceMode} aria-pressed={$voiceMode} aria-label={$t('chat.voice_output')} title={$t('chat.voice_output')} onclick={toggleVoiceMode}>
+        <button type="button" class="composer-icon-button" class:active-control={$voiceMode} aria-pressed={$voiceMode} aria-label={$t($voiceMode ? 'chat.voice_output_disable' : 'chat.voice_output_enable')} title={$t($voiceMode ? 'chat.voice_output_disable' : 'chat.voice_output_enable')} onclick={() => void toggleVoiceMode()}>
           <Icon name="audio" size={19} />
         </button>
 

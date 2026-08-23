@@ -16,6 +16,25 @@ COMPUTER_USE_DIR = ROOT_PATH / "Projects" / "ComputerUse"
 GROUNDING_DIR = COMPUTER_USE_DIR / "grounding"
 LATEST_UI_MAP_PATH = COMPUTER_USE_DIR / "latest_ui_map.json"
 
+# Disambiguation margin: when the two best executable candidates score within
+# this margin, the target is ambiguous and grounding must refuse to pick one
+# (title-token ties previously resolved by sort order alone).
+AMBIGUITY_MARGIN = 0.05
+
+
+def _is_search_only_candidate(element: Dict[str, Any]) -> bool:
+    """Derived heuristic elements are search candidates, never click targets.
+
+    Window-title token boxes carry fabricated coordinates (words laid out
+    across the title bar), so even a high semantic score must not turn them
+    into execution targets. Real structured evidence (currently windows with
+    bounds from GetWindowRect) stays executable.
+    """
+    metadata = element.get("metadata")
+    if isinstance(metadata, dict) and metadata.get("derived") is True:
+        return True
+    return element.get("clickable") is False
+
 
 ROLE_SYNONYMS = {
     "button": {"button", "btn", "кнопка", "нажми", "click", "клик"},
@@ -60,8 +79,16 @@ def _element_text(element: Dict[str, Any]) -> str:
 def _extract_bounds(element: Dict[str, Any]) -> Dict[str, int]:
     raw = element.get("bounds") or element.get("rect") or element.get("box") or {}
     if isinstance(raw, list) and len(raw) >= 4:
-        x, y, w, h = raw[:4]
-        return {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
+        # A 4-list is interpreted ONLY as [x, y, width, height]; producers
+        # emitting [left, top, right, bottom] must convert to a dict first.
+        # Non-positive sizes are rejected, not clamped into a fabricated box.
+        try:
+            x, y, w, h = (int(float(value)) for value in raw[:4])
+        except Exception:
+            return {"x": 0, "y": 0, "w": 0, "h": 0}
+        if w <= 0 or h <= 0:
+            return {"x": 0, "y": 0, "w": 0, "h": 0}
+        return {"x": x, "y": y, "w": w, "h": h}
     if not isinstance(raw, dict):
         raw = {}
 
@@ -205,7 +232,15 @@ def score_element(description: str, element: Dict[str, Any]) -> Dict[str, Any]:
     if element_id and any(token in element_id for token in query_tokens):
         exact_id_score = 0.18
 
-    total = min(1.0, overlap_score * 0.55 + substring_score + role_score + bounds_score + source_score + exact_id_score)
+    total_components = overlap_score * 0.55 + substring_score + role_score + bounds_score + source_score + exact_id_score
+    # Structural bonuses (role/bounds/source) must not carry an element past
+    # the threshold on their own: without ANY semantic tie to the query, the
+    # candidate is capped below min_confidence regardless of source confidence.
+    has_semantic_tie = overlap_score > 0.0 or substring_score > 0.0 or exact_id_score > 0.0
+    if not has_semantic_tie:
+        total_components = min(total_components, 0.30)
+
+    total = min(1.0, total_components)
 
     return {
         "score": round(total, 4),
@@ -237,6 +272,7 @@ def find_candidates(description: str, limit: int = 8) -> Dict[str, Any]:
             "bounds": scored["bounds"],
             "center": scored["center"],
             "source": element.get("source", ""),
+            "search_only": _is_search_only_candidate(element),
             "raw": element,
             "score_details": scored,
         }
@@ -265,54 +301,90 @@ def find_candidates(description: str, limit: int = 8) -> Dict[str, Any]:
 def ground_element(description: str, min_confidence: float = 0.35) -> Dict[str, Any]:
     found = find_candidates(description, limit=8)
     candidates = found.get("candidates", [])
-    best = candidates[0] if candidates else None
+    executable = [item for item in candidates if not item.get("search_only")]
 
-    if not best:
+    if not candidates:
         result = {
             "ok": False,
             "mode": "computer_use_ground_element",
             "description": description,
             "reason": "No UI candidates found.",
+            "needs_user": True,
             "candidates": [],
             "min_confidence": min_confidence,
         }
-    elif float(best.get("score", 0.0)) < float(min_confidence):
+    elif not executable:
         result = {
             "ok": False,
             "mode": "computer_use_ground_element",
             "description": description,
-            "reason": "Best candidate is below confidence threshold.",
-            "best": best,
+            "reason": "Only heuristic title-token matches were found; no structured UI evidence is available for an execution target.",
+            "needs_user": True,
             "candidates": candidates,
             "min_confidence": min_confidence,
         }
     else:
-        bounds = best.get("bounds") or {}
-        center = best.get("center") or {}
-        result = {
-            "ok": True,
-            "mode": "computer_use_ground_element",
-            "version": GROUNDING_VERSION,
-            "description": description,
-            "confidence": best["score"],
-            "element_id": best["element_id"],
-            "role": best.get("role", ""),
-            "text": best.get("text", ""),
-            "bounds": bounds,
-            "center": center,
-            "target": {
+        best = executable[0]
+        second = executable[1] if len(executable) >= 2 else None
+        best_overall = candidates[0]
+        if float(best.get("score", 0.0)) < float(min_confidence):
+            if best_overall.get("search_only") and float(best_overall.get("score", 0.0)) >= float(min_confidence):
+                # The query matched only fabricated title-token boxes: no
+                # structured evidence exists for an execution target.
+                reason = "Only heuristic title-token matches were found; no structured UI evidence is available for an execution target."
+            else:
+                reason = "Best candidate is below confidence threshold."
+            result = {
+                "ok": False,
+                "mode": "computer_use_ground_element",
+                "description": description,
+                "reason": reason,
+                "needs_user": True,
+                "best": best,
+                "candidates": candidates,
+                "min_confidence": min_confidence,
+            }
+        elif second is not None and (float(best.get("score", 0.0)) - float(second.get("score", 0.0))) < AMBIGUITY_MARGIN:
+            result = {
+                "ok": False,
+                "mode": "computer_use_ground_element",
+                "description": description,
+                "reason": "Ambiguous target: the top executable candidates are within the disambiguation margin; user clarification is required.",
+                "needs_user": True,
+                "ambiguous": True,
+                "best": best,
+                "second": second,
+                "ambiguity_margin": AMBIGUITY_MARGIN,
+                "candidates": candidates,
+                "min_confidence": min_confidence,
+            }
+        else:
+            bounds = best.get("bounds") or {}
+            center = best.get("center") or {}
+            result = {
+                "ok": True,
+                "mode": "computer_use_ground_element",
+                "version": GROUNDING_VERSION,
+                "description": description,
+                "confidence": best["score"],
                 "element_id": best["element_id"],
-                "element_description": description,
-                "window_title": "",
-                "x": center.get("x"),
-                "y": center.get("y"),
-                "x_norm": None,
-                "y_norm": None,
+                "role": best.get("role", ""),
+                "text": best.get("text", ""),
                 "bounds": bounds,
-            },
-            "candidate": best,
-            "candidates": candidates,
-        }
+                "center": center,
+                "target": {
+                    "element_id": best["element_id"],
+                    "element_description": description,
+                    "window_title": "",
+                    "x": center.get("x"),
+                    "y": center.get("y"),
+                    "x_norm": None,
+                    "y_norm": None,
+                    "bounds": bounds,
+                },
+                "candidate": best,
+                "candidates": candidates,
+            }
 
     path = GROUNDING_DIR / f"ground_element_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.json"
     result["artifact"] = _write_json(path, result)

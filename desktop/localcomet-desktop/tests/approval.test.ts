@@ -7,25 +7,31 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import { invoke } from '@tauri-apps/api/core';
 import {
+  approvalPrompt,
+  approvalPromptActive,
   approvalStore,
   confirmApproval,
   hasPendingApproval,
   rejectApproval,
   requestApprovalForTool,
-  resetApprovalStore
+  rejectActiveApproval,
+  resetApprovalStore,
+  setApprovalPrompt
 } from '../src/lib/stores/approvalStore';
 
 const mockedInvoke = vi.mocked(invoke);
 const TOKEN = 'lcap_' + 'a'.repeat(64);
 
 function envelopeFor(tool: string) {
+  const isComputerUse = tool === 'computer_use';
+  const isFilesystemDelete = tool === 'files.delete';
   return {
     token: TOKEN,
     approvalId: 'appr_' + 'b'.repeat(32),
     callId: 'call_' + 'c'.repeat(32),
     tool,
-    riskLevel: 'guarded',
-    commandFamily: 'artifact_download',
+    riskLevel: isComputerUse || isFilesystemDelete ? 'dangerous' : 'guarded',
+    commandFamily: isComputerUse ? 'computer_use' : isFilesystemDelete ? 'tool_filesystem_delete' : 'artifact_download',
     expiresAtUnixMs: Date.now() + 300_000
   };
 }
@@ -84,7 +90,9 @@ describe('approvalStore', () => {
         input: { path: 'a.txt' },
         token: TOKEN,
         approvalId: 'appr_' + 'b'.repeat(32),
-        callId: 'call_' + 'c'.repeat(32)
+        callId: 'call_' + 'c'.repeat(32),
+        requestId: null,
+        actionId: null
       }
     ]);
     expect(get(hasPendingApproval)).toBe(false);
@@ -117,5 +125,97 @@ describe('approvalStore', () => {
     await confirmApproval();
     expect(mockedInvoke).not.toHaveBeenCalled();
     expect(get(approvalStore).phase).toBe('idle');
+  });
+
+  it('rejects an active frontend prompt and clears its shared state', async () => {
+    setApprovalPrompt({
+      request_id: 'appr_' + 'd'.repeat(32),
+      tool: 'computer_use',
+      risk_level: 'dangerous',
+      target_summary: '{"action":"open_app","target":"calculator"}',
+      side_effect_category: 'computer_control',
+      destructive: true,
+      expires_at_unix_ms: Date.now() + 120_000
+    });
+    mockedInvoke.mockResolvedValue(undefined);
+
+    await rejectActiveApproval();
+
+    expect(mockedInvoke).toHaveBeenCalledWith('resolve_tool_approval', {
+      requestId: 'appr_' + 'd'.repeat(32),
+      decision: 'reject'
+    });
+    expect(get(approvalPrompt)).toBeNull();
+    expect(get(approvalPromptActive)).toBe(false);
+  });
+
+  it('does not execute a dangerous tool until the approval decision resolves', async () => {
+    const onResult = vi.fn();
+    let resolveRequest: ((value: unknown) => void) | undefined;
+    mockedInvoke.mockImplementation(async (command: string) => {
+      if (command === 'request_approval') {
+        return new Promise<unknown>((resolve) => {
+          resolveRequest = resolve;
+        });
+      }
+      if (command === 'run_tool_call') return { tool: 'computer_use' };
+      throw new Error('unexpected command ' + command);
+    });
+
+    requestApprovalForTool('computer_use', { action: 'screenshot' }, { onResult });
+    await flushBackgroundApproval();
+    await flushBackgroundApproval();
+
+    expect(get(approvalStore).phase).toBe('requesting');
+    expect(mockedInvoke.mock.calls.filter((call) => call[0] === 'run_tool_call')).toHaveLength(0);
+
+    resolveRequest?.(envelopeFor('computer_use'));
+    await flushBackgroundApproval();
+    await flushBackgroundApproval();
+
+    expect(mockedInvoke.mock.calls.map((call) => call[0])).toEqual([
+      'request_approval',
+      'run_tool_call'
+    ]);
+    expect(onResult).toHaveBeenCalledWith({ tool: 'computer_use' });
+    expect(get(approvalStore).phase).toBe('idle');
+  });
+});
+
+
+// P0.2: model-turn correlation is transport metadata, never part of tool input.
+describe('approval correlation boundary', () => {
+  beforeEach(() => {
+    resetApprovalStore();
+    mockedInvoke.mockReset();
+  });
+
+  it('passes requestId/actionId out-of-band and preserves raw computer_use input', async () => {
+    const input = { action: 'open_app', target: 'notepad' };
+    const requestId = '0123456789abcdef01234567';
+    const actionId = 'call_0123456789abcdef0123456789ab';
+    const onResult = vi.fn();
+    mockedInvoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === 'request_approval') return envelopeFor('computer_use');
+      if (command === 'run_tool_call') return { tool: 'computer_use', status: 'completed' };
+      throw new Error('unexpected command ' + command);
+    });
+
+    requestApprovalForTool('computer_use', input, { onResult, requestId, actionId });
+    await flushBackgroundApproval();
+
+    expect(mockedInvoke.mock.calls[1]).toEqual([
+      'run_tool_call',
+      expect.objectContaining({
+        tool: 'computer_use',
+        input,
+        requestId,
+        actionId
+      })
+    ]);
+    expect((mockedInvoke.mock.calls[1][1] as Record<string, unknown>).input).toEqual(input);
+    expect((mockedInvoke.mock.calls[1][1] as Record<string, unknown>).input).not.toHaveProperty('request_id');
+    expect((mockedInvoke.mock.calls[1][1] as Record<string, unknown>).input).not.toHaveProperty('action_id');
+    expect(onResult).toHaveBeenCalledWith({ tool: 'computer_use', status: 'completed' });
   });
 });

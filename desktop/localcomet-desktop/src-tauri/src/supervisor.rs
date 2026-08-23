@@ -1631,6 +1631,22 @@ fn minimal_sidecar_environment(python_exe: Option<&Path>) -> Vec<(OsString, OsSt
     if let Some(value) = std::env::var_os("LOCALCOMET_KNOWLEDGE_PROJECT_ROOT") {
         env.push((OsString::from("LOCALCOMET_KNOWLEDGE_PROJECT_ROOT"), value));
     }
+    // These are opt-in, harness-owned controls. They are forwarded only when
+    // the parent app has explicitly supplied them; arbitrary environment
+    // variables remain excluded from the confined sidecar. The hidden desktop
+    // marker is required by the UIA backend, while the two report paths make
+    // non-secret per-run diagnostics independently auditable.
+    for key in [
+        "LC_HIDDEN_DESKTOP_NAME",
+        "LC_HIDDEN_REPORT_DIR",
+        "LC_HIDDEN_ISOLATED_ROOT",
+        "LOCALCOMET_TOOLCALL_TRACE",
+        "LOCALCOMET_CU_DEBUG_PATH",
+    ] {
+        if let Some(value) = std::env::var_os(key) {
+            env.push((OsString::from(key), value));
+        }
+    }
 
     let mut path_entries = Vec::new();
     if let Some(parent) = python_exe.and_then(Path::parent) {

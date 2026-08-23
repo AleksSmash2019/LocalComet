@@ -86,6 +86,10 @@ export async function requestApproval(tool: string, input: unknown): Promise<App
   return validateApprovalEnvelope(raw, tool);
 }
 
+export async function resolveToolApproval(requestId: string, decision: 'approve' | 'reject'): Promise<void> {
+  await invoke('resolve_tool_approval', { requestId, decision });
+}
+
 export async function executeApproved(
   token: string,
   approvalId: string,
@@ -129,14 +133,18 @@ export async function runToolCall(
   tool: string,
   input: unknown,
   envelope?: Pick<ApprovalEnvelope, 'token' | 'approvalId' | 'callId'>,
-  callId?: string
+  callId?: string,
+  requestId?: string,
+  actionId?: string
 ): Promise<ToolCallResult> {
   const result = await invoke<ToolCallResult>('run_tool_call', {
     tool,
     input,
     token: envelope?.token ?? null,
     approvalId: envelope?.approvalId ?? null,
-    callId: envelope?.callId ?? callId ?? null
+    callId: envelope?.callId ?? callId ?? null,
+    requestId: requestId ?? null,
+    actionId: actionId ?? null
   });
   if (typeof result !== 'object' || result === null || result.tool !== tool) {
     throw { code: 'invalid_payload', message: 'Invalid tool call result' };

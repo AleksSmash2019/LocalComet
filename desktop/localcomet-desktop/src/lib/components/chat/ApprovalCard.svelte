@@ -31,6 +31,26 @@
     return when.toLocaleString();
   }
 
+  function describeSideEffects(input: unknown, commandFamily: string | undefined, riskLevel: string | undefined): string {
+    if (commandFamily !== 'computer_use') {
+      return commandFamily ? $t(`approval.side_effects.${commandFamily}`) : $t('approval.side_effects_unknown');
+    }
+    if (riskLevel === 'dangerous') return $t('approval.side_effects.computer_use_sensitive_or_external_effect');
+    const action = input && typeof input === 'object' && !Array.isArray(input)
+      ? String((input as Record<string, unknown>).action ?? '').toLowerCase()
+      : '';
+    const keyByAction: Record<string, string> = {
+      screenshot: 'approval.side_effects.computer_use_observation',
+      wait: 'approval.side_effects.computer_use_observation',
+      observe: 'approval.side_effects.computer_use_observation',
+      mouse_move: 'approval.side_effects.computer_use_observation',
+      scroll: 'approval.side_effects.computer_use_observation',
+      open_app: 'approval.side_effects.computer_use_application_launch',
+      open_folder: 'approval.side_effects.computer_use_folder_open'
+    };
+    return $t(keyByAction[action] ?? 'approval.side_effects.computer_use_ui_interaction');
+  }
+
   function describeRisk(riskLevel: string | undefined): string {
     if (riskLevel === 'read_only' || riskLevel === 'guarded' || riskLevel === 'dangerous') {
       return $t(RISK_LABELS[riskLevel]);
@@ -73,7 +93,7 @@
         </div>
         <div>
           <dt>{$t('approval.side_effects')}</dt>
-          <dd>{approval ? $t(`approval.side_effects.${approval.commandFamily}`) : $t('approval.side_effects_unknown')}</dd>
+          <dd>{describeSideEffects(state.pending.input, approval?.commandFamily, approval?.riskLevel)}</dd>
         </div>
         <div>
           <dt>{$t('approval.expires')}</dt>

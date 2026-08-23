@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn model_id_requires_exactly_owner_slash_name() {
-        assert!(sanitize_model_id("Qwen/Qwen2.5-1.5B-Instruct-GGUF").is_ok());
+        assert!(sanitize_model_id("Qwen/Qwen3-1.7B-GGUF").is_ok());
         assert!(sanitize_model_id("no-slash").is_err());
         assert!(sanitize_model_id("a/b/c").is_err());
         assert!(sanitize_model_id("../etc/passwd").is_err());

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ToolCallMock } from '$lib/data/mockData';
   import { t } from '$lib/i18n';
+  import { parseToolCallResult } from '$lib/tools/computerUseEnvelope';
 
   export let tool: ToolCallMock;
   const MAX_TOOL_IMAGE_BASE64_CHARS = 4_000_000;
@@ -14,6 +15,50 @@
     stateKey: string;
     nextKey: string | null;
   };
+
+  type ComputerUseEvidence = {
+    requestId: string;
+    actionId: string;
+    approvalId: string;
+    approvalCallId: string;
+    inputDigest: string;
+    screenshotSha256: string;
+    screenshotBackend: string;
+    screenshotScope: string;
+    screenshotBytes: string;
+    status: string;
+    verification: string;
+  };
+
+  function evidenceString(value: unknown): string {
+    return typeof value === 'string' ? value : '';
+  }
+
+  function computerUseEvidence(result: string | undefined): ComputerUseEvidence | null {
+    if (!result) return null;
+    try {
+      const payload = JSON.parse(result) as Record<string, unknown>;
+      const execution = typeof payload.execution === 'object' && payload.execution
+        ? payload.execution as Record<string, unknown>
+        : {};
+      const screenshotBytes = execution.screenshot_bytes ?? payload.screenshot_bytes;
+      return {
+        requestId: evidenceString(payload.request_id),
+        actionId: evidenceString(payload.action_id),
+        approvalId: evidenceString(execution.approval_id ?? payload.approval_id),
+        approvalCallId: evidenceString(execution.approval_call_id ?? payload.approval_call_id),
+        inputDigest: evidenceString(execution.input_digest ?? payload.input_digest),
+        screenshotSha256: evidenceString(execution.screenshot_sha256 ?? payload.screenshot_sha256),
+        screenshotBackend: evidenceString(execution.capture_backend ?? payload.capture_backend),
+        screenshotScope: evidenceString(execution.capture_scope ?? payload.capture_scope),
+        screenshotBytes: typeof screenshotBytes === 'number' ? String(screenshotBytes) : '',
+        status: evidenceString(execution.status ?? payload.status),
+        verification: evidenceString(execution.verification ?? payload.verification)
+      };
+    } catch {
+      return null;
+    }
+  }
 
   function shot(result: string | undefined): string | null {
     if (!result) return null;
@@ -44,10 +89,14 @@
       const status = String(payload.status ?? execution.status ?? '');
       const next = String(payload.next_decision ?? '');
       const actionName = String(action.kind ?? payload.mode ?? tool.target ?? '').replaceAll('_', ' ');
-      const stateKey = payload.blocked === true ? 'tool.state_blocked'
+      // One shared classifier (same module as the gateway store) decides
+      // pending/verified/blocked/failed; this component only renders it.
+      const outcome = parseToolCallResult('computer_use', payload);
+      const stateKey = outcome.kind === 'blocked' ? 'tool.state_blocked'
         : payload.requires_confirmation === true ? 'tool.state_confirmation'
-        : payload.ok === true ? 'tool.state_completed'
-        : status === 'WAITING' ? 'tool.state_waiting'
+        : outcome.kind === 'pending' || tool.status === 'WAITING' ? 'tool.state_waiting'
+        : outcome.kind === 'verified_success' ? 'tool.state_completed'
+        : outcome.kind === 'unverified_success' ? 'tool.state_unverified'
         : 'tool.state_unavailable';
       const nextKey = ({
         continue: 'tool.next_continue',
@@ -74,9 +123,24 @@
 
   $: src = isCU ? shot(tool.result) : null;
   $: cu = isCU ? computerUseSummary(tool.result) : null;
+  $: cueEvidence = isCU ? computerUseEvidence(tool.result) : null;
 </script>
 
-<article class="tool-card tool-surface" aria-label={isCU ? $t('tool.computer_use') : isWebTool ? `${$t('tool.web_prefix')} ${tool.status}` : $t('tool.tools_disabled')}>
+<article
+  class="tool-card tool-surface"
+  aria-label={isCU ? $t('tool.computer_use') : isWebTool ? `${$t('tool.web_prefix')} ${tool.status}` : $t('tool.tools_disabled')}
+  data-cu-request-id={cueEvidence?.requestId ?? ''}
+  data-cu-action-id={cueEvidence?.actionId ?? ''}
+  data-cu-approval-id={cueEvidence?.approvalId ?? ''}
+  data-cu-approval-call-id={cueEvidence?.approvalCallId ?? ''}
+  data-cu-input-digest={cueEvidence?.inputDigest ?? ''}
+  data-cu-screenshot-sha256={cueEvidence?.screenshotSha256 ?? ''}
+  data-cu-screenshot-backend={cueEvidence?.screenshotBackend ?? ''}
+  data-cu-screenshot-scope={cueEvidence?.screenshotScope ?? ''}
+  data-cu-screenshot-bytes={cueEvidence?.screenshotBytes ?? ''}
+  data-cu-status={cueEvidence?.status ?? ''}
+  data-cu-verification={cueEvidence?.verification ?? ''}
+>
   <div class="tool-head">
     <div>
       <span class="eyebrow" class:computer-use={isCU}>{isCU ? $t('tool.computer_use_upper') : isWebTool ? (tool.operation === 'web.search' ? $t('tool.web_search_upper') : $t('tool.web_fetch_upper')) : $t('tool.runtime')}</span>

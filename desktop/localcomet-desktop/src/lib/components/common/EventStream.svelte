@@ -4,7 +4,12 @@
 
   export let events: readonly ControlPlaneEvent[] = [];
 
-  $: visibleEvents = events.slice(-12).map((event) => ({
+  $: visibleEvents = events.slice(-12).map((event, index) => ({
+    // Keyed-each keys must be unique even when the control-plane emits
+    // duplicate/zero sequences (each_key_duplicate crash otherwise). The
+    // store-stamped ingestion_id is the stable identity; the index fallback
+    // only covers events constructed outside the store (tests).
+    key: event.ingestion_id !== undefined ? `evt-${event.ingestion_id}` : `${index}:${event.sequence}`,
     sequence: event.sequence,
     method: event.method,
     kind: event.kind ?? 'none',
@@ -21,7 +26,7 @@
     <p class="empty">{$t('diag.no_validated_events')}</p>
   {:else}
     <ol>
-      {#each visibleEvents as event (event.sequence)}
+      {#each visibleEvents as event (event.key)}
         <li>
           <span class="seq">#{event.sequence}</span>
           <span class="event-method" title={event.method}>{event.method}</span>

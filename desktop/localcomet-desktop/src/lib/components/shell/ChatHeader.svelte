@@ -14,6 +14,8 @@
 
   // Connection summary for header
   $: connectionSummary = (() => {
+    if ($inferenceRequestStore.lifecycle === 'awaiting_approval') return { label: $t('conn.awaiting_approval'), tone: 'waiting' as const };
+    if ($inferenceRequestStore.lifecycle === 'awaiting_verification') return { label: $t('conn.awaiting_verification'), tone: 'waiting' as const };
     if (['submitted', 'accepted', 'streaming', 'cancelling'].includes($inferenceRequestStore.lifecycle)) return { label: $t('conn.request_generating'), tone: 'info' as const };
     // The header describes the model connection, not the last turn. Keep a
     // failed request visible in the chat bubble/retry action without leaving a

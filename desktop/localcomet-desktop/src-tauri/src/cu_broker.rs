@@ -1,0 +1,1316 @@
+//! Narrow Computer Use spawn broker.
+//!
+//! The Python sidecar runs inside a job object with `ActiveProcessLimit=1`
+//! (containment invariant), so GUI-spawn actions such as `open_app` can never
+//! be executed there — every child spawn fails with WinError 1816. This broker
+//! runs in the Tauri host process and performs only strictly allowlisted
+//! launch operations:
+//!
+//! * no arbitrary executable paths — only entries of the built-in app registry
+//!   (resolved from System32 or the App Paths registration);
+//! * no shell, no command-line arguments beyond an allowlisted folder path;
+//! * the execution grant consumed by `run_tool_call` is RE-VERIFIED here
+//!   against the exact canonical input bytes before anything is launched;
+//! * HIDDEN MODE: when the harness provides a hidden desktop name, every
+//!   spawn is bound to `winsta0\<desktop>` via CreateProcessW STARTUPINFO
+//!   BEFORE process creation — the child can never appear on the user's
+//!   interactive desktop. Missing/invalid/unavailable binding in hidden mode
+//!   means BLOCKED/FAILED, never a silent fallback;
+//! * every outcome is returned as a truthful `computer_use.result.v1`
+//!   envelope: `blocked` instead of fallbacks, `launch_pending` when the
+//!   postcondition has not been observed yet, never an optimistic PASS.
+
+use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
+use std::process::Command;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+pub const ENVELOPE_SCHEMA: &str = "computer_use.result.v1";
+const POSTCONDITION_TIMEOUT: Duration = Duration::from_secs(5);
+const POSTCONDITION_POLL: Duration = Duration::from_millis(250);
+/// How long a spawned launch stays observable for continuation checks.
+const CONTINUATION_TTL: Duration = Duration::from_secs(600);
+
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::{
+    Foundation::{CloseHandle, HANDLE},
+    System::Threading::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
+    UI::WindowsAndMessaging::{
+        EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
+    },
+};
+
+struct AppEntry {
+    /// Static path relative to `%SystemRoot%`, when the app lives there.
+    system32_exe: Option<&'static str>,
+    /// App Paths registration file name (e.g. `chrome.exe`), resolved via the
+    /// registry when no static path exists.
+    app_paths_exe: Option<&'static str>,
+    /// Process image names accepted by the readiness postcondition. The first
+    /// entry also covers stub-relaunch flows (calc.exe -> CalculatorApp.exe).
+    process_names: &'static [&'static str],
+}
+
+const APP_REGISTRY: &[(&str, AppEntry)] = &[
+    (
+        "notepad",
+        AppEntry {
+            system32_exe: Some("notepad.exe"),
+            app_paths_exe: None,
+            process_names: &["notepad.exe"],
+        },
+    ),
+    (
+        "calc",
+        AppEntry {
+            system32_exe: Some("calc.exe"),
+            app_paths_exe: None,
+            process_names: &["calculatorapp.exe"],
+        },
+    ),
+    (
+        "mspaint",
+        AppEntry {
+            system32_exe: Some("mspaint.exe"),
+            app_paths_exe: None,
+            process_names: &["mspaint.exe"],
+        },
+    ),
+    (
+        "explorer",
+        AppEntry {
+            system32_exe: None, // resolved as %SystemRoot%\explorer.exe
+            app_paths_exe: None,
+            process_names: &["explorer.exe"],
+        },
+    ),
+    (
+        "chrome",
+        AppEntry {
+            system32_exe: None,
+            app_paths_exe: Some("chrome.exe"),
+            process_names: &["chrome.exe"],
+        },
+    ),
+    (
+        "msedge",
+        AppEntry {
+            system32_exe: None,
+            app_paths_exe: Some("msedge.exe"),
+            process_names: &["msedge.exe"],
+        },
+    ),
+    (
+        "firefox",
+        AppEntry {
+            system32_exe: None,
+            app_paths_exe: Some("firefox.exe"),
+            process_names: &["firefox.exe"],
+        },
+    ),
+    (
+        "vscode",
+        AppEntry {
+            system32_exe: None,
+            app_paths_exe: Some("code.exe"),
+            process_names: &["code.exe"],
+        },
+    ),
+];
+
+fn app_entry(canonical: &str) -> Option<&'static AppEntry> {
+    APP_REGISTRY
+        .iter()
+        .find(|(id, _)| *id == canonical)
+        .map(|(_, entry)| entry)
+}
+
+fn normalize_target(raw: &Value) -> Option<String> {
+    let text = raw.as_str()?.trim().to_ascii_lowercase();
+    // Models frequently emit the executable form ("calc.exe"); strip the
+    // suffix so it maps onto the same registry entry.
+    let stripped = text.strip_suffix(".exe").unwrap_or(&text);
+    let canonical = match stripped {
+        "notepad" | "блокнот" => "notepad",
+        "calc" | "калькулятор" | "calculator" => "calc",
+        "mspaint" | "пейнт" | "рисование" => "mspaint",
+        "explorer" | "проводник" | "файлы" => "explorer",
+        "chrome" | "хром" => "chrome",
+        "msedge" | "edge" => "msedge",
+        "firefox" | "мозилла" => "firefox",
+        "vscode" | "code" | "вс код" => "vscode",
+        other => other,
+    };
+    if app_entry(canonical).is_some() {
+        Some(canonical.to_owned())
+    } else {
+        None
+    }
+}
+
+/// Returns the broker-managed action key when the computer_use input belongs
+/// to the spawn class handled by this broker. Everything else (wait, click,
+/// type, screenshot, ...) stays on the sidecar execution path.
+pub fn broker_action(input: &Value) -> Option<&'static str> {
+    let action = input.get("action")?.as_str()?.trim().to_ascii_lowercase();
+    match action.as_str() {
+        "open_app" => Some("open_app"),
+        "open_folder" => Some("open_folder"),
+        _ => None,
+    }
+}
+
+fn system_root() -> String {
+    std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_owned())
+}
+
+fn join_dir(base: &str, child: &str) -> String {
+    format!("{base}\\{child}")
+}
+
+fn resolve_folder(target: &str, workspace_path: Option<&str>) -> Option<String> {
+    let profile = std::env::var("USERPROFILE").ok()?;
+    match target {
+        "downloads" | "загрузки" => Some(join_dir(&profile, "Downloads")),
+        "documents" | "документы" => Some(join_dir(&profile, "Documents")),
+        "pictures" | "изображения" => Some(join_dir(&profile, "Pictures")),
+        "workspace" | "проект" | "рабочая папка" => {
+            workspace_path.map(str::to_owned)
+        }
+        _ => None,
+    }
+}
+
+struct ResolvedLaunch {
+    program: String,
+    args: Vec<String>,
+    process_names: &'static [&'static str],
+    /// Folder launches reuse the running shell process, so a NEW-pid
+    /// postcondition would never fire; presence of the shell counts instead.
+    shell_reused: bool,
+}
+
+fn plan_launch(
+    action: &str,
+    target_raw: &Value,
+    workspace_path: Option<&str>,
+) -> Result<ResolvedLaunch, String> {
+    let target_value = target_raw.as_str().map(str::trim).unwrap_or_default();
+    if target_value.is_empty() || target_value.len() > 200 {
+        return Err("broker target must be a short non-empty string".into());
+    }
+    if target_value.contains('\\')
+        || target_value.contains('/')
+        || target_value.contains(':')
+        || target_value.contains('"')
+        || target_value.contains('&')
+        || target_value.contains('|')
+        || target_value.contains('^')
+        || target_value.contains('%')
+    {
+        return Err("broker target must be a registry id, not a path".into());
+    }
+    let lowered = target_value.to_ascii_lowercase();
+    match action {
+        "open_app" => {
+            let Some(canonical) = normalize_target(&Value::String(lowered.clone())) else {
+                return Err("target app is not in the broker allowlist".into());
+            };
+            let entry =
+                app_entry(&canonical).expect("normalized target must have a registry entry");
+            let program = resolve_program(entry).ok_or_else(|| {
+                "allowlisted app executable was not found on this system".to_owned()
+            })?;
+            Ok(ResolvedLaunch {
+                program,
+                args: Vec::new(),
+                process_names: entry.process_names,
+                shell_reused: canonical == "explorer",
+            })
+        }
+        "open_folder" => {
+            let Some(path) = resolve_folder(&lowered, workspace_path) else {
+                return Err("target folder is not in the broker allowlist".into());
+            };
+            Ok(ResolvedLaunch {
+                program: format!("{}\\explorer.exe", system_root()),
+                args: vec![path],
+                process_names: &["explorer.exe"],
+                shell_reused: true,
+            })
+        }
+        other => Err(format!("unsupported broker action: {other}")),
+    }
+}
+
+fn resolve_program(entry: &AppEntry) -> Option<String> {
+    if let Some(exe) = entry.system32_exe {
+        let path = format!("{}\\System32\\{exe}", system_root());
+        if std::path::Path::new(&path).is_file() {
+            return Some(path);
+        }
+    }
+    if entry.process_names.contains(&"explorer.exe") {
+        let path = format!("{}\\explorer.exe", system_root());
+        if std::path::Path::new(&path).is_file() {
+            return Some(path);
+        }
+    }
+    if let Some(exe) = entry.app_paths_exe {
+        for root_key in [
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths",
+            r"HKLM\Software\Microsoft\Windows\CurrentVersion\App Paths",
+        ] {
+            if let Some(path) = registry_default_value(&format!("{root_key}\\{exe}")) {
+                let cleaned = path.trim_matches('"').to_owned();
+                if std::path::Path::new(&cleaned).is_file() {
+                    return Some(cleaned);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Registry default-value lookup via reg.exe (same pattern as hardware.rs).
+/// The broker runs in the host process outside the sidecar job, so spawning
+/// reg.exe here is safe and does not touch the confined sidecar.
+fn registry_default_value(subkey: &str) -> Option<String> {
+    let output = Command::new(r"C:\Windows\System32\reg.exe")
+        .args(["query", subkey, "/ve"])
+        .output()
+        .ok()?;
+    if !output.status.success() || output.stdout.len() > 8192 {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let idx = trimmed.find("REG_SZ")?;
+        let value = trimmed[idx + "REG_SZ".len()..].trim();
+        (!value.is_empty()).then(|| value.to_owned())
+    })
+}
+
+fn snapshot_pids() -> HashSet<u32> {
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All);
+    system.processes().keys().map(|pid| pid.as_u32()).collect()
+}
+
+fn process_name(pid: u32) -> Option<String> {
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(
+        pid,
+    )]));
+    let process = system.process(sysinfo::Pid::from_u32(pid))?;
+    Some(process.name().to_string_lossy().to_ascii_lowercase())
+}
+
+/// Defined MVP readiness signal: the spawned PID is still alive, or a NEW
+/// process appeared whose image name belongs to the registry entry (covers
+/// stub-relaunch flows such as calc.exe -> CalculatorApp.exe).
+fn postcondition_reached(
+    child_pid: u32,
+    names: &[&str],
+    baseline: &HashSet<u32>,
+    budget: Duration,
+) -> bool {
+    let deadline = Instant::now() + budget;
+    loop {
+        if let Some(name) = process_name(child_pid) {
+            if names
+                .iter()
+                .any(|allowed| name == allowed.to_ascii_lowercase())
+            {
+                return true;
+            }
+        }
+        let fresh = snapshot_pids();
+        for pid in fresh.difference(baseline) {
+            if let Some(name) = process_name(*pid) {
+                if names
+                    .iter()
+                    .any(|allowed| name == allowed.to_ascii_lowercase())
+                {
+                    return true;
+                }
+            }
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(POSTCONDITION_POLL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hidden-desktop support
+// ---------------------------------------------------------------------------
+
+/// Validate a desktop name supplied by the isolated harness. Only the exact
+/// character class used by this harness is accepted; anything else fails the
+/// action instead of falling back to the interactive desktop.
+pub fn validate_hidden_desktop_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim_start_matches("winsta0\\").trim();
+    if trimmed.is_empty() || trimmed.len() > 80 {
+        return Err("hidden desktop name length out of range".into());
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err("hidden desktop name contains unsupported characters".into());
+    }
+    Ok(trimmed.to_owned())
+}
+
+fn to_wide(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Create the allowlisted program, optionally bound to a specific desktop via
+/// STARTUPINFO.lpDesktop — the binding happens BEFORE process creation, so the
+/// child can never flash on the interactive desktop in hidden mode.
+#[cfg(target_os = "windows")]
+fn create_process_on(program: &str, args: &[String], desktop: Option<&str>) -> Result<u32, String> {
+    use windows_sys::Win32::System::Threading::CREATE_UNICODE_ENVIRONMENT;
+
+    let mut command_line = format!("\"{program}\"");
+    for arg in args {
+        command_line.push_str(&format!(" \"{arg}\""));
+    }
+    let mut command_w = to_wide(&command_line);
+    let mut program_w = to_wide(program);
+
+    let mut startup: STARTUPINFOW = unsafe { std::mem::zeroed() };
+    startup.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+    let mut desktop_wide = desktop.map(|name| to_wide(&format!("winsta0\\{name}")));
+    if let Some(wide) = desktop_wide.as_mut() {
+        startup.lpDesktop = wide.as_mut_ptr();
+    }
+
+    let mut process_info: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+    let flags = CREATE_UNICODE_ENVIRONMENT;
+    let ok = unsafe {
+        CreateProcessW(
+            program_w.as_mut_ptr(),
+            command_w.as_mut_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+            flags,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            &startup,
+            &mut process_info,
+        )
+    };
+    if ok == 0 {
+        return Err(format!(
+            "CreateProcessW failed (desktop={:?}): error {}",
+            desktop,
+            unsafe { windows_sys::Win32::Foundation::GetLastError() }
+        ));
+    }
+    let pid = process_info.dwProcessId;
+    unsafe {
+        CloseHandle(process_info.hThread as HANDLE);
+        CloseHandle(process_info.hProcess as HANDLE);
+    }
+    Ok(pid)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_process_on(
+    _program: &str,
+    _args: &[String],
+    _desktop: Option<&str>,
+) -> Result<u32, String> {
+    Err("broker spawn requires Windows".into())
+}
+
+#[cfg(target_os = "windows")]
+mod desktop_query {
+    use super::*;
+
+    struct Collected {
+        pids_with_windows: HashSet<u32>,
+    }
+
+    unsafe extern "system" fn collect_cb(hwnd: *mut core::ffi::c_void, lparam: isize) -> i32 {
+        let collected = &mut *(lparam as *mut Collected);
+        if IsWindowVisible(hwnd) != 0 {
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(hwnd, &mut pid);
+            if pid != 0 {
+                collected.pids_with_windows.insert(pid);
+            }
+        }
+        1
+    }
+
+    pub fn desktop_exists(name: &str) -> bool {
+        use windows_sys::Win32::System::StationsAndDesktops::{
+            CloseDesktop, OpenDesktopW, DESKTOP_ENUMERATE, DESKTOP_READOBJECTS,
+        };
+        let wide = to_wide(name);
+        let handle =
+            unsafe { OpenDesktopW(wide.as_ptr(), 0, 0, DESKTOP_ENUMERATE | DESKTOP_READOBJECTS) };
+        if handle.is_null() {
+            return false;
+        }
+        unsafe { CloseDesktop(handle) };
+        true
+    }
+
+    pub fn pids_with_windows(desktop: Option<&str>) -> HashSet<u32> {
+        use windows_sys::Win32::System::StationsAndDesktops::{
+            CloseDesktop, EnumDesktopWindows, OpenDesktopW, DESKTOP_ENUMERATE, DESKTOP_READOBJECTS,
+        };
+        let mut collected = Collected {
+            pids_with_windows: HashSet::new(),
+        };
+        unsafe {
+            match desktop {
+                Some(name) => {
+                    let wide = to_wide(name);
+                    let handle =
+                        OpenDesktopW(wide.as_ptr(), 0, 0, DESKTOP_ENUMERATE | DESKTOP_READOBJECTS);
+                    if handle.is_null() {
+                        return collected.pids_with_windows;
+                    }
+                    EnumDesktopWindows(
+                        handle,
+                        Some(collect_cb),
+                        &mut collected as *mut Collected as isize,
+                    );
+                    CloseDesktop(handle);
+                }
+                None => {
+                    EnumWindows(Some(collect_cb), &mut collected as *mut Collected as isize);
+                }
+            }
+        }
+        collected.pids_with_windows
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Spawn registry for continuation observation
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct SpawnRecord {
+    pid: u32,
+    process_names: &'static [&'static str],
+    shell_reused: bool,
+    expires_at: Instant,
+    desktop: Option<String>,
+    /// Exact approval call identity of the spawn (plan P0.2): a continuation
+    /// observation must stay bound to the SAME approved request/action/input
+    /// bytes and can never be reused for a different turn.
+    action_id: String,
+    /// One-time approval identities are evidence only; the grant token itself
+    /// is never returned to the frontend or stored in this continuation record.
+    approval_id: String,
+    approval_call_id: String,
+    input_digest: [u8; 32],
+}
+
+static SPAWN_REGISTRY: Mutex<Option<HashMap<String, SpawnRecord>>> = Mutex::new(None);
+
+fn registry() -> std::sync::MutexGuard<'static, Option<HashMap<String, SpawnRecord>>> {
+    SPAWN_REGISTRY
+        .lock()
+        .expect("cu_broker spawn registry poisoned")
+}
+
+fn register_spawn(request_id: &str, record: SpawnRecord) {
+    let mut guard = registry();
+    let map = guard.get_or_insert_with(HashMap::new);
+    let now = Instant::now();
+    map.retain(|_, record| record.expires_at > now);
+    map.insert(request_id.to_owned(), record);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn envelope(
+    status: &str,
+    terminal: bool,
+    succeeded: bool,
+    verification: &str,
+    action: &str,
+    reason: &str,
+    execution: Value,
+    request_id: &str,
+    action_id: &str,
+) -> Value {
+    let mut payload = json!({
+        "schema_version": ENVELOPE_SCHEMA,
+        "tool": "computer_use",
+        "action": action,
+        "status": status,
+        "terminal": terminal,
+        "succeeded": succeeded,
+        "verification": verification,
+        "execution": execution,
+    });
+    if !reason.is_empty() {
+        payload["reason"] = json!(reason);
+    }
+    if !request_id.is_empty() {
+        payload["request_id"] = json!(request_id);
+    }
+    if !action_id.is_empty() {
+        payload["action_id"] = json!(action_id);
+    }
+    payload
+}
+
+fn blocked_envelope(action: &str, reason: &str, request_id: &str, action_id: &str) -> Value {
+    envelope(
+        "blocked",
+        true,
+        false,
+        "failed",
+        action,
+        reason,
+        json!({"mode": "cu_broker_spawn", "backend": "rust-host"}),
+        request_id,
+        action_id,
+    )
+}
+
+fn blocked_envelope_with_grant(
+    action: &str,
+    reason: &str,
+    request_id: &str,
+    action_id: &str,
+    grant: &crate::approval::ExecutionGrant,
+) -> Value {
+    envelope(
+        "blocked",
+        true,
+        false,
+        "failed",
+        action,
+        reason,
+        json!({
+            "mode": "cu_broker_spawn",
+            "backend": "rust-host",
+            "approval_id": grant.approval_id,
+            "approval_call_id": grant.call_id,
+            "input_digest": hex_digest(&grant.input_digest),
+        }),
+        request_id,
+        action_id,
+    )
+}
+
+/// Validate a broker-managed action without spawning. This is used before
+/// approval issuance so an unallowlisted target is reported as blocked rather
+/// than shown as an approval candidate. It performs only registry/path
+/// resolution; actual process creation remains in `execute_broker_action`.
+pub fn validate_broker_action(
+    action: &'static str,
+    input: &Value,
+    workspace_path: Option<&str>,
+) -> Result<(), String> {
+    let target = input.get("target").cloned().unwrap_or(Value::Null);
+    plan_launch(action, &target, workspace_path).map(|_| ())
+}
+
+/// Execute a broker-managed computer_use action. The caller has already
+/// consumed the one-time approval token and holds the minted grant; this
+/// boundary re-verifies the grant material before touching the OS.
+///
+/// `hidden_desktop`: Some(validated name) switches the broker into mandatory
+/// desktop-bound mode (isolated harness runs). None = normal user mode where
+/// the child inherits the interactive desktop by explicit user request.
+pub fn execute_broker_action(
+    action: &'static str,
+    input: &Value,
+    grant: Option<&crate::approval::ExecutionGrant>,
+    request_id: Option<&str>,
+    action_id: Option<&str>,
+    workspace_path: Option<&str>,
+    hidden_desktop: Option<&str>,
+) -> Value {
+    // Correlation is transport metadata. It is deliberately not read from
+    // `input`, because the exact raw tool arguments are schema-validated and
+    // hashed into the approval grant. Adding request_id/action_id there would
+    // reject valid model calls and invalidate the grant digest.
+    let request_id = request_id.unwrap_or_default().to_owned();
+    let action_id = action_id.unwrap_or_default().to_owned();
+    if !valid_request_id(&request_id) || !valid_action_id(&action_id) {
+        return blocked_envelope(
+            action,
+            "out-of-band broker correlation is missing or invalid",
+            "",
+            "",
+        );
+    }
+
+    let Some(grant) = grant else {
+        return blocked_envelope(
+            action,
+            "dangerous action requires an execution grant",
+            &request_id,
+            &action_id,
+        );
+    };
+    if grant.tool != "computer_use" {
+        return blocked_envelope(
+            action,
+            "grant was issued for a different tool",
+            &request_id,
+            &action_id,
+        );
+    }
+    if grant.is_expired() {
+        return blocked_envelope(action, "execution grant expired", &request_id, &action_id);
+    }
+    if crate::approval::canonical_input_digest(input) != grant.input_digest {
+        return blocked_envelope(
+            action,
+            "grant input digest does not match the broker input",
+            &request_id,
+            &action_id,
+        );
+    }
+
+    // Hidden-mode binding is validated BEFORE anything else touches the OS.
+    let validated_desktop: Option<String> = match hidden_desktop {
+        Some(name) => match validate_hidden_desktop_name(name) {
+            Ok(valid) => {
+                // The desktop must be openable NOW: without this probe we
+                // cannot guarantee the binding, and an unbindable spawn is
+                // BLOCKED instead of silently landing elsewhere.
+                if !desktop_query::desktop_exists(&valid) {
+                    return blocked_envelope(
+                        action,
+                        "hidden desktop is unavailable; refusing to spawn unbound",
+                        &request_id,
+                        &action_id,
+                    );
+                }
+                Some(valid)
+            }
+            Err(reason) => {
+                return blocked_envelope(
+                    action,
+                    &format!("hidden desktop binding rejected: {reason}"),
+                    &request_id,
+                    &action_id,
+                );
+            }
+        },
+        None => None,
+    };
+
+    let launch = match plan_launch(
+        action,
+        &input.get("target").cloned().unwrap_or(Value::Null),
+        workspace_path,
+    ) {
+        Ok(launch) => launch,
+        Err(reason) => {
+            return blocked_envelope_with_grant(action, &reason, &request_id, &action_id, grant)
+        }
+    };
+
+    let foreground_before = current_foreground();
+
+    let pid = match create_process_on(&launch.program, &launch.args, validated_desktop.as_deref()) {
+        Ok(pid) => pid,
+        Err(error) => {
+            return envelope(
+                "failed",
+                true,
+                false,
+                "failed",
+                action,
+                &error,
+                json!({
+                    "mode": "cu_broker_spawn",
+                    "backend": "rust-host",
+                    "program": launch.program,
+                    "desktop": validated_desktop,
+                    "approval_id": grant.approval_id,
+                    "approval_call_id": grant.call_id,
+                    "input_digest": hex_digest(&grant.input_digest),
+                }),
+                &request_id,
+                &action_id,
+            );
+        }
+    };
+
+    // Postcondition differs by mode:
+    // hidden  — a visible window owned by the expected image MUST exist on the
+    //           hidden desktop AND MUST NOT exist on the interactive desktop;
+    // user    — legacy liveness/name signal (explicitly requested user mode).
+    let (verified, window_evidence): (bool, Value) = match validated_desktop.as_deref() {
+        Some(name) => {
+            let deadline = Instant::now() + POSTCONDITION_TIMEOUT;
+            loop {
+                let hidden_pids = desktop_query::pids_with_windows(Some(name));
+                let user_pids = desktop_query::pids_with_windows(None);
+                let on_hidden = hidden_pids.contains(&pid)
+                    || (launch.shell_reused
+                        && hidden_pids.iter().any(|p| {
+                            process_name(*p).is_some_and(|n| {
+                                launch
+                                    .process_names
+                                    .iter()
+                                    .any(|a| n == a.to_ascii_lowercase())
+                            })
+                        }));
+                let leaked_to_user = user_pids.contains(&pid);
+                if on_hidden && !leaked_to_user {
+                    break (
+                        true,
+                        json!({"on_hidden_desktop": true, "on_user_desktop": false}),
+                    );
+                }
+                if leaked_to_user {
+                    break (
+                        false,
+                        json!({"on_hidden_desktop": false, "on_user_desktop": true}),
+                    );
+                }
+                if Instant::now() >= deadline {
+                    break (
+                        false,
+                        json!({"on_hidden_desktop": false, "on_user_desktop": false}),
+                    );
+                }
+                std::thread::sleep(POSTCONDITION_POLL);
+            }
+        }
+        None => {
+            let reached = launch.shell_reused
+                || postcondition_reached(
+                    pid,
+                    launch.process_names,
+                    &snapshot_pids(),
+                    POSTCONDITION_TIMEOUT,
+                );
+            (reached, json!({"mode": "process_liveness"}))
+        }
+    };
+
+    let foreground_after = current_foreground();
+    let focus_unchanged = foreground_before == foreground_after;
+
+    let (status, terminal, succeeded, verification, reason) = match verified {
+        true => ("completed", true, true, "verified", ""),
+        false => (
+            "launch_pending",
+            false,
+            false,
+            "pending",
+            "spawn accepted but the readiness postcondition has not been observed yet",
+        ),
+    };
+
+    if !request_id.is_empty() {
+        register_spawn(
+            &request_id,
+            SpawnRecord {
+                pid,
+                process_names: launch.process_names,
+                shell_reused: launch.shell_reused,
+                expires_at: Instant::now() + CONTINUATION_TTL,
+                desktop: validated_desktop.clone(),
+                action_id: action_id.clone(),
+                approval_id: grant.approval_id.clone(),
+                approval_call_id: grant.call_id.clone(),
+                input_digest: grant.input_digest,
+            },
+        );
+    }
+
+    envelope(
+        status,
+        terminal,
+        succeeded,
+        verification,
+        action,
+        reason,
+        json!({
+            "mode": "cu_broker_spawn",
+            "backend": "rust-host",
+            "program": launch.program,
+            "pid": pid,
+            "desktop": validated_desktop,
+            "window_station": "winsta0",
+            "window_evidence": window_evidence,
+            "foreground_unchanged": focus_unchanged,
+            "approval_id": grant.approval_id,
+            "approval_call_id": grant.call_id,
+            "input_digest": hex_digest(&grant.input_digest),
+        }),
+        &request_id,
+        &action_id,
+    )
+}
+
+fn current_foreground() -> usize {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        GetForegroundWindow() as usize
+    }
+    #[cfg(not(target_os = "windows"))]
+    0
+}
+
+/// Continuation observation for a previously spawned launch. NEVER spawns
+/// anything: it only re-checks the recorded postcondition within the TTL.
+/// Returns None when the request_id has no broker spawn record (the caller
+/// then keeps the honest pending state instead of inventing a result).
+pub fn observe_broker_action(request_id: &str) -> Option<Value> {
+    if !valid_request_id(request_id) {
+        return None;
+    }
+    let record = {
+        let mut guard = registry();
+        let map = guard.get_or_insert_with(HashMap::new);
+        let record = map.get(request_id)?;
+        if record.expires_at <= Instant::now() {
+            let expired = record.clone();
+            map.remove(request_id);
+            return Some(envelope(
+                "failed",
+                true,
+                false,
+                "failed",
+                "open_app",
+                "continuation window expired before readiness was observed",
+                json!({
+                    "mode": "cu_broker_observe",
+                    "backend": "rust-host",
+                    "action_id": expired.action_id,
+                    "approval_id": expired.approval_id,
+                    "approval_call_id": expired.approval_call_id,
+                    "input_digest": hex_digest(&expired.input_digest),
+                }),
+                request_id,
+                &expired.action_id,
+            ));
+        }
+        record.clone()
+    };
+    let verified = match record.desktop.as_deref() {
+        Some(name) => {
+            let hidden_pids = desktop_query::pids_with_windows(Some(name));
+            hidden_pids.contains(&record.pid)
+        }
+        None => {
+            record.shell_reused
+                || postcondition_reached(
+                    record.pid,
+                    record.process_names,
+                    &HashSet::new(),
+                    Duration::from_millis(1500),
+                )
+        }
+    };
+    if verified {
+        return Some(envelope(
+            "completed",
+            true,
+            true,
+            "verified",
+            "open_app",
+            "",
+            json!({
+                "mode": "cu_broker_observe",
+                "backend": "rust-host",
+                "pid": record.pid,
+                "desktop": record.desktop,
+                "action_id": record.action_id,
+                "approval_id": record.approval_id,
+                "approval_call_id": record.approval_call_id,
+                "input_digest": hex_digest(&record.input_digest),
+            }),
+            request_id,
+            &record.action_id,
+        ));
+    }
+    Some(envelope(
+        "launch_pending",
+        false,
+        false,
+        "pending",
+        "open_app",
+        "readiness postcondition has not been observed yet",
+        json!({
+            "mode": "cu_broker_observe",
+            "backend": "rust-host",
+            "pid": record.pid,
+            "desktop": record.desktop,
+            "action_id": record.action_id,
+            "input_digest": hex_digest(&record.input_digest),
+        }),
+        request_id,
+        &record.action_id,
+    ))
+}
+
+pub fn valid_request_id(value: &str) -> bool {
+    value.len() == 24 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+pub(crate) fn valid_action_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-.:".contains(&byte))
+}
+
+fn hex_digest(digest: &[u8; 32]) -> String {
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration as StdDuration;
+
+    const REQUEST_ID: &str = "0123456789abcdef01234567";
+    const ACTION_ID: &str = "call_0123456789abcdef0123456789ab";
+    const EXPIRED_REQUEST_ID: &str = "111111111111111111111111";
+    const PENDING_REQUEST_ID: &str = "222222222222222222222222";
+    const BINDING_REQUEST_ID: &str = "333333333333333333333333";
+
+    fn grant_for(input: &Value) -> crate::approval::ExecutionGrant {
+        crate::approval::ExecutionGrant {
+            grant_id: "g_test".into(),
+            tool: "computer_use".into(),
+            input_digest: crate::approval::canonical_input_digest(input),
+            workspace: "ws".into(),
+            session: "session".into(),
+            nonce: [0u8; 16],
+            valid_until: Instant::now() + StdDuration::from_secs(60),
+            approval_id: "appr_test".into(),
+            call_id: "call_test".into(),
+        }
+    }
+
+    #[test]
+    fn broker_action_scope_is_exact() {
+        assert_eq!(
+            broker_action(&json!({"action": "open_app", "target": "notepad"})),
+            Some("open_app")
+        );
+        assert_eq!(
+            broker_action(&json!({"action": "open_folder", "target": "downloads"})),
+            Some("open_folder")
+        );
+        assert_eq!(broker_action(&json!({"action": "wait"})), None);
+        assert_eq!(broker_action(&json!({"action": "screenshot"})), None);
+        assert_eq!(broker_action(&json!({})), None);
+    }
+
+    #[test]
+    fn broker_preflight_blocks_unknown_target_without_spawning() {
+        let unknown = json!({"action": "open_app", "target": "cmd.exe"});
+        assert!(validate_broker_action("open_app", &unknown, None)
+            .expect_err("unknown app must be blocked")
+            .contains("allowlist"));
+        let path = json!({"action": "open_app", "target": "C:\\Windows\\System32\\notepad.exe"});
+        assert!(validate_broker_action("open_app", &path, None)
+            .expect_err("path target must be blocked")
+            .contains("path"));
+        let notepad = json!({"action": "open_app", "target": "notepad"});
+        assert!(validate_broker_action("open_app", &notepad, None).is_ok());
+    }
+
+    #[test]
+    fn broker_action_normalizes_action_case() {
+        assert_eq!(
+            broker_action(&json!({"action": "OPEN_APP"})),
+            Some("open_app")
+        );
+        assert_eq!(
+            broker_action(&json!({"action": " Open_Folder "})),
+            Some("open_folder")
+        );
+    }
+
+    #[test]
+    fn unknown_target_is_blocked_not_spawned() {
+        let input = json!({"action": "open_app", "target": "cmd.exe"});
+        let result = execute_broker_action(
+            "open_app",
+            &input,
+            Some(&grant_for(&input)),
+            Some(REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            None,
+        );
+        assert_eq!(result["status"], "blocked");
+        assert_eq!(result["terminal"], json!(true));
+        assert_eq!(result["succeeded"], json!(false));
+    }
+
+    #[test]
+    fn path_like_target_is_blocked() {
+        let input = json!({"action": "open_app", "target": "C:\\Windows\\System32\\cmd.exe"});
+        let result = execute_broker_action(
+            "open_app",
+            &input,
+            Some(&grant_for(&input)),
+            Some(REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            None,
+        );
+        assert_eq!(result["status"], "blocked");
+    }
+
+    #[test]
+    fn digest_mismatch_is_blocked() {
+        let input = json!({"action": "open_app", "target": "notepad"});
+        let other = json!({"action": "open_app", "target": "mspaint"});
+        let result = execute_broker_action(
+            "open_app",
+            &input,
+            Some(&grant_for(&other)),
+            Some(REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            None,
+        );
+        assert_eq!(result["status"], "blocked");
+        assert!(result["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("digest"));
+    }
+
+    #[test]
+    fn input_correlation_fields_are_ignored_without_transport_metadata() {
+        let input = json!({
+            "action": "open_app",
+            "target": "notepad",
+            "request_id": REQUEST_ID,
+            "action_id": ACTION_ID,
+        });
+        let result = execute_broker_action(
+            "open_app",
+            &input,
+            Some(&grant_for(&input)),
+            None,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(result["status"], "blocked");
+        assert!(result["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("out-of-band"));
+        assert!(result.get("request_id").is_none());
+        assert!(result.get("action_id").is_none());
+    }
+
+    #[test]
+    fn missing_grant_is_blocked() {
+        let input = json!({"action": "open_app", "target": "notepad"});
+        let result = execute_broker_action(
+            "open_app",
+            &input,
+            None,
+            Some(REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            None,
+        );
+        assert_eq!(result["status"], "blocked");
+    }
+
+    #[test]
+    fn calculator_alias_resolves() {
+        let input = json!({"action": "open_app", "target": "calculator"});
+        let result = execute_broker_action(
+            "open_app",
+            &input,
+            Some(&grant_for(&input)),
+            Some(REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            None,
+        );
+        assert_ne!(result["status"], "blocked");
+    }
+
+    #[test]
+    fn exe_suffix_maps_to_registry_entry() {
+        // Pure mapping check (no spawn): the model-facing "calc.exe" form
+        // must resolve onto the same allowlisted entry as bare "calc".
+        assert_eq!(
+            normalize_target(&json!("calc.exe")),
+            Some("calc".to_owned())
+        );
+        assert_eq!(
+            normalize_target(&json!("notepad.exe")),
+            Some("notepad".to_owned())
+        );
+    }
+
+    #[test]
+    fn invalid_hidden_desktop_name_is_blocked_without_spawn() {
+        let input = json!({"action": "open_app", "target": "notepad"});
+        let result = execute_broker_action(
+            "open_app",
+            &input,
+            Some(&grant_for(&input)),
+            Some(REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            Some("bad desktop!"),
+        );
+        assert_eq!(result["status"], "blocked");
+        assert!(result["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("binding rejected"));
+    }
+
+    #[test]
+    fn unavailable_hidden_desktop_fails_closed() {
+        // A syntactically valid but nonexistent desktop cannot host the
+        // process: CreateProcessW must fail → FAILED envelope, never PASS,
+        // never a user-desktop leak.
+        let input = json!({"action": "open_app", "target": "notepad"});
+        let result = execute_broker_action(
+            "open_app",
+            &input,
+            Some(&grant_for(&input)),
+            Some(REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            Some("LocalCometMissingDesktopXYZ"),
+        );
+        // Pre-spawn probe: an unopenable desktop is refused BEFORE any
+        // process exists — BLOCKED is stronger than FAILED here.
+        assert_eq!(result["status"], "blocked");
+        assert!(result["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("unavailable"));
+    }
+
+    #[test]
+    fn unknown_folder_is_blocked() {
+        let input = json!({"action": "open_folder", "target": "C:\\Windows"});
+        let result = execute_broker_action(
+            "open_folder",
+            &input,
+            Some(&grant_for(&input)),
+            Some(REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            None,
+        );
+        assert_eq!(result["status"], "blocked");
+    }
+
+    #[test]
+    fn invalid_request_id_is_rejected_before_observation() {
+        assert!(!valid_request_id("no-such-request"));
+        assert!(observe_broker_action("no-such-request").is_none());
+    }
+
+    #[test]
+    fn observe_unknown_request_is_none() {
+        assert!(observe_broker_action("no-such-request").is_none());
+    }
+
+    #[test]
+    fn observe_expired_record_returns_honest_failed() {
+        register_spawn(
+            EXPIRED_REQUEST_ID,
+            SpawnRecord {
+                pid: 0,
+                process_names: &["notepad.exe"],
+                shell_reused: false,
+                expires_at: Instant::now() - Duration::from_secs(1),
+                desktop: None,
+                action_id: String::new(),
+                approval_id: String::new(),
+                approval_call_id: String::new(),
+                input_digest: [0u8; 32],
+            },
+        );
+        let result =
+            observe_broker_action(EXPIRED_REQUEST_ID).expect("record must exist until pruned");
+        assert_eq!(result["status"], "failed");
+        assert_eq!(result["terminal"], json!(true));
+    }
+
+    #[test]
+    fn observe_unready_record_stays_pending_without_respawn() {
+        // pid 0 never matches a real process and the name cannot appear, so
+        // the observation must stay pending — proving no respawn happened.
+        register_spawn(
+            PENDING_REQUEST_ID,
+            SpawnRecord {
+                pid: 0,
+                process_names: &["definitely-not-running-proc-xyz"],
+                shell_reused: false,
+                expires_at: Instant::now() + Duration::from_secs(600),
+                desktop: None,
+                action_id: String::new(),
+                approval_id: String::new(),
+                approval_call_id: String::new(),
+                input_digest: [0u8; 32],
+            },
+        );
+        let result = observe_broker_action(PENDING_REQUEST_ID).expect("record must exist");
+        assert_eq!(result["status"], "launch_pending");
+        assert_eq!(result["terminal"], json!(false));
+        assert_eq!(result["succeeded"], json!(false));
+    }
+
+    #[test]
+    fn observe_envelope_echoes_persisted_binding() {
+        // Plan P0.2: the continuation record carries request_id, action_id,
+        // PID, target input digest and desktop binding; every observation
+        // echoes them so UI/acceptance can verify the binding end-to-end.
+        let digest = crate::approval::canonical_input_digest(&json!({"target": "notepad"}));
+        register_spawn(
+            BINDING_REQUEST_ID,
+            SpawnRecord {
+                pid: 4242,
+                process_names: &["notepad.exe"],
+                shell_reused: false,
+                expires_at: Instant::now() + Duration::from_secs(600),
+                desktop: Some("LocalCometHiddenCU_test".to_owned()),
+                action_id: "action-1".to_owned(),
+                approval_id: "appr_test".to_owned(),
+                approval_call_id: "call_test".to_owned(),
+                input_digest: digest,
+            },
+        );
+        let result = observe_broker_action(BINDING_REQUEST_ID).expect("record must exist");
+        assert_eq!(result["status"], "launch_pending");
+        assert_eq!(result["request_id"], json!(BINDING_REQUEST_ID));
+        assert_eq!(result["action_id"], json!("action-1"));
+        assert_eq!(result["execution"]["pid"], json!(4242));
+        assert_eq!(
+            result["execution"]["input_digest"],
+            json!(hex_digest(&digest))
+        );
+        assert_eq!(
+            result["execution"]["desktop"],
+            json!("LocalCometHiddenCU_test")
+        );
+    }
+}

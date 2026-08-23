@@ -561,33 +561,11 @@ def _keyboard_vk(key: str) -> Optional[int]:
 
 
 def _press_hotkey(keys: List[str], simulate: bool) -> Dict[str, Any]:
-    keys = [str(key).strip().lower() for key in keys if str(key).strip()]
-    if not keys:
-        return {"ok": False, "status": "error", "reason": "empty hotkey"}
-    if simulate:
-        return {"ok": True, "status": "simulated", "keys": keys}
-    if os.name != "nt":
-        return {"ok": False, "status": "unsupported", "reason": "real hotkey currently supports Windows only", "keys": keys}
-    try:
-        import ctypes
-        user32 = ctypes.windll.user32
-        keybd_event = user32.keybd_event
-        key_up = 0x0002
-        vk_codes = []
-        for key in keys:
-            vk = _keyboard_vk(key)
-            if vk is None:
-                return {"ok": False, "status": "error", "reason": "unsupported key: " + key, "keys": keys}
-            vk_codes.append(vk)
-        for vk in vk_codes:
-            keybd_event(vk, 0, 0, 0)
-            time.sleep(0.03)
-        for vk in reversed(vk_codes):
-            keybd_event(vk, 0, key_up, 0)
-            time.sleep(0.03)
-        return {"ok": True, "status": "executed", "keys": keys}
-    except Exception as exc:
-        return {"ok": False, "status": "error", "reason": str(exc), "keys": keys}
+    # Delegate to the shared execution primitive so the auto-policy hotkey
+    # allowlist covers mission plans too; the previous private keybd_event
+    # path skipped the allowlist entirely.
+    from modules.computer_use_real_actions_ru import press_hotkey
+    return press_hotkey([str(key) for key in keys], simulate=bool(simulate))
 
 
 def _set_clipboard_text(text: str) -> Dict[str, Any]:
@@ -604,17 +582,35 @@ def _set_clipboard_text(text: str) -> Dict[str, Any]:
         return {"ok": False, "status": "clipboard_error", "reason": str(exc)}
 
 
+def _get_clipboard_text() -> str:
+    try:
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        value = root.clipboard_get()
+        root.update()
+        root.destroy()
+        return value if isinstance(value, str) else ""
+    except Exception:
+        return ""
+
+
+def _restore_clipboard_text(text: str) -> None:
+    if not text:
+        return
+    try:
+        _set_clipboard_text(text)
+    except Exception:
+        pass
+
+
 def _paste_text(text: str, simulate: bool) -> Dict[str, Any]:
-    if _text_has_secret(text):
-        return {"ok": False, "status": "requires_confirmation", "requires_confirmation": True, "reason": "text appears to contain secret markers"}
-    if simulate:
-        return {"ok": True, "status": "simulated", "text_preview": _safe_text(text, 400)}
-    clip = _set_clipboard_text(text)
-    if not clip.get("ok"):
-        return clip
-    hotkey = _press_hotkey(["ctrl", "v"], simulate=False)
-    hotkey["clipboard"] = clip
-    return hotkey
+    # Unified paste primitive: secret/length limits plus SendInput typing with
+    # the clipboard preserved. The previous clipboard-assisted ctrl+v route
+    # bypassed the shared hotkey policy (ctrl+v is deliberately absent from
+    # allowed_hotkeys because raw clipboard paste skips typing limits).
+    from modules.computer_use_real_actions_ru import paste_text
+    return paste_text(str(text or ""), simulate=bool(simulate))
 
 
 def _execute_action(action: Dict[str, Any], simulate: bool, mission_goal: str) -> Dict[str, Any]:

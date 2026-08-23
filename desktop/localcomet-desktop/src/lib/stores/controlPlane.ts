@@ -160,7 +160,11 @@ export function applyControlPlaneEvent(event: ControlPlaneEvent): void {
     if (isTerminalLocked(state, event)) {
       return { ...state, lastError: { code: 'invalid_sequence', message: 'Event after terminal turn rejected' } };
     }
-    const recentEvents = [...state.recentEvents, event].slice(-MAX_RECENT_EVENTS);
+    // Stamp a unique monotonic ingestion id so consumers can key rows by
+    // stable identity instead of (sequence, index), which shifts on every
+    // window slide and collides on duplicate sequences.
+    const stamped: ControlPlaneEvent = { ...event, ingestion_id: state.eventCount + 1 };
+    const recentEvents = [...state.recentEvents, stamped].slice(-MAX_RECENT_EVENTS);
     let next: ControlPlaneState = {
       ...state,
       recentEvents,

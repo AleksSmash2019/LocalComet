@@ -825,52 +825,6 @@
   ],
   "models": [
     {
-      "model_id": "qwen2.5-1.5b-instruct-q4-k-m",
-      "provider": "Qwen",
-      "family": "Qwen2.5",
-      "display_name": "Qwen2.5 1.5B Instruct Q4_K_M",
-      "format": "GGUF",
-      "quantization": "Q4_K_M",
-      "upstream_repository": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-      "upstream_revision": "91cad51170dc346986eccefdc2dd33a9da36ead9",
-      "asset_filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-      "asset_bytes": 1117320736,
-      "asset_sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
-      "acquisition": {
-        "artifact_id": "qwen2.5-1.5b-instruct-q4-k-m",
-        "artifact_kind": "model",
-        "source_type": "approved_https",
-        "primary_url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-        "allowed_redirect_hosts": [
-          "cas-bridge.xethub.hf.co",
-          "cdn-lfs-us-1.hf.co",
-          "cdn-lfs.hf.co",
-          "huggingface.co",
-          "transfer.xethub.hf.co",
-          "us.aws.cdn.hf.co"
-        ],
-        "expected_filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-        "expected_bytes": 1117320736,
-        "expected_sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
-        "content_type": "application/octet-stream",
-        "managed_relative_destination": "qwen2.5-1.5b-instruct-q4-k-m/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-        "public_distribution": false,
-        "installer_bundled": false,
-        "automatic_download": false,
-        "user_confirmation_required": true
-      },
-      "license_id": "Apache-2.0",
-      "compatible_runtime_ids": [
-        "llama-cpp-windows-x86-64-cpu-bootstrap",
-        "llama-cpp-windows-x86-64-vulkan-bootstrap"
-      ],
-      "managed_relative_path": "qwen2.5-1.5b-instruct-q4-k-m/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-      "public_distribution": false,
-      "installer_bundled": false,
-      "bootstrap_purpose": "INTERNAL_BOOTSTRAP_INFERENCE_VALIDATION",
-      "status": "approved_internal_bootstrap"
-    },
-    {
       "model_id": "qwen2.5-7b-instruct-q4-k-m",
       "provider": "Qwen",
       "family": "Qwen2.5",

@@ -1,8 +1,11 @@
 import ctypes
+import base64
 import ctypes.wintypes
+import hashlib
 import json
 import os
 import struct
+
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
@@ -116,20 +119,48 @@ def _visible_windows(limit=30):
 
 
 def _capture_screenshot():
+    """Capture through the shared real-action backend and return path/error/meta.
+
+    The old local fallback used desktop-wide BitBlt only. That API has no display
+    surface on a hidden desktop and produced the misleading ``BitBlt failed``
+    result. The shared backend first tries ImageGrab and then per-window
+    PrintWindow, preserving a truthful backend name and bounded PNG bytes.
+    """
     _ensure_dirs()
     png_path = SCREENSHOTS_DIR / f"desktop_{_stamp()}.png"
-
     try:
-        from PIL import ImageGrab
+        from modules.computer_use_real_actions_ru import capture_screenshot
 
-        image = ImageGrab.grab(all_screens=True)
-        image.save(png_path)
-        return str(png_path), ""
+        payload = capture_screenshot(simulate=False)
+        metadata = {
+            "capture_backend": payload.get("capture_backend", "imagegrab"),
+            "capture_scope": payload.get("capture_scope", "desktop"),
+            "capture_window_title": payload.get("capture_window_title", ""),
+            "capture_hwnd": payload.get("capture_hwnd"),
+            "width": payload.get("width", 0),
+            "height": payload.get("height", 0),
+            "scale": payload.get("scale", 1.0),
+        }
+        encoded = payload.get("screenshot")
+        if payload.get("ok") and isinstance(encoded, str) and encoded:
+            raw = base64.b64decode(encoded, validate=True)
+            if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+                raise ValueError("real screenshot backend returned non-PNG bytes")
+            if len(raw) > 8 * 1024 * 1024:
+                raise ValueError("real screenshot backend returned oversized PNG")
+            png_path.write_bytes(raw)
+            metadata["bytes"] = len(raw)
+            metadata["sha256"] = hashlib.sha256(raw).hexdigest()
+            return str(png_path), "", metadata
+
+        reason = str(payload.get("reason") or payload.get("error") or "real screenshot backend returned no frame")
+        metadata["backend_error"] = reason
+        return "", reason, metadata
     except Exception as exc:
-        bmp_path, bmp_error = _capture_screenshot_bmp()
-        if bmp_path:
-            return bmp_path, f"PIL unavailable, used BMP fallback: {exc}"
-        return "", f"{exc}; BMP fallback failed: {bmp_error}"
+        return "", f"real screenshot backend failed: {exc}", {
+            "capture_backend": "real_action_backend",
+            "backend_error": str(exc),
+        }
 
 
 def _capture_screenshot_bmp():
@@ -253,9 +284,16 @@ def _write_report(result):
         "",
         f"- created_at: {result.get('created_at')}",
         f"- screenshot_path: {result.get('screenshot_path') or 'нет'}",
-        f"- screenshot_error: {result.get('screenshot_error') or 'нет'}",
+                f"- screenshot_error: {result.get('screenshot_error') or 'нет'}",
+        f"- screenshot_backend: {result.get('screenshot_backend') or 'нет'}",
+        f"- screenshot_scope: {(result.get('screenshot_meta') or {}).get('capture_scope') or 'нет'}",
+        f"- screenshot_sha256: {(result.get('screenshot_meta') or {}).get('sha256') or 'нет'}",
+        f"- uia_status: {result.get('uia_status') or 'нет'}",
+        f"- ui_elements: {len(result.get('ui_elements') or [])}",
+        f"- observation_state: {result.get('observation_state') or 'unknown'}",
         "",
         "## Active Window",
+
         "",
         f"- title: {active.get('title') or 'нет'}",
         f"- class: {active.get('class') or 'нет'}",
@@ -280,17 +318,43 @@ def _write_report(result):
 
 def observe_desktop(write_report=True):
     _ensure_dirs()
-    screenshot_path, screenshot_error = _capture_screenshot()
+    screenshot_path, screenshot_error, screenshot_meta = _capture_screenshot()
     result = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "active_window": _active_window(),
         "windows": _visible_windows(),
         "screenshot_path": screenshot_path,
         "screenshot_error": screenshot_error,
+        "screenshot_backend": screenshot_meta.get("capture_backend", ""),
+        "screenshot_meta": screenshot_meta,
+        "ui_elements": [],
+        "uia_status": "not_attempted",
+        "observation_state": "failed",
+        "ok": False,
         "report_path": "",
     }
+    try:
+        from modules.pc_ui_parser_adapter import _uia_elements_for_desktop
+
+        elements, uia_status = _uia_elements_for_desktop()
+        result["ui_elements"] = elements[:200]
+        result["uia_status"] = uia_status
+    except Exception as exc:
+        result["uia_status"] = f"uia unavailable: {exc}"
+
+    has_screenshot = bool(screenshot_path)
+    has_window = bool(result.get("active_window", {}).get("title") or result.get("windows"))
+    has_uia = bool(result.get("ui_elements"))
+    if has_screenshot and (has_window or has_uia):
+        result["observation_state"] = "available"
+    elif has_screenshot or has_window or has_uia:
+        result["observation_state"] = "partial"
+    else:
+        result["observation_state"] = "failed"
+    result["ok"] = result["observation_state"] != "failed"
 
     if write_report:
+
         result["report_path"] = _write_report(result)
 
     try:

@@ -56,3 +56,11 @@ artifacts/evidence/*.json text eol=lf
 *.zip -text
 *.tar.gz -text
 *.wasm -text
+
+# Legacy modules historically committed with CRLF bytes: preserve them
+# byte-exact so content diffs stay reviewable (worktree matches the stored
+# blob; no clean-filter rewrite). Do not extend this list without a mandate.
+modules/computer_use_full_control_mission_ru.py -text
+modules/computer_use_observe_vision_ru.py -text
+modules/computer_use_safety_ru.py -text
+modules/premium_task_panel_ru.py -text

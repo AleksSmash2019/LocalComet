@@ -6,6 +6,7 @@ mod artifact_trust;
 mod artifact_validation_cache;
 mod comctl_delay_load_guard;
 mod control_plane;
+mod cu_broker;
 mod files;
 mod hardware;
 mod hf_catalog;
@@ -21,8 +22,8 @@ mod windows_job;
 mod workspace;
 
 use approval_commands::{
-    execute_approved, request_approval, resolve_tool_approval, run_tool_call, set_workspace,
-    ApprovalState,
+    cu_broker_observe, execute_approved, request_approval, resolve_tool_approval, run_tool_call,
+    set_workspace, ApprovalState,
 };
 use artifact_acquisition::{
     cancel_artifact_download, get_artifact_download_state, list_approved_downloadable_artifacts,
@@ -61,7 +62,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use supervisor::{DesktopSidecarSupervisor, LivenessPolicy, SupervisorError};
 use tauri::Manager;
-use voice::speak_local_text;
+use voice::{speak_local_text, stop_local_text};
 
 const BACKEND_READINESS_TIMEOUT: Duration = Duration::from_secs(8);
 
@@ -286,7 +287,9 @@ pub fn run() {
             execute_approved,
             resolve_tool_approval,
             run_tool_call,
+            cu_broker_observe,
             speak_local_text,
+            stop_local_text,
             scan_hardware,
             hf_search_models,
             hf_list_repo_files,

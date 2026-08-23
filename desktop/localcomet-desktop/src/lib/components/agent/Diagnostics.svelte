@@ -71,6 +71,7 @@
       case 'Generating': return translate('diag.generating');
       case 'Cancelling': return translate('diag.cancelling');
       case 'Completed': return translate('diag.completed');
+      case 'Pending verification': return translate('diag.pending_verification');
       case 'Cancelled': return translate('diag.cancelled');
       case 'Failed': return translate('diag.failed');
       default: return status;

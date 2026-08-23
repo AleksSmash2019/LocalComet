@@ -2090,7 +2090,7 @@ mod tests {
         ];
         assert!(validate_redirect_url(
             &Url::parse(
-                "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+                "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q4_K_M.gguf",
             )
             .expect("valid primary URL"),
             &allowed,

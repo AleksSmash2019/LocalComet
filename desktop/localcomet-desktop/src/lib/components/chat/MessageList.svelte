@@ -1,6 +1,5 @@
 <script lang="ts">
   import EmptyState from '$lib/components/common/EmptyState.svelte';
-  import { invoke } from '@tauri-apps/api/core';
   import { chatMessages, composerDraft, openModelSetup, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import {
     inferenceBusy,
@@ -12,6 +11,7 @@
   import { acquisitionBusy } from '$lib/stores/artifactAcquisition';
   import { locale, t } from '$lib/i18n';
   import Icon from '$lib/components/common/Icon.svelte';
+  import { claimSpeechRequest, speakLocalText, stopLocalText } from '$lib/bridge/voice';
   import ToolCallCard from './ToolCallCard.svelte';
   import CodeBlock from './CodeBlock.svelte';
 
@@ -103,28 +103,19 @@
   import { onDestroy } from 'svelte';
   import { voiceMode } from '$lib/stores/shellStore';
 
-  let lastSpokenRequestId: string | null = null;
-
-  async function speakRussianLocally(text: string): Promise<void> {
-    try {
-      await invoke('speak_local_text', { text, language: 'ru-RU' });
-    } catch {
-      // Local-only speech must never fall back to browser/Google synthesis.
-    }
-  }
-
   onDestroy(() => {
     if (copyTimeout) {
       clearTimeout(copyTimeout);
       copyTimeout = null;
     }
+    void stopLocalText();
   });
   $: {
-    if ($voiceMode && $inferenceRequestStore.lifecycle === 'completed' && $inferenceRequestStore.requestId && $inferenceRequestStore.requestId !== lastSpokenRequestId) {
-      lastSpokenRequestId = $inferenceRequestStore.requestId;
-      const lastMessage = $chatMessages.find(m => m.requestId === lastSpokenRequestId && m.role === 'assistant');
-      if (lastMessage && lastMessage.body && $locale === 'ru') {
-        void speakRussianLocally(lastMessage.body);
+    if ($voiceMode && $inferenceRequestStore.lifecycle === 'completed' && $inferenceRequestStore.requestId) {
+      const requestId = $inferenceRequestStore.requestId;
+      const lastMessage = $chatMessages.find(m => m.requestId === requestId && m.role === 'assistant');
+      if (lastMessage && lastMessage.body && $locale === 'ru' && claimSpeechRequest(requestId)) {
+        void speakLocalText(lastMessage.body);
       }
     }
   }

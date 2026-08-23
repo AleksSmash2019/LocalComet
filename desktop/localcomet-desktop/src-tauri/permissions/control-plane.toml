@@ -118,6 +118,20 @@ commands.allow = [
 ]
 
 [[permission]]
+identifier = "allow-import-custom-model"
+description = "Allow importing one explicitly validated custom local model through the managed artifact boundary."
+commands.allow = [
+  "import_custom_model",
+]
+
+[[permission]]
+identifier = "allow-cu-broker-observe"
+description = "Allow observing one already-issued Computer Use broker continuation without spawning or consuming a new grant."
+commands.allow = [
+  "cu_broker_observe",
+]
+
+[[permission]]
 identifier = "allow-managed-runtime-status"
 description = "Allow reading sanitized LocalComet managed runtime status."
 commands.allow = [
@@ -262,4 +276,11 @@ identifier = "allow-speak-local-text"
 description = "Allow LocalComet to speak Russian responses through the local Piper voice only."
 commands.allow = [
   "speak_local_text",
+]
+
+[[permission]]
+identifier = "allow-stop-local-text"
+description = "Allow LocalComet to stop current local Piper playback."
+commands.allow = [
+  "stop_local_text",
 ]

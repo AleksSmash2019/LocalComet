@@ -15,7 +15,11 @@ file content travels as a JSON string value.
 
 from __future__ import annotations
 
+import collections
+import hashlib
 import queue
+import re
+import time
 from pathlib import Path
 import threading
 
@@ -27,13 +31,21 @@ from modules.workspace_policy import WorkspacePolicy, WorkspacePolicyError
 # Maximum bytes for a single file read/write. Bounded by the IPC payload string
 # limit (MAX_STRING_CHARS = 1 MiB in desktop_ipc_contract_ru.py), NOT the 4 MiB
 # frame: the file content travels as a JSON string value, so it must stay below
-# the per-string limit with margin for JSON escaping overhead. No chunking in the
-# first release (ADR-013): oversized payloads are rejected.
+# the per-string limit with margin for JSON escaping overhead. No chunking in
+# the first release (ADR-013): oversized payloads are rejected.
 MAX_TOOL_FILE_BYTES = 1_000_000
 
 SUPPORTED_TOOLS = frozenset(
     ("files.read", "files.list", "files.write", "files.create_folder", "files.delete", "shell", "computer_use", "web.search", "web.fetch", "skills.invoke", "system.time")
 )
+
+# Dangerous sidecar tools per security/invariants/tool_risk_levels.toml (the
+# single source of truth). The Rust boundary (approval_commands::
+# risk_level_for_tool) and scripts/check_tool_risk_registry.py +
+# tools/test_tool_risk_rust_parity.py keep both sides in sync. Dangerous tools
+# must present a Rust execution grant that is re-verified here: Rust-side
+# validation alone is not sufficient defense-in-depth (master prompt §3.3).
+DANGEROUS_TOOLS = frozenset(("files.delete", "shell", "computer_use", "skills.invoke"))
 
 
 class ToolExecutionError(Exception):
@@ -63,8 +75,8 @@ def _reject_unrenderable(value: str, key: str) -> None:
     rejected for the same reason it is rejected in a path: the OS layer raises
     ValueError, not OSError, at use time.
 
-    Note for future handlers: rejection must happen before the value can reach a
-    message template, which is why this sits in _require_str rather than at each
+    Note for future handlers: rejection must happen before the value can reach
+    a message template, which is why this sits in _require_str rather than at each
     use site.
     """
     if "\x00" in value:
@@ -77,6 +89,178 @@ def _reject_unrenderable(value: str, key: str) -> None:
         # The exception text itself is ASCII-safe: it names the code point in
         # escaped form rather than embedding the offending character.
         raise ToolExecutionError("invalid_payload", f"{key} is not encodable: {exc}") from exc
+
+
+# --- Execution grant verification (master prompt §3.3) -----------------------
+#
+# Rust mints a scoped ExecutionGrant when the one-time approval token is
+# consumed and forwards it with the tool.call payload. The Python execution
+# boundary re-verifies it before executing dangerous tools, so a forged or
+# replayed payload that never crossed the Rust boundary cannot reach real
+# actions: grant must bind the exact tool, canonical input digest, workspace,
+# session, an unexpired TTL, and must be single-use at this boundary too.
+
+_GRANT_STRING_FIELDS = ("grant_id", "tool", "input_digest", "workspace", "session")
+_MAX_CONSUMED_GRANTS = 4096
+_consumed_grants: dict[str, int] = {}
+_consumed_grants_order: collections.deque[str] = collections.deque()
+_consumed_grants_lock = threading.Lock()
+
+_FLOAT_EXPONENT_RE = re.compile(r"e([+-])?(0+)(\d)")
+
+
+def _canonical_json_number(value: Any) -> str:
+    """Mirror serde_json float Display for digest parity.
+
+    repr() on CPython already produces the shortest round-trip form; it only
+    differs in exponent zero-padding ('1.5e-07' vs serde_json's '1.5e-7'),
+    which is normalized here. The exponent sign is kept as-is: serde_json
+    prints 1e+30 with the plus (verified by the shared parity vector).
+    """
+    if isinstance(value, int):
+        return str(value)
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ToolExecutionError(
+            "invalid_payload", "input contains a non-finite number"
+        )
+    return _FLOAT_EXPONENT_RE.sub(
+        lambda m: "e" + (m.group(1) or "") + m.group(3), repr(value)
+    )
+
+
+def _escape_canonical_json_string(value: str) -> str:
+    out: list[str] = []
+    for ch in value:
+        if ch == '"':
+            out.append('\\"')
+        elif ch == "\\":
+            out.append("\\\\")
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 0x20:
+            out.append("\\u%04x" % ord(ch))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _canonicalize_tool_input(value: Any) -> str:
+    """Byte-exact port of approval.rs canonicalize_json (sorted keys, no
+    whitespace, minimal escaping with non-ASCII kept literal)."""
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, int) or isinstance(value, float):
+        return _canonical_json_number(value)
+    if isinstance(value, str):
+        return '"' + _escape_canonical_json_string(value) + '"'
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_canonicalize_tool_input(item) for item in value) + "]"
+    if isinstance(value, Mapping):
+        keys = sorted(value.keys())
+        return (
+            "{"
+            + ",".join(
+                '"%s":%s' % (_escape_canonical_json_string(str(key)), _canonicalize_tool_input(value[key]))
+                for key in keys
+            )
+            + "}"
+        )
+    raise ToolExecutionError(
+        "invalid_payload", f"input contains unsupported type: {type(value).__name__}"
+    )
+
+
+def canonical_input_digest_hex(input_obj: Any) -> str:
+    """SHA-256 hex of the canonical input serialization; parity-tested
+    against Rust approval::canonical_input_digest."""
+    try:
+        raw = _canonicalize_tool_input(input_obj).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        # Real IPC frames cannot carry lone surrogates (valid UTF-8 required),
+        # but direct in-process callers can; reject fail-closed with the same
+        # code the string validators use. The message must stay ASCII-safe
+        # (escaped code point, not the raw character) so the error envelope
+        # itself remains frame-encodable (ADR-015 B10 class).
+        raise ToolExecutionError(
+            "invalid_payload",
+            "input is not encodable: code point U+{:04X}".format(
+                ord(exc.object[exc.start])
+            ),
+        ) from exc
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _verify_execution_grant(
+    payload: Mapping[str, Any],
+    tool: str,
+    input_obj: Mapping[str, Any],
+    workspace: str,
+    session: str,
+) -> None:
+    grant = payload.get("grant")
+    if not isinstance(grant, Mapping):
+        raise ToolExecutionError(
+            "approval_required",
+            f"dangerous tool {tool} requires a Rust execution grant",
+        )
+    for key in _GRANT_STRING_FIELDS:
+        value = grant.get(key)
+        if not isinstance(value, str) or not value:
+            raise ToolExecutionError("invalid_payload", f"grant.{key} must be a non-empty string")
+    expires = grant.get("expires_at_unix_ms")
+    if isinstance(expires, bool) or not isinstance(expires, (int, float)) or expires <= 0:
+        raise ToolExecutionError(
+            "invalid_payload", "grant.expires_at_unix_ms must be a positive number"
+        )
+    outer_grant_id = payload.get("grant_id")
+    if outer_grant_id is not None and outer_grant_id != grant["grant_id"]:
+        raise ToolExecutionError(
+            "invalid_payload", "grant_id must match the grant envelope"
+        )
+    if grant["tool"] != tool:
+        raise ToolExecutionError(
+            "approval_operation_mismatch",
+            "grant was issued for a different tool",
+        )
+    if grant["workspace"] != workspace:
+        raise ToolExecutionError(
+            "approval_workspace_mismatch",
+            "grant was issued for a different workspace",
+        )
+    if grant["session"] != session:
+        raise ToolExecutionError(
+            "approval_session_mismatch",
+            "grant was issued for a different session",
+        )
+    if grant["input_digest"] != canonical_input_digest_hex(input_obj):
+        raise ToolExecutionError(
+            "approval_arguments_mismatch",
+            "grant input digest does not match the tool input",
+        )
+    now_ms = int(time.time() * 1000)
+    if expires <= now_ms:
+        raise ToolExecutionError("approval_grant_expired", "execution grant expired")
+    with _consumed_grants_lock:
+        if grant["grant_id"] in _consumed_grants:
+            raise ToolExecutionError(
+                "approval_grant_replayed", "execution grant was already used"
+            )
+        _consumed_grants[grant["grant_id"]] = int(expires)
+        _consumed_grants_order.append(grant["grant_id"])
+        while _consumed_grants_order and (
+            len(_consumed_grants) > _MAX_CONSUMED_GRANTS
+            or _consumed_grants.get(_consumed_grants_order[0], 0) <= now_ms
+        ):
+            stale = _consumed_grants_order.popleft()
+            _consumed_grants.pop(stale, None)
 
 
 def _resolve_in_workspace(policy: WorkspacePolicy, raw_path: str) -> Path:
@@ -205,6 +389,114 @@ def _files_delete(policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, An
     )
 
 
+_COMPUTER_USE_RESULT_SCHEMA = "computer_use.result.v1"
+_PENDING_COMPUTER_USE_STATUSES = frozenset({"launch_pending", "awaiting_observation", "pending"})
+_TERMINAL_COMPUTER_USE_STATUSES = frozenset({"completed", "failed", "blocked", "unavailable", "cancelled"})
+
+
+_VERIFICATION_ENUM = frozenset({"verified", "pending", "failed", "not_applicable"})
+
+
+def _normalize_computer_use_result(
+    raw: Mapping[str, Any],
+    *,
+    action: str,
+    request_id: str = "",
+    action_id: str = "",
+) -> dict[str, Any]:
+    """Normalize legacy real-action results without hiding pending or failures.
+
+    Existing real_actions functions intentionally keep their compact public shape.
+    The sidecar boundary adds one stable envelope so Rust and UI do not infer
+    terminal success from ``ok`` alone. In particular, launch_pending is never
+    converted into PASS just because the shell broker accepted the request.
+
+    Verification semantics (acceptance finding P2): a bare legacy ``ok=true``
+    never earns ``verified`` — only an explicit backend postcondition check
+    (e.g. window readiness) may claim it. Successes without verification
+    evidence are marked ``not_applicable`` (the action's own execution report
+    is the result; no independent postcondition applies), so no protocol
+    consumer can read "verified" without a basis.
+    """
+    result = dict(raw)
+    raw_status = str(result.get("status") or "").strip().lower()
+    verification = str(result.get("verification") or "").strip().lower()
+    pending = raw_status in _PENDING_COMPUTER_USE_STATUSES or verification == "pending"
+
+    if pending:
+        status = "launch_pending" if raw_status in {"", "executed", "simulated"} else raw_status
+        terminal = False
+        succeeded = False
+    elif raw_status in {"executed", "verified", "success", "completed"} and result.get("ok") is True:
+        status = "completed"
+        terminal = True
+        succeeded = True
+    elif raw_status == "cancelled":
+        status = "cancelled"
+        terminal = True
+        succeeded = False
+    elif result.get("status") in {"blocked", "requires_confirmation"} or result.get("blocked") is True:
+        status = "blocked"
+        terminal = True
+        succeeded = False
+    elif result.get("ok") is True:
+        status = "completed"
+        terminal = True
+        succeeded = True
+    else:
+        status = "unavailable" if raw_status in {"", "unsupported"} else "failed"
+        terminal = True
+        succeeded = False
+
+    if verification in _VERIFICATION_ENUM:
+        normalized_verification = verification
+    elif pending:
+        normalized_verification = "pending"
+    elif succeeded:
+        # Legacy ok=true without an explicit postcondition report: executed,
+        # but never auto-"verified".
+        normalized_verification = "not_applicable"
+    else:
+        normalized_verification = "failed"
+
+    normalized: dict[str, Any] = {
+        **result,
+        "schema_version": _COMPUTER_USE_RESULT_SCHEMA,
+        "action": action,
+        "status": status,
+        "terminal": terminal,
+        "succeeded": succeeded,
+        "verification": normalized_verification,
+        "execution": result,
+    }
+    if request_id:
+        normalized["request_id"] = request_id
+    if action_id:
+        normalized["action_id"] = action_id
+    return normalized
+
+
+def _trace_tool_result(action: str, result: Mapping[str, Any]) -> None:
+    """Env-gated one-line trace of computer_use results (see sidecar runtime).
+
+    Records only the outcome fields — never text payloads or screenshots.
+    """
+    trace_path = os.environ.get("LOCALCOMET_TOOLCALL_TRACE", "").strip()
+    if not trace_path:
+        return
+    try:
+        reason = str(result.get("reason") or result.get("error") or "")[:140].replace("\t", " ").replace("\n", " ")
+        with open(trace_path, "a", encoding="utf-8") as trace:
+            trace.write(
+                f"{time.strftime('%Y-%m-%dT%H:%M:%S')}\tresult\t{action}\t"
+                f"status={result.get('status')}\tok={result.get('ok')}\t"
+                f"succeeded={result.get('succeeded')}\tverification={result.get('verification')}\t"
+                f"reason={reason}\n"
+            )
+    except OSError:
+        pass
+
+
 def _execute_real_action_bounded(execute_real_action, dispatched: dict[str, Any], kind: str):
     """Bound only GUI app launch; other actions retain their normal semantics."""
     if kind != "open_app":
@@ -238,7 +530,12 @@ def _execute_real_action_bounded(execute_real_action, dispatched: dict[str, Any]
 
 
 def _computer_use(
-    policy: WorkspacePolicy | None, tool: str, input_obj: Mapping[str, Any]
+    policy: WorkspacePolicy | None,
+    tool: str,
+    input_obj: Mapping[str, Any],
+    *,
+    request_id: str = "",
+    action_id: str = "",
 ) -> dict[str, Any]:
     """Real computer_use dispatch (delegation).
 
@@ -279,6 +576,15 @@ def _computer_use(
         _reject_unrenderable(target, "target")
     if not target and action in ("open_app", "open_folder") and isinstance(text_val, str):
         target = text_val.strip()
+
+    # Canonical bounded wait (seconds, 0.1..=30.0): the same field name and
+    # range the Rust schema and the intent parser use.
+    seconds_val = input_obj.get("seconds")
+    if seconds_val is not None:
+        if isinstance(seconds_val, bool) or not isinstance(seconds_val, (int, float)):
+            raise ToolExecutionError("invalid_payload", "seconds must be a number")
+        if not (0.1 <= float(seconds_val) <= 30.0):
+            raise ToolExecutionError("invalid_payload", "seconds must be within 0.1..30.0")
 
     # Explicit allowlist of delegated actions — no open-ended dispatch.
     # Anything outside this is a deterministic error, not a side effect.
@@ -330,14 +636,22 @@ def _computer_use(
         dispatched["keys"] = [k.strip() for k in text_val.split("+") if k.strip()]
     if coordinate is not None:
         dispatched["coordinate"] = coordinate
+    if action == "wait" and seconds_val is not None:
+        dispatched["seconds"] = float(seconds_val)
     # Caller-provided coordinate is treated as advisory — real click planning
     # is delegated to computer_use_click_planner_ru via the backend.
 
     result = _execute_real_action_bounded(execute_real_action, dispatched, kind)
+    result = _normalize_computer_use_result(
+        result,
+        action=action,
+        request_id=request_id,
+        action_id=action_id,
+    )
 
     # Normalize sidecar response shape — always include tool identity.
     result.setdefault("tool", tool)
-    result.setdefault("action", action)
+    _trace_tool_result(action, result)
     return result
 
 
@@ -614,8 +928,22 @@ def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
     input_obj = payload.get("input")
     if not isinstance(input_obj, Mapping):
         raise ToolExecutionError("invalid_payload", "input must be an object")
+    if tool in DANGEROUS_TOOLS:
+        # Downstream defense-in-depth: the Rust boundary already consumed the
+        # one-time token; this boundary re-verifies the grant material before
+        # any dangerous action runs.
+        _verify_execution_grant(payload, tool, input_obj, workspace, session)
+    elif isinstance(payload.get("grant"), Mapping):
+        # A grant presented for a guarded tool must still be valid.
+        _verify_execution_grant(payload, tool, input_obj, workspace, session)
     if tool == "computer_use":
-        return _computer_use(None, tool, input_obj)
+        return _computer_use(
+            None,
+            tool,
+            input_obj,
+            request_id=str(payload.get("request_id") or "").strip(),
+            action_id=str(payload.get("action_id") or "").strip(),
+        )
     try:
         policy = WorkspacePolicy(workspace, workspace_digest, session)
     except WorkspacePolicyError as exc:

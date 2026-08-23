@@ -44,29 +44,57 @@
 
   // Managed flow state
   $: managedState = $managedRuntimeStore.status?.state ?? 'NotInstalled';
-  $: managedSelectedModel = $managedRuntimeStore.catalog.find((m) => m.model_id === $managedRuntimeStore.selectedModelId);
-  // The managed catalog also contains download candidates. The launcher picker
-  // must list only models that exist locally and passed validation, otherwise a
-  // removed catalog artifact is misleadingly presented as selectable.
-  $: visibleManagedModels = $managedRuntimeStore.catalog.filter((model) =>
-    $managedRuntimeStore.installedArtifacts.some((artifact) =>
-      artifact.kind === 'model' &&
-      artifact.artifact_id === model.model_id &&
-      artifact.installation_status === 'valid'
-    )
-  );
-  $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === managedSelectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
-  $: canBindManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModel);
-  $: managedTone = managedState === 'Ready' ? 'ready' : managedState === 'Failed' ? 'danger' : managedState === 'Starting' || managedState === 'Validating' || managedState === 'Stopping' ? 'info' : 'disabled';
+  $: managedSelectedModel = $managedRuntimeStore.catalog.find((m) => m.model_id === $managedRuntimeStore.selectedModelId) ?? null;
   $: managedSetupRunning = $artifactAcquisitionStore.setup.lifecycle === 'running' || $acquisitionBusy;
-  $: approvedSetupModels = $artifactAcquisitionStore.artifacts.filter((artifact) => artifact.kind === 'model' && artifact.trust_kind === 'approved_catalog');
-  // A user-supplied GGUF can already be valid even while the managed runtime is
-  // absent. Prefer it over the catalog download target so setup installs only
-  // the required engine and never hides a real local model behind onboarding.
-  $: selectedManagedCatalogModel = $managedRuntimeStore.catalog.find((model) => model.model_id === $managedRuntimeStore.selectedModelId) ?? null;
-  $: setupTargetModel = approvedSetupModels.find((artifact) => artifact.artifact_id === $managedRuntimeStore.selectedModelId) ?? approvedSetupModels[0] ?? null;
-  $: setupTargetModelId = selectedManagedCatalogModel?.model_id ?? setupTargetModel?.artifact_id ?? '';
-  $: setupTargetLabel = selectedManagedCatalogModel?.display_name ?? setupTargetModel?.display_name ?? $t('setup.select_local_model');
+
+  type ManagedModelChoice = {
+    readonly model_id: string;
+    readonly display_name: string;
+    readonly installed: boolean;
+  };
+
+  function isForbiddenModel(modelId: string, displayName: string): boolean {
+    return /qwen2\.5[- _]?1\.5b/i.test(`${modelId} ${displayName}`);
+  }
+
+  // The drawer must use the same union as Settings: approved catalog models
+  // plus custom/user-supplied models. The old implementation only looked at
+  // managedRuntimeStore.catalog and then hid the selector unless >1 installed
+  // entries existed, which made a valid custom Qwen3 model disappear behind
+  // the one-click setup hero.
+  $: visibleManagedModels = (() => {
+    const byId = new Map<string, ManagedModelChoice>();
+    const isInstalled = (modelId: string) => $managedRuntimeStore.installedArtifacts.some((artifact) =>
+      artifact.kind === 'model' && artifact.artifact_id === modelId && artifact.installation_status === 'valid'
+    );
+    for (const model of $managedRuntimeStore.catalog) {
+      if (!isForbiddenModel(model.model_id, model.display_name)) {
+        byId.set(model.model_id, {
+          model_id: model.model_id,
+          display_name: model.display_name,
+          installed: isInstalled(model.model_id)
+        });
+      }
+    }
+    for (const artifact of $artifactAcquisitionStore.artifacts) {
+      if (artifact.kind !== 'model' || isForbiddenModel(artifact.artifact_id, artifact.display_name)) continue;
+      byId.set(artifact.artifact_id, {
+        model_id: artifact.artifact_id,
+        display_name: artifact.display_name,
+        installed: isInstalled(artifact.artifact_id)
+      });
+    }
+    return [...byId.values()];
+  })();
+  $: selectedAvailableModel = visibleManagedModels.find((model) => model.model_id === $managedRuntimeStore.selectedModelId) ?? null;
+  $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === selectedAvailableModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
+  $: canBindManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModelId);
+  $: managedTone = managedState === 'Ready' ? 'ready' : managedState === 'Failed' ? 'danger' : managedState === 'Starting' || managedState === 'Validating' || managedState === 'Stopping' ? 'info' : 'disabled';
+  $: selectedModelIdIsAvailable = visibleManagedModels.some((model) => model.model_id === $managedRuntimeStore.selectedModelId);
+  $: setupTargetModelId = selectedModelIdIsAvailable
+    ? $managedRuntimeStore.selectedModelId
+    : visibleManagedModels[0]?.model_id ?? '';
+  $: setupTargetLabel = visibleManagedModels.find((model) => model.model_id === setupTargetModelId)?.display_name ?? $t('setup.select_local_model');
   $: canSetupManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModelId);
   $: activeDownload = Object.values($artifactAcquisitionStore.downloads).find(d => !['cancelled', 'completed', 'failed'].includes(d.lifecycle)) ?? null;
 
@@ -117,7 +145,7 @@
   }
 
   async function onConfirmManagedBinding() {
-    const targetModelId = $managedRuntimeStore.selectedModelId || setupTargetModelId;
+    const targetModelId = selectedModelIdIsAvailable ? $managedRuntimeStore.selectedModelId : setupTargetModelId;
     if (!targetModelId) return;
     if ($managedRuntimeStore.selectedModelId !== targetModelId) {
       await setManagedSelectedModel(targetModelId);
@@ -269,7 +297,7 @@
 
           {#if managedState === 'NotInstalled'}
             <div class="hero-empty-state">
-              {#if visibleManagedModels.length > 1}
+              {#if visibleManagedModels.length > 0}
                 <label class="form-field">
                   <span>{$t('setup.model')}</span>
                   <select disabled={$inferenceBusy || managedSetupRunning} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
@@ -280,9 +308,6 @@
                   </select>
                 </label>
               {/if}
-              <div class="hero-icon">
-                <Icon name="spark" size={48} />
-              </div>
               <span class="setup-kicker">{$t('setup.recommended_path')}</span>
               <p class="empty-title">{$t('setup.hero_title')}</p>
               <p class="empty-desc">{$t('setup.hero_desc')}</p>
@@ -350,7 +375,7 @@
               {/if}
             </div>
           {:else}
-            {#if visibleManagedModels.length > 1}
+            {#if visibleManagedModels.length > 0}
               <label class="form-field">
                 <span>{$t('setup.model')}</span>
                 <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>

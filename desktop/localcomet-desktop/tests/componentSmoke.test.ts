@@ -9,7 +9,7 @@ import MessageComposer from '../src/lib/components/chat/MessageComposer.svelte';
 import SettingsPanel from '../src/lib/components/shell/SettingsPanel.svelte';
 import ToolCallCard from '../src/lib/components/chat/ToolCallCard.svelte';
 import { mockToolCall } from '../src/lib/data/mockData';
-import { resetShellStores } from '../src/lib/stores/shellStore';
+import { resetShellStores, setVoiceMode } from '../src/lib/stores/shellStore';
 import { requestApprovalForTool, resetApprovalStore } from '../src/lib/stores/approvalStore';
 
 describe('component smoke tests', () => {
@@ -58,11 +58,58 @@ describe('component smoke tests', () => {
     expect(html).not.toContain('Настроить локальный AI');
   });
 
+  it('labels voice output toggle according to its current state', () => {
+    let html = render(MessageComposer).body;
+    expect(html).toContain('aria-label="Включить голосовое озвучивание"');
+    setVoiceMode(true);
+    html = render(MessageComposer).body;
+    expect(html).toContain('aria-label="Отключить голосовое озвучивание"');
+  });
+
   it('renders the tool card with sanitized target', () => {
     const html = render(ToolCallCard, { props: { tool: mockToolCall } }).body;
     expect(html).toContain('Инструменты');
     expect(html).toContain('Не настроено');
     expect(html).toContain('SKIPPED');
+  });
+
+  it('renders a real open_app launch with pending verification as waiting', () => {
+    const html = render(ToolCallCard, { props: { tool: {
+      operation: 'computer_use',
+      target: '{"action":"open_app","target":"notepad"}',
+      status: 'WAITING',
+      elapsed: '-',
+      detail: 'Tool execution requested',
+      result: JSON.stringify({ ok: true, status: 'executed', verification: 'pending', app: 'notepad' })
+    } } }).body;
+    expect(html).toContain('Ожидает');
+    expect(html).not.toContain('Не выполнено');
+  });
+
+  it('renders a verified computer-use result as completed', () => {
+    const html = render(ToolCallCard, { props: { tool: {
+      operation: 'computer_use',
+      target: '{"action":"open_app","target":"notepad"}',
+      status: 'PASS',
+      elapsed: '-',
+      detail: 'Tool execution completed',
+      result: JSON.stringify({ ok: true, status: 'executed', verification: 'verified', app: 'notepad' })
+    } } }).body;
+    expect(html).toContain('Выполнено');
+    expect(html).not.toContain('Не выполнено');
+  });
+
+  it('does not render malformed structured computer-use success as completed', () => {
+    const html = render(ToolCallCard, { props: { tool: {
+      operation: 'computer_use',
+      target: '{"action":"open_app","target":"notepad"}',
+      status: 'FAIL',
+      elapsed: '-',
+      detail: 'Malformed backend result',
+      result: JSON.stringify({ schema_version: 'computer_use.result.v1', status: 'completed', ok: true })
+    } } }).body;
+    expect(html).not.toContain('Выполнено');
+    expect(html).toContain('Не выполнено');
   });
 
   it('renders the approval card empty state when nothing is pending', () => {

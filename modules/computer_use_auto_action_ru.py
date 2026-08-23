@@ -75,9 +75,10 @@ def default_auto_policy() -> Dict[str, Any]:
             "escape",
             "ctrl+a",
             "ctrl+c",
-            "ctrl+v",
             "ctrl+f",
             "alt+tab",
+            # ctrl+v deliberately absent: clipboard-paste would bypass
+            # max_type_chars; paste goes through the type/paste path instead.
         ],
         "blocked": [
             "file changes require explicit confirmation",
@@ -349,7 +350,17 @@ def _send_unicode_text(text: str) -> Dict[str, Any]:
         INPUT_KEYBOARD = 1
         KEYEVENTF_UNICODE = 0x0004
         KEYEVENTF_KEYUP = 0x0002
+        # Newlines must be real Enter presses (VK_RETURN), not literal U+000A
+        # unicode events: many controls ignore a bare LF keystroke.
+        VK_RETURN = 0x0D
         for unit in units:
+            if unit == 0x000A:
+                for vk_flags in (0, KEYEVENTF_KEYUP):
+                    event = INPUT(type=INPUT_KEYBOARD)
+                    event.ki = KEYBDINPUT(VK_RETURN, 0, vk_flags, 0, 0)
+                    if send_input(1, ctypes.byref(event), ctypes.sizeof(INPUT)) != 1:
+                        return {"ok": False, "executed": False, "error": "unicode_sendinput_failed"}
+                continue
             for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
                 event = INPUT(type=INPUT_KEYBOARD)
                 event.ki = KEYBDINPUT(0, unit, flags, 0, 0)

@@ -37,20 +37,39 @@ def _trace(event: Dict[str, Any]) -> str:
 
 def observe_screen() -> Dict[str, Any]:
     _ensure_dirs()
-    result = {"ok": True, "mode": "computer_use_observe", "created_at": _now(), "active_window": "", "screen_size": {}, "screenshot_path": "", "screenshot_hash": "", "limitations": []}
+    result = {"ok": True, "mode": "computer_use_observe", "created_at": _now(), "active_window": "", "screen_size": {}, "screenshot_path": "", "screenshot_hash": "", "limitations": [], "observation_state": "failed"}
     try:
         from modules.pc_desktop_primitives import dispatch as desktop_dispatch
         probe = desktop_dispatch("pc desktop screenshot")
         if isinstance(probe, dict):
             result["desktop_probe"] = probe
             result["screenshot_path"] = str(probe.get("path") or probe.get("screenshot") or probe.get("screenshot_path") or "")
-            result["active_window"] = str(probe.get("active_window") or probe.get("window") or "")
+            active = probe.get("active_window") or probe.get("window") or ""
+            if isinstance(active, dict):
+                result["active_window"] = str(active.get("title") or active.get("name") or "")
+            else:
+                result["active_window"] = str(active)
+            for key in ("screenshot_sha256", "screenshot_backend", "screenshot_scope", "screenshot_bytes", "observation_state", "ui_elements_count", "uia_status"):
+                if key in probe:
+                    result[key] = probe[key]
             if isinstance(probe.get("screen_size"), dict):
                 result["screen_size"] = probe["screen_size"]
     except Exception as exc:
         result["limitations"].append(f"desktop observer unavailable: {exc}")
     if not result["screenshot_path"]:
         result["limitations"].append("No screenshot path returned; fallback observation only.")
+    # Truthful observation state: a completely failed observation must not
+    # report ok=True. available = screenshot + window identity; partial = one
+    # of the two; failed = neither.
+    has_screenshot = bool(result["screenshot_path"])
+    has_window = bool(result["active_window"])
+    if has_screenshot and has_window:
+        result["observation_state"] = "available"
+    elif has_screenshot or has_window:
+        result["observation_state"] = "partial"
+    else:
+        result["observation_state"] = "failed"
+        result["ok"] = False
     result["trace_path"] = _trace({"event": "observe_screen", "result": result})
     state = _read_json(STATE_PATH, {})
     state.update({"latest_observation": result, "latest_trace_path": result["trace_path"], "updated_at": _now()})
@@ -136,13 +155,16 @@ def execute_confirmed_action(action_id: str) -> Dict[str, Any]:
         if item.get("action_id") == action_id:
             if not item.get("confirmed"):
                 return {"ok": False, "mode": "computer_use_run", "error": "action not confirmed", "action_id": action_id}
-            item["executed"] = True
-            item["executed_at"] = _now()
-            item["execution_policy"] = "v6.47d auto GUI policy: click/type allowed when grounded and non-file"
+            # Dry-run-only contract: this legacy queue path never performs the
+            # real action, so it must not record executed=True. It refreshes
+            # the observation for the confirmed goal only; real execution goes
+            # through the allowlisted executor (computer_use_real_actions_ru).
+            item["executed"] = False
+            item["execution_policy"] = "dry_run_only: legacy queue does not execute; use the allowlisted real executor"
             _write_json(QUEUE_PATH, queue)
             observation = observe_screen()
             ui_map = build_ui_map()
-            return {"ok": True, "mode": "computer_use_run", "action_id": action_id, "executed": True, "policy": item["execution_policy"], "observation": observation, "ui_map_path": ui_map.get("ui_map_path"), "trace_path": _trace({"event": "execute_confirmed_action", "action_id": action_id})}
+            return {"ok": True, "mode": "computer_use_run", "action_id": action_id, "executed": False, "policy": item["execution_policy"], "observation": observation, "ui_map_path": ui_map.get("ui_map_path"), "trace_path": _trace({"event": "execute_confirmed_action", "action_id": action_id})}
     return {"ok": False, "mode": "computer_use_run", "error": "action not found", "action_id": action_id}
 
 

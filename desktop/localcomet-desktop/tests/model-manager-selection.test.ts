@@ -24,7 +24,7 @@ function makeModelArtifact(overrides: Partial<ApprovedDownloadableArtifact> = {}
     artifact_id: 'model-qwen1.5b',
     kind: 'model',
     trust_kind: 'approved_catalog',
-    display_name: 'Qwen2.5-1.5B',
+    display_name: 'Qwen3-1.7B',
     expected_bytes: 1024,
     format: 'GGUF',
     quantization: 'Q4_K_M',
@@ -141,10 +141,10 @@ describe('ModelManagerSection multi-model selection', () => {
     expect(get(managedRuntimeStore).selectedModelId).toBe('model-a');
   });
 
-  it('prefers the lightweight Qwen2.5 1.5B baseline when both approved models are installed', () => {
+  it('prefers the installed Qwen3 1.7B baseline over a larger model', () => {
     const baseModel = makeModelArtifact({
-      artifact_id: 'qwen2.5-1.5b-instruct-q4-k-m',
-      display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+      artifact_id: 'custom-hf-72962196cbe48a1dc6b432301cb3666a0aad360a53a43139094d52aa62b0f4f6',
+      display_name: 'Qwen3 1.7B Q4_K_M',
       expected_bytes: 1066
     });
     const largerModel = makeModelArtifact({
@@ -187,7 +187,7 @@ describe('ModelManagerSection multi-model selection', () => {
       [baseModel, largerModel],
       new Set([baseModel.artifact_id, largerModel.artifact_id])
     );
-    expect(selected?.artifact_id).toBe('qwen2.5-1.5b-instruct-q4-k-m');
+    expect(selected?.artifact_id).toBe('custom-hf-72962196cbe48a1dc6b432301cb3666a0aad360a53a43139094d52aa62b0f4f6');
   });
 
   it('shows custom models separately with warning and invalid-removal guidance', () => {

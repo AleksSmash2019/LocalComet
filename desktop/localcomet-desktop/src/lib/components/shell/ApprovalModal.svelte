@@ -4,26 +4,47 @@
   import { invoke } from '@tauri-apps/api/core';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n';
+  import {
+    approvalPrompt,
+    clearApprovalPrompt,
+    rejectActiveApproval,
+    setApprovalPrompt,
+    type ActiveApprovalPrompt
+  } from '$lib/stores/approvalStore';
 
-  interface ApprovalRequestPayload {
-    request_id: string;
-    tool: string;
-    risk_level: string;
-    target_summary: string;
-    side_effect_category: string;
-    destructive: boolean;
-  }
+  // The Rust prompt denies issuance after its own 120s timeout; mirror that
+  // client-side so an ignored card does not outlive the server-side rejection.
+  const PROMPT_TIMEOUT_MS = 120_000;
 
   let unlisten: UnlistenFn | undefined;
   let destroyed = false;
-  let currentRequest: ApprovalRequestPayload | null = null;
+  let currentRequest: ActiveApprovalPrompt | null = null;
   let resolving = false;
   let resolutionError = "";
+  let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function clearDismissTimer(): void {
+    if (dismissTimer) {
+      clearTimeout(dismissTimer);
+      dismissTimer = undefined;
+    }
+  }
 
   onMount(() => {
     let active = true;
-    listen<ApprovalRequestPayload>('request_tool_approval', (event) => {
-      currentRequest = event.payload;
+    const stopPromptSync = approvalPrompt.subscribe((prompt) => {
+      currentRequest = prompt;
+      if (!prompt) {
+        clearDismissTimer();
+        resolving = false;
+      }
+    });
+    listen<ActiveApprovalPrompt>('request_tool_approval', (event) => {
+      setApprovalPrompt(event.payload);
+      clearDismissTimer();
+      dismissTimer = setTimeout(() => {
+        void rejectActiveApproval();
+      }, PROMPT_TIMEOUT_MS);
     }).then((unlistenFn) => {
       if (!active || destroyed) {
         unlistenFn();
@@ -36,11 +57,14 @@
 
     return () => {
       active = false;
+      stopPromptSync();
     };
   });
 
   onDestroy(() => {
     destroyed = true;
+    clearDismissTimer();
+    void rejectActiveApproval();
     if (unlisten) {
       unlisten();
       unlisten = undefined;
@@ -51,6 +75,7 @@
     if (!currentRequest || resolving) return;
     resolutionError = '';
     resolving = true;
+    clearDismissTimer();
     try {
       await invoke('resolve_tool_approval', {
         requestId: currentRequest.request_id,
@@ -63,7 +88,7 @@
     } finally {
       resolving = false;
       if (!resolutionError) {
-        currentRequest = null;
+        clearApprovalPrompt();
       }
     }
   }
@@ -90,13 +115,28 @@
       return summary;
     }
   }
+
+  function formatExpiry(expiresAtUnixMs: number | undefined): string {
+    if (typeof expiresAtUnixMs !== 'number' || !Number.isFinite(expiresAtUnixMs) || expiresAtUnixMs <= 0) {
+      return get(t)('approval.expiry_unknown');
+    }
+    return new Date(expiresAtUnixMs).toLocaleTimeString();
+  }
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape' && currentRequest && !resolving) resolve('reject'); }} />
 
 {#if currentRequest}
   <div class="modal-backdrop">
-    <div class="modal-content card-surface" role="dialog" aria-modal="true" aria-labelledby="approval-title">
+    <div
+      class="modal-content card-surface"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="approval-title"
+      data-approval-request-id={currentRequest.request_id}
+      data-model-request-id={currentRequest.model_request_id ?? ''}
+      data-model-action-id={currentRequest.model_action_id ?? ''}
+    >
       <h2 id="approval-title">{$t('approval.tool')}: {currentRequest.tool}</h2>
       
       <dl>
@@ -112,11 +152,15 @@
           <dt>{$t('approval.side_effects')}</dt>
           <dd>{$t(`approval.side_effects.${toSnakeCase(currentRequest.side_effect_category)}`)}</dd>
         </div>
+        <div>
+          <dt>{$t('approval.expires')}</dt>
+          <dd>{formatExpiry(currentRequest.expires_at_unix_ms)}</dd>
+        </div>
       </dl>
 
-      {#if currentRequest.destructive}
+      {#if currentRequest.risk_level === 'dangerous'}
         <div class="warning-banner">
-          ⚠️ {$t('approval.warning_destructive')}
+          ⚠️ {$t(currentRequest.destructive ? 'approval.warning_destructive' : 'approval.warning_sensitive')}
         </div>
       {/if}
 

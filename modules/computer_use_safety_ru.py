@@ -37,17 +37,31 @@ def redact_text(text: str) -> str:
 
 
 def safety_check_goal(goal: str) -> Dict[str, Any]:
-    problems = _find_problems(goal)
+    # Fail-closed: a policy exception must never surface as a safe goal for an
+    # action that can have side effects.
+    try:
+        problems = _find_problems(goal)
+    except Exception as exc:
+        return {"ok": False, "blocked": True, "risk": "blocked", "reason": f"goal policy unavailable: {exc}", "problem_types": ["policy_error"]}
     if problems:
         return {"ok": False, "blocked": True, "risk": "blocked", "reason": "; ".join(p["reason"] for p in problems), "problem_types": [p["type"] for p in problems]}
     return {"ok": True, "blocked": False, "risk": "low", "reason": "goal allowed for safe planning", "problem_types": []}
 
 
 def safety_check_action(action: Dict[str, Any]) -> Dict[str, Any]:
-    kind = str((action or {}).get("kind", "")).strip().lower()
-    target = (action or {}).get("target") or {}
-    text = " ".join([str(action.get("reason", "")), str(action.get("text", "")), str(target.get("element_description", "")), str(target.get("window_title", ""))])
-    problems = _find_problems(text)
+    # Fail-closed: a policy exception must never surface as ok=true/blocked=false
+    # for an action that can have side effects (master prompt, Этап 5).
+    try:
+        if not isinstance(action, dict):
+            return {"ok": False, "blocked": True, "risk": "blocked", "allowed_to_execute": False, "requires_confirmation": True, "reason": "action must be an object", "problem_types": ["invalid_action"], "notes": []}
+        kind = str(action.get("kind", "")).strip().lower()
+        target = action.get("target") or {}
+        if not isinstance(target, dict):
+            target = {}
+        text = " ".join([str(action.get("reason", "")), str(action.get("text", "")), str(target.get("element_description", "")), str(target.get("window_title", ""))])
+        problems = _find_problems(text)
+    except Exception as exc:
+        return {"ok": False, "blocked": True, "risk": "blocked", "allowed_to_execute": False, "requires_confirmation": True, "reason": f"action policy unavailable: {exc}", "problem_types": ["policy_error"], "notes": []}
 
     if problems:
         return {"ok": False, "blocked": True, "risk": "blocked", "allowed_to_execute": False, "requires_confirmation": True, "reason": "; ".join(p["reason"] for p in problems), "problem_types": [p["type"] for p in problems], "notes": []}
@@ -57,17 +71,17 @@ def safety_check_action(action: Dict[str, Any]) -> Dict[str, Any]:
             from modules.computer_use_auto_action_ru import auto_policy_for_action
             auto = auto_policy_for_action(action)
             return {
-                "ok": auto.get("ok", True),
+                "ok": auto.get("ok", False),
                 "blocked": auto.get("blocked", False),
-                "risk": auto.get("risk", "low"),
+                "risk": auto.get("risk", "medium"),
                 "allowed_to_execute": auto.get("allowed_to_execute", False),
-                "requires_confirmation": auto.get("requires_confirmation", False),
+                "requires_confirmation": auto.get("requires_confirmation", True),
                 "reason": auto.get("reason", "automatic GUI policy"),
                 "problem_types": auto.get("classification", {}).get("problem_types", []),
                 "notes": ["v6.47d: non-file grounded GUI click/type may run automatically"],
             }
         except Exception as exc:
-            return {"ok": True, "blocked": False, "risk": "medium", "allowed_to_execute": False, "requires_confirmation": False, "reason": f"auto policy unavailable: {exc}", "problem_types": [], "notes": ["fallback: action needs grounding"]}
+            return {"ok": False, "blocked": True, "risk": "blocked", "allowed_to_execute": False, "requires_confirmation": True, "reason": f"auto policy unavailable: {exc}", "problem_types": ["policy_error"], "notes": ["fail-closed: action requires a working policy before execution"]}
 
     if kind not in ALLOWED_EXECUTION_KINDS_V643:
         return {"ok": False, "blocked": True, "risk": "blocked", "allowed_to_execute": False, "requires_confirmation": True, "reason": f"unsupported action kind: {kind}", "problem_types": ["unsupported_action_kind"], "notes": []}

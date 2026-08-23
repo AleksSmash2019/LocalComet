@@ -35,7 +35,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 const CATALOG_BYTES: &[u8] = include_bytes!("../resources/localcomet/approved-artifacts.v1.json");
 const EMBEDDED_CATALOG_SHA256: &str =
-    "0fe82e89b143e6f520a650435a6a904bb2fc3c4d905a46e2d3b85b2dc0d6301b";
+    "54e241d113d3fd2c57f1c0be74a8b9bcf56dd7c0a29d86c04ad641d719b3e081";
 const CATALOG_ID: &str = "localcomet-approved-artifacts";
 const SCHEMA_VERSION: u32 = 1;
 const MAX_ARTIFACTS: usize = 32;
@@ -4770,7 +4770,7 @@ mod tests {
             EMBEDDED_CATALOG_SHA256
         );
         assert_eq!(service.catalog.runtimes.len(), 2);
-        assert_eq!(service.catalog.models.len(), 2);
+        assert_eq!(service.catalog.models.len(), 1);
 
         let runtime = &service.catalog.runtimes[0];
         assert_eq!(runtime.runtime_id, "llama-cpp-windows-x86-64-cpu-bootstrap");
@@ -4836,29 +4836,29 @@ mod tests {
         );
 
         let model = &service.catalog.models[0];
-        assert_eq!(model.model_id, "qwen2.5-1.5b-instruct-q4-k-m");
+        assert_eq!(model.model_id, "qwen2.5-7b-instruct-q4-k-m");
         assert_eq!(
             model.upstream_revision,
-            "91cad51170dc346986eccefdc2dd33a9da36ead9"
+            "a8bb3906b78b3009770d7ae7d116be2ea892802d"
         );
-        assert_eq!(model.asset_filename, "qwen2.5-1.5b-instruct-q4_k_m.gguf");
-        assert_eq!(model.asset_bytes, 1_117_320_736);
+        assert_eq!(model.asset_filename, "Qwen2.5-7B-Instruct-Q4_K_M.gguf");
+        assert_eq!(model.asset_bytes, 4_683_073_952);
         assert_eq!(
             model.asset_sha256,
-            "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
+            "3e357ab3eda2c442f25c0080bb8998eedc05fd16ce1728eacff9ccc5c3d240c6"
         );
         assert_eq!(
             model.acquisition.primary_url,
-            "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+            "https://huggingface.co/lmstudio-community/Qwen2.5-7B-Instruct-GGUF/resolve/a8bb3906b78b3009770d7ae7d116be2ea892802d/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
         );
         assert_eq!(
             model.acquisition.expected_filename,
-            "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+            "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
         );
-        assert_eq!(model.acquisition.expected_bytes, 1_117_320_736);
+        assert_eq!(model.acquisition.expected_bytes, 4_683_073_952);
         assert_eq!(
             model.acquisition.expected_sha256,
-            "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
+            "3e357ab3eda2c442f25c0080bb8998eedc05fd16ce1728eacff9ccc5c3d240c6"
         );
         let model_hosts: Vec<&str> = model
             .acquisition
@@ -5481,7 +5481,7 @@ mod tests {
         );
         assert_eq!(
             service.catalog.models[0].model_id,
-            "qwen2.5-1.5b-instruct-q4-k-m"
+            "qwen2.5-7b-instruct-q4-k-m"
         );
 
         let installed = service.installed_artifacts();
@@ -5491,16 +5491,16 @@ mod tests {
             .iter()
             .all(|artifact| artifact.installation_status == InstallationStatus::Valid));
         let readiness = service
-            .model_readiness("qwen2.5-1.5b-instruct-q4-k-m")
+            .model_readiness("qwen2.5-7b-instruct-q4-k-m")
             .expect("approved model readiness");
         assert_eq!(readiness.compatibility, CompatibilityStatus::Compatible);
         assert_eq!(readiness.readiness, ModelReadiness::Ready);
         assert!(readiness.launchable);
         let launch = service
-            .resolve_launch("qwen2.5-1.5b-instruct-q4-k-m")
+            .resolve_launch("qwen2.5-7b-instruct-q4-k-m")
             .expect("catalog-resolved launch identity");
         assert_eq!(launch.runtime_id, "llama-cpp-windows-x86-64-cpu-bootstrap");
-        assert_eq!(launch.model_id, "qwen2.5-1.5b-instruct-q4-k-m");
+        assert_eq!(launch.model_id, "qwen2.5-7b-instruct-q4-k-m");
         drop(launch);
         assert!(service
             .artifact_validation_status("unapproved-runtime")
@@ -5522,12 +5522,12 @@ mod tests {
                 && artifact.observed_sha256.is_none()
         }));
         let readiness = service
-            .model_readiness("qwen2.5-1.5b-instruct-q4-k-m")
+            .model_readiness("qwen2.5-7b-instruct-q4-k-m")
             .expect("approved model readiness");
         assert_eq!(readiness.readiness, ModelReadiness::ModelNotInstalled);
         assert!(!readiness.launchable);
         assert!(service
-            .resolve_launch("qwen2.5-1.5b-instruct-q4-k-m")
+            .resolve_launch("qwen2.5-7b-instruct-q4-k-m")
             .is_err());
         assert!(service
             .artifact_validation_status("unapproved-runtime")

@@ -5,6 +5,7 @@ import {
   MANAGED_INFERENCE_TIMEOUTS_MS,
   applyModelGatewayEvent,
   cancelLocalModelTurn,
+  inferenceBusy,
   inferenceRequestStore,
   managedModelReady,
   managedRuntimeStore,
@@ -23,7 +24,7 @@ import {
 import { setLocale } from '../src/lib/i18n';
 import type { ModelGatewayEvent } from '../src/lib/types/modelGateway';
 
-const MODEL_ID = 'qwen2.5-1.5b-instruct-q4-k-m';
+const MODEL_ID = 'qwen3-1.7b-instruct-q4-k-m';
 const RUNTIME_ID = 'llama-cpp-windows-x86-64-cpu-bootstrap';
 const RUNTIME_INSTANCE_ID = 'd'.repeat(32);
 const FINGERPRINT = 'b'.repeat(64);
@@ -115,7 +116,7 @@ function seedReadyManagedModel(): void {
       runtime_instance_id: RUNTIME_INSTANCE_ID,
       runtime_instance_fingerprint: 'e'.repeat(64),
       model_id: MODEL_ID,
-      model_display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+      model_display_name: 'Qwen3 1.7B Instruct Q4_K_M',
       binding_fingerprint: ATTACH_FINGERPRINT,
       model_state: 'Ready',
       inference_ready: true,
@@ -127,8 +128,8 @@ function seedReadyManagedModel(): void {
     catalog: [{
       model_id: MODEL_ID,
       provider: 'Qwen',
-      family: 'Qwen2.5',
-      display_name: 'Qwen2.5 1.5B Instruct Q4_K_M',
+      family: 'Qwen3',
+      display_name: 'Qwen3 1.7B Instruct Q4_K_M',
       format: 'GGUF',
       quantization: 'Q4_K_M',
       upstream_repository: 'https://example.invalid/model',
@@ -152,7 +153,8 @@ function seedReadyManagedModel(): void {
     harnessId: 'minimal',
     binding,
     logs: { stdout_tail: [], stderr_tail: [] },
-    lastError: null
+    lastError: null,
+    fallbackSelectionNotice: null
   });
   modelGatewayStore.update((state) => ({ ...state, binding, status: 'Bound', lastError: null }));
 }
@@ -220,6 +222,14 @@ afterEach(() => {
 });
 
 describe('typed real-model chat lifecycle', () => {
+  it('keeps approval and verification turns busy instead of pretending the turn is idle', () => {
+    const baseline = get(inferenceRequestStore);
+    for (const lifecycle of ['awaiting_approval', 'awaiting_verification'] as const) {
+      inferenceRequestStore.set({ ...baseline, requestId: 'a'.repeat(24), lifecycle });
+      expect(get(inferenceBusy)).toBe(true);
+    }
+  });
+
   it('derives truthful readiness and never generates without it', async () => {
     expect(get(managedRuntimeStore).status?.binding_fingerprint).not.toBe(get(managedRuntimeStore).binding?.binding_fingerprint);
     expect(get(managedModelReady)).toBe(true);
