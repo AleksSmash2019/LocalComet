@@ -728,6 +728,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     if args.command == "start":
+        if args.json:
+            print("HOLD: --json is not supported for interactive start", file=sys.stderr)
+            return 2
         legacy.ensure_runtime_python(legacy.source_root_from_launcher(), script_path=Path(__file__).resolve())
         if args.json:
             print("HOLD: --json is not supported for interactive start", file=sys.stderr)

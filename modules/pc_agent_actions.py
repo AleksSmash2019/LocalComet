@@ -1,7 +1,7 @@
+from modules.json_io import format_payload as format_action_result, write_json as _safe_write_json
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
-import json
 import subprocess
 
 from core.state import get_value, set_value
@@ -87,11 +87,6 @@ def _stamp():
 def _norm(text):
     return str(text or "").lower().replace("ё", "е").strip()
 
-
-def _safe_write_json(path: Path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def _safe_write_text(path: Path, text):
@@ -383,7 +378,3 @@ def dispatch_action(command):
     }
 
 
-def format_action_result(payload):
-    if isinstance(payload, str):
-        return payload
-    return json.dumps(payload, ensure_ascii=False, indent=2)

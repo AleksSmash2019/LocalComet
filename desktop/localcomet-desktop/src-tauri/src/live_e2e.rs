@@ -267,6 +267,7 @@ mod tests {
             model_id: model_id.to_owned(),
             submitted_at_unix_ms: now_ms,
             max_tokens,
+            seed: crate::control_plane::DEFAULT_MODEL_SEED,
             binding_fingerprint: binding_fingerprint.to_owned(),
         };
         let assistant_context = AssistantContext::trusted("en", false, None)?;

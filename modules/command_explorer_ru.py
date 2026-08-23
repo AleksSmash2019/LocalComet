@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from modules.relative_paths import make_relative_path
 from typing import Any, Dict, List
 
 
@@ -11,6 +12,7 @@ COMMAND_EXPLORER_VERSION = "v6.59a"
 COMMAND_EXPLORER_NAME = "LocalComet Command Explorer RU"
 
 ROOT_PATH = Path(__file__).resolve().parents[1]
+_safe_relative = make_relative_path(ROOT_PATH)
 REPORT_DIR = ROOT_PATH / "Projects" / "Reports" / "command_explorer"
 
 BLOCKED_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist",
@@ -20,13 +22,6 @@ BLOCKED_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist",
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
-
-
-def _safe_relative(path: Path) -> str:
-    try:
-        return str(path.relative_to(ROOT_PATH)).replace("\\", "/")
-    except Exception:
-        return str(path).replace("\\", "/")
 
 
 def _is_skipped(path: Path) -> bool:

@@ -1,3 +1,4 @@
+import { isRecord } from './guards';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type {
@@ -131,10 +132,6 @@ function isEventMethod(value: unknown): boolean {
 function expectRecord(value: unknown): Readonly<Record<string, unknown>> {
   if (!isRecord(value)) throw { code: 'invalid_payload', message: 'Invalid bridge payload' };
   return value;
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isOneOf(value: unknown, options: readonly string[]): boolean {

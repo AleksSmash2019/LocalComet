@@ -41,10 +41,10 @@
 
 <section class="settings-section" aria-labelledby="skills-title">
   <div class="section-header">
-    <h3 id="skills-title">{$t('skills.title') || 'Skills (Extensions)'}</h3>
+    <h3 id="skills-title">{$t('skills.title_extended')}</h3>
     <button class="primary-button compact" disabled={$skillsStore.loading || isInstalling} onclick={handleInstall}>
       <Icon name="add" size={16} />
-      <span>{$t('skills.install_new') || 'Install Skill'}</span>
+      <span>{$t('skills.install_skill')}</span>
     </button>
   </div>
 
@@ -79,11 +79,11 @@
           </div>
 
           <div class="skill-permissions">
-            <strong>{$t('skills.permissions') || 'Permissions:'}</strong>
+            <strong>{$t('skills.permissions')}</strong>
             {#if skill.permissions && skill.permissions.length > 0}
               <span>{skill.permissions.join(', ')}</span>
             {:else}
-              <span class="muted">{$t('skills.no_permissions') || 'None'}</span>
+              <span class="muted">{$t('skills.no_permissions')}</span>
             {/if}
           </div>
 
@@ -95,10 +95,10 @@
             >
               {#if skill.state === 'enabled'}
                 <Icon name="stop" size={14} />
-                <span>{$t('skills.disable') || 'Disable'}</span>
+                <span>{$t('skills.disable')}</span>
               {:else}
                 <Icon name="play" size={14} />
-                <span>{$t('skills.enable') || 'Enable'}</span>
+                <span>{$t('skills.enable')}</span>
               {/if}
             </button>
             <button 
@@ -107,7 +107,7 @@
               onclick={() => handleUninstall(skill.id)}
             >
               <Icon name="delete" size={14} />
-              <span>{$t('skills.uninstall') || 'Uninstall'}</span>
+              <span>{$t('skills.uninstall')}</span>
             </button>
           </div>
         </div>

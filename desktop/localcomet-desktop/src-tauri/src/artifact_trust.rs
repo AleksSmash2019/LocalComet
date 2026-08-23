@@ -3838,8 +3838,16 @@ pub async fn import_custom_model(
     call_id: String,
 ) -> Result<String, String> {
     let source = std::path::PathBuf::from(&source_path);
-    if !source.exists() {
-        return Err("Source file does not exist".to_string());
+    let source_metadata = std::fs::symlink_metadata(&source)
+        .map_err(|e| format!("Source file metadata unavailable: {e}"))?;
+    if !source_metadata.is_file() || source_metadata.file_type().is_symlink() {
+        return Err("Source must be a regular non-symlink file".to_string());
+    }
+    if source_metadata.len() > MAX_MODEL_BYTES {
+        return Err(format!(
+            "Source file exceeds the {} byte limit",
+            MAX_MODEL_BYTES
+        ));
     }
 
     crate::approval_commands::validate_approval_token(
@@ -3863,11 +3871,13 @@ pub async fn import_custom_model(
 
     let roots = state.roots();
     let ts = now_unix_ms();
-    let uuid = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0)
-        .to_string();
+    let mut random_id = [0u8; 16];
+    getrandom::getrandom(&mut random_id)
+        .map_err(|e| format!("Unable to allocate secure import identifier: {e}"))?;
+    let uuid = random_id
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     let dest_filename = format!("{}-{}-{}", ts, uuid, safe_filename);
     let dest_path = roots.model_root.join(&dest_filename);
 

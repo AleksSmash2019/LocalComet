@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { invoke } from '@tauri-apps/api/core';
+  import { get } from 'svelte/store';
   import { t } from '$lib/i18n';
 
   interface ApprovalRequestPayload {
@@ -17,6 +18,7 @@
   let destroyed = false;
   let currentRequest: ApprovalRequestPayload | null = null;
   let resolving = false;
+  let resolutionError = "";
 
   onMount(() => {
     let active = true;
@@ -47,6 +49,7 @@
 
   async function resolve(decision: 'approve' | 'reject') {
     if (!currentRequest || resolving) return;
+    resolutionError = '';
     resolving = true;
     try {
       await invoke('resolve_tool_approval', {
@@ -55,9 +58,12 @@
       });
     } catch (err) {
       console.error(`Failed to resolve tool approval as ${decision}:`, err);
+      resolutionError = get(t)('approval.resolve_error');
     } finally {
       resolving = false;
-      currentRequest = null;
+      if (!resolutionError) {
+        currentRequest = null;
+      }
     }
   }
 
@@ -113,6 +119,9 @@
         </div>
       {/if}
 
+      {#if resolutionError}
+        <div class="approval-error" role="alert" aria-live="assertive">{$t('approval.resolve_error_prefix')} {resolutionError}</div>
+      {/if}
       <div class="actions">
         <button type="button" class="btn-reject" disabled={resolving} onclick={() => resolve('reject')}>
           {$t('approval.reject')}
@@ -196,6 +205,16 @@
     margin-bottom: var(--lc-space-4);
     font-size: 13px;
     font-weight: 500;
+  }
+
+  .approval-error {
+    margin: 0.75rem 0;
+    padding: 0.65rem 0.8rem;
+    color: #ffd7d7;
+    background: rgba(180, 35, 35, 0.22);
+    border: 1px solid rgba(255, 120, 120, 0.55);
+    border-radius: 0.4rem;
+    white-space: pre-wrap;
   }
 
   .actions {

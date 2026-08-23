@@ -120,11 +120,7 @@ def ask_gpt(
 def gpt_status():
     key = os.getenv("OPENAI_API_KEY", "").strip()
 
-    if key:
-        safe_key = key[:10] + "..." + key[-4:] if len(key) > 18 else "ключ найден"
-        key_status = f"✅ OPENAI_API_KEY найден: {safe_key}"
-    else:
-        key_status = "❌ OPENAI_API_KEY не найден"
+    key_status = 'OPENAI_API_KEY configured' if key else 'OPENAI_API_KEY not configured'
 
     return (
         "GPT Bridge status:\n"

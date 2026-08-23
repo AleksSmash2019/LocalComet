@@ -164,7 +164,7 @@ def _extract_zip(data: bytes, dest_dir: Path, written: list[str]) -> None:
                 continue
             target = (dest_dir / rel).resolve()
             if not target.is_relative_to(resolved_dest):
-                raise SkillError(SkillErrorCode.ARCHIVE_TRAVERSAL, "extraction path escapes target directory")
+                raise SkillError(SkillErrorCode.ARCHIVE_PATH_TRAVERSAL, "extraction path escapes target directory")
             if target.is_symlink():
                 raise SkillError(SkillErrorCode.ARCHIVE_SYMLINK_DENIED, "symlink destination in extraction is denied")
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -182,7 +182,7 @@ def _extract_targz(data: bytes, dest_dir: Path, written: list[str]) -> None:
                 continue
             target = (dest_dir / rel).resolve()
             if not target.is_relative_to(resolved_dest):
-                raise SkillError(SkillErrorCode.ARCHIVE_TRAVERSAL, "extraction path escapes target directory")
+                raise SkillError(SkillErrorCode.ARCHIVE_PATH_TRAVERSAL, "extraction path escapes target directory")
             if target.is_symlink():
                 raise SkillError(SkillErrorCode.ARCHIVE_SYMLINK_DENIED, "symlink destination in extraction is denied")
             target.parent.mkdir(parents=True, exist_ok=True)

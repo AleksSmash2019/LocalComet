@@ -1,7 +1,7 @@
+from modules.json_io import format_payload as format_pc_codex_result
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
-import json
 import traceback
 
 from core.state import get_value, set_value
@@ -330,8 +330,3 @@ def create_pc_codex_report(note=""):
     return result
 
 
-def format_pc_codex_result(payload):
-    if isinstance(payload, str):
-        return payload
-
-    return json.dumps(payload, ensure_ascii=False, indent=2)

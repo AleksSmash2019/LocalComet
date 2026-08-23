@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { requestApproval } from '$lib/bridge/approval';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface Skill {
@@ -39,7 +40,14 @@ function createSkillsStore() {
   async function installSkill(archivePath: string) {
     update(s => ({ ...s, loading: true, error: null }));
     try {
-      const res: any = await invoke('skills_install', { archive: archivePath });
+      const input = { action: 'install', archive: archivePath };
+      const envelope = await requestApproval('skills.invoke', input);
+      const res: any = await invoke('skills_install', {
+        archive: archivePath,
+        token: envelope.token,
+        approvalId: envelope.approvalId,
+        callId: envelope.callId,
+      });
       if (res.success) {
         await loadSkills();
         return true;
@@ -56,7 +64,9 @@ function createSkillsStore() {
   async function enableSkill(skillId: string) {
     update(s => ({ ...s, loading: true, error: null }));
     try {
-      const res: any = await invoke('skills_enable', { skillId });
+      const input = { action: 'enable', skill_id: skillId };
+      const envelope = await requestApproval('skills.invoke', input);
+      const res: any = await invoke('skills_enable', { skillId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId });
       if (res.success) {
         await loadSkills();
         return true;
@@ -73,7 +83,9 @@ function createSkillsStore() {
   async function disableSkill(skillId: string) {
     update(s => ({ ...s, loading: true, error: null }));
     try {
-      const res: any = await invoke('skills_disable', { skillId });
+      const input = { action: 'disable', skill_id: skillId };
+      const envelope = await requestApproval('skills.invoke', input);
+      const res: any = await invoke('skills_disable', { skillId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId });
       if (res.success) {
         await loadSkills();
         return true;
@@ -90,7 +102,9 @@ function createSkillsStore() {
   async function uninstallSkill(skillId: string) {
     update(s => ({ ...s, loading: true, error: null }));
     try {
-      const res: any = await invoke('skills_uninstall', { skillId });
+      const input = { action: 'uninstall', skill_id: skillId };
+      const envelope = await requestApproval('skills.invoke', input);
+      const res: any = await invoke('skills_uninstall', { skillId, token: envelope.token, approvalId: envelope.approvalId, callId: envelope.callId });
       if (res.success) {
         await loadSkills();
         return true;

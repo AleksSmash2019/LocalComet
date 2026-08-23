@@ -399,6 +399,28 @@ impl ManagedRuntimeSupervisor {
             .map_err(BridgeError::from)
     }
 
+    pub(crate) fn runtime_start_approval_input_with_overrides(
+        &self,
+        model_id: &str,
+        custom_sha256: Option<&str>,
+        runtime_id: Option<&str>,
+        ctx_size_override: Option<u32>,
+        gpu_layers_override: Option<u32>,
+    ) -> Result<Value, BridgeError> {
+        let mut input = self.runtime_start_approval_input(model_id, custom_sha256, runtime_id)?;
+        if let Some(object) = input.as_object_mut() {
+            object.insert(
+                "ctx_size_override".into(),
+                serde_json::json!(ctx_size_override),
+            );
+            object.insert(
+                "gpu_layers_override".into(),
+                serde_json::json!(gpu_layers_override),
+            );
+        }
+        Ok(input)
+    }
+
     pub(crate) fn ensure_trusted_model_start(
         &self,
         model_id: &str,
@@ -1712,7 +1734,7 @@ fn runtime_args(
         }
     }
 
-    let final_ctx_size = ctx_size_override.unwrap_or(ctx_size);
+    let final_ctx_size = ctx_size_override.unwrap_or(ctx_size).clamp(1024, 131_072);
 
     // Context and generation budgets, dynamically scaled to prevent OOM.
     args.push(OsString::from("--ctx-size"));
@@ -1727,11 +1749,11 @@ fn runtime_args(
         // arguments stay stable across runtimes.
         args.push(OsString::from("--gpu-layers"));
         args.push(OsString::from(
-            gpu_layers_override.unwrap_or(99).to_string(),
+            gpu_layers_override.unwrap_or(99).min(99).to_string(),
         ));
     } else if let Some(layers) = gpu_layers_override {
         args.push(OsString::from("--gpu-layers"));
-        args.push(OsString::from(layers.to_string()));
+        args.push(OsString::from(layers.min(99).to_string()));
     }
     args
 }
@@ -2549,6 +2571,12 @@ pub async fn managed_runtime_start_trusted(
     ctx_size_override: Option<u32>,
     gpu_layers_override: Option<u32>,
 ) -> Result<ManagedRuntimeStartResponse, BridgeError> {
+    if ctx_size_override.is_some() || gpu_layers_override.is_some() {
+        return Err(BridgeError::new(
+            "runtime_override_requires_approval",
+            "trusted runtime start does not accept unapproved overrides",
+        ));
+    }
     if model_id.is_empty() || model_id.len() > 96 || model_id.chars().any(char::is_whitespace) {
         return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
     }
@@ -2602,10 +2630,12 @@ pub async fn managed_runtime_start(
     }) {
         return Err(ManagedRuntimeError::new("invalid_payload", "invalid runtime id").into());
     }
-    let input = runtime.runtime_start_approval_input(
+    let input = runtime.runtime_start_approval_input_with_overrides(
         &model_id,
         custom_sha256.as_deref(),
         runtime_id.as_deref(),
+        ctx_size_override,
+        gpu_layers_override,
     )?;
     crate::approval_commands::validate_approval_token(
         &approval,

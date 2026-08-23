@@ -52,6 +52,7 @@ pub enum CommandFamily {
     ToolFilesystemWrite,
     ToolFilesystemDelete,
     ComputerUse,
+    SkillsInvoke,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,6 +204,7 @@ pub fn command_family_for_tool(tool: &str) -> Option<CommandFamily> {
         "files.write" | "files.create_folder" => Some(CommandFamily::ToolFilesystemWrite),
         "files.delete" => Some(CommandFamily::ToolFilesystemDelete),
         "computer_use" => Some(CommandFamily::ComputerUse),
+        "skills.invoke" => Some(CommandFamily::SkillsInvoke),
         "import_custom_model" => Some(CommandFamily::ArtifactDownload),
         _ => None,
     }

@@ -60,7 +60,10 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "managed_model_readiness",
     "managed_runtime_catalog",
     "managed_runtime_logs",
+    "managed_runtime_capability",  # read-only capability query; no mutation authority
+    "managed_runtime_start_trusted",  # trusted start rejects unapproved overrides
     "managed_runtime_start",
+    "managed_runtime_stop_trusted",  # only stops an already trusted active runtime
     "managed_runtime_status",
     "managed_runtime_stop",
     "model_binding_set",

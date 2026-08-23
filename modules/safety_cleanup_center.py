@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
+from modules.text_utils import make_short
 import json
 import re
 import shutil
@@ -59,13 +60,7 @@ def _stamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def _short(value, limit=2200):
-    text = str(value or "")
-    if len(text) <= limit:
-        return text
-    return text[:limit] + "\n...[обрезано]"
-
-
+_short = make_short(2200)
 def _is_excluded(path: Path):
     parts = set(path.parts)
     return bool(parts.intersection(EXCLUDED_DIR_NAMES))

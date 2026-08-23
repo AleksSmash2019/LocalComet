@@ -1,3 +1,4 @@
+import { isRecord } from '$lib/bridge/guards';
 // locales.ts holds only the language registry and has no store imports, so
 // importing it here cannot create a cycle with $lib/i18n/index.ts.
 import { isLanguage, type Language } from '$lib/i18n/locales';
@@ -52,10 +53,6 @@ function defaultPreferences(): UiPreferences {
   return { ...DEFAULT_UI_PREFERENCES };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isTheme(value: unknown): value is UiTheme {
   return value === 'system' || value === 'light' || value === 'dark';
 }
@@ -70,11 +67,11 @@ function isDiagnosticsPanel(value: unknown): value is DiagnosticsPanelPreference
 
 function isAgentPermissions(value: unknown): value is Partial<AgentPermissions> {
   if (!isRecord(value)) return false;
-  return typeof value.files === 'boolean' || 
-         typeof value.shell === 'boolean' || 
-         typeof value.tools === 'boolean' ||
-         typeof value.computerUse === 'boolean' ||
-         typeof (value as Record<string, unknown>).internet === 'boolean';
+  const allowed = ['files', 'shell', 'tools', 'computerUse', 'internet'] as const;
+  return Object.keys(value).every((key) => {
+    if (!(allowed as readonly string[]).includes(key)) return false;
+    return typeof value[key] === 'boolean';
+  });
 }
 
 function normalizePreferences(value: unknown): UiPreferences {
@@ -88,7 +85,12 @@ function normalizePreferences(value: unknown): UiPreferences {
   }
   if (typeof value.voiceMode === 'boolean') preferences.voiceMode = value.voiceMode;
   if (isAgentPermissions(value.agentPermissions)) {
-    preferences.agentPermissions = { ...preferences.agentPermissions, ...value.agentPermissions } as AgentPermissions;
+    const nextPermissions = value.agentPermissions;
+    for (const key of ['files', 'shell', 'tools', 'computerUse', 'internet'] as const) {
+      if (typeof nextPermissions[key] === 'boolean') {
+        preferences.agentPermissions[key] = nextPermissions[key] as boolean;
+      }
+    }
   }
   if (value.ctxSizeOverride === null || typeof value.ctxSizeOverride === 'number') {
     preferences.ctxSizeOverride = value.ctxSizeOverride;

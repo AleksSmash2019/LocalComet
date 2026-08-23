@@ -10,6 +10,7 @@ import {
   getManagedRuntimeStatus,
   getModelGatewayCatalog,
   listModelGatewayModels,
+  MODEL_REQUEST_SEED,
   normalizeGatewayError,
   probeModelGateway,
   setModelBinding,
@@ -218,7 +219,13 @@ export async function initializeModelGateway(): Promise<void> {
       await refreshManagedRuntimeStatus();
       if (generation !== subscriptionGeneration) return;
       if (!get(managedModelReady) && get(approvedManagedModelInstalled)) {
-        await connectSelectedManagedModel();
+        const managed = get(managedRuntimeStore);
+        const needsRuntimeStart = managed.status?.state !== 'Ready' ||
+          managed.status.model_id !== managed.selectedModelId ||
+          managed.status.inference_ready !== true;
+        if (needsRuntimeStart) await startSelectedManagedRuntime();
+        if (generation !== subscriptionGeneration) return;
+        if (!get(managedModelReady)) await connectSelectedManagedModel();
         if (generation !== subscriptionGeneration) return;
       }
       startManagedHealthMonitor();
@@ -510,9 +517,16 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
       ...installedArtifacts.artifacts,
       ...installedArtifacts.custom_artifacts
     ];
-    const selectedModelId = models.some((model) => model.model_id === previous.selectedModelId)
+    const preservedSelectedModelId = models.some((model) => model.model_id === previous.selectedModelId)
       ? previous.selectedModelId
       : '';
+    const reportedModelId = status?.model_id && models.some((model) => model.model_id === status.model_id)
+      ? status.model_id
+      : '';
+    const autoSelectedModelId = preservedSelectedModelId || reportedModelId
+      ? ''
+      : selectStrongestInstalledManagedModelId(models, validations);
+    const selectedModelId = preservedSelectedModelId || reportedModelId || autoSelectedModelId;
     const selectedModel = models.find((model) => model.model_id === selectedModelId);
     const bindingTrusted =
       status?.state === 'Ready' &&
@@ -541,7 +555,7 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
     if (!bindingTrusted) clearManagedGatewayBinding();
     if (selectedModelId) await setManagedSelectedModel(selectedModelId);
     const runtimeError = status?.last_error;
-    if (runtimeError && !(!selectedModelId && /No managed model is selected/i.test(runtimeError))) {
+    if (runtimeError && !/No managed model is selected/i.test(runtimeError)) {
       managedRuntimeStore.update((state) => ({
         ...state,
         lastError: { code: 'runtime_unavailable', message: runtimeError }
@@ -696,6 +710,15 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
           ? { code: 'runtime_unavailable', message: status.last_error }
           : null
     }));
+    if (
+      status.state === 'Ready' &&
+      status.model_state === 'Ready' &&
+      status.inference_ready === true &&
+      status.model_id === state.selectedModelId &&
+      typeof status.runtime_instance_id === 'string'
+    ) {
+      await confirmManagedBinding(readiness);
+    }
   } catch (error) {
     if (!stillCurrent()) {
       void refreshManagedRuntimeStatus();
@@ -980,7 +1003,8 @@ async function startClaimedLocalModelTurn(
       modelId: binding.model_id,
       submittedAtUnixMs,
       maxTokens: MODEL_REQUEST_MAX_TOKENS,
-      prompt: cleanPrompt,
+       seed: MODEL_REQUEST_SEED,
+       prompt: cleanPrompt,
       fileIds,
       // Interface chrome may be in any registered language, but the backend
       // only accepts ru | en for a turn, so map before sending.
@@ -1401,6 +1425,23 @@ function catalogIdentityOf(value: ManagedCatalogIdentity): ManagedCatalogIdentit
   };
 }
 
+function selectStrongestInstalledManagedModelId(
+  models: readonly (ManagedModelSummary | ApprovedModelSummary)[],
+  installedArtifacts: readonly ManagedArtifactValidationSummary[]
+): string {
+  const candidates = models.filter((model) => installedArtifacts.some((artifact) =>
+    artifact.kind === 'model' && artifact.artifact_id === model.model_id && artifact.installation_status === 'valid'
+  ));
+  return [...candidates].sort((left, right) => {
+    const leftVision = /\b(?:vl|vision)\b/i.test(left.model_id) ? 1 : 0;
+    const rightVision = /\b(?:vl|vision)\b/i.test(right.model_id) ? 1 : 0;
+    const leftValidation = installedArtifacts.find((artifact) => artifact.kind === 'model' && artifact.artifact_id === left.model_id);
+    const rightValidation = installedArtifacts.find((artifact) => artifact.kind === 'model' && artifact.artifact_id === right.model_id);
+    const leftBytes = leftValidation?.observed_bytes ?? leftValidation?.expected_bytes ?? left.asset_bytes;
+    const rightBytes = rightValidation?.observed_bytes ?? rightValidation?.expected_bytes ?? right.asset_bytes;
+    return leftVision - rightVision || rightBytes - leftBytes || left.model_id.localeCompare(right.model_id);
+  })[0]?.model_id ?? '';
+}
 function isInstalledLaunchable(
   model: ManagedModelSummary | ApprovedModelSummary,
   runtimes: readonly ApprovedRuntimeSummary[],

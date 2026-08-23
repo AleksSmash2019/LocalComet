@@ -14,25 +14,16 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from tools.test_fixtures.assertions import assert_condition
+from tools.test_fixtures.path_inventory import paths_under_set
 
 NOW_TS = 1_800_000_000.0
 DAY = 86400
 
 
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
 def _reload(name: str):
     sys.modules.pop(name, None)
     return importlib.import_module(name)
-
-
-def _paths_under(root: Path) -> set[str]:
-    if not root.exists():
-        return set()
-    return {path.relative_to(root).as_posix() for path in root.rglob("*")}
 
 
 def _write(path: Path, text: str, age_days: float) -> None:
@@ -57,24 +48,24 @@ def test_import_and_missing_root_are_read_only() -> None:
         sandbox = Path(temp_text)
         missing_root = sandbox / "missing-root"
         os.environ["LOCALCOMET_ROOT"] = str(missing_root)
-        before = _paths_under(sandbox)
+        before = paths_under_set(sandbox)
         project_paths = _reload("modules.project_paths")
         dry_run = _reload("modules.screenshot_retention_dry_run_ru")
         storage = _reload("modules.storage_cleanup_plan_ru")
         policy = _reload("modules.screenshot_retention_policy_config_ru")
-        after_import = _paths_under(sandbox)
+        after_import = paths_under_set(sandbox)
 
-        _assert(project_paths.get_project_root() == missing_root.resolve(), "LOCALCOMET_ROOT was not honored.")
-        _assert(dry_run.ROOT_PATH == missing_root.resolve(), "Dry-run root escaped missing override.")
-        _assert(storage.ROOT_PATH == missing_root.resolve(), "Storage plan root escaped missing override.")
-        _assert(policy.ROOT_PATH == missing_root.resolve(), "Policy config root escaped missing override.")
-        _assert(before == after_import, "Import created files/directories under missing root.")
+        assert_condition(project_paths.get_project_root() == missing_root.resolve(), "LOCALCOMET_ROOT was not honored.")
+        assert_condition(dry_run.ROOT_PATH == missing_root.resolve(), "Dry-run root escaped missing override.")
+        assert_condition(storage.ROOT_PATH == missing_root.resolve(), "Storage plan root escaped missing override.")
+        assert_condition(policy.ROOT_PATH == missing_root.resolve(), "Policy config root escaped missing override.")
+        assert_condition(before == after_import, "Import created files/directories under missing root.")
 
         plan = project_paths.build_retention_plan(missing_root)
-        after_plan = _paths_under(sandbox)
-        _assert(plan["mode"] == "runtime_retention_plan", "Plan mode changed.")
-        _assert(plan["dry_run"] is True, "Plan must be dry-run only.")
-        _assert(before == after_plan, "Missing-root plan created files/directories.")
+        after_plan = paths_under_set(sandbox)
+        assert_condition(plan["mode"] == "runtime_retention_plan", "Plan mode changed.")
+        assert_condition(plan["dry_run"] is True, "Plan must be dry-run only.")
+        assert_condition(before == after_plan, "Missing-root plan created files/directories.")
 
 
 def test_retention_plan_policy_and_protections() -> None:
@@ -127,37 +118,37 @@ def test_retention_plan_policy_and_protections() -> None:
         )
         after = _snapshot(sandbox)
 
-        _assert(plan_one == plan_two, "Retention plan output is not deterministic.")
-        _assert(before == after, "Retention plan changed or deleted files.")
-        _assert(plan_one["policy"]["max_age_days"] == 7, "Default age policy changed.")
-        _assert(plan_one["policy"]["max_items_per_group"] == 200, "Default count policy changed.")
+        assert_condition(plan_one == plan_two, "Retention plan output is not deterministic.")
+        assert_condition(before == after, "Retention plan changed or deleted files.")
+        assert_condition(plan_one["policy"]["max_age_days"] == 7, "Default age policy changed.")
+        assert_condition(plan_one["policy"]["max_items_per_group"] == 200, "Default count policy changed.")
 
         candidates = {item["path"]: item for item in plan_one["candidates"]}
         protected = {item["path"]: item for item in plan_one["protected"]}
         rejected = {item["path"]: item for item in plan_one["rejected"]}
 
-        _assert("Projects/Reports/retention_fixture/old.log" in candidates, "Old file was not a candidate.")
-        _assert("Projects/Reports/retention_fixture/new.log" not in candidates, "New file became a candidate.")
-        _assert(
+        assert_condition("Projects/Reports/retention_fixture/old.log" in candidates, "Old file was not a candidate.")
+        assert_condition("Projects/Reports/retention_fixture/new.log" not in candidates, "New file became a candidate.")
+        assert_condition(
             "Projects/ComputerUse/runs/many/run_200.json" in candidates,
             "Count limit did not target the oldest file beyond newest 200.",
         )
-        _assert(
+        assert_condition(
             "Projects/ComputerUse/runs/many/run_000.json" not in candidates,
             "Count limit failed to keep newest file.",
         )
-        _assert("Projects/Reports/retention_fixture/latest_report.log" in protected, "latest file not protected.")
-        _assert("Projects/Reports/retention_fixture/current_state.json" in protected, "current file not protected.")
-        _assert("Projects/Reports/retention_fixture/run_manifest.json" in protected, "manifest file not protected.")
-        _assert("Projects/Reports/retention_fixture/source.py" in protected, "source file not protected.")
-        _assert(
+        assert_condition("Projects/Reports/retention_fixture/latest_report.log" in protected, "latest file not protected.")
+        assert_condition("Projects/Reports/retention_fixture/current_state.json" in protected, "current file not protected.")
+        assert_condition("Projects/Reports/retention_fixture/run_manifest.json" in protected, "manifest file not protected.")
+        assert_condition("Projects/Reports/retention_fixture/source.py" in protected, "source file not protected.")
+        assert_condition(
             any(path.startswith("Projects/TestFixtures") for path in protected),
             "Test fixtures not protected.",
         )
-        _assert(any(path.startswith(".incident_backup") for path in protected), "Backups not protected.")
-        _assert(any(path.startswith(".localcomet/reviewer") for path in protected), "Reviewer data not protected.")
-        _assert(any("outside_runtime" in path for path in rejected), "Outside root was not rejected.")
-        _assert(plan_one["candidates"] == sorted(plan_one["candidates"], key=lambda item: item["path"].lower()), "Candidates are not sorted.")
+        assert_condition(any(path.startswith(".incident_backup") for path in protected), "Backups not protected.")
+        assert_condition(any(path.startswith(".localcomet/reviewer") for path in protected), "Reviewer data not protected.")
+        assert_condition(any("outside_runtime" in path for path in rejected), "Outside root was not rejected.")
+        assert_condition(plan_one["candidates"] == sorted(plan_one["candidates"], key=lambda item: item["path"].lower()), "Candidates are not sorted.")
 
 
 def test_module_entry_points_use_stable_plan_schema() -> None:
@@ -167,18 +158,18 @@ def test_module_entry_points_use_stable_plan_schema() -> None:
         dry_run = _reload("modules.screenshot_retention_dry_run_ru")
         storage = _reload("modules.storage_cleanup_plan_ru")
 
-        before = _paths_under(project_root)
+        before = paths_under_set(project_root)
         dry_scan = dry_run.scan()
         storage_plan = storage.generate()
-        after = _paths_under(project_root)
+        after = paths_under_set(project_root)
 
         for plan in (dry_scan, storage_plan):
-            _assert(plan["mode"] == "runtime_retention_plan", "Plan mode changed.")
-            _assert(plan["version"] == "v6.79", "Plan version changed.")
-            _assert(plan["dry_run"] is True, "Plan is not dry-run.")
+            assert_condition(plan["mode"] == "runtime_retention_plan", "Plan mode changed.")
+            assert_condition(plan["version"] == "v6.79", "Plan version changed.")
+            assert_condition(plan["dry_run"] is True, "Plan is not dry-run.")
             for key in ("roots", "policy", "candidates", "protected", "rejected", "totals", "warnings"):
-                _assert(key in plan, f"Plan missing key: {key}")
-        _assert(before == after, "Module scan/generate wrote files.")
+                assert_condition(key in plan, f"Plan missing key: {key}")
+        assert_condition(before == after, "Module scan/generate wrote files.")
 
 
 def test_safety_status_remains_lightweight() -> None:
@@ -189,9 +180,9 @@ def test_safety_status_remains_lightweight() -> None:
     elapsed = time.perf_counter() - start
     evaluation = result.get("evaluation", {})
     gates = evaluation.get("gates", {})
-    _assert(elapsed < 0.5, f"Safety status took {elapsed:.3f}s.")
-    _assert(gates.get("contracts", {}).get("executed") is False, "Contracts ran in safety status.")
-    _assert(gates.get("strict", {}).get("executed") is False, "Strict ran in safety status.")
+    assert_condition(elapsed < 0.5, f"Safety status took {elapsed:.3f}s.")
+    assert_condition(gates.get("contracts", {}).get("executed") is False, "Contracts ran in safety status.")
+    assert_condition(gates.get("strict", {}).get("executed") is False, "Strict ran in safety status.")
 
 
 def main() -> None:

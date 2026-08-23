@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { ToolCallMock } from '$lib/data/mockData';
+  import { t } from '$lib/i18n';
 
   export let tool: ToolCallMock;
+  const MAX_TOOL_IMAGE_BASE64_CHARS = 4_000_000;
 
   $: isWebTool = tool.operation === 'web.search' || tool.operation === 'web.fetch';
   $: isCU = tool.operation === 'computer_use';
@@ -13,44 +15,46 @@
     const dataIdx = s.indexOf('data:image');
     if (dataIdx !== -1) {
       const end = s.indexOf('"', dataIdx);
-      return end !== -1 ? s.slice(dataIdx, end) : s.slice(dataIdx, dataIdx + 200000);
+      const candidate = end !== -1 ? s.slice(dataIdx, end) : s.slice(dataIdx, dataIdx + 2000);
+      const payload = candidate.slice(candidate.indexOf(',') + 1);
+      return payload.length <= MAX_TOOL_IMAGE_BASE64_CHARS ? candidate : null;
     }
     const b64Idx = s.indexOf('base64,');
     if (b64Idx !== -1) {
       const b64 = s.slice(b64Idx + 7).split(/[^A-Za-z0-9+/=]/)[0];
-      if (b64.length > 200) return `data:image/png;base64,${b64}`;
+      if (b64.length > 200 && b64.length <= MAX_TOOL_IMAGE_BASE64_CHARS) return `data:image/png;base64,${b64}`;
     }
     const raw = s.trim();
-    if (/^[A-Za-z0-9+/=]{500,}$/.test(raw)) return `data:image/png;base64,${raw}`;
+    if (/^[A-Za-z0-9+/=]{500,}$/.test(raw) && raw.length <= MAX_TOOL_IMAGE_BASE64_CHARS) return `data:image/png;base64,${raw}`;
     return null;
   }
   $: src = isCU ? shot(tool.result) : null;
 </script>
 
-<article class="tool-card tool-surface" aria-label={isCU ? 'Computer Use' : isWebTool ? `Web ${tool.status}` : 'Tools disabled'}>
+<article class="tool-card tool-surface" aria-label={isCU ? $t('tool.computer_use') : isWebTool ? `${$t('tool.web_prefix')} ${tool.status}` : $t('tool.tools_disabled')}>
   <div class="tool-head">
     <div>
-      <span class="eyebrow" class:computer-use={isCU}>{isCU ? 'COMPUTER USE' : isWebTool ? `WEB ${tool.operation === 'web.search' ? 'SEARCH' : 'FETCH'}` : 'Tool Runtime'}</span>
+      <span class="eyebrow" class:computer-use={isCU}>{isCU ? $t('tool.computer_use_upper') : isWebTool ? (tool.operation === 'web.search' ? $t('tool.web_search_upper') : $t('tool.web_fetch_upper')) : $t('tool.runtime')}</span>
       <h2>{tool.operation}</h2>
     </div>
     <span class="status-pill" class:computer-use={isCU}><span class="status-dot" class:computer-use={isCU} class:disabled={tool.status === 'SKIPPED'}></span>{tool.status}</span>
   </div>
   {#if isCU && src}
-    <div class="cu-shot"><img class="cu-img" src={src} alt="Computer Use screenshot preview" loading="lazy" /></div>
+    <div class="cu-shot"><img class="cu-img" src={src} alt={$t('tool.screenshot_preview')} loading="lazy" /></div>
   {/if}
   {#if isWebTool}
     <div class="web-meta">
-      <dt>Source</dt>
+      <dt>{$t('tool.source')}</dt>
       <dd class="mono">{tool.target}</dd>
     </div>
   {:else if !isCU}
   <dl>
     <div>
-      <dt>Target</dt>
+      <dt>{$t('tool.target')}</dt>
       <dd>{tool.target}</dd>
     </div>
     <div>
-      <dt>Elapsed</dt>
+      <dt>{$t('tool.elapsed')}</dt>
       <dd>{tool.elapsed}</dd>
     </div>
   </dl>
@@ -66,7 +70,7 @@
       <div class="web-result">
         <pre>{tool.result.slice(0, 4000)}</pre>
         {#if tool.result.length > 4000}
-          <span class="truncated-note">Truncated — full result available in context</span>
+          <span class="truncated-note">{$t('tool.truncated')}</span>
         {/if}
       </div>
     {:else if !isCU}

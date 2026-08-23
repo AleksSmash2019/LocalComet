@@ -9,6 +9,11 @@
     "bundle:windows": "python ../../tools/build_up00_windows_installer.py --build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
+    "test:fast": "python ../../tools/run_dev_tests.py --profile fast",
+    "test:affected": "python ../../tools/run_dev_tests.py --profile affected",
+    "test:model": "python ../../tools/run_dev_tests.py --profile model",
+    "test:security": "python ../../tools/run_dev_tests.py --profile security",
+    "test:full": "python ../../tools/run_dev_tests.py --profile full",
     "tauri": "tauri",
     "coverage": "vitest run --coverage"
   },

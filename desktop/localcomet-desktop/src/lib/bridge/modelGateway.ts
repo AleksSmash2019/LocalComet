@@ -1,3 +1,4 @@
+import { isRecord } from './guards';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type {
@@ -313,12 +314,15 @@ export async function getManagedRuntimeCapability(runtimeId: string, modelId?: s
   );
 }
 
+export const MODEL_REQUEST_SEED = 42;
+
 export async function startModelTurn(args: {
   requestId: string;
   chatSessionId: string;
   modelId: string;
   submittedAtUnixMs: number;
   maxTokens: number;
+  seed: number;
   prompt: string;
   fileIds?: readonly string[];
   locale: AssistantLocale;
@@ -331,6 +335,7 @@ export async function startModelTurn(args: {
   const modelId = validateArtifactId(args.modelId);
   const submittedAtUnixMs = positiveSafeInteger(args.submittedAtUnixMs);
   const maxTokens = validateMaxTokens(args.maxTokens);
+  const seed = validateGenerationSeed(args.seed);
   const fileIds = validateFileIds(args.fileIds ?? []);
   const result = validateTurnStart(
     await invokeExact('model_turn_start', {
@@ -339,6 +344,7 @@ export async function startModelTurn(args: {
       modelId,
       submittedAtUnixMs,
       maxTokens,
+      seed,
       prompt: bounded(args.prompt, 16_384),
       fileIds,
       locale: validateLocale(args.locale),
@@ -354,9 +360,15 @@ export async function startModelTurn(args: {
     result.model_id !== modelId ||
     result.submitted_at_unix_ms !== submittedAtUnixMs ||
     result.max_tokens !== maxTokens ||
+    result.seed !== seed ||
     result.binding_fingerprint !== args.bindingFingerprint
   ) throw invalid();
   return result;
+}
+
+function validateGenerationSeed(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647) throw invalid();
+  return value;
 }
 
 function validateFileIds(value: readonly string[]): readonly string[] {
@@ -881,6 +893,7 @@ function validateTurnStart(value: unknown): ModelTurnStartResponse {
     model_id: validateArtifactId(String(object.model_id)),
     submitted_at_unix_ms: positiveSafeInteger(object.submitted_at_unix_ms),
     max_tokens: validateMaxTokens(object.max_tokens),
+    seed: validateGenerationSeed(object.seed),
     binding_fingerprint: validateFingerprint(String(object.binding_fingerprint))
   };
   return object.file_context === undefined
@@ -1387,10 +1400,6 @@ function expectExactRecord(value: unknown, expectedKeys: readonly string[]): Rea
   const expected = [...expectedKeys].sort();
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) throw invalid();
   return object;
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function invalid(): SanitizedGatewayError {

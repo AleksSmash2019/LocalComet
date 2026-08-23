@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from modules.skills.skills_manager import SkillsManager
-from modules.skills.skills_contract import SkillError
+from modules.skills.skills_contract import ALLOWED_PERMISSIONS, SkillError
 
 MAX_INVOKE_STDOUT_BYTES = 64 * 1024
 MAX_INVOKE_STDERR_BYTES = 16 * 1024
@@ -68,10 +68,25 @@ def _executable_for_entrypoint(entrypoint: Path) -> list[str]:
 
 
 def invoke_skill(
-    skill_id: str, arguments: Mapping[str, Any] | list[Any] | None
+    skill_id: str,
+    arguments: Mapping[str, Any] | list[Any] | None,
+    requested_permissions: list[str],
 ) -> dict[str, Any]:
     try:
         manager = SkillsManager(_skills_root())
+        manifest_permissions = set(manager.inspect_permissions(skill_id))
+        invalid_permissions = sorted(set(requested_permissions) - set(ALLOWED_PERMISSIONS))
+        if invalid_permissions:
+            raise SkillInvokeError(
+                "PERMISSION_UNKNOWN",
+                f"unknown requested skill permissions: {', '.join(invalid_permissions)}",
+            )
+        missing_permissions = sorted(set(requested_permissions) - manifest_permissions)
+        if missing_permissions:
+            raise SkillInvokeError(
+                "PERMISSION_DENIED",
+                f"skill manifest does not grant requested permissions: {', '.join(missing_permissions)}",
+            )
         entrypoint = manager.entrypoint_path(skill_id)
     except SkillError as exc:
         raise SkillInvokeError(exc.code.value, exc.message) from exc

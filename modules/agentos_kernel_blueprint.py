@@ -1,3 +1,4 @@
+from modules.json_io import format_payload, write_json as _write_json
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
@@ -383,11 +384,6 @@ def _ensure_dirs():
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _write_json(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
-
 
 def _read_json(path, fallback):
     if not path.exists():
@@ -722,12 +718,6 @@ def report(note=""):
 
     md_path.write_text("\n".join(md), encoding="utf-8")
     return {"ok": True, "report": str(md_path), "json": str(json_path)}
-
-
-def format_payload(payload):
-    if isinstance(payload, str):
-        return payload
-    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def dispatch(command):

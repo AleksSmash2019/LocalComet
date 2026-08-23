@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
+from modules.relative_paths import make_relative_path
+from modules.file_inventory import iter_files as _iter_files
 from typing import Any, Dict, List, Tuple
 
 from modules.project_paths import get_project_root, localcomet_policies_dir, localcomet_reports_dir
 
 ROOT_PATH = get_project_root()
+_rel = make_relative_path(ROOT_PATH)
 REPORT_DIR = localcomet_reports_dir(ROOT_PATH)
 POLICY_DIR = localcomet_policies_dir(ROOT_PATH)
 CONTROL_PANEL_PATH = ROOT_PATH / "LocalComet_Control_Panel.py"
@@ -27,32 +29,11 @@ def _base_version() -> str:
         pass
     return "unknown"
 
-def _rel(path: Path) -> str:
-    try:
-        return str(path.relative_to(ROOT_PATH)).replace("\\", "/")
-    except Exception:
-        return str(path).replace("\\", "/")
-
 def _screenshot_dirs() -> List[Path]:
     return [
         ROOT_PATH / "Projects" / "Reports" / "desktop_observer" / "screenshots",
         ROOT_PATH / "Projects" / "Reports" / "browser_screenshots",
     ]
-
-def _iter_files(directory: Path) -> List[Path]:
-    if not directory.exists() or not directory.is_dir():
-        return []
-    result: List[Path] = []
-    for root, dirs, files in os.walk(directory):
-        dirs[:] = [d for d in dirs if d not in {"__pycache__", ".git"}]
-        for name in files:
-            try:
-                p = Path(root) / name
-                if p.is_file():
-                    result.append(p)
-            except Exception:
-                continue
-    return result
 
 def _file_info(path: Path) -> Dict[str, Any]:
     st = path.stat()

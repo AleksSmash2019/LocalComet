@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+from modules.json_io import read_json as _load_json, write_json as _write_json
 
 from datetime import datetime
 from pathlib import Path
@@ -57,21 +58,6 @@ def _now() -> str:
 def _ensure_dirs() -> None:
     AUTO_ACTION_DIR.mkdir(parents=True, exist_ok=True)
     COMPUTER_USE_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def _load_json(path: Path, default: Any) -> Any:
-    try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-    return default
-
-
-def _write_json(path: Path, payload: Any) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def default_auto_policy() -> Dict[str, Any]:

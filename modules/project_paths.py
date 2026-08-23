@@ -17,6 +17,13 @@ def _module_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def find_project_root(start_file: str | Path) -> Path:
+    here = Path(start_file).resolve()
+    for candidate in (here.parent, *here.parents):
+        if (candidate / "AGENTS.md").exists() or (candidate / "LocalComet_Control_Panel.py").exists():
+            return candidate
+    return get_project_root()
+
 def get_project_root() -> Path:
     """Return the active LocalComet root.
 

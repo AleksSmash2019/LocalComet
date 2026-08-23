@@ -1,3 +1,4 @@
+import { isRecord } from './guards';
 import { invoke } from '@tauri-apps/api/core';
 import type {
   FileCapabilityError,
@@ -193,10 +194,6 @@ function exactRecord(value: unknown, keys: readonly string[]): Readonly<Record<s
     throw invalidPayload();
   }
   return value;
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function safeDisplayText(value: unknown, maximum: number): string {

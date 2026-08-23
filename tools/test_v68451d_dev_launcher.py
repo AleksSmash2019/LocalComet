@@ -12,6 +12,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from tools.test_fixtures.files import write_text
 LAUNCHER_PATH = ROOT / "tools" / "launch_localcomet_dev.py"
 
 spec = importlib.util.spec_from_file_location("launch_localcomet_dev", LAUNCHER_PATH)
@@ -40,11 +43,6 @@ def expect_hold(callback, message: str) -> None:
     raise AssertionError(message)
 
 
-def write(path: Path, text: str = "x\n") -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
 def make_resource_stage(root: Path, legacy_manifest: str = "{}\n") -> tuple[str, ...]:
     binaries = root / "desktop/localcomet-desktop/src-tauri/binaries"
     rows = [launcher.RUNTIME_IDENTITY_HEADER]
@@ -68,9 +66,9 @@ def make_resource_stage(root: Path, legacy_manifest: str = "{}\n") -> tuple[str,
 
 
 def make_source(root: Path) -> None:
-    write(root / "desktop/localcomet-desktop/package.json", "{}\n")
-    write(root / "desktop/localcomet-desktop/package-lock.json", '{"lockfileVersion": 3}\n')
-    write(
+    write_text(root / "desktop/localcomet-desktop/package.json", "{}\n")
+    write_text(root / "desktop/localcomet-desktop/package-lock.json", '{"lockfileVersion": 3}\n')
+    write_text(
         root / "desktop/localcomet-desktop/vite.config.ts",
         "import { defineConfig } from 'vite';\n"
         "export default defineConfig({\n"
@@ -80,12 +78,12 @@ def make_source(root: Path) -> None:
         "  }\n"
         "});\n",
     )
-    write(root / "desktop/localcomet-desktop/src-tauri/Cargo.toml", "[package]\nname = 'x'\n")
-    write(
+    write_text(root / "desktop/localcomet-desktop/src-tauri/Cargo.toml", "[package]\nname = 'x'\n")
+    write_text(
         root / "desktop/localcomet-desktop/src-tauri/tauri.conf.json",
         json.dumps({"build": {"devUrl": "http://127.0.0.1:1420"}}) + "\n",
     )
-    write(
+    write_text(
         root / "desktop/localcomet-desktop/src-tauri/up00-runtime-manifest.json",
         json.dumps(
             {
@@ -111,12 +109,12 @@ def make_source(root: Path) -> None:
         )
         + "\n",
     )
-    write(root / "tools/build_up00_windows_installer.py", "STAGING = True\n")
-    write(root / "third_party/llama.cpp/LICENSE-MIT.txt", "MIT\n")
-    write(root / "tools/run_localcomet_desktop_sidecar.py", "print('sidecar')\n")
-    write(root / "tools/helper.py", "print('helper')\n")
-    write(root / "modules/desktop_sidecar_runtime_ru.py", "RUNTIME = True\n")
-    write(root / "modules/desktop_ipc_contract_ru.py", "IPC = True\n")
+    write_text(root / "tools/build_up00_windows_installer.py", "STAGING = True\n")
+    write_text(root / "third_party/llama.cpp/LICENSE-MIT.txt", "MIT\n")
+    write_text(root / "tools/run_localcomet_desktop_sidecar.py", "print('sidecar')\n")
+    write_text(root / "tools/helper.py", "print('helper')\n")
+    write_text(root / "modules/desktop_sidecar_runtime_ru.py", "RUNTIME = True\n")
+    write_text(root / "modules/desktop_ipc_contract_ru.py", "IPC = True\n")
     manifest = {
         "entrypoints": [],
         "runtime": [],
@@ -127,7 +125,7 @@ def make_source(root: Path) -> None:
         "tests": [],
         "tools": ["tools/run_localcomet_desktop_sidecar.py"],
     }
-    write(root / "localcomet_runtime_manifest.json", json.dumps(manifest, indent=2) + "\n")
+    write_text(root / "localcomet_runtime_manifest.json", json.dumps(manifest, indent=2) + "\n")
 
 
 def runtime_paths(temp: Path) -> object:
@@ -187,8 +185,8 @@ def test_synchronization() -> None:
             "__pycache__",
         ]
         for name in excluded:
-            write(source / "desktop/localcomet-desktop" / name / "ignored.txt", "ignored\n")
-        write(source / "desktop/visible.txt", "one\n")
+            write_text(source / "desktop/localcomet-desktop" / name / "ignored.txt", "ignored\n")
+        write_text(source / "desktop/visible.txt", "one\n")
         paths = runtime_paths(base)
         state: dict[str, object] = {}
         summary, synced = launcher.synchronize_runtime(source, paths, state)
@@ -203,17 +201,17 @@ def test_synchronization() -> None:
         summary, synced = launcher.synchronize_runtime(source, paths, state)
         check(summary.reused > 0, "unchanged synchronized files are reused")
 
-        write(source / "desktop/visible.txt", "two\n")
+        write_text(source / "desktop/visible.txt", "two\n")
         state["synced_files"] = synced
         summary, synced = launcher.synchronize_runtime(source, paths, state)
         check(summary.updated == 1, "changed synchronized files are updated")
 
         state["synced_files"] = synced + ["desktop/stale.txt"]
-        write(paths.workspace / "desktop/stale.txt", "old\n")
+        write_text(paths.workspace / "desktop/stale.txt", "old\n")
         summary, synced = launcher.synchronize_runtime(source, paths, state)
         check(summary.removed_stale == 1 and not (paths.workspace / "desktop/stale.txt").exists(), "stale synchronized file is removed safely")
 
-        write(paths.workspace / "desktop/localcomet-desktop/node_modules/keep.txt", "keep\n")
+        write_text(paths.workspace / "desktop/localcomet-desktop/node_modules/keep.txt", "keep\n")
         state["synced_files"] = synced
         launcher.synchronize_runtime(source, paths, state)
         check((paths.workspace / "desktop/localcomet-desktop/node_modules/keep.txt").is_file(), "external runtime node_modules is preserved")
@@ -416,7 +414,7 @@ def test_sidecar_layout_validation() -> None:
         make_source(manifest_missing)
         manifest = json.loads((manifest_missing / "localcomet_runtime_manifest.json").read_text(encoding="utf-8"))
         manifest["runtime"] = ["core/required.py"]
-        write(manifest_missing / "localcomet_runtime_manifest.json", json.dumps(manifest) + "\n")
+        write_text(manifest_missing / "localcomet_runtime_manifest.json", json.dumps(manifest) + "\n")
         expect_hold(
             lambda: launcher.validate_sidecar_layout(manifest_missing),
             "missing manifest-declared required runtime file fails before GUI launch",
@@ -460,7 +458,7 @@ def test_tauri_resources_are_synchronized_from_external_stage() -> None:
         check(True, "staged sidecar manifest contract validates")
 
         stale_relative = "desktop/localcomet-desktop/src-tauri/binaries/stale.dll"
-        write(paths.workspace / stale_relative, "stale\n")
+        write_text(paths.workspace / stale_relative, "stale\n")
         state = {"runtime_resource_files": resources + [stale_relative]}
         summary, _ = launcher.synchronize_tauri_resources(staged, paths, state, identity)
         check(
@@ -518,7 +516,7 @@ def test_tauri_resource_cache_identity_validation() -> None:
         )
 
         extra = cache_copy("extra")
-        write(extra / "desktop/localcomet-desktop/src-tauri/binaries/unexpected.bin")
+        write_text(extra / "desktop/localcomet-desktop/src-tauri/binaries/unexpected.bin")
         expect_hold(
             lambda: launcher.validate_cached_resource_stage(extra, trusted),
             "unexpected cached resource is rejected",

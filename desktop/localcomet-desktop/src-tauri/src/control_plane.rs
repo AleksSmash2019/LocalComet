@@ -24,6 +24,7 @@ pub const MAX_PROMPT_CHARS: usize = 8192;
 pub const MAX_DELTA_CHARS: usize = 65_536;
 pub const MIN_MODEL_PORT: u16 = 1024;
 pub const MAX_MODEL_PROMPT_CHARS: usize = 16_384;
+pub const DEFAULT_MODEL_SEED: u32 = 42;
 pub const MAX_MODEL_EVENTS_PER_REQUEST: usize = 2_048;
 pub const MAX_MODEL_EVENT_TEXT_PER_REQUEST: usize = 262_144;
 pub const MAX_KNOWLEDGE_REVIEW_OFFSET: u16 = 128;
@@ -480,6 +481,7 @@ pub(crate) struct ModelRequestIdentity {
     pub(crate) model_id: String,
     pub(crate) submitted_at_unix_ms: u64,
     pub(crate) max_tokens: u16,
+    pub(crate) seed: u32,
     pub(crate) binding_fingerprint: String,
 }
 
@@ -713,6 +715,7 @@ pub(crate) fn model_turn_wire_payload(
         "model_id": identity.model_id,
         "submitted_at_unix_ms": identity.submitted_at_unix_ms,
         "max_tokens": identity.max_tokens,
+        "seed": identity.seed,
         "prompt": prompt,
         "assistant_context": assistant_context,
         "binding_fingerprint": identity.binding_fingerprint,
@@ -2403,6 +2406,7 @@ pub async fn model_turn_start(
     model_id: String,
     submitted_at_unix_ms: u64,
     max_tokens: u16,
+    seed: u32,
     prompt: String,
     file_ids: Vec<String>,
     locale: String,
@@ -2421,6 +2425,18 @@ pub async fn model_turn_start(
     }
     // Raised from 512: the managed runtime now runs --n-predict 4096 and the
     // external OpenAI-compatible provider (LM Studio) has no such ceiling.
+    if seed != DEFAULT_MODEL_SEED {
+        return Err(BridgeError::new(
+            "invalid_payload",
+            "seed must equal the fixed model seed",
+        ));
+    }
+    if seed > i32::MAX as u32 {
+        return Err(BridgeError::new(
+            "invalid_payload",
+            "seed is outside the allowed range",
+        ));
+    }
     if !(1..=8192).contains(&max_tokens) {
         return Err(BridgeError::new(
             "invalid_payload",
@@ -2476,6 +2492,7 @@ pub async fn model_turn_start(
         model_id,
         submitted_at_unix_ms,
         max_tokens,
+        seed,
         binding_fingerprint,
     };
     // The reservation is bound to the digest of the exact wire payload it
@@ -2748,6 +2765,7 @@ fn validate_model_acceptance(
         "model_id",
         "submitted_at_unix_ms",
         "max_tokens",
+        "seed",
         "binding_fingerprint",
         "state",
         "provider_id",
@@ -2781,6 +2799,7 @@ fn validate_model_acceptance(
         || object.get("submitted_at_unix_ms").and_then(Value::as_u64)
             != Some(expected.submitted_at_unix_ms)
         || object.get("max_tokens").and_then(Value::as_u64) != Some(u64::from(expected.max_tokens))
+        || object.get("seed").and_then(Value::as_u64) != Some(u64::from(expected.seed))
         || object.get("model_called").and_then(Value::as_bool) != Some(false)
         || object.get("tools_executed").and_then(Value::as_u64) != Some(0)
         || object.get("persistence").and_then(Value::as_bool) != Some(false)
@@ -2813,6 +2832,7 @@ fn project_model_acceptance(
         "model_id": identity.model_id,
         "submitted_at_unix_ms": identity.submitted_at_unix_ms,
         "max_tokens": identity.max_tokens,
+        "seed": identity.seed,
         "binding_fingerprint": identity.binding_fingerprint,
         "state": "Accepted",
         "provider_id": provider_id,
@@ -2941,6 +2961,11 @@ fn knowledge_model_identity_from_event(
         .and_then(Value::as_u64)
         .and_then(|value| u16::try_from(value).ok())
         .ok_or_else(|| BridgeError::new("protocol_mismatch", "model event budget missing"))?;
+    let seed = metadata
+        .get("seed")
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| BridgeError::new("protocol_mismatch", "model event seed missing"))?;
     let binding_fingerprint = string("binding_fingerprint")?;
     let provider_id = string("provider_id")?;
     let harness_id = string("harness_id")?;
@@ -2966,6 +2991,7 @@ fn knowledge_model_identity_from_event(
             model_id: model_id.into(),
             submitted_at_unix_ms,
             max_tokens,
+            seed,
             binding_fingerprint: binding_fingerprint.into(),
         },
         provider_id.into(),
@@ -3433,6 +3459,7 @@ fn validate_model_event_metadata(
         "model_id",
         "submitted_at_unix_ms",
         "max_tokens",
+        "seed",
         "binding_fingerprint",
         "model_called",
         "tools_executed",
@@ -3505,6 +3532,7 @@ fn validate_model_event_metadata(
             == Some(entry.identity.submitted_at_unix_ms)
         && metadata.get("max_tokens").and_then(Value::as_u64)
             == Some(u64::from(entry.identity.max_tokens))
+        && metadata.get("seed").and_then(Value::as_u64) == Some(u64::from(entry.identity.seed))
         && metadata.get("binding_fingerprint").and_then(Value::as_str)
             == Some(entry.identity.binding_fingerprint.as_str());
     if !base_identity_matches
@@ -3851,6 +3879,7 @@ fn validate_payload_for_method(
                 "model_id",
                 "submitted_at_unix_ms",
                 "max_tokens",
+                "seed",
                 "prompt",
                 "assistant_context",
                 "binding_fingerprint",
@@ -5029,6 +5058,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_000,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "a".repeat(64),
         }
     }
@@ -5223,6 +5253,7 @@ mod tests {
             "model_id": identity.model_id,
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
+        "seed": identity.seed,
             "binding_fingerprint": identity.binding_fingerprint,
             "model_called": model_called,
             "tools_executed": 0,
@@ -5260,6 +5291,7 @@ mod tests {
             "model_id": identity.model_id,
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
+        "seed": identity.seed,
             "prompt": "hello",
             "assistant_context": AssistantContext::trusted("ru", false, None).unwrap(),
             "binding_fingerprint": identity.binding_fingerprint,
@@ -5311,6 +5343,7 @@ mod tests {
             "model_id": identity.model_id,
             "submitted_at_unix_ms": identity.submitted_at_unix_ms,
             "max_tokens": identity.max_tokens,
+        "seed": identity.seed,
             "binding_fingerprint": identity.binding_fingerprint,
             "state": "Accepted",
             "provider_id": "managed-llama-cpp",
@@ -6237,6 +6270,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let entry_a = ModelRequestEntry::new(identity_a.clone(), vec!["files.read".to_string()]);
@@ -6591,6 +6625,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let entry_a = ModelRequestEntry::new(
@@ -7006,6 +7041,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let mut entry_a =
@@ -7331,6 +7367,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let mut entry_a = b5_entry(&identity_a);
@@ -7831,6 +7868,9 @@ mod tests {
             max_tokens: identity_value["maxTokens"]
                 .as_u64()
                 .expect("maxTokens must be an unsigned integer") as u16,
+            seed: identity_value["seed"]
+                .as_u64()
+                .expect("seed must be an unsigned integer") as u32,
             binding_fingerprint: identity_value["bindingFingerprint"]
                 .as_str()
                 .expect("bindingFingerprint must be a string")
@@ -8397,6 +8437,7 @@ mod tests {
             model_id: identity_a.model_id.clone(),
             submitted_at_unix_ms: identity_a.submitted_at_unix_ms + 1,
             max_tokens: identity_a.max_tokens,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let calls = b6_calls();
@@ -8546,6 +8587,7 @@ mod tests {
             model_id: "qwen2.5-1.5b-instruct-q4-k-m".into(),
             submitted_at_unix_ms: 1_750_000_000_001,
             max_tokens: 128,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "b".repeat(64),
         };
         let calls = b6_calls();
@@ -8961,6 +9003,7 @@ mod tests {
             model_id: identity_a.model_id.clone(),
             submitted_at_unix_ms: identity_a.submitted_at_unix_ms + 7,
             max_tokens: identity_a.max_tokens,
+            seed: DEFAULT_MODEL_SEED,
             binding_fingerprint: "c".repeat(64),
         };
         let calls = b6_calls();

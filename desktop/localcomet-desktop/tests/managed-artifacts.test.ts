@@ -355,7 +355,7 @@ describe('managed artifact trust frontend contract', () => {
 
     await refreshManagedRuntimeStatus();
 
-    expect(get(managedRuntimeStore).selectedModelId).toBe('');
+    expect(get(managedRuntimeStore).selectedModelId).toBe(MODEL_ID);
     expect(get(managedRuntimeStore).catalog).toHaveLength(1);
     expect(get(managedRuntimeStore).lastError).toBeNull();
   });
@@ -368,7 +368,7 @@ describe('managed artifact trust frontend contract', () => {
 
     await refreshManagedRuntimeStatus();
 
-    expect(get(managedRuntimeStore).selectedModelId).toBe('');
+    expect(get(managedRuntimeStore).selectedModelId).toBe(MODEL_ID);
     expect(get(managedRuntimeStore).lastError).toBeNull();
   });
 

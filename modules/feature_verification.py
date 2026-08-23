@@ -9,6 +9,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
+from modules.text_utils import make_short
 from time import perf_counter
 
 
@@ -79,13 +80,7 @@ def _ensure_dirs():
     REPORTS_FEATURE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _short(value, limit=2600):
-    text = str(value or "")
-    if len(text) <= limit:
-        return text
-    return text[:limit] + "\n...[обрезано]"
-
-
+_short = make_short(2600)
 def _rel(path):
     path = Path(path)
     try:

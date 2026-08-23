@@ -188,6 +188,27 @@ commands.allow = [
 ]
 
 [[permission]]
+identifier = "allow-managed-runtime-start-trusted"
+description = "Allow starting the approved LocalComet managed runtime through the trusted UI path."
+commands.allow = [
+  "managed_runtime_start_trusted",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-stop-trusted"
+description = "Allow stopping the approved LocalComet managed runtime through the trusted UI path."
+commands.allow = [
+  "managed_runtime_stop_trusted",
+]
+
+[[permission]]
+identifier = "allow-managed-runtime-capability"
+description = "Allow reading the managed runtime capability status for the trusted UI path."
+commands.allow = [
+  "managed_runtime_capability",
+]
+
+[[permission]]
 identifier = "allow-managed-runtime-stop"
 description = "Allow stopping the active LocalComet managed llama.cpp runtime."
 commands.allow = [

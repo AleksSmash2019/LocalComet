@@ -28,7 +28,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' data: blob: asset: http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:*; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self' 'unsafe-inline' data: blob: asset: http://localhost:1420 http://localhost:1421 https://localhost:1420 https://localhost:1421 http://127.0.0.1:1420 http://127.0.0.1:1421 https://127.0.0.1:1420 https://127.0.0.1:1421; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 http://localhost:1421 https://localhost:1420 https://localhost:1421 http://127.0.0.1:1420 http://127.0.0.1:1421 https://127.0.0.1:1420 https://127.0.0.1:1421 ws://localhost:1420 ws://localhost:1421 wss://localhost:1420 wss://localhost:1421 ws://127.0.0.1:1420 ws://127.0.0.1:1421 wss://127.0.0.1:1420 wss://127.0.0.1:1421; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {

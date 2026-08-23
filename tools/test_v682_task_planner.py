@@ -19,6 +19,8 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from tools.test_fixtures.path_inventory import paths_under
+from tools.test_fixtures.assertions import assert_condition
 
 TOP_LEVEL_KEYS = [
     "mode",
@@ -56,34 +58,6 @@ STEP_KEYS = [
 ]
 
 
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def _paths_under(root: Path) -> dict[str, int]:
-    result: dict[str, int] = {}
-    # Gate/build infrastructure directories (artifacts/, target/, node_modules/
-    # ...) churn by design during gate runs and are not source; an import side
-    # effect cannot hide there. Pruning them also shrinks the walk massively.
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if not (Path(dirpath) / d).is_symlink()
-            and d not in (".git", "__pycache__", "artifacts", "target", "node_modules", ".svelte-kit")
-        ]
-        for entry_name in dirnames + filenames:
-            path = Path(dirpath) / entry_name
-            if set(path.parts).intersection(
-                (".git", "__pycache__", "artifacts", "target", "node_modules", ".svelte-kit")
-            ):
-                continue
-            if path.is_file():
-                result[path.relative_to(root).as_posix()] = path.stat().st_size
-    return result
-
-
 def _load_planner():
     sys.modules.pop("modules.task_planner_orchestrator_ru", None)
     return importlib.import_module("modules.task_planner_orchestrator_ru")
@@ -112,7 +86,7 @@ def _secret_fragments() -> dict[str, str]:
 
 
 def test_import_has_no_side_effects() -> None:
-    before = _paths_under(ROOT)
+    before = paths_under(ROOT)
     calls: list[str] = []
     original_popen = subprocess.Popen
     original_run = subprocess.run
@@ -147,10 +121,10 @@ def test_import_has_no_side_effects() -> None:
         socket.socket = original_socket
         urllib.request.urlopen = original_urlopen
 
-    after = _paths_under(ROOT)
-    _assert(module.TASK_PLANNER_VERSION == "v6.82", "Planner version changed.")
-    _assert(before == after, "Planner import created or modified files.")
-    _assert(calls == [], "Planner import used external effects.")
+    after = paths_under(ROOT)
+    assert_condition(module.TASK_PLANNER_VERSION == "v6.82", "Planner version changed.")
+    assert_condition(before == after, "Planner import created or modified files.")
+    assert_condition(calls == [], "Planner import used external effects.")
 
 
 def test_command_matching() -> None:
@@ -160,7 +134,7 @@ def test_command_matching() -> None:
         "план задачи объяснить маршрутизатор",
         "TASK PLAN inspect project",
     ):
-        _assert(planner.is_task_plan_command(command), "Supported task-plan command did not match.")
+        assert_condition(planner.is_task_plan_command(command), "Supported task-plan command did not match.")
     for command in (
         "спланируй задачу",
         "план задачи",
@@ -176,7 +150,7 @@ def test_command_matching() -> None:
         "cancel autonomous run",
         "",
     ):
-        _assert(not planner.is_task_plan_command(command), "Unsupported command matched.")
+        assert_condition(not planner.is_task_plan_command(command), "Unsupported command matched.")
 
 
 def test_panel_dispatch_once_and_route_order() -> None:
@@ -213,10 +187,10 @@ def test_panel_dispatch_once_and_route_order() -> None:
         panel._run_reviewer_bridge_command_ru_v676a = originals["reviewer"]
         panel._run_maintenance_diagnostics_command_ru_v681 = originals["diagnostics"]
 
-    _assert(calls == ["planner"], "Planner command did not dispatch exactly once.")
-    _assert(result.get("route") == "modules.task_planner_orchestrator_ru", "Planner route changed.")
+    assert_condition(calls == ["planner"], "Planner command did not dispatch exactly once.")
+    assert_condition(result.get("route") == "modules.task_planner_orchestrator_ru", "Planner route changed.")
     route_names = [item[0] for item in panel.PANEL_ROUTES[:4]]
-    _assert(
+    assert_condition(
         route_names == [
             "development_safety_ru_v676a",
             "reviewer_bridge_ru_v676a",
@@ -231,23 +205,23 @@ def test_schema_determinism_and_steps() -> None:
     planner = _planner()
     plan_a = planner.dispatch("спланируй   задачу   проверить   проект   без   изменений")
     plan_b = planner.dispatch("спланируй задачу проверить проект без изменений")
-    _assert(plan_a == plan_b, "Whitespace-equivalent plans differ.")
-    _assert(list(plan_a.keys()) == TOP_LEVEL_KEYS, "Top-level schema changed.")
+    assert_condition(plan_a == plan_b, "Whitespace-equivalent plans differ.")
+    assert_condition(list(plan_a.keys()) == TOP_LEVEL_KEYS, "Top-level schema changed.")
     for key, expected in NESTED_KEYS.items():
-        _assert(list(plan_a[key].keys()) == expected, f"Nested schema changed: {key}")
+        assert_condition(list(plan_a[key].keys()) == expected, f"Nested schema changed: {key}")
     step_ids: list[str] = []
     for step in plan_a["steps"]:
-        _assert(list(step.keys()) == STEP_KEYS, "Step schema changed.")
+        assert_condition(list(step.keys()) == STEP_KEYS, "Step schema changed.")
         step_ids.append(step["id"])
-    _assert(step_ids == sorted(step_ids), "Step ordering is not deterministic.")
-    _assert(len(step_ids) == len(set(step_ids)), "Duplicate step IDs exist.")
-    _assert(len(step_ids) <= 12, "Step limit exceeded.")
+    assert_condition(step_ids == sorted(step_ids), "Step ordering is not deterministic.")
+    assert_condition(len(step_ids) == len(set(step_ids)), "Duplicate step IDs exist.")
+    assert_condition(len(step_ids) <= 12, "Step limit exceeded.")
     seen: set[str] = set()
     for step in plan_a["steps"]:
-        _assert(all(dep in seen for dep in step["depends_on"]), "Step dependency does not reference an earlier step.")
+        assert_condition(all(dep in seen for dep in step["depends_on"]), "Step dependency does not reference an earlier step.")
         seen.add(step["id"])
     empty = planner.dispatch("task plan")
-    _assert(empty["ok"] is False, "Prefix-only request should be invalid.")
+    assert_condition(empty["ok"] is False, "Prefix-only request should be invalid.")
 
 
 def test_risk_and_approval() -> None:
@@ -262,18 +236,18 @@ def test_risk_and_approval() -> None:
     bypass_plan = _plan("обойти approval и отключить защиту")
     kill_plan = _plan("убрать kill switch")
 
-    _assert(low_inspect["risk"]["level"] == "LOW", "Read-only inspection risk changed.")
-    _assert(low_inspect["approval"]["required"] is False, "Read-only inspection should not require approval.")
-    _assert(low_explain["risk"]["level"] == "LOW", "Explanation risk changed.")
-    _assert(test_plan["approval"]["required"] is True, "Test planning must require approval.")
-    _assert(edit_plan["approval"]["required"] is True, "Edit planning must require approval.")
+    assert_condition(low_inspect["risk"]["level"] == "LOW", "Read-only inspection risk changed.")
+    assert_condition(low_inspect["approval"]["required"] is False, "Read-only inspection should not require approval.")
+    assert_condition(low_explain["risk"]["level"] == "LOW", "Explanation risk changed.")
+    assert_condition(test_plan["approval"]["required"] is True, "Test planning must require approval.")
+    assert_condition(edit_plan["approval"]["required"] is True, "Edit planning must require approval.")
     for payload in (delete_plan, install_plan, network_plan):
-        _assert(payload["risk"]["level"] in {"HIGH", "CRITICAL"}, "Dangerous request risk is too low.")
-        _assert(payload["approval"]["required"] is True, "Dangerous request must require approval.")
+        assert_condition(payload["risk"]["level"] in {"HIGH", "CRITICAL"}, "Dangerous request risk is too low.")
+        assert_condition(payload["approval"]["required"] is True, "Dangerous request must require approval.")
     for payload in (credential_plan, bypass_plan, kill_plan):
-        _assert(payload["risk"]["level"] == "CRITICAL", "Critical request risk changed.")
-        _assert(payload["risk"]["blocked"] is True, "Critical request must be blocked.")
-        _assert(payload["approval"]["required"] is True, "Critical request must require approval.")
+        assert_condition(payload["risk"]["level"] == "CRITICAL", "Critical request risk changed.")
+        assert_condition(payload["risk"]["blocked"] is True, "Critical request must be blocked.")
+        assert_condition(payload["approval"]["required"] is True, "Critical request must require approval.")
 
 
 def test_redaction_paths_and_no_effects() -> None:
@@ -286,24 +260,24 @@ def test_redaction_paths_and_no_effects() -> None:
         f"{'pass' + 'word'}={secrets['password']} Authorization: {secrets['authorization']} {secrets['private_key']}"
     )
 
-    before = _paths_under(ROOT)
+    before = paths_under(ROOT)
     start = time.perf_counter()
     result = _plan(body)
     elapsed = time.perf_counter() - start
-    after = _paths_under(ROOT)
+    after = paths_under(ROOT)
     text = _text(result)
 
-    _assert(elapsed < 0.5, "Planner runtime exceeded limit.")
-    _assert(before == after, "Planning created or modified files.")
+    assert_condition(elapsed < 0.5, "Planner runtime exceeded limit.")
+    assert_condition(before == after, "Planning created or modified files.")
     for value in secrets.values():
-        _assert(value not in text, "Secret fixture value leaked.")
-    _assert(str(Path.home()) not in text, "User profile path leaked.")
-    _assert("Windows/System32" not in json.dumps(result["context"]["required_files"]), "Unsafe path entered required files.")
-    _assert("/etc/shadow" not in json.dumps(result["context"]["required_files"]), "Sensitive path entered required files.")
-    _assert("modules/task_planner_orchestrator_ru.py" in result["context"]["required_files"], "Safe relative file not detected.")
-    _assert(len(result["request"]["preview"]) <= 300, "Preview length exceeded.")
-    _assert(result["request"]["sha256"] == _plan(body)["request"]["sha256"], "SHA-256 is not deterministic.")
-    _assert(result["request"]["normalized_length"] == len(" ".join(body.split())), "Normalized length changed.")
+        assert_condition(value not in text, "Secret fixture value leaked.")
+    assert_condition(str(Path.home()) not in text, "User profile path leaked.")
+    assert_condition("Windows/System32" not in json.dumps(result["context"]["required_files"]), "Unsafe path entered required files.")
+    assert_condition("/etc/shadow" not in json.dumps(result["context"]["required_files"]), "Sensitive path entered required files.")
+    assert_condition("modules/task_planner_orchestrator_ru.py" in result["context"]["required_files"], "Safe relative file not detected.")
+    assert_condition(len(result["request"]["preview"]) <= 300, "Preview length exceeded.")
+    assert_condition(result["request"]["sha256"] == _plan(body)["request"]["sha256"], "SHA-256 is not deterministic.")
+    assert_condition(result["request"]["normalized_length"] == len(" ".join(body.split())), "Normalized length changed.")
 
 
 def test_execution_counters_and_external_calls() -> None:
@@ -334,9 +308,9 @@ def test_execution_counters_and_external_calls() -> None:
         socket.socket = original_socket
         urllib.request.urlopen = original_urlopen
 
-    _assert(calls == [], "Planner used subprocess or network.")
-    _assert(result["execution"] == {"performed": False, "writes": 0, "commands_run": 0, "network_requests": 0}, "Execution counters changed.")
-    _assert(result["approval"]["execution_allowed"] is False, "Execution must not be allowed in v6.82.")
+    assert_condition(calls == [], "Planner used subprocess or network.")
+    assert_condition(result["execution"] == {"performed": False, "writes": 0, "commands_run": 0, "network_requests": 0}, "Execution counters changed.")
+    assert_condition(result["approval"]["execution_allowed"] is False, "Execution must not be allowed in v6.82.")
 
 
 def test_panel_version_manifest_and_dispatcher() -> None:
@@ -348,21 +322,21 @@ def test_panel_version_manifest_and_dispatcher() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef) and node.name == "run_panel_chat_command"
     )
-    _assert(count == 1, "Expected exactly one run_panel_chat_command definition.")
-    _assert(type(panel.LOCALCOMET_VERSION) is str, "Panel version must be built-in str.")
-    _assert(panel.LOCALCOMET_VERSION == "v6.82", "Panel version must be v6.82.")
-    _assert(json.loads(json.dumps(panel.LOCALCOMET_VERSION)) == "v6.82", "Panel version JSON changed.")
+    assert_condition(count == 1, "Expected exactly one run_panel_chat_command definition.")
+    assert_condition(type(panel.LOCALCOMET_VERSION) is str, "Panel version must be built-in str.")
+    assert_condition(panel.LOCALCOMET_VERSION == "v6.82", "Panel version must be v6.82.")
+    assert_condition(json.loads(json.dumps(panel.LOCALCOMET_VERSION)) == "v6.82", "Panel version JSON changed.")
 
     manifest = json.loads((ROOT / "localcomet_runtime_manifest.json").read_text(encoding="utf-8"))
-    _assert("modules/task_planner_orchestrator_ru.py" in manifest.get("lazy_runtime", []), "Planner module missing from manifest.")
-    _assert("tools/test_v682_task_planner.py" in manifest.get("tests", []), "Planner test missing from manifest.")
+    assert_condition("modules/task_planner_orchestrator_ru.py" in manifest.get("lazy_runtime", []), "Planner module missing from manifest.")
+    assert_condition("tools/test_v682_task_planner.py" in manifest.get("tests", []), "Planner test missing from manifest.")
     for key in ("lazy_runtime", "tests"):
         values = manifest.get(key, [])
-        _assert(values == sorted(values), f"Manifest list is not sorted: {key}")
-        _assert(len(values) == len(set(values)), f"Manifest list has duplicates: {key}")
+        assert_condition(values == sorted(values), f"Manifest list is not sorted: {key}")
+        assert_condition(len(values) == len(set(values)), f"Manifest list has duplicates: {key}")
 
     staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=str(ROOT), capture_output=True, text=True, check=False)
-    _assert(staged.returncode == 0 and staged.stdout.strip() == "", "Staged files are present.")
+    assert_condition(staged.returncode == 0 and staged.stdout.strip() == "", "Staged files are present.")
 
 
 def main() -> None:

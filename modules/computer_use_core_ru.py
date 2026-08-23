@@ -1,10 +1,10 @@
 
 from __future__ import annotations
+from modules.json_io import read_json as _read_json, write_json as _write_json
 
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
-import json
 import uuid
 
 ROOT_PATH = Path(__file__).resolve().parents[1]
@@ -26,21 +26,6 @@ def _now() -> str:
 def _ensure_dirs() -> None:
     for path in [COMPUTER_USE_DIR, TRACE_DIR, REPORT_DIR]:
         path.mkdir(parents=True, exist_ok=True)
-
-
-def _read_json(path: Path, default: Any) -> Any:
-    try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-    return default
-
-
-def _write_json(path: Path, payload: Any) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(path)
 
 
 def _trace(event: Dict[str, Any]) -> str:

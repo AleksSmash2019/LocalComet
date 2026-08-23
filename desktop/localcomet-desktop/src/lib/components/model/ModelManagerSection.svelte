@@ -41,6 +41,7 @@
   let confirmation: Confirmation | null = null;
   let actionPending = false;
   let selectedModelId = $managedRuntimeStore.selectedModelId;
+  let strongestInstalledModelAutoSelected = false;
 
 
   $: runtimes = $managedRuntimeStore.runtimeCatalog ?? [];
@@ -54,6 +55,27 @@
   $: approvedModelArtifacts = modelArtifacts.filter((artifact): artifact is ApprovedDownloadableArtifact => artifact.trust_kind === 'approved_catalog');
   $: customModelArtifacts = modelArtifacts.filter((artifact) => artifact.trust_kind === 'user_supplied');
   $: selectedModelArtifact = modelArtifacts.find((artifact) => artifact.artifact_id === selectedModelId) ?? null;
+  // Prefer an installed, larger text model over the tiny approved-catalog default.
+  // Vision artifacts stay behind text models for the plain chat path.
+  $: if (
+    !strongestInstalledModelAutoSelected &&
+    modelArtifacts.length > 0 &&
+    $managedRuntimeStore.installedArtifacts.length > 0
+  ) {
+    const strongestInstalledModel = modelArtifacts
+      .filter((artifact) => artifact.kind === 'model')
+      .filter((artifact) => installationState(artifact.artifact_id) === 'valid')
+      .sort((left, right) => {
+        const leftIsVision = /\bvl\b/i.test(left.display_name) ? 1 : 0;
+        const rightIsVision = /\bvl\b/i.test(right.display_name) ? 1 : 0;
+        return leftIsVision - rightIsVision || right.expected_bytes - left.expected_bytes;
+      })[0];
+    if (strongestInstalledModel && selectedModelId !== strongestInstalledModel.artifact_id) {
+      selectedModelId = strongestInstalledModel.artifact_id;
+      void setManagedSelectedModel(selectedModelId);
+    }
+    strongestInstalledModelAutoSelected = true;
+  }
   $: runtimeArtifact = selectedRuntimeId
     ? $artifactAcquisitionStore.artifacts.find((artifact): artifact is ApprovedDownloadableArtifact => artifact.kind === 'runtime' && artifact.artifact_id === selectedRuntimeId) ?? null
     : null;

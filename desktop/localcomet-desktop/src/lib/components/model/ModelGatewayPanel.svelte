@@ -13,6 +13,7 @@
     startLocalModelTurn
   } from '$lib/stores/modelGateway';
   import type { HarnessId } from '$lib/types/modelGateway';
+  import { t } from '$lib/i18n';
 
   let prompt = '';
   $: portValid = /^\d+$/.test($modelGatewayStore.portText) && Number($modelGatewayStore.portText) >= 1024 && Number($modelGatewayStore.portText) <= 65535;
@@ -34,25 +35,25 @@
   }
 </script>
 
-<section class="model-panel card-surface" aria-label="External local server">
+<section class="model-panel card-surface" aria-label={$t('model.external_local_server')}>
   <header class="model-panel-header">
     <div>
-      <p class="eyebrow">External local server</p>
-      <h2>OpenAI-compatible local</h2>
+      <p class="eyebrow">{$t('model.external_local_server')}</p>
+      <h2>{$t('model.openai_compatible_local')}</h2>
     </div>
     <StatusBadge label={$modelGatewayStore.status} tone={statusTone} />
   </header>
 
   <div class="gateway-grid">
-    <TelemetryRow label="Provider" value="openai-compatible-local" mono />
-    <TelemetryRow label="Host" value="127.0.0.1" mono />
-    <TelemetryRow label="Tools Executed" value={$modelGatewayStore.toolsExecuted} tone="disabled" mono />
-    <TelemetryRow label="Persistence" value={$modelGatewayStore.persistence} tone="disabled" />
+    <TelemetryRow label={$t('model.provider')} value="openai-compatible-local" mono />
+    <TelemetryRow label={$t('model.host')} value="127.0.0.1" mono />
+    <TelemetryRow label={$t('model.tools_executed')} value={$modelGatewayStore.toolsExecuted} tone="disabled" mono />
+    <TelemetryRow label={$t('model.persistence')} value={$modelGatewayStore.persistence} tone="disabled" />
   </div>
 
-  <div class="gateway-controls" aria-label="Gateway controls">
+  <div class="gateway-controls" aria-label={$t('model.gateway_controls')}>
     <label>
-      <span>Port</span>
+      <span>{$t('model.port')}</span>
       <input
         inputmode="numeric"
         pattern="[0-9]*"
@@ -62,54 +63,54 @@
         oninput={(event) => setGatewayPortText((event.currentTarget as HTMLInputElement).value)}
       />
     </label>
-    <button type="button" disabled={!portValid || $modelGatewayStore.status === 'Probing'} onclick={() => void probeGateway()}>Probe</button>
-    <button type="button" disabled={!portValid || $modelGatewayStore.status === 'Probing'} onclick={() => void discoverModels()}>List Models</button>
+    <button type="button" disabled={!portValid || $modelGatewayStore.status === 'Probing'} onclick={() => void probeGateway()}>{$t('model.probe')}</button>
+    <button type="button" disabled={!portValid || $modelGatewayStore.status === 'Probing'} onclick={() => void discoverModels()}>{$t('model.list_models')}</button>
   </div>
 
-  <div class="gateway-controls" aria-label="Binding controls">
+  <div class="gateway-controls" aria-label={$t('model.binding_controls')}>
     <label>
-      <span>Model</span>
+      <span>{$t('model.model')}</span>
       <select value={$modelGatewayStore.selectedModelId} onchange={(event) => setSelectedModel((event.currentTarget as HTMLSelectElement).value)}>
-        <option value="">Select discovered model</option>
+        <option value="">{$t('model.select_discovered')}</option>
         {#each $modelGatewayStore.models as model}
           <option value={model.model_id}>{model.model_id}</option>
         {/each}
       </select>
     </label>
     <label>
-      <span>Harness</span>
+      <span>{$t('model.harness')}</span>
       <select value={$modelGatewayStore.harnessId} onchange={onHarnessChange}>
-        <option value="minimal">minimal</option>
-        <option value="native-localcomet">native-localcomet</option>
+        <option value="minimal">{$t('model.harness_minimal')}</option>
+        <option value="native-localcomet">{$t('model.harness_native')}</option>
       </select>
     </label>
-    <button type="button" disabled={!canBind} onclick={() => void confirmBinding()}>Confirm Binding</button>
+    <button type="button" disabled={!canBind} onclick={() => void confirmBinding()}>{$t('model.confirm_binding')}</button>
   </div>
 
-  <div class="fingerprint" aria-label="Binding fingerprint">
-    <span>Fingerprint</span>
-    <code>{$modelGatewayStore.binding?.binding_fingerprint ?? 'Binding required'}</code>
+  <div class="fingerprint" aria-label={$t('model.binding_fingerprint')}>
+    <span>{$t('model.fingerprint')}</span>
+    <code>{$modelGatewayStore.binding?.binding_fingerprint ?? $t('model.binding_required')}</code>
   </div>
 
   <label class="prompt-box">
-    <span>Prompt</span>
+    <span>{$t('model.prompt')}</span>
     <textarea
       bind:value={prompt}
       rows="3"
       maxlength="12000"
       disabled={!$modelGatewayStore.binding || canCancel}
-      placeholder={$modelGatewayStore.binding ? 'Send one text-only local prompt...' : 'Confirm a binding before starting a real turn'}
+      placeholder={$modelGatewayStore.binding ? $t('model.local_prompt_placeholder') : $t('model.binding_prompt_placeholder')}
     ></textarea>
   </label>
 
   <div class="turn-actions">
-    <button type="button" disabled={!canStart} onclick={() => void startLocalModelTurn(prompt)}>Start</button>
-    <button type="button" disabled={!canCancel} onclick={() => void cancelLocalModelTurn()}>Cancel</button>
-    <StatusBadge label={$modelGatewayStore.modelCalled ? 'Model Called: Yes' : 'Model Called: No'} tone={$modelGatewayStore.modelCalled ? 'ready' : 'disabled'} />
+    <button type="button" disabled={!canStart} onclick={() => void startLocalModelTurn(prompt)}>{$t('model.start')}</button>
+    <button type="button" disabled={!canCancel} onclick={() => void cancelLocalModelTurn()}>{$t('model.cancel')}</button>
+    <StatusBadge label={$modelGatewayStore.modelCalled ? $t('model.called_yes') : $t('model.called_no')} tone={$modelGatewayStore.modelCalled ? 'ready' : 'disabled'} />
   </div>
 
   {#if $modelGatewayStore.generatedText}
-    <pre class="generated" aria-label="Generated local model text">{$modelGatewayStore.generatedText}</pre>
+    <pre class="generated" aria-label={$t('model.generated_text')}>{$modelGatewayStore.generatedText}</pre>
   {/if}
   {#if $modelGatewayStore.lastError}
     <p class="gateway-error" role="status">{$modelGatewayStore.lastError.message}</p>

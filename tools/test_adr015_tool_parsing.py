@@ -614,6 +614,7 @@ class ToolCallIntegrationTests(unittest.TestCase):
             "model_id": "local-model",
             "submitted_at_unix_ms": 1_700_000_000_000,
             "max_tokens": 128,
+            "seed": 42,
             "prompt": "hello",
             "assistant_context": trusted_assistant_context_payload("ru", False, tools),
             "binding_fingerprint": binding_fingerprint,
@@ -1175,6 +1176,7 @@ class CrossLayerParityTests(unittest.TestCase):
                 "model_id": identity["modelId"],
                 "submitted_at_unix_ms": identity["submittedAtUnixMs"],
                 "max_tokens": identity["maxTokens"],
+                "seed": 42,
                 "prompt": "hello",
                 "assistant_context": trusted_assistant_context_payload(
                     "ru", False, tuple(enabled["permittedTools"])

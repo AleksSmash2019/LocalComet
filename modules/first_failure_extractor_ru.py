@@ -4,7 +4,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from modules.project_paths import get_project_root
+from modules.project_paths import find_project_root
 from typing import Any, Dict, List, Optional
 
 
@@ -21,13 +21,7 @@ def _stamp() -> str:
 
 
 def _root() -> Path:
-    here = Path(__file__).resolve()
-    for candidate in (here.parent, *here.parents):
-        if (candidate / "AGENTS.md").exists() or (candidate / "LocalComet_Control_Panel.py").exists():
-            return candidate
-    return get_project_root()
-
-
+    return find_project_root(__file__)
 def _reports_dir() -> Path:
     return _root() / "Projects" / "Reports"
 

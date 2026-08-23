@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+import stat
+import os
 from typing import Any, Mapping
 
 from modules.workspace_policy import WorkspacePolicy, WorkspacePolicyError
@@ -178,12 +180,31 @@ def _files_write(policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any
     )
 
 
+def _reject_reparse_components(target: Path) -> None:
+    current = target
+    while True:
+        try:
+            is_reparse = current.is_symlink()
+            if os.name == 'nt' and current.exists():
+                attrs = getattr(os.stat(current, follow_symlinks=False), 'st_file_attributes', 0)
+                is_reparse = is_reparse or bool(attrs & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400))
+        except OSError as exc:
+            raise ToolExecutionError('internal_error', f'unable to inspect path: {exc}') from exc
+        if is_reparse:
+            raise ToolExecutionError('policy_blocked', 'path contains a symlink or reparse point')
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
 def _files_create_folder(
     policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]
 ) -> dict[str, Any]:
     target = _resolve_in_workspace(policy, _require_str(input_obj, "path"))
+    _reject_reparse_components(target)
     try:
         target.mkdir(parents=True, exist_ok=True)
+        _reject_reparse_components(target)
     except OSError as exc:
         raise ToolExecutionError("internal_error", f"create_folder failed: {exc}") from exc
     except ValueError as exc:
@@ -193,6 +214,7 @@ def _files_create_folder(
 
 def _files_delete(policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]) -> dict[str, Any]:
     target = _resolve_in_workspace(policy, _require_str(input_obj, "path"))
+    _reject_reparse_components(target)
     if target == Path(policy.canonical_path):
         raise ToolExecutionError("invalid_payload", "cannot delete the workspace root")
     if target.is_dir():
@@ -308,6 +330,7 @@ def _computer_use(
 # fetch = GET with 10kB limit + html strip + MAX_FILE_BYTES guard.
 # Both share a tiny in-memory cache so repeated calls don't hammer the net.
 import urllib.request, urllib.parse
+import ipaddress, socket
 import html as _html
 
 _web_cache: dict[str, tuple[float, str]] = {}
@@ -376,12 +399,46 @@ def _web_search(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
     _web_cache_put(f"s:{query.strip().lower()}", out)
     return {"tool": tool, "query": query, "results": results, "cached": False}
 
+def _reject_ssrf_target(url: str) -> None:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ToolExecutionError("invalid_payload", "url must use http(s) with a hostname")
+    host = parsed.hostname
+    try:
+        candidate_ips = {ipaddress.ip_address(host)}
+    except ValueError:
+        try:
+            infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+        except OSError as exc:
+            raise ToolExecutionError("invalid_payload", f"unable to resolve URL host: {exc}") from exc
+        candidate_ips = {ipaddress.ip_address(info[4][0]) for info in infos}
+    if not candidate_ips or any(
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_unspecified
+        or ip.is_multicast
+        for ip in candidate_ips
+    ):
+        raise ToolExecutionError(
+            "policy_denied",
+            "web.fetch does not allow private, loopback, link-local, reserved, or multicast hosts",
+        )
+
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
 def _web_fetch(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
     url = input_obj.get("url")
     if not isinstance(url, str) or not url.strip():
         raise ToolExecutionError("invalid_payload", "url must be a non-empty string")
     _reject_unrenderable(url, "url")
     url = url.strip()
+    _reject_ssrf_target(url)
     if not url.startswith(_ALLOWED_FETCH_SCHEMES):
         raise ToolExecutionError("invalid_payload", "url must start with https:// or http://")
     if len(url) > 2000:
@@ -392,7 +449,7 @@ def _web_fetch(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
     import urllib.request
     req = urllib.request.Request(url, headers={"User-Agent": "LocalComet/6.84 web.fetch"})
     try:
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.build_opener(_NoRedirectHandler()).open(req, timeout=12) as resp:
             ctype = (resp.headers.get("Content-Type") or "").lower()
             if "text/html" not in ctype and "text/plain" not in ctype and "application/json" not in ctype and "application/xml" not in ctype and "text/" not in ctype:
                 raise ToolExecutionError("invalid_payload", f"unsupported content-type: {ctype[:80]}")
@@ -441,8 +498,19 @@ def _skills_invoke(policy: WorkspacePolicy, tool: str, payload: Mapping[str, Any
             "invalid_payload",
             "arguments must be an object or array",
         )
+    requested_permissions = payload.get("permissions")
+    if (
+        not isinstance(requested_permissions, list)
+        or not requested_permissions
+        or any(not isinstance(permission, str) or not permission for permission in requested_permissions)
+        or len(set(requested_permissions)) != len(requested_permissions)
+    ):
+        raise ToolExecutionError(
+            "invalid_payload",
+            "permissions must be a non-empty list of unique strings",
+        )
     try:
-        return invoke_skill(skill_id, arguments)
+        return invoke_skill(skill_id, arguments, requested_permissions)
     except SkillInvokeError as exc:
         raise ToolExecutionError(exc.code, exc.message) from exc
 

@@ -4,6 +4,7 @@ import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from modules.project_paths import get_project_root
+from modules.text_utils import make_short
 
 from core.llm import ask_llm
 from core.state import get_value, set_value
@@ -90,15 +91,7 @@ def _ensure_reports_dir():
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _short(value, limit=5000):
-    text = str(value or "")
-
-    if len(text) <= limit:
-        return text
-
-    return text[:limit] + "\n...[обрезано]"
-
-
+_short = make_short(5000)
 def _clean_task(task):
     return str(task or "").strip(" \n\t:,-—")
 

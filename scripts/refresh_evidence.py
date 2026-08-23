@@ -35,7 +35,23 @@ def get_evidence_key(allow_generate: bool = True) -> str:
         
     key_path.parent.mkdir(parents=True, exist_ok=True)
     new_key = os.urandom(32).hex()
-    key_path.write_text(new_key, encoding="utf-8")
+    fd = os.open(str(key_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(new_key)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
+    try:
+        os.chmod(key_path, 0o600)
+        if os.name == "nt":
+            import getpass
+            subprocess.run(["icacls", str(key_path), "/inheritance:r", "/grant:r", f"{getpass.getuser()}:F"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
     return new_key
 
 SOURCE_GLOBS = [

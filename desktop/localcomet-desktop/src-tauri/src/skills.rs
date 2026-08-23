@@ -4,6 +4,7 @@ use std::process::Command;
 use tauri::{command, AppHandle, Manager};
 
 use crate::app_data_root::resolve_application_data_root;
+use crate::approval_commands::{validate_approval_token, ApprovalState};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SkillResponse {
@@ -66,21 +67,109 @@ pub async fn skills_list(app: AppHandle) -> Result<SkillResponse, String> {
 }
 
 #[command]
-pub async fn skills_install(app: AppHandle, archive: String) -> Result<SkillResponse, String> {
+pub async fn skills_install(
+    app: AppHandle,
+    state: tauri::State<'_, ApprovalState>,
+    archive: String,
+    token: String,
+    approval_id: String,
+    call_id: String,
+) -> Result<SkillResponse, String> {
+    let semantic_payload = serde_json::json!({
+        "action": "install",
+        "archive": archive,
+    });
+    validate_approval_token(
+        &state,
+        "skills.invoke",
+        &semantic_payload,
+        &token,
+        &approval_id,
+        &call_id,
+    )
+    .map_err(|err| format!("{}: {}", err.code, err.message))?;
+
+    let archive = semantic_payload["archive"]
+        .as_str()
+        .ok_or_else(|| "invalid archive payload".to_string())?
+        .to_owned();
     run_skills_cli(&app, "install", &["--archive", &archive]).await
 }
 
 #[command]
-pub async fn skills_enable(app: AppHandle, skill_id: String) -> Result<SkillResponse, String> {
+pub async fn skills_enable(
+    app: AppHandle,
+    state: tauri::State<'_, ApprovalState>,
+    skill_id: String,
+    token: String,
+    approval_id: String,
+    call_id: String,
+) -> Result<SkillResponse, String> {
+    let semantic_payload = serde_json::json!({"action": "enable", "skill_id": skill_id});
+    validate_approval_token(
+        &state,
+        "skills.invoke",
+        &semantic_payload,
+        &token,
+        &approval_id,
+        &call_id,
+    )
+    .map_err(|err| format!("{}: {}", err.code, err.message))?;
+    let skill_id = semantic_payload["skill_id"]
+        .as_str()
+        .ok_or_else(|| "invalid skill id payload".to_string())?
+        .to_owned();
     run_skills_cli(&app, "enable", &["--skill-id", &skill_id]).await
 }
 
 #[command]
-pub async fn skills_disable(app: AppHandle, skill_id: String) -> Result<SkillResponse, String> {
+pub async fn skills_disable(
+    app: AppHandle,
+    state: tauri::State<'_, ApprovalState>,
+    skill_id: String,
+    token: String,
+    approval_id: String,
+    call_id: String,
+) -> Result<SkillResponse, String> {
+    let semantic_payload = serde_json::json!({"action": "disable", "skill_id": skill_id});
+    validate_approval_token(
+        &state,
+        "skills.invoke",
+        &semantic_payload,
+        &token,
+        &approval_id,
+        &call_id,
+    )
+    .map_err(|err| format!("{}: {}", err.code, err.message))?;
+    let skill_id = semantic_payload["skill_id"]
+        .as_str()
+        .ok_or_else(|| "invalid skill id payload".to_string())?
+        .to_owned();
     run_skills_cli(&app, "disable", &["--skill-id", &skill_id]).await
 }
 
 #[command]
-pub async fn skills_uninstall(app: AppHandle, skill_id: String) -> Result<SkillResponse, String> {
+pub async fn skills_uninstall(
+    app: AppHandle,
+    state: tauri::State<'_, ApprovalState>,
+    skill_id: String,
+    token: String,
+    approval_id: String,
+    call_id: String,
+) -> Result<SkillResponse, String> {
+    let semantic_payload = serde_json::json!({"action": "uninstall", "skill_id": skill_id});
+    validate_approval_token(
+        &state,
+        "skills.invoke",
+        &semantic_payload,
+        &token,
+        &approval_id,
+        &call_id,
+    )
+    .map_err(|err| format!("{}: {}", err.code, err.message))?;
+    let skill_id = semantic_payload["skill_id"]
+        .as_str()
+        .ok_or_else(|| "invalid skill id payload".to_string())?
+        .to_owned();
     run_skills_cli(&app, "uninstall", &["--skill-id", &skill_id]).await
 }

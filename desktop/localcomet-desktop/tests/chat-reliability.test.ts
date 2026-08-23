@@ -77,6 +77,7 @@ function acceptance(args: Record<string, unknown>) {
     model_id: args.modelId,
     submitted_at_unix_ms: args.submittedAtUnixMs,
     max_tokens: args.maxTokens,
+    seed: 42,
     binding_fingerprint: args.bindingFingerprint
   };
 }
