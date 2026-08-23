@@ -18,7 +18,7 @@ IPC: localcomet.ipc/1.0, length-prefix 4-byte BE, max 4 MiB.
 ## Пути
 
 - Репозиторий: C:\Users\DNS\Documents\LocalComet-build-week-clean
-- Активная ветка: feature/donor-ui-compatible-port
+- Активная ветка: feat/up00-wp01-windows-one-click-launch
   Новых веток не создавать, коммиты не делать без указания.
 - Фронтенд: desktop/localcomet-desktop
 - Rust: src-tauri
