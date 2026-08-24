@@ -88,14 +88,14 @@
 
 ## Roadmap до 9,5/10 — 2026-08-25
 
-**Цель:** поднять LocalComet с текущих **8,1/10** до честного минимума **9,5/10**. Нельзя считать задачу закрытой по одному `exit 0`: каждый пользовательский поток должен иметь независимый postcondition proof, корректную authorization/correlation evidence и честный terminal verdict.
+**Цель:** поднять LocalComet с текущих **8,1/10** до честного минимума **9,5/10** и, если все критерии реально закрываются, до **10/10**. Нельзя считать задачу закрытой по одному `exit 0`: каждый пользовательский поток должен иметь независимый postcondition proof, корректную authorization/correlation evidence и честный terminal verdict.
 
 **Ограничения кампании:** только named hidden desktops для GUI; без физического пользовательского desktop; без автоматических Calculator-запусков; внешний Anthology helper не трогать; не запускать кампании на 100/200/1000 сценариев; сохранять Qwen3-1.7B Q4_K_M без silent substitution; не удалять отчёты, worktrees, stashes, модели и runtime caches вслепую.
 
 | Шаг | Направление | Что сделать | Критерий завершения | Статус |
 |---:|---|---|---|---|
 | 1 | Baseline и acceptance matrix | Зафиксировать 8,1/10, commit `b8d6bac`, открытые blockers и единый список базовых действий | Matrix содержит browser, folders, files, Notepad, type/paste/key/hotkey/wait/scroll, click/double-click, screenshot, task и voice; для каждого задан verdict contract | DONE |
-| 2 | Готовые skills | Провести read-only inventory доступных LocalComet/Obsidian skills и известных Computer Use подходов | Для каждого кандидата указаны источник, лицензия, зависимости, security risks, Windows compatibility и решение `adopt/adapt/reject`; без слепого копирования | NEXT |
+| 2 | Готовые skills | Провести read-only inventory доступных LocalComet/Obsidian skills и известных Computer Use подходов | Для каждого кандидата указаны источник, лицензия, зависимости, security risks, Windows compatibility и решение `adopt/adapt/reject`; без слепого копирования | IN_PROGRESS |
 | 3 | Skill adapter | Подключить только принятые skills через существующий skills runtime и capability boundary | Skill не получает произвольный shell/filesystem; permissions explicit; deterministic dispatch, timeout, cancellation и error envelope покрыты tests | BLOCKED_BY_2 |
 | 4 | Browser/open_url | Исправить текущую ошибку «Открой браузер хром», разделив `open_app chrome` и HTTPS `open_url`; добавить Chrome discovery, readiness, single-instance/reuse и честный failure | На новом hidden desktop: Chrome запускается/переиспользуется, HTTPS URL открывается, readiness подтверждается, invalid/non-HTTPS URL блокируется, никакого physical-browser control | P0 |
 | 5 | Папки | Довести `open_folder`, list/create folder и navigation до workspace-constrained поведения | Valid folder работает; outside workspace, symlink/reparse, missing path и malformed input дают fail-closed result; independent filesystem postcondition | P0 |
@@ -107,7 +107,7 @@
 | 11 | Голос и характер | После стабилизации core flow подобрать спокойный русскоязычный voice profile, добавить лаконичный характер LocalComet и исправить Stop lifecycle | Voice start/stop idempotent, no replay loop, stale completion ignored; personality не меняет security decisions и не раскрывает внутренние данные | P1 |
 | 12 | Security/performance/resources | Провести audit grants, allowlists, IPC limits, memory/temp/cache growth, process ownership и cleanup policy | Security-negative gates PASS; no orphan owned workers; memory/temporary files bounded; чужие процессы не останавливаются | P0/P1 |
 | 13 | Verification matrix | Добавить deterministic tests и ограниченный hidden acceptance: по одному representative flow на каждый класс, без массовой кампании | Python/Rust/frontend/bundle/evidence gates PASS; каждый live row имеет один из корректных verdict classes и supporting proof | P0 |
-| 14 | Release decision | Обновить evidence, Obsidian, scorecard и сделать один clean commit только после review | 9,5/10 разрешается только при закрытых P0 и доказанных representative flows; иначе честно фиксируется меньший score и остаточные blockers | FINAL |
+| 14 | Release decision | Обновить evidence, Obsidian, scorecard и сделать один clean commit только после review | 9,5/10 разрешается только при закрытых P0 и доказанных representative flows; 10/10 — только при полном закрытии P0/P1, adaptive red-team, recovery и независимой повторной приёмке | FINAL |
 
 ### Целевые критерии оценки
 
@@ -138,3 +138,67 @@
 3. Исправить browser/open_url, затем добавить deterministic regressions.
 4. Проверить один browser flow и один folder/file flow на свежих named hidden desktops.
 5. Только после этого переходить к UIA grounding и screenshot/task acceptance.
+
+
+## Автономный режим — дополнение после web-исследования — 2026-08-25
+
+**Исследовательская база:** OpenAI Computer Use/API и CUA safety, Anthropic Computer Use и Building Effective Agents, OSWorld NeurIPS benchmark, OWASP Top 10 for Agentic Applications 2026 и NIST CAISI agent-hijacking evaluation. Полные findings и URLs сохранены в `audit/computer_use_autonomous_agent_research_20260825.md`.
+
+### Как должен работать полностью автоматический LocalComet
+
+Пользователь один раз задаёт цель обычным языком. LocalComet переводит её в typed plan с разрешёнными приложениями, доменами, путями, лимитом шагов, временем, retry budget и проверяемым postcondition. Далее цикл выполняется без ручного подтверждения каждого безопасного шага:
+
+`goal → intent compile → plan → observe → choose skill/action → policy gate → execute → observe → verify → continue/replan → complete/stop`
+
+На каждом шаге агент обязан получать ground truth из среды. После запуска приложения проверяется readiness, после ввода — реальное содержимое через UIA, после записи файла — bytes/hash, после browser navigation — URL/readiness, после клика — изменение состояния target. `PASS` без независимого postcondition запрещён.
+
+Если агент встречает untrusted content, prompt injection, выход за scope, неизвестный target, попытку расширить allowlist, credential/login, delete, install, send/submit, financial/terms action, превышение бюджета или неопределённое состояние, он не продолжает молча: делает `PAUSED_FOR_REVIEW`/`BLOCKED` и показывает пользователю причину. Emergency Stop и handoff должны немедленно остановить pending work и заблокировать stale completions.
+
+### Профили автономности
+
+| Профиль | Что разрешено | Когда использовать |
+|---|---|---|
+| Assist | План и действия предлагаются, пользователь подтверждает | Новые/неизвестные сценарии и sensitive data |
+| Bounded autonomous | Агент сам выполняет действия внутри заранее заданного scope и budgets | Основной целевой режим LocalComet |
+| Supervised autonomous | Автономный loop, но с visible monitoring и takeover на browser/external side effects | Browser forms, login, внешние сайты |
+| Unrestricted desktop | Произвольное управление без scope, stop и evidence | Не поддерживать: это небезопасно и не является критерием качества |
+
+### Definition of Done для уровней
+
+| Уровень | Объективное условие |
+|---|---|
+| 8,1/10 | Рабочие broker/Notepad foundations, liveness и targeted contracts; открытые browser/UIA/screenshot/task blockers |
+| 9,5/10 | Все P0 закрыты: browser, folders/files, Notepad actions, semantic UIA grounding, screenshot/observe, bounded task; representative hidden flows имеют independent proofs; нет false PASS |
+| 10/10 | Уровень 9,5 плюс adaptive red-team/agent-hijacking tests, reliable recovery/cancellation, memory/resource budgets, UX/voice polish, reproducible cross-app workflows, clean evidence и независимая повторная acceptance; никаких известных P0/P1 blockers |
+
+### Autonomous-agent implementation board
+
+- [ ] **A1 Intent compiler:** typed task plan, expected postconditions, allowed scope и risk class.
+- [ ] **A2 Planner/skill router:** выбор готового skill или native primitive без права расширить permissions.
+- [ ] **A3 Observation ledger:** screenshot/UIA/DOM/filesystem observations с untrusted-content marker и hashes.
+- [ ] **A4 Policy gate:** action-by-action decision для ReadOnly/Guarded/Dangerous, domain/path/process allowlists и confirmation checkpoints.
+- [ ] **A5 Execution loop:** ordered batches, max steps/time/retries, idempotency keys, checkpoints и continuation.
+- [ ] **A6 Verifier:** независимые postconditions для browser, folders, files, Notepad, clicks и task completion.
+- [ ] **A7 Recovery controller:** bounded retry, replan, backoff, rollback/cleanup, `PAUSED_FOR_REVIEW` при uncertainty.
+- [ ] **A8 Stop/handoff:** immediate cancel, stale-result rejection, visible status, manual takeover и emergency Stop.
+- [ ] **A9 Security tests:** indirect prompt injection, untrusted file/page instructions, exfiltration, download-run/RCE, phishing-like send и scope escalation.
+- [ ] **A10 Resource/observability:** task ledger, correlation IDs, action/observation digest, memory/temp/process budgets и diagnostic redaction.
+- [ ] **A11 Representative acceptance:** browser→file, Notepad→file, folder navigation, semantic click и one multi-step task на fresh named hidden desktops.
+- [ ] **A12 Release gate:** scorecard 9,5/10 и 10/10, evidence provenance, Obsidian update, clean branch и независимый review.
+
+### Метрики, которые добавляются вместо «прогнать тысячу раз»
+
+`task_success_rate`, `verified_postcondition_rate`, `false_pass_rate`, `unsafe_action_rate`, `prompt_injection_block_rate`, `recovery_rate`, `cancellation_latency`, `liveness_health_latency`, `scope_violation_rate`, `resource_budget_compliance` и `evidence_completeness`.
+
+Оценивается не количество повторов, а representative coverage: каждый тип действия и каждый критичный failure mode должен иметь reproducible setup, expected result и независимый verdict. Массовый прогон 1000 сценариев не заменяет качество архитектуры и не будет использоваться как самоцель.
+
+### Текущий следующий цикл
+
+1. Завершить локальный inventory готовых skills и выбрать `adopt/adapt/reject`.
+2. Закончить diagnosis browser/open_url по точному runtime error path.
+3. Реализовать A1–A6 для browser/folders/files и добавить deterministic contracts.
+4. Проверить representative browser и folder/file flows на свежем hidden desktop.
+5. Затем закрыть UIA grounding, screenshot и A7–A11.
+6. Только после всех P0 перейти к personality/voice polish, adaptive red-team и финальной оценке 9,5/10 либо 10/10.
+
+**Правило dashboard:** цель — 10/10, но score повышается только за доказанные capabilities. Если остаётся хотя бы один P0 или известный security/recovery blocker, статус не может быть `10/10`.
