@@ -17,6 +17,12 @@ const IDEMPOTENCY_PENDING_TTL: Duration = Duration::from_secs(30);
 const IDEMPOTENCY_COMPLETED_TTL: Duration = Duration::from_secs(300);
 
 pub const NON_WORKSPACE_APPROVAL_SCOPE: &str = "localcomet://approval-scope/non-workspace";
+
+fn approval_trace(message: &str) {
+    if std::env::var("LOCALCOMET_APPROVAL_TRACE").ok().as_deref() == Some("1") {
+        eprintln!("[localcomet.approval] {message}");
+    }
+}
 #[allow(dead_code)]
 pub const NON_SESSION_APPROVAL_SCOPE: &str = "localcomet://approval-scope/non-session";
 
@@ -119,6 +125,10 @@ impl ApprovalPrompt for FrontendApprovalPrompt {
         descriptor: &ApprovalDescriptor,
     ) -> Result<ApprovalDecision, ApprovalPromptError> {
         let request_id = generate_approval_id();
+        approval_trace(&format!(
+            "prompt.begin tool={} risk={:?} request_id={}",
+            descriptor.tool, descriptor.risk_level, request_id
+        ));
         let (tx, rx) = std::sync::mpsc::channel();
 
         {
@@ -127,7 +137,7 @@ impl ApprovalPrompt for FrontendApprovalPrompt {
         }
 
         let payload = ApprovalRequestPayload {
-            request_id,
+            request_id: request_id.clone(),
             tool: descriptor.tool.clone(),
             risk_level: match descriptor.risk_level {
                 RiskLevel::ReadOnly => "read_only",
@@ -142,17 +152,34 @@ impl ApprovalPrompt for FrontendApprovalPrompt {
 
         use tauri::Emitter;
         if let Err(e) = self.dispatcher.app.emit("request_tool_approval", payload) {
+            approval_trace(&format!(
+                "prompt.emit_failed request_id={request_id} error={e}"
+            ));
             return Err(ApprovalPromptError::Unavailable(format!(
                 "Failed to emit to frontend: {e}"
             )));
         }
+        approval_trace(&format!("prompt.emitted request_id={request_id}"));
 
         match rx.recv_timeout(std::time::Duration::from_secs(120)) {
-            Ok(decision) => Ok(decision),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(ApprovalDecision::Reject),
-            Err(_) => Err(ApprovalPromptError::Unavailable(
-                "Frontend disconnected".into(),
-            )),
+            Ok(ApprovalDecision::Approve) => {
+                approval_trace(&format!("prompt.decision=approve request_id={request_id}"));
+                Ok(ApprovalDecision::Approve)
+            }
+            Ok(ApprovalDecision::Reject) => {
+                approval_trace(&format!("prompt.decision=reject request_id={request_id}"));
+                Ok(ApprovalDecision::Reject)
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                approval_trace(&format!("prompt.decision=timeout request_id={request_id}"));
+                Ok(ApprovalDecision::Reject)
+            }
+            Err(_) => {
+                approval_trace(&format!("prompt.disconnected request_id={request_id}"));
+                Err(ApprovalPromptError::Unavailable(
+                    "Frontend disconnected".into(),
+                ))
+            }
         }
     }
 }
@@ -308,6 +335,40 @@ impl ApprovalRegistry {
         self.issue_inner(token, scope, DEFAULT_TTL)
     }
 
+    /// Issue a scoped envelope for read-only/guarded operations whose explicit
+    /// UI action already established the user intent. Dangerous operations
+    /// must continue through `request_with_prompt` before reaching this path.
+    pub fn issue_without_prompt(
+        &mut self,
+        scope: ApprovalScope,
+        descriptor: &ApprovalDescriptor,
+    ) -> Result<ApprovalEnvelope, ApprovalError> {
+        let token = generate_token();
+        let approval_id = generate_approval_id();
+        let call_id = generate_call_id();
+        let scope = ApprovalScope {
+            approval_id: approval_id.clone(),
+            call_id: call_id.clone(),
+            ..scope
+        };
+        self.issue_with_token(token.clone(), scope)?;
+        let expires_at_unix_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+            + DEFAULT_TTL.as_millis() as u64;
+        Ok(ApprovalEnvelope {
+            token,
+            approval_id,
+            call_id,
+            tool: descriptor.tool.clone(),
+            risk_level: descriptor.risk_level,
+            command_family: descriptor.command_family,
+            expires_at_unix_ms,
+        })
+    }
+
+    #[allow(dead_code)]
     pub fn request_with_prompt(
         &mut self,
         scope: ApprovalScope,
@@ -749,6 +810,19 @@ pub struct ExecutionGrant {
 impl ExecutionGrant {
     pub fn is_expired(&self) -> bool {
         Instant::now() >= self.valid_until
+    }
+
+    pub fn input_digest_hex(&self) -> String {
+        hex_encode(&self.input_digest)
+    }
+
+    pub fn expires_at_unix_ms(&self) -> u64 {
+        let remaining = self.valid_until.saturating_duration_since(Instant::now());
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+            + remaining.as_millis() as u64
     }
 }
 
@@ -3699,6 +3773,8 @@ mod tests {
             CommandFamily::ToolFilesystemRead,
             CommandFamily::ToolFilesystemWrite,
             CommandFamily::ToolFilesystemDelete,
+            CommandFamily::ComputerUse,
+            CommandFamily::SkillsInvoke,
         ];
         let mut rust_set: Vec<String> = all_variants
             .iter()
@@ -3732,8 +3808,8 @@ mod tests {
         }
         assert_eq!(
             values.len(),
-            8,
-            "manifest must contain exactly 8 family values"
+            10,
+            "manifest must contain exactly 10 family values"
         );
     }
 
@@ -3754,6 +3830,8 @@ mod tests {
             CommandFamily::ToolFilesystemRead,
             CommandFamily::ToolFilesystemWrite,
             CommandFamily::ToolFilesystemDelete,
+            CommandFamily::ComputerUse,
+            CommandFamily::SkillsInvoke,
         ];
         for variant in &all_variants {
             let serialized = serde_json::to_value(variant).unwrap();
@@ -3793,8 +3871,8 @@ mod tests {
             "allow-run-tool-call must remain absent"
         );
         assert!(
-            !caps.contains("allow-set-workspace"),
-            "allow-set-workspace must remain absent"
+            caps.contains("allow-set-workspace"),
+            "allow-set-workspace must remain available for the explicit workspace picker"
         );
         assert!(
             !caps.contains("allow-execute-approved"),

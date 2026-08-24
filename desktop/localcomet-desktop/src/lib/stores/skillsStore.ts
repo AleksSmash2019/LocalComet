@@ -8,6 +8,8 @@ export interface Skill {
   version: string;
   state: 'installed' | 'enabled' | 'disabled';
   permissions: string[];
+  builtin?: boolean;
+  description?: string;
 }
 
 export interface SkillsStore {

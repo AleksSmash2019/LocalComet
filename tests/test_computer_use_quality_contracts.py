@@ -13,10 +13,12 @@ if str(ROOT) not in sys.path:
 from modules.computer_use_real_actions_ru import (
     build_real_action_plan,
     open_app,
+    run_bounded_interaction_task,
     paste_text,
     press_hotkey,
     resolve_folder_path,
 )
+from modules.local_model_gateway_ru import _deterministic_computer_use_call
 
 
 class ComputerUseQualityContracts(unittest.TestCase):
@@ -81,6 +83,57 @@ class ComputerUseQualityContracts(unittest.TestCase):
         allowed = _press_hotkey(["ctrl", "f"], simulate=True)
         self.assertTrue(allowed["ok"])
         self.assertEqual(allowed["status"], "simulated")
+
+    def test_natural_key_and_hotkey_prompts_do_not_fall_into_click(self) -> None:
+        key = _deterministic_computer_use_call("Нажми Enter и сообщи результат.")
+        self.assertEqual(key["arguments"], {"action": "key", "text": "enter"})
+
+        hotkey = _deterministic_computer_use_call("Нажми Ctrl+F и сообщи результат.")
+        self.assertEqual(hotkey["arguments"], {"action": "hotkey", "text": "ctrl+f"})
+
+    def test_natural_click_prompt_strips_button_prefix_and_status_tail(self) -> None:
+        click = _deterministic_computer_use_call("Кликни по кнопке Пуск и сообщи, что произошло.")
+        self.assertEqual(click["arguments"], {"action": "click", "target": "Пуск"})
+
+    def test_natural_paste_and_double_click_prompts_map_to_narrow_actions(self) -> None:
+        paste = _deterministic_computer_use_call("Вставь текст: LocalComet paste smoke.")
+        self.assertEqual(paste["arguments"], {"action": "paste", "text": "LocalComet paste smoke"})
+
+        double_click = _deterministic_computer_use_call("Двойной клик по кнопке Чат и сообщи результат.")
+        self.assertEqual(double_click["arguments"], {"action": "double_click", "target": "Чат"})
+
+        drag = _deterministic_computer_use_call("Перетащи курсор из точки 100,100 в точку 200,200.")
+        self.assertEqual(drag["arguments"], {"action": "drag", "coordinate": [100, 100, 200, 200]})
+        self.assertIsNone(_deterministic_computer_use_call("Перетащи объект в безопасное место."))
+
+    def test_compound_prompt_maps_to_bounded_task(self) -> None:
+        from modules.local_model_gateway_ru import _deterministic_computer_use_call
+
+        result = _deterministic_computer_use_call(
+            "Кликни по кнопке Поиск, затем введи в поле Поиск текст hello."
+        )
+        self.assertEqual(result["arguments"]["action"], "task")
+        self.assertIn("goal", result["arguments"])
+        self.assertEqual(result["arguments"]["max_steps"], 6)
+
+    def test_bounded_task_simulation_is_finite_without_gui_side_effects(self) -> None:
+        result = run_bounded_interaction_task(
+            "Нажми Ctrl+F и прокрути вниз.", simulate=True, max_steps=6
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["verification"], "not_applicable")
+        self.assertEqual(result["completed_steps"], 2)
+        self.assertLessEqual(result["total_steps"], 6)
+
+    def test_bounded_task_refuses_launch_and_requires_host_broker(self) -> None:
+        result = run_bounded_interaction_task(
+            "Открой блокнот и нажми Enter.", simulate=True, max_steps=6
+        )
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["blocked"])
+        self.assertTrue(result["requires_host_broker_step"])
+        self.assertEqual(result["next_host_action"]["kind"], "open_app")
 
     def test_plain_goal_uses_non_executing_grounded_fallback(self) -> None:
         plan = build_real_action_plan("разберись с открытым окном")

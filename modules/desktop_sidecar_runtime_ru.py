@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import threading
 import time
 from collections import deque
 from typing import Any, Callable, Iterable, Mapping
@@ -170,6 +171,7 @@ class DesktopSidecarRuntime:
         self.session_nonce = session_nonce or secrets.token_hex(12)
         self.started_at = float(monotonic())
         self._monotonic = monotonic
+        self._state_lock = threading.RLock()
         self._outgoing_sequence = 0
         self._outgoing_counter = 0
         self._seen_ids = DuplicateMessageIdCache()
@@ -184,17 +186,20 @@ class DesktopSidecarRuntime:
 
     @property
     def shutdown_requested(self) -> bool:
-        return self._shutdown_requested
+        with self._state_lock:
+            return self._shutdown_requested
 
     @property
     def seen_id_count(self) -> int:
-        return len(self._seen_ids)
+        with self._state_lock:
+            return len(self._seen_ids)
 
     def startup_messages(self) -> tuple[dict[str, Any], ...]:
         return (self._hello(),)
 
     def set_async_message_writer(self, writer: Callable[[tuple[dict[str, Any], ...]], None]) -> None:
-        self._async_message_writer = writer
+        with self._state_lock:
+            self._async_message_writer = writer
 
     def close(self) -> None:
         """Boundedly stop the model worker when the runner loses its IPC peer."""
@@ -206,21 +211,27 @@ class DesktopSidecarRuntime:
             raise IPCProtocolError("invalid_envelope", findings[0])
 
         message_id = str(message["id"])
-        if not self._seen_ids.remember(message_id):
+        with self._state_lock:
+            first_message = self._seen_ids.remember(message_id)
+        if not first_message:
             return (self._error(message_id, "duplicate_message_id", "duplicate message id"),)
 
         msg_type = message["type"]
         if msg_type == "hello":
-            self._desktop_hello_seen = True
+            with self._state_lock:
+                self._desktop_hello_seen = True
             return (self._hello(),)
         if msg_type == "goodbye":
-            self._shutdown_requested = True
+            with self._state_lock:
+                self._shutdown_requested = True
             return ()
         if msg_type != "request":
             return (self._error(message_id, "unsupported_type", "unsupported lifecycle message type"),)
 
         method = message.get("method")
-        if not self._desktop_hello_seen:
+        with self._state_lock:
+            desktop_hello_seen = self._desktop_hello_seen
+        if not desktop_hello_seen:
             return (self._error(message_id, "sidecar_unavailable", "desktop hello required"),)
         if method == "app.health":
             health_payload = message.get("payload")
@@ -229,7 +240,8 @@ class DesktopSidecarRuntime:
                 return (self._error(message_id, "invalid_payload", findings[0]),)
             return (self._health_response(message_id, health_payload),)
         if method == "app.shutdown":
-            self._shutdown_requested = True
+            with self._state_lock:
+                self._shutdown_requested = True
             self._model_gateway.shutdown()
             return (
                 make_response(
@@ -298,7 +310,9 @@ class DesktopSidecarRuntime:
         adapter was configured but failed to build an index; otherwise "ready".
         Never optimistic: derived from real runtime state only.
         """
-        if self._shutdown_requested:
+        with self._state_lock:
+            shutdown_requested = self._shutdown_requested
+        if shutdown_requested:
             return "stopping"
         adapter = getattr(self._control_plane, "_knowledge_adapter", None)
         if adapter is not None and getattr(adapter, "_index", None) is None:
@@ -453,7 +467,8 @@ class DesktopSidecarRuntime:
         )
 
     def _emit_model_event(self, method: str, turn_id: str, sequence: int, payload: Mapping[str, Any]) -> None:
-        writer = self._async_message_writer
+        with self._state_lock:
+            writer = self._async_message_writer
         if writer is None:
             return
         event = make_event(
@@ -478,13 +493,15 @@ class DesktopSidecarRuntime:
         )
 
     def _next_message_id(self, prefix: str) -> str:
-        self._outgoing_counter += 1
-        return f"py-{prefix}-{self._outgoing_counter:06d}"
+        with self._state_lock:
+            self._outgoing_counter += 1
+            return f"py-{prefix}-{self._outgoing_counter:06d}"
 
     def _next_sequence(self) -> int:
-        value = self._outgoing_sequence
-        self._outgoing_sequence += 1
-        return value
+        with self._state_lock:
+            value = self._outgoing_sequence
+            self._outgoing_sequence += 1
+            return value
 
 
 def _validate_desktop_knowledge_payload(method: str, payload: object) -> str | None:

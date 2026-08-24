@@ -5,6 +5,22 @@ import type { ManagedDownloadableArtifact } from '$lib/types/modelGateway';
 export const DEFAULT_BASE_MODEL_ID = 'custom-hf-72962196cbe48a1dc6b432301cb3666a0aad360a53a43139094d52aa62b0f4f6';
 
 /**
+ * Pick the pinned baseline for the setup drawer. An unavailable baseline is
+ * an explicit setup state, never permission to launch the first catalog item.
+ */
+export function selectManagedSetupModelId(
+  visibleModels: readonly { readonly model_id: string }[],
+  selectedModelId: string
+): string {
+  if (selectedModelId && visibleModels.some((model) => model.model_id === selectedModelId)) {
+    return selectedModelId;
+  }
+  return visibleModels.some((model) => model.model_id === DEFAULT_BASE_MODEL_ID)
+    ? DEFAULT_BASE_MODEL_ID
+    : '';
+}
+
+/**
  * Select only the pinned baseline. A missing baseline is an explicit setup
  * failure, never permission to silently choose another installed model.
  */

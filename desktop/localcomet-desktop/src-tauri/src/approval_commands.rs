@@ -312,6 +312,7 @@ fn computer_use_risk_for_input(input: &Value) -> Result<(RiskLevel, String, bool
         "button",
         "role",
         "title",
+        "goal",
     ]
     .iter()
     .filter_map(|key| input.get(*key).and_then(Value::as_str))
@@ -412,7 +413,14 @@ fn computer_use_risk_for_input(input: &Value) -> Result<(RiskLevel, String, bool
             "computer_use_folder_open".to_owned(),
             false,
         )),
-        "click" | "double_click" | "type" | "paste" | "key" | "hotkey" | "drag" => Ok((
+        "open_url" => Ok((
+            // External browser navigation is an observable side effect and must
+            // always wait for the explicit frontend consent card.
+            RiskLevel::Dangerous,
+            "computer_use_browser_navigation".to_owned(),
+            false,
+        )),
+        "click" | "double_click" | "type" | "paste" | "key" | "hotkey" | "drag" | "task" => Ok((
             RiskLevel::Guarded,
             "computer_use_ui_interaction".to_owned(),
             false,
@@ -1135,6 +1143,20 @@ mod tests {
             .issue_with_token(token.clone(), scope)
             .expect("issue token");
         (token, approval_id, call_id)
+    }
+
+    #[test]
+    fn browser_navigation_requires_explicit_consent() {
+        let input = json!({
+            "action": "open_url",
+            "target": "browser",
+            "url": "https://www.youtube.com/"
+        });
+        let (risk, category, destructive) =
+            computer_use_risk_for_input(&input).expect("open_url is a registered action");
+        assert_eq!(risk, RiskLevel::Dangerous);
+        assert_eq!(category, "computer_use_browser_navigation");
+        assert!(!destructive);
     }
 
     #[test]
@@ -1940,6 +1962,12 @@ mod tests {
                 "computer_use_application_launch",
                 false,
             ),
+            (
+                json!({"action": "task", "goal": "кликни кнопку и введи текст"}),
+                RiskLevel::Guarded,
+                "computer_use_ui_interaction",
+                false,
+            ),
         ];
 
         for (input, expected_risk, expected_category, expected_destructive) in cases {
@@ -2008,6 +2036,11 @@ mod tests {
         assert_eq!(
             effective_risk_level("computer_use", &screenshot).expect("known action"),
             RiskLevel::ReadOnly
+        );
+        let task = json!({"action": "task", "goal": "кликни кнопку и введи текст"});
+        assert_eq!(
+            effective_risk_level("computer_use", &task).expect("known composite action"),
+            RiskLevel::Guarded
         );
         assert!(require_approval_fields(
             effective_risk_level("computer_use", &screenshot).expect("known action"),

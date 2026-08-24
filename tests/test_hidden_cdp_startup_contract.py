@@ -41,7 +41,12 @@ class BinaryProvenanceTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
 
-    def _seed(self, dev_url: str = "http://127.0.0.1:1423", payload: bytes = b"MZ-fake-binary") -> Path:
+    def _seed(
+        self,
+        dev_url: str = "http://127.0.0.1:1423",
+        payload: bytes = b"MZ-fake-binary",
+        source_fingerprint: str | None = None,
+    ) -> Path:
         binary = self.root / "localcomet-desktop.exe"
         binary.write_bytes(payload)
         marker = {
@@ -49,6 +54,8 @@ class BinaryProvenanceTests(unittest.TestCase):
             "sha256": _sha(payload),
             "recorded_utc": "2026-08-22T00:00:00+00:00",
         }
+        if source_fingerprint is not None:
+            marker["source_fingerprint"] = source_fingerprint
         harness.binary_provenance_path(binary).write_text(json.dumps(marker), encoding="utf-8")
         return binary
 
@@ -85,6 +92,62 @@ class BinaryProvenanceTests(unittest.TestCase):
         result = harness.evaluate_binary_provenance(binary, "http://127.0.0.1:1423")
         self.assertFalse(result["usable"])
         self.assertEqual(result["reason"], "binary_sha256_mismatch")
+
+    def test_rebuild_when_source_fingerprint_is_missing(self) -> None:
+        binary = self._seed()
+        fingerprint = harness.rust_build_input_fingerprint(ROOT)
+        result = harness.evaluate_binary_provenance(binary, "http://127.0.0.1:1423", fingerprint)
+        self.assertFalse(result["usable"])
+        self.assertEqual(result["reason"], "source_fingerprint_missing")
+
+    def test_reuse_when_source_fingerprint_matches(self) -> None:
+        fingerprint = harness.rust_build_input_fingerprint(ROOT)
+        binary = self._seed(source_fingerprint=fingerprint)
+        result = harness.evaluate_binary_provenance(binary, "http://127.0.0.1:1423", fingerprint)
+        self.assertTrue(result["usable"])
+        self.assertEqual(result["reason"], "verified")
+        self.assertEqual(result["source_fingerprint"], fingerprint)
+
+    def test_rebuild_when_source_fingerprint_differs(self) -> None:
+        fingerprint = harness.rust_build_input_fingerprint(ROOT)
+        binary = self._seed(source_fingerprint="0" * 64)
+        result = harness.evaluate_binary_provenance(binary, "http://127.0.0.1:1423", fingerprint)
+        self.assertFalse(result["usable"])
+        self.assertEqual(result["reason"], "source_fingerprint_mismatch")
+
+
+class CdpCleanupContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_close_waits_for_socket_and_cancels_keepalive_tasks(self) -> None:
+        events: list[str] = []
+
+        class FakeConnection:
+            async def close(self) -> None:
+                events.append("close")
+
+            async def wait_closed(self) -> None:
+                events.append("wait_closed")
+
+        driver = harness.CdpDriver()
+        await driver._aclose_conn(FakeConnection())
+        self.assertEqual(events, ["close", "wait_closed"])
+        source = Path(harness.__file__).read_text(encoding="utf-8")
+        self.assertIn("ping_interval=None", source)
+        self.assertIn("asyncio.SelectorEventLoop()", source)
+
+
+class ApprovalModalSelectorContractTests(unittest.TestCase):
+    def test_hidden_approval_observation_and_click_cover_alertdialog(self) -> None:
+        source = Path(harness.__file__).read_text(encoding="utf-8")
+        selector = "[role=alertdialog][data-approval-request-id]"
+        self.assertGreaterEqual(source.count(selector), 2)
+        self.assertIn(selector, harness.APPROVAL_EXPRESSION)
+
+
+class HiddenBrowserProfilePathTests(unittest.TestCase):
+    def test_profile_is_under_worker_localappdata_hidden_root(self) -> None:
+        isolated_root = Path("C:/Temp/LocalCometHiddenCU/run-001")
+        expected = isolated_root / "LocalCometHiddenCU" / "browser-user-data"
+        self.assertEqual(harness.hidden_browser_profile_path(isolated_root), expected)
 
 
 class WaitForIsolatedPageTests(unittest.TestCase):
@@ -182,6 +245,25 @@ class CleanupContractTests(unittest.TestCase):
             ["taskkill", "/PID", "202", "/T", "/F"],
         ])
         self.assertEqual(result["results"][0]["returncode"], 0)
+
+
+class HiddenScenarioSelectionContractTests(unittest.TestCase):
+    def test_default_automatic_candidates_exclude_calculator(self) -> None:
+        ids = [item["id"] for item in harness.AUTO_SCENARIOS]
+        self.assertNotIn("calculator_basic", ids)
+        self.assertNotIn("calculator_repeat", ids)
+        self.assertTrue({"notepad_open_type", "browser_youtube", "computer_use_click"}.issubset(ids))
+        self.assertEqual(
+            set(item["id"] for item in harness.SCENARIOS) - set(ids),
+            set(harness.DISABLED_AUTO_SCENARIO_IDS),
+        )
+
+    def test_parent_forwards_one_case_and_explicit_scenario_to_worker(self) -> None:
+        source = Path(harness.__file__).read_text(encoding="utf-8")
+        self.assertIn('"--cases", str(cases)', source)
+        self.assertIn('"--scenario", scenario_id', source)
+        self.assertIn('scenario_pool = SCENARIOS if args.scenario else AUTO_SCENARIOS', source)
+        self.assertIn('if args.scenario in DISABLED_AUTO_SCENARIO_IDS', source)
 
 
 class ExpectedDevUrlTests(unittest.TestCase):

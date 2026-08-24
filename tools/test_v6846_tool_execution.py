@@ -15,6 +15,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 
@@ -25,8 +26,10 @@ if str(ROOT) not in sys.path:
 from modules.desktop_ipc_contract_ru import encode_frame, make_request  # noqa: E402
 from modules.desktop_sidecar_runtime_ru import DesktopSidecarRuntime  # noqa: E402
 from modules.tool_execution_ru import (  # noqa: E402
+    COMPUTER_USE_READ_ONLY_ACTIONS,
     MAX_TOOL_FILE_BYTES,
     ToolExecutionError,
+    _computer_use_action_requires_grant,
     canonical_input_digest_hex,
     execute_tool_call,
 )
@@ -193,6 +196,33 @@ class ToolExecutionConfinementTests(unittest.TestCase):
         with self.assertRaises(ToolExecutionError) as ctx:
             execute_tool_call(_payload(self.workspace, "files.rename", {"path": "x"}))
         self.assertEqual(ctx.exception.code, "unsupported_method")
+
+    def test_computer_use_read_only_actions_have_no_grant_requirement(self) -> None:
+        for action in COMPUTER_USE_READ_ONLY_ACTIONS:
+            with self.subTest(action=action):
+                self.assertFalse(_computer_use_action_requires_grant({"action": action}))
+
+    def test_computer_use_guarded_actions_remain_grant_bound(self) -> None:
+        for action in ("open_app", "open_folder", "click", "type", "paste", "key", "hotkey", "drag", "open_url"):
+            with self.subTest(action=action):
+                self.assertTrue(_computer_use_action_requires_grant({"action": action}))
+
+    def test_read_only_computer_use_dispatches_without_grant(self) -> None:
+        payload = _payload(self.workspace, "computer_use", {"action": "wait", "seconds": 0.1})
+        payload.pop("grant", None)
+        payload.pop("grant_id", None)
+        with patch("modules.tool_execution_ru._computer_use", return_value={"ok": True, "status": "completed"}) as dispatch:
+            result = execute_tool_call(payload)
+        self.assertEqual(result["status"], "completed")
+        dispatch.assert_called_once()
+
+    def test_guarded_computer_use_without_grant_is_rejected(self) -> None:
+        payload = _payload(self.workspace, "computer_use", {"action": "key", "text": "enter"})
+        payload.pop("grant", None)
+        payload.pop("grant_id", None)
+        with self.assertRaises(ToolExecutionError) as ctx:
+            execute_tool_call(payload)
+        self.assertEqual(ctx.exception.code, "approval_required")
 
     def test_missing_workspace_field_is_invalid(self) -> None:
         with self.assertRaises(ToolExecutionError) as ctx:

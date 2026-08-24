@@ -32,6 +32,7 @@ WRITE_LOCK = threading.RLock()
 SERIALIZED_ACCEPTANCE_METHODS = frozenset(
     ("model.turn.start", "knowledge.turn.decide")
 )
+TOOL_CALL_METHOD = "tool.call"
 
 
 def _write_messages(runtime, messages) -> bool:
@@ -93,7 +94,77 @@ class _AcceptanceWriteGate:
         return True
 
 
-def _handle_and_write(runtime, message, acceptance_gate: _AcceptanceWriteGate) -> bool:
+class _ToolCallCoordinator:
+    """Run one bounded tool.call asynchronously so health can be interleaved."""
+
+    def __init__(self, runtime) -> None:
+        self._runtime = runtime
+        self._lock = threading.Lock()
+        self._closing = threading.Event()
+        self._worker: threading.Thread | None = None
+
+    def submit(self, message) -> bool:
+        if self._closing.is_set():
+            return _write_messages(
+                self._runtime,
+                self._runtime.protocol_error_messages(
+                    IPCProtocolError("sidecar_shutdown", "tool.call rejected during shutdown"),
+                    reply_to=str(message.get("id", "unknown")),
+                ),
+            )
+        if not self._lock.acquire(blocking=False):
+            return _write_messages(
+                self._runtime,
+                self._runtime.protocol_error_messages(
+                    IPCProtocolError("busy", "tool.call already running"),
+                    reply_to=str(message.get("id", "unknown")),
+                ),
+            )
+        try:
+            worker = threading.Thread(
+                target=self._run,
+                args=(message,),
+                name="localcomet-tool-call",
+                daemon=True,
+            )
+            self._worker = worker
+            worker.start()
+        except BaseException:
+            self._worker = None
+            self._lock.release()
+            raise
+        return True
+
+    def _run(self, message) -> None:
+        try:
+            try:
+                messages = self._runtime.handle_message(message)
+            except IPCProtocolError as exc:
+                messages = self._runtime.protocol_error_messages(
+                    exc,
+                    reply_to=str(message.get("id", "unknown")),
+                )
+            _write_messages(self._runtime, messages)
+        finally:
+            self._worker = None
+            self._lock.release()
+
+    def close(self, timeout: float = 1.0) -> None:
+        self._closing.set()
+        worker = self._worker
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=timeout)
+
+
+def _handle_and_write(
+    runtime,
+    message,
+    acceptance_gate: _AcceptanceWriteGate,
+    tool_calls: _ToolCallCoordinator,
+) -> bool:
+    if message.get("method") == TOOL_CALL_METHOD:
+        return tool_calls.submit(message)
+
     def handle():
         try:
             return runtime.handle_message(message)
@@ -118,6 +189,7 @@ def _handle_and_write(runtime, message, acceptance_gate: _AcceptanceWriteGate) -
 def main() -> int:
     runtime = make_runtime()
     acceptance_gate = _AcceptanceWriteGate(runtime)
+    tool_calls = _ToolCallCoordinator(runtime)
     runtime.set_async_message_writer(acceptance_gate.write_async)
     decoder = FrameDecoder()
     try:
@@ -135,11 +207,12 @@ def main() -> int:
                     return 0
                 continue
             for message in messages:
-                if not _handle_and_write(runtime, message, acceptance_gate):
+                if not _handle_and_write(runtime, message, acceptance_gate, tool_calls):
                     return 0
 
         return 0
     finally:
+        tool_calls.close()
         runtime.close()
 
 

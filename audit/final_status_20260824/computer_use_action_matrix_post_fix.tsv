@@ -1,0 +1,14 @@
+scenario	classification	status	verification	reason	correlation_ok	process_evidence	report
+browser_youtube	VERIFIED_SUCCESS	completed	verified	Tool execution requested	True	True	C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_browser_youtube_final_current_20260824_174309
+calculator_basic	PENDING_TERMINAL	launch_pending	pending	spawn accepted but the readiness postcondition has not been observed yet	True	False	C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_calculator_basic_after_reparent_fix_20260824_173535
+computer_use_click	VERIFIED_FAILED			No UI candidates found.	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_computer_use_click_current_after_ipc_cycle_fix_20260824_072708
+computer_use_double_click	VERIFIED_FAILED			No UI candidates found.	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_computer_use_double_click_20260824_074728
+computer_use_drag	VERIFIED_SUCCESS	executed	not_applicable	Tool execution requested	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_computer_use_drag_20260824_075112
+computer_use_hotkey	VERIFIED_SUCCESS	executed	not_applicable	Tool execution requested	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_computer_use_hotkey_after_ipc_cycle_fix_20260824_072343
+computer_use_key	VERIFIED_SUCCESS	executed	not_applicable	Tool execution requested	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_computer_use_key_after_ipc_cycle_fix_20260824_072226
+computer_use_scroll	VERIFIED_SUCCESS	executed	not_applicable	Tool execution requested	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_computer_use_scroll_current_after_ipc_cycle_fix_20260824_073450
+computer_use_type	VERIFIED_FAILED			Tool execution requested	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_computer_use_type_after_parser_fix_20260824_061913
+computer_use_wait	VERIFIED_SUCCESS	executed	not_applicable	Tool execution requested	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_computer_use_wait_current_after_ipc_cycle_fix_20260824_073323
+file_explorer_open	VERIFIED_SUCCESS	completed	verified	Tool execution requested	True	True	C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_file_explorer_open_current_20260824_175224
+notepad_open_paste	VERIFIED_SUCCESS	verified	verified	Bounded continuation requested after verified Notepad open	True		C:\Users\DNS\AppData\Local\LocalComet\Audits\computer_use_notepad_open_paste_20260824_074540
+desktop_screenshot	NOT_INDEPENDENTLY_VERIFIED	blocked_model_not_ready	pending	latest final UI run did not submit; prior post-backend run had bytes/backend/scope but stale UI preview	False	False	computer_use_desktop_screenshot_frontend_preview_final_20260824_185701

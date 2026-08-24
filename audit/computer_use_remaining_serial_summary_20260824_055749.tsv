@@ -1,0 +1,8 @@
+family`tattempted`tsubmitted`tsuccess`ttfailed`tpending`tinfra`tclassification`tapproval`tapprovals`tpill`tstatus`tverification`tprocess`tbrowser`tscreenshot`ttext`tcorrelation
+desktop_screenshot	1	1	0	1	0	0	VERIFIED_FAILED	none	0	FAIL				True	False	True	not_required
+browser_youtube	1	1	1	0	0	0	VERIFIED_SUCCESS	approved	1	PASS	completed	verified	True	True	True	True	validated
+browser_readonly_search	1	1	1	0	0	0	VERIFIED_SUCCESS	none	0	PASS	completed	verified	True	True	True	True	not_required
+file_explorer_open	1	1	1	0	0	0	VERIFIED_SUCCESS	none	0	PASS	completed	verified	True	True	True	True	not_required
+active_window_observe	1	1	0	0	0	0	NOT_INDEPENDENTLY_VERIFIED	none	0					True	True	True	not_required
+screenshot_after_actions	1	1	0	0	0	0	NOT_INDEPENDENTLY_VERIFIED	none	0					True	False	True	not_required
+safe_recovery	1	1	0	0	0	0	NOT_INDEPENDENTLY_VERIFIED	none	0					True	True	True	not_required

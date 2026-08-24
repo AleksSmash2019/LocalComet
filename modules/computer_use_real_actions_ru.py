@@ -418,6 +418,8 @@ def _extract_hotkey(goal: str) -> List[str]:
         "ctrl a": ["ctrl", "a"],
         "ctrl+c": ["ctrl", "c"],
         "ctrl c": ["ctrl", "c"],
+        "ctrl+f": ["ctrl", "f"],
+        "ctrl f": ["ctrl", "f"],
         "alt+tab": ["alt", "tab"],
         "alt tab": ["alt", "tab"],
         "shift+tab": ["shift", "tab"],
@@ -1265,6 +1267,52 @@ def drag(
                 pass
 
 
+def _configure_capture_apis(user32: Any, gdi32: Any, wintypes: Any) -> None:
+    """Declare pointer-sized Win32 capture signatures for 64-bit Python."""
+    import ctypes
+
+    user32.GetDC.argtypes = [wintypes.HWND]
+    user32.GetDC.restype = ctypes.c_void_p
+    user32.ReleaseDC.argtypes = [wintypes.HWND, ctypes.c_void_p]
+    user32.ReleaseDC.restype = wintypes.INT
+    user32.PrintWindow.argtypes = [wintypes.HWND, ctypes.c_void_p, wintypes.UINT]
+    user32.PrintWindow.restype = wintypes.BOOL
+    user32.GetSystemMetrics.argtypes = [wintypes.INT]
+    user32.GetSystemMetrics.restype = wintypes.INT
+    gdi32.CreateCompatibleDC.argtypes = [ctypes.c_void_p]
+    gdi32.CreateCompatibleDC.restype = ctypes.c_void_p
+    gdi32.CreateCompatibleBitmap.argtypes = [ctypes.c_void_p, wintypes.INT, wintypes.INT]
+    gdi32.CreateCompatibleBitmap.restype = ctypes.c_void_p
+    gdi32.SelectObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    gdi32.SelectObject.restype = ctypes.c_void_p
+    gdi32.GetDIBits.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wintypes.UINT,
+        wintypes.UINT,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wintypes.UINT,
+    ]
+    gdi32.GetDIBits.restype = wintypes.INT
+    gdi32.DeleteObject.argtypes = [ctypes.c_void_p]
+    gdi32.DeleteObject.restype = wintypes.BOOL
+    gdi32.DeleteDC.argtypes = [ctypes.c_void_p]
+    gdi32.DeleteDC.restype = wintypes.BOOL
+    gdi32.BitBlt.argtypes = [
+        ctypes.c_void_p,
+        wintypes.INT,
+        wintypes.INT,
+        wintypes.INT,
+        wintypes.INT,
+        ctypes.c_void_p,
+        wintypes.INT,
+        wintypes.INT,
+        wintypes.DWORD,
+    ]
+    gdi32.BitBlt.restype = wintypes.BOOL
+
+
 def _visible_windows() -> List[Dict[str, Any]]:
     """Top-level visible windows with non-empty titles, largest area first.
 
@@ -1276,11 +1324,45 @@ def _visible_windows() -> List[Dict[str, Any]]:
     from ctypes import wintypes
 
     user32 = ctypes.windll.user32
+    gdi32 = ctypes.windll.gdi32
+    _configure_capture_apis(user32, gdi32, wintypes)
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextLengthW.restype = wintypes.INT
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, wintypes.INT]
+    user32.GetWindowTextW.restype = wintypes.INT
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.GetWindowRect.restype = wintypes.BOOL
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.OpenDesktopW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    user32.OpenDesktopW.restype = ctypes.c_void_p
+    user32.EnumDesktopWindows.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    user32.EnumDesktopWindows.restype = wintypes.BOOL
+    user32.CloseDesktop.argtypes = [ctypes.c_void_p]
+    user32.CloseDesktop.restype = wintypes.BOOL
     results: List[Dict[str, Any]] = []
-    enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, ctypes.c_void_p)
+    hidden_desktop_name = os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip()
+    hidden_desktop_handle = None
+    if hidden_desktop_name:
+        DESKTOP_READOBJECTS = 0x0001
+        DESKTOP_ENUMERATE = 0x0040
+        _trace_capture_stage("before_open_hidden_desktop")
+        hidden_desktop_handle = user32.OpenDesktopW(
+            hidden_desktop_name,
+            0,
+            False,
+            DESKTOP_READOBJECTS | DESKTOP_ENUMERATE,
+        )
+        _trace_capture_stage("after_open_hidden_desktop")
+        if not hidden_desktop_handle:
+            _trace_capture_stage("hidden_desktop_open_failed")
+            return []
 
     def _callback(hwnd: Any, _lparam: Any) -> bool:
-        if not user32.IsWindowVisible(hwnd):
+        if not hwnd or not user32.IsWindowVisible(hwnd):
             return True
         length = user32.GetWindowTextLengthW(hwnd)
         if length <= 0:
@@ -1307,30 +1389,60 @@ def _visible_windows() -> List[Dict[str, Any]]:
         )
         return True
 
-    user32.EnumWindows(enum_proc(_callback), 0)
+    callback = enum_proc(_callback)
+    try:
+        if hidden_desktop_handle:
+            _trace_capture_stage("before_enum_hidden_desktop_windows")
+            user32.EnumDesktopWindows(hidden_desktop_handle, callback, 0)
+            _trace_capture_stage("after_enum_hidden_desktop_windows")
+        else:
+            _trace_capture_stage("before_enum_current_windows")
+            user32.EnumWindows(callback, 0)
+            _trace_capture_stage("after_enum_current_windows")
+    finally:
+        if hidden_desktop_handle:
+            _trace_capture_stage("before_close_hidden_desktop")
+            user32.CloseDesktop(hidden_desktop_handle)
+            _trace_capture_stage("after_close_hidden_desktop")
     results.sort(key=lambda item: item["width"] * item["height"], reverse=True)
     return results
 
 
 def _print_window_bgra(hwnd: int, width: int, height: int) -> Optional[bytes]:
-    """Capture one window via PrintWindow (PW_RENDERFULLCONTENT) as BGRA."""
+    """Capture one hidden-desktop window via its window DC as BGRA.
+
+    PrintWindow is synchronous and can hang WebView2 windows on a noninteractive
+    desktop. A bounded BitBlt from the window DC avoids sending WM_PRINT into
+    the target process while retaining the same per-window scope.
+    """
     import ctypes
     from ctypes import wintypes
 
     user32 = ctypes.windll.user32
     gdi32 = ctypes.windll.gdi32
+    _configure_capture_apis(user32, gdi32, wintypes)
+    _trace_capture_stage("before_get_window_dc")
     hdc_window = user32.GetDC(hwnd)
+    _trace_capture_stage("after_get_window_dc")
     if not hdc_window:
         return None
     try:
+        _trace_capture_stage("before_create_compatible_dc")
         hdc_mem = gdi32.CreateCompatibleDC(hdc_window)
+        _trace_capture_stage("after_create_compatible_dc")
+        _trace_capture_stage("before_create_compatible_bitmap")
         hbmp = gdi32.CreateCompatibleBitmap(hdc_window, width, height)
+        _trace_capture_stage("after_create_compatible_bitmap")
         if not hbmp:
             return None
+        _trace_capture_stage("before_select_bitmap")
         prev = gdi32.SelectObject(hdc_mem, hbmp)
+        _trace_capture_stage("after_select_bitmap")
         try:
-            PW_RENDERFULLCONTENT = 0x00000002
-            ok = user32.PrintWindow(hwnd, hdc_mem, PW_RENDERFULLCONTENT)
+            SRCCOPY = 0x00CC0020
+            _trace_capture_stage("before_window_bitblt_api")
+            ok = gdi32.BitBlt(hdc_mem, 0, 0, width, height, hdc_window, 0, 0, SRCCOPY)
+            _trace_capture_stage("after_window_bitblt_api")
             if not ok:
                 return None
             bmi_header_size = 40
@@ -1365,7 +1477,9 @@ def _print_window_bgra(hwnd: int, width: int, height: int) -> Optional[bytes]:
             bmi.bmiHeader.biCompression = 0
             buffer_len = width * height * 4
             buffer = ctypes.create_string_buffer(buffer_len)
+            _trace_capture_stage("before_get_dibits")
             copied = gdi32.GetDIBits(hdc_mem, hbmp, 0, height, buffer, ctypes.byref(bmi), 0)
+            _trace_capture_stage("after_get_dibits")
             if not copied:
                 return None
             return bytes(buffer)
@@ -1391,7 +1505,7 @@ def _bgra_is_nonblank(buffer: bytes, samples: int = 512) -> bool:
 
 
 def _capture_via_printwindow() -> Dict[str, Any]:
-    """Window-level capture fallback for non-interactive desktops.
+    """Window-level GDI capture fallback for non-interactive desktops.
 
     Tries visible top-level windows, largest first; skips blank frames. The
     result is an honest window observation — never presented as a full
@@ -1399,10 +1513,14 @@ def _capture_via_printwindow() -> Dict[str, Any]:
     """
     if os.name != "nt":
         return {"ok": False, "status": "error", "reason": "window capture requires Windows", "mode": "computer_use_real_screenshot"}
+    _trace_capture_stage("before_visible_windows")
     candidates = _visible_windows()
+    _trace_capture_stage(f"after_visible_windows_count_{len(candidates)}")
     attempted: List[Dict[str, Any]] = []
     for candidate in candidates[:6]:
+        _trace_capture_stage("before_window_capture")
         buffer = _print_window_bgra(candidate["hwnd"], candidate["width"], candidate["height"])
+        _trace_capture_stage("after_window_capture")
         if not buffer or not _bgra_is_nonblank(buffer):
             attempted.append({"title": candidate["title"], "blank": True})
             continue
@@ -1415,8 +1533,9 @@ def _capture_via_printwindow() -> Dict[str, Any]:
             "width": int(out_w),
             "height": int(out_h),
             "scale": float(scale),
-            "capture_backend": "printwindow",
+            "capture_backend": "gdi_bitblt",
             "capture_scope": "window",
+            "capture_desktop": os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip() or "current",
             "capture_hwnd": candidate["hwnd"],
             "capture_window_title": candidate["title"],
         })
@@ -1425,7 +1544,9 @@ def _capture_via_printwindow() -> Dict[str, Any]:
         "status": "error",
         "reason": "no capturable window on this desktop",
         "mode": "computer_use_real_screenshot",
-        "capture_backend": "printwindow",
+        "capture_backend": "gdi_bitblt",
+        "capture_scope": "window",
+        "capture_desktop": os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip() or "current",
         "attempted": attempted[:6],
     }
 
@@ -1486,6 +1607,18 @@ def _with_png_evidence(payload: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
+def _trace_capture_stage(stage: str) -> None:
+    """Write a safe capture stage marker when hidden-run tracing is enabled."""
+    trace_path = os.environ.get("LOCALCOMET_TOOLCALL_TRACE", "").strip()
+    if not trace_path:
+        return
+    try:
+        with open(trace_path, "a", encoding="utf-8") as trace:
+            trace.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')}\tcapture_stage\t{stage}\n")
+    except OSError:
+        pass
+
+
 def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
     """Capture desktop screenshot, downscale, return base64 PNG.
 
@@ -1506,6 +1639,7 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
             "scale": 1.0,
         }
     # --- capture ---
+    _trace_capture_stage("start")
     image = None
     raw_bgra = None
     orig_w = orig_h = 0
@@ -1515,6 +1649,7 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
 
             image = ImageGrab.grab(all_screens=True)
         except Exception:
+            _trace_capture_stage("imagegrab_failed")
             image = None
         if image is None:
             if os.name != "nt":
@@ -1525,6 +1660,7 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
 
             user32 = ctypes.windll.user32
             gdi32 = ctypes.windll.gdi32
+            _configure_capture_apis(user32, gdi32, wintypes)
             # Ensure DPI awareness so GetSystemMetrics returns physical pixels
             try:
                 ctypes.windll.user32.SetProcessDPIAware()
@@ -1545,13 +1681,17 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
             SRCCOPY = 0x00CC0020
             ok_blt = gdi32.BitBlt(hdc_mem, 0, 0, width, height, hdc_screen, 0, 0, SRCCOPY)
             if not ok_blt:
+                _trace_capture_stage("bitblt_failed_before_hidden_enum")
                 gdi32.SelectObject(hdc_mem, prev)
                 gdi32.DeleteObject(hbmp)
                 gdi32.DeleteDC(hdc_mem)
                 user32.ReleaseDC(0, hdc_screen)
                 # Non-interactive desktops have no display surface for a
                 # desktop-wide BitBlt; fall back to per-window capture.
-                return _capture_via_printwindow()
+                _trace_capture_stage("before_printwindow_fallback")
+                result = _capture_via_printwindow()
+                _trace_capture_stage("after_printwindow_fallback")
+                return result
             # Extract bitmap bits via GetDIBits.
             bmi_header_size = 40
             class BITMAPINFOHEADER(ctypes.Structure):
@@ -1651,12 +1791,258 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
             "capture_scope": "desktop",
         })
     except Exception as exc:
+        _trace_capture_stage("python_exception")
         return {
             "ok": False,
             "status": "error",
             "reason": "screenshot_capture_failed",
             "mode": "computer_use_real_screenshot",
         }
+
+
+def _task_action_summary(action: Dict[str, Any]) -> Dict[str, Any]:
+    summary = {key: value for key, value in action.items() if key not in {"text", "coordinate"}}
+    if "text" in action:
+        text = str(action.get("text") or "")
+        summary["text_length"] = len(text)
+        summary["text_preview"] = _safe_preview(text, 80)
+    if "coordinate" in action:
+        coordinate = action.get("coordinate")
+        summary["coordinate"] = coordinate if isinstance(coordinate, list) and len(coordinate) == 4 else "redacted_invalid"
+    return summary
+
+
+def _task_result_summary(result: Dict[str, Any]) -> Dict[str, Any]:
+    summary = {
+        key: result.get(key)
+        for key in ("ok", "status", "verification", "mode", "reason", "requires_confirmation", "next_decision")
+        if key in result
+    }
+    if isinstance(result.get("screenshot_evidence"), dict):
+        summary["screenshot_evidence"] = result["screenshot_evidence"]
+    if isinstance(result.get("capture_backend"), str):
+        summary["capture_backend"] = result["capture_backend"]
+    if isinstance(result.get("capture_scope"), str):
+        summary["capture_scope"] = result["capture_scope"]
+    if isinstance(result.get("screenshot_bytes"), int):
+        summary["screenshot_bytes"] = result["screenshot_bytes"]
+    return summary
+
+
+def _task_observe(label: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    try:
+        from modules.computer_use_visual_guard_ru import observe_with_ui_map
+        full = observe_with_ui_map(label)
+        compact = {
+            "artifact": full.get("artifact", ""),
+            "observation_summary": full.get("observation_summary", {}),
+            "ui_map_path": full.get("ui_map", {}).get("ui_map_path", "") if isinstance(full.get("ui_map"), dict) else "",
+            "ui_map_element_count": full.get("ui_map", {}).get("element_count", 0) if isinstance(full.get("ui_map"), dict) else 0,
+            "ui_markers": full.get("ui_markers", {}),
+        }
+        return full, compact
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}, {"ok": False, "error": str(exc)}
+
+
+def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: int = 6) -> Dict[str, Any]:
+    """Execute a bounded sequence of grounded UI interactions.
+
+    This is deliberately an interaction-only composite. App/folder/browser
+    launches stay on the host broker path because the confined sidecar cannot
+    safely spawn GUI processes. The caller must issue that broker step first;
+    this function then handles a finite chain of click/type/key/scroll/wait and
+    optional observation primitives with before/after visual evidence.
+    """
+    goal = str(goal or "").strip()
+    max_steps = max(1, min(int(max_steps or 6), 8))
+    blocked, reason = _blocked_goal(goal)
+    if blocked:
+        return {
+            "ok": False,
+            "status": "blocked",
+            "terminal": True,
+            "verification": "failed",
+            "blocked": True,
+            "mode": "computer_use_real_task",
+            "reason": reason,
+            "goal": goal,
+            "steps": [],
+        }
+
+    plan = build_real_action_plan(goal, max_steps=max_steps)
+    actions = plan.get("actions") if isinstance(plan.get("actions"), list) else []
+    if not plan.get("ok"):
+        return {
+            "ok": False,
+            "status": "blocked" if plan.get("blocked") else "unavailable",
+            "terminal": True,
+            "verification": "failed",
+            "blocked": bool(plan.get("blocked")),
+            "mode": "computer_use_real_task",
+            "reason": plan.get("reason", "task planning failed"),
+            "goal": goal,
+            "steps": [],
+        }
+
+    host_kinds = {"open_app", "open_folder", "open_url"}
+    host_step = next((action for action in actions if action.get("kind") in host_kinds), None)
+    if host_step is not None:
+        return {
+            "ok": False,
+            "status": "blocked",
+            "terminal": True,
+            "verification": "failed",
+            "blocked": True,
+            "requires_host_broker_step": True,
+            "mode": "computer_use_real_task",
+            "reason": "task contains a launch/navigation step; execute that allowlisted host-broker step separately before interaction task",
+            "goal": goal,
+            "next_host_action": _task_action_summary(host_step),
+            "steps": [],
+        }
+
+    executable_kinds = {"wait_for_window", "wait", "paste_text", "type_element", "click_element", "double_click_element", "hotkey", "press_key", "scroll", "drag", "screenshot"}
+    unsupported = next((action for action in actions if action.get("kind") not in executable_kinds), None)
+    if not actions or unsupported is not None or any(not action.get("real_action", True) for action in actions):
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "terminal": True,
+            "verification": "failed",
+            "mode": "computer_use_real_task",
+            "reason": "task has no bounded executable interaction sequence",
+            "goal": goal,
+            "unsupported_action": _task_action_summary(unsupported) if unsupported else None,
+            "steps": [],
+        }
+
+    steps: List[Dict[str, Any]] = []
+    replan_count = 0
+    for index, action in enumerate(actions[:max_steps], start=1):
+        before_full: Dict[str, Any] = {}
+        before_compact: Dict[str, Any] = {"mode": "simulation"}
+        if not simulate:
+            before_full, before_compact = _task_observe(f"task_step_{index}_before")
+
+        result = execute_real_action(action, simulate=simulate, mission_goal=goal)
+        after_full: Dict[str, Any] = {}
+        after_compact: Dict[str, Any] = {"mode": "simulation"}
+        comparison: Dict[str, Any] = {"decision": "continue", "reason": "simulation; no desktop observation performed"}
+        if not simulate:
+            after_full, after_compact = _task_observe(f"task_step_{index}_after")
+            try:
+                from modules.computer_use_visual_guard_ru import compare_observations
+                comparison = compare_observations(
+                    before_full.get("observation", before_full),
+                    after_full.get("observation", after_full),
+                    before_full.get("ui_map", {}),
+                    after_full.get("ui_map", {}),
+                )
+            except Exception as exc:
+                comparison = {"decision": "stop", "reason": f"visual comparison unavailable: {exc}"}
+
+        step = {
+            "step_index": index,
+            "action": _task_action_summary(action),
+            "result": _task_result_summary(result),
+            "before": before_compact,
+            "after": after_compact,
+            "visual_guard": {
+                "decision": comparison.get("decision", "stop"),
+                "reason": comparison.get("reason", ""),
+                "changed_signals": comparison.get("changed_signals", 0),
+                "stable_signals": comparison.get("stable_signals", 0),
+            },
+        }
+        steps.append(step)
+
+        if result.get("requires_confirmation") or result.get("status") in {"blocked", "requires_confirmation"}:
+            return {
+                "ok": False,
+                "status": "blocked",
+                "terminal": True,
+                "verification": "failed",
+                "blocked": True,
+                "mode": "computer_use_real_task",
+                "reason": result.get("reason", "task step requires confirmation"),
+                "goal": goal,
+                "steps": steps,
+                "completed_steps": index - 1,
+                "total_steps": len(actions[:max_steps]),
+            }
+        if not result.get("ok"):
+            return {
+                "ok": False,
+                "status": "failed",
+                "terminal": True,
+                "verification": "failed",
+                "mode": "computer_use_real_task",
+                "reason": result.get("reason", "task step failed"),
+                "goal": goal,
+                "steps": steps,
+                "completed_steps": index - 1,
+                "total_steps": len(actions[:max_steps]),
+            }
+        if str(result.get("status") or "").lower() in {"launch_pending", "pending", "awaiting_observation"}:
+            return {
+                "ok": False,
+                "status": "awaiting_observation",
+                "terminal": False,
+                "verification": "pending",
+                "mode": "computer_use_real_task",
+                "reason": "task step completed without terminal observation",
+                "goal": goal,
+                "steps": steps,
+                "completed_steps": index,
+                "total_steps": len(actions[:max_steps]),
+            }
+        decision = str(comparison.get("decision") or "continue")
+        if decision == "stop":
+            return {
+                "ok": False,
+                "status": "failed",
+                "terminal": True,
+                "verification": "failed",
+                "mode": "computer_use_real_task",
+                "reason": comparison.get("reason", "visual guard stopped the task"),
+                "goal": goal,
+                "steps": steps,
+                "completed_steps": index,
+                "total_steps": len(actions[:max_steps]),
+            }
+        if decision == "ask_user":
+            return {
+                "ok": False,
+                "status": "blocked",
+                "terminal": True,
+                "verification": "failed",
+                "blocked": True,
+                "requires_confirmation": True,
+                "mode": "computer_use_real_task",
+                "reason": comparison.get("reason", "visual guard requires user decision"),
+                "goal": goal,
+                "steps": steps,
+                "completed_steps": index,
+                "total_steps": len(actions[:max_steps]),
+            }
+        if decision == "replan":
+            replan_count += 1
+
+    return {
+        "ok": True,
+        "status": "completed",
+        "terminal": True,
+        "succeeded": True,
+        "verification": "not_applicable",
+        "mode": "computer_use_real_task",
+        "goal": goal,
+        "steps": steps,
+        "completed_steps": len(steps),
+        "total_steps": len(actions[:max_steps]),
+        "replan_count": replan_count,
+        "note": "all bounded interaction steps completed; no independent task-level postcondition was asserted",
+    }
 
 
 def execute_real_action(action: Dict[str, Any], simulate: bool = False, mission_goal: str = "") -> Dict[str, Any]:
@@ -1696,6 +2082,12 @@ def execute_real_action(action: Dict[str, Any], simulate: bool = False, mission_
             )
         if kind == "screenshot":
             return capture_screenshot(simulate=simulate)
+        if kind in {"task", "multi_step_task"}:
+            return run_bounded_interaction_task(
+                str(action.get("goal") or mission_goal),
+                simulate=simulate,
+                max_steps=int(action.get("max_steps") or 6),
+            )
         if kind == "delegate_multistep":
             from modules.computer_use_multistep_loop_ru import run_loop
             result = run_loop(str(action.get("goal") or mission_goal), simulate=simulate, max_steps=1, max_failures=1)
@@ -1724,6 +2116,8 @@ def get_real_action_capabilities() -> Dict[str, Any]:
             "drag",
             "wait_for_window",
             "screenshot",
+            "task",
+            "multi_step_task",
             "delegate_multistep",
         ],
         "app_allowlist": sorted(ALLOWED_APPS.keys()),

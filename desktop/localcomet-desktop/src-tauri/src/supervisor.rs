@@ -2690,8 +2690,10 @@ mod tests {
     #[test]
     fn p0c_r1_capability_boundary_remains_closed() {
         let caps = include_str!("../capabilities/main.json");
+        let approval_permissions = include_str!("../permissions/approval.toml");
         assert!(caps.contains("allow-request-approval"));
         assert!(caps.contains("allow-set-workspace"));
+        assert!(approval_permissions.contains("\"cu_broker_observe\""));
         assert!(!caps.contains("allow-run-tool-call"));
         assert!(!caps.contains("allow-execute-approved"));
         // p0c_r1 capability boundary is about the renderer capability surface,

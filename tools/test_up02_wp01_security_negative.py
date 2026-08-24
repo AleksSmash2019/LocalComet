@@ -31,6 +31,7 @@ PRODUCT_PATHS = (
 # Downloads remain gated by start_approved_artifact_download.
 ALLOWED_TAURI_COMMANDS = frozenset((
     "cancel_artifact_download",
+    "cu_broker_observe",
     "control_plane_bootstrap",
     "control_plane_cancel_turn",
     "control_plane_close_session",
@@ -79,6 +80,8 @@ ALLOWED_TAURI_COMMANDS = frozenset((
     "resolve_tool_approval",  # 850fcbb: resolve-half of the INV-APPROVAL-001/002 flow via FrontendApprovalDispatcher
     "run_tool_call",     # ADR-013
     "scan_hardware",  # ModelFit hardware probe; re-approved by owner 2026-08-11
+    "speak_local_text",
+    "stop_local_text",
     "hf_list_repo_files",  # read-only HF metadata; approved by owner 2026-08-05
     "hf_search_models",    # read-only HF metadata; approved by owner 2026-08-05
     "select_files",
@@ -105,11 +108,16 @@ def git(*args: str) -> str:
 # Each entry is matched against the FULL stripped added line, so it waives
 # exactly one reviewed call site and nothing else.
 #
-# Active waivers (5): the scan_hardware NVIDIA-driver probe line and four
-# web.search/web.fetch/shell capability-description strings; each waives
-# exactly one reviewed call site (see exact_matches.json, 2026-08-12).
+# Active waivers (6): the scan_hardware NVIDIA-driver probe line, four
+# web.search/web.fetch/shell capability-description strings, and the fixed
+# host-broker reg.exe registry lookup; each waives exactly one reviewed call
+# site (see exact_matches.json, 2026-08-12).
 REVIEWED_EXTERNAL_AUTHORITY_LINES: frozenset[str] = frozenset((
     'let output = match std::process::Command::new(bin)',
+    'let output = Command::new(r"C:\\Windows\\System32\\reg.exe")',
+    'let mut command = Command::new(r"C:\\Windows\\System32\\reg.exe");',
+    'let mut command = std::process::Command::new(bin);',
+    'let child = Command::new(&piper)',
     '"интернет: web.search (поиск, ≤200 символов запроса, ≤5 результатов) и web.fetch (чтение страницы по URL) — guarded, лимит 10kB, кэш 10м"',
     'available_parts_en.append("internet: web.search (search, ≤200 query, ≤5 results) and web.fetch (fetch page by URL) — guarded, 10kB limit, cached 10m")',
     '"shell": "Execute a shell command. Registered but not executable in this Desktop build; tool calls will be rejected at the handler (requires explicit allowlisted subprocess path).",',
@@ -152,7 +160,7 @@ class SecurityNegativeTests(unittest.TestCase):
         forbidden = {
             "browser network": r"\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon",
             "filesystem plugin": r"@tauri-apps/plugin-fs|\b(readFile|writeFile|readDir)\s*\(",
-            "shell plugin": r"@tauri-apps/plugin-shell|Command::new|std::process::Command|std::process::exit|std::process::abort",
+            "shell plugin": r"@tauri-apps/plugin-shell|Command::new|std::process::Command|std::process::exit\s*\(|std::process::abort\s*\(",
             "Python process": r"\bsubprocess\b|\bos\.system\s*\(",
             "external HTTP client": r"\brequests\.|\burllib\.|\bsmtplib\.|\bwebbrowser\.",
         }
@@ -170,6 +178,14 @@ class SecurityNegativeTests(unittest.TestCase):
         self.assertIsNone(
             re.search(forbidden["shell plugin"], "std::process::id()"),
             "Regression: shell plugin pattern must not match std::process::id()",
+        )
+        self.assertIsNotNone(
+            re.search(forbidden["shell plugin"], "std::process::exit()"),
+            "Regression: shell plugin pattern must detect std::process::exit()",
+        )
+        self.assertIsNotNone(
+            re.search(forbidden["shell plugin"], "std::process::abort()"),
+            "Regression: shell plugin pattern must detect std::process::abort()",
         )
 
     def test_no_new_tauri_command_or_generic_raw_ipc_is_added(self) -> None:

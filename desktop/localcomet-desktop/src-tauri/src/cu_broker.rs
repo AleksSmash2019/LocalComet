@@ -8,7 +8,8 @@
 //!
 //! * no arbitrary executable paths — only entries of the built-in app registry
 //!   (resolved from System32 or the App Paths registration);
-//! * no shell, no command-line arguments beyond an allowlisted folder path;
+//! * no shell, no arbitrary command-line arguments; browser navigation passes
+//!   exactly one validated HTTPS YouTube URL (plus harness-owned isolation flags);
 //! * the execution grant consumed by `run_tool_call` is RE-VERIFIED here
 //!   against the exact canonical input bytes before anything is launched;
 //! * HIDDEN MODE: when the harness provides a hidden desktop name, every
@@ -20,6 +21,7 @@
 //!   envelope: `blocked` instead of fallbacks, `launch_pending` when the
 //!   postcondition has not been observed yet, never an optimistic PASS.
 
+use reqwest::Url;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::process::Command;
@@ -36,9 +38,7 @@ const CONTINUATION_TTL: Duration = Duration::from_secs(600);
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HANDLE},
     System::Threading::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
-    UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
-    },
+    UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible},
 };
 
 struct AppEntry {
@@ -50,6 +50,10 @@ struct AppEntry {
     /// Process image names accepted by the readiness postcondition. The first
     /// entry also covers stub-relaunch flows (calc.exe -> CalculatorApp.exe).
     process_names: &'static [&'static str],
+    /// Some Windows UWP launchers reparent the real app outside the broker's
+    /// process tree. This is opt-in per registry entry and still requires a
+    /// new PID absent from both hidden and input-desktop baselines.
+    allow_reparented_process: bool,
 }
 
 const APP_REGISTRY: &[(&str, AppEntry)] = &[
@@ -59,6 +63,7 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             system32_exe: Some("notepad.exe"),
             app_paths_exe: None,
             process_names: &["notepad.exe"],
+            allow_reparented_process: false,
         },
     ),
     (
@@ -67,6 +72,7 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             system32_exe: Some("calc.exe"),
             app_paths_exe: None,
             process_names: &["calculatorapp.exe"],
+            allow_reparented_process: true,
         },
     ),
     (
@@ -75,6 +81,7 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             system32_exe: Some("mspaint.exe"),
             app_paths_exe: None,
             process_names: &["mspaint.exe"],
+            allow_reparented_process: false,
         },
     ),
     (
@@ -83,6 +90,7 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             system32_exe: None, // resolved as %SystemRoot%\explorer.exe
             app_paths_exe: None,
             process_names: &["explorer.exe"],
+            allow_reparented_process: false,
         },
     ),
     (
@@ -91,6 +99,7 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             system32_exe: None,
             app_paths_exe: Some("chrome.exe"),
             process_names: &["chrome.exe"],
+            allow_reparented_process: false,
         },
     ),
     (
@@ -99,6 +108,7 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             system32_exe: None,
             app_paths_exe: Some("msedge.exe"),
             process_names: &["msedge.exe"],
+            allow_reparented_process: false,
         },
     ),
     (
@@ -107,6 +117,7 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             system32_exe: None,
             app_paths_exe: Some("firefox.exe"),
             process_names: &["firefox.exe"],
+            allow_reparented_process: false,
         },
     ),
     (
@@ -115,6 +126,7 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             system32_exe: None,
             app_paths_exe: Some("code.exe"),
             process_names: &["code.exe"],
+            allow_reparented_process: false,
         },
     ),
 ];
@@ -139,6 +151,7 @@ fn normalize_target(raw: &Value) -> Option<String> {
         "chrome" | "хром" => "chrome",
         "msedge" | "edge" => "msedge",
         "firefox" | "мозилла" => "firefox",
+        "browser" | "браузер" => "browser",
         "vscode" | "code" | "вс код" => "vscode",
         other => other,
     };
@@ -151,12 +164,14 @@ fn normalize_target(raw: &Value) -> Option<String> {
 
 /// Returns the broker-managed action key when the computer_use input belongs
 /// to the spawn class handled by this broker. Everything else (wait, click,
-/// type, screenshot, ...) stays on the sidecar execution path.
+/// type, screenshot, ...) stays on the sidecar execution path. `open_url` is
+/// broker-only so a URL can never fall through to an interactive sidecar spawn.
 pub fn broker_action(input: &Value) -> Option<&'static str> {
     let action = input.get("action")?.as_str()?.trim().to_ascii_lowercase();
     match action.as_str() {
         "open_app" => Some("open_app"),
         "open_folder" => Some("open_folder"),
+        "open_url" => Some("open_url"),
         _ => None,
     }
 }
@@ -186,15 +201,46 @@ struct ResolvedLaunch {
     program: String,
     args: Vec<String>,
     process_names: &'static [&'static str],
+    allow_reparented_process: bool,
     /// Folder launches reuse the running shell process, so a NEW-pid
     /// postcondition would never fire; presence of the shell counts instead.
     shell_reused: bool,
+    browser_url: Option<String>,
+    browser_cdp_port: Option<u16>,
+}
+
+fn validate_youtube_url(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    let authority = raw
+        .strip_prefix("https://")
+        .and_then(|rest| rest.split(['/', '?', '#']).next())
+        .unwrap_or_default();
+    if authority.contains('@') || authority.contains(':') {
+        return Err("URL credentials and explicit ports are not allowed".into());
+    }
+    let parsed = Url::parse(raw).map_err(|_| "URL is not valid".to_owned())?;
+    if parsed.scheme() != "https" {
+        return Err("only HTTPS URLs are allowed".into());
+    }
+    if parsed.username() != "" || parsed.password().is_some() || parsed.port().is_some() {
+        return Err("URL credentials and explicit ports are not allowed".into());
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "URL host is missing".to_owned())?
+        .to_ascii_lowercase();
+    if !matches!(host.as_str(), "youtube.com" | "www.youtube.com") {
+        return Err("only youtube.com URLs are allowed".into());
+    }
+    Ok(parsed.to_string())
 }
 
 fn plan_launch(
     action: &str,
     target_raw: &Value,
+    url_raw: &Value,
     workspace_path: Option<&str>,
+    hidden_desktop: Option<&str>,
 ) -> Result<ResolvedLaunch, String> {
     let target_value = target_raw.as_str().map(str::trim).unwrap_or_default();
     if target_value.is_empty() || target_value.len() > 200 {
@@ -217,6 +263,9 @@ fn plan_launch(
             let Some(canonical) = normalize_target(&Value::String(lowered.clone())) else {
                 return Err("target app is not in the broker allowlist".into());
             };
+            if hidden_desktop.is_some() && canonical == "calc" {
+                return Err("calculator launch is disabled in hidden/automatic mode".into());
+            }
             let entry =
                 app_entry(&canonical).expect("normalized target must have a registry entry");
             let program = resolve_program(entry).ok_or_else(|| {
@@ -226,7 +275,10 @@ fn plan_launch(
                 program,
                 args: Vec::new(),
                 process_names: entry.process_names,
+                allow_reparented_process: entry.allow_reparented_process,
                 shell_reused: canonical == "explorer",
+                browser_url: None,
+                browser_cdp_port: None,
             })
         }
         "open_folder" => {
@@ -237,11 +289,105 @@ fn plan_launch(
                 program: format!("{}\\explorer.exe", system_root()),
                 args: vec![path],
                 process_names: &["explorer.exe"],
+                allow_reparented_process: false,
                 shell_reused: true,
+                browser_url: None,
+                browser_cdp_port: None,
+            })
+        }
+        "open_url" => {
+            let canonical = if lowered == "browser" || lowered == "браузер" {
+                ["chrome", "msedge", "firefox"]
+                    .into_iter()
+                    .find(|candidate| {
+                        resolve_program(
+                            app_entry(candidate).expect("browser candidate must be registered"),
+                        )
+                        .is_some()
+                    })
+                    .ok_or_else(|| {
+                        "no allowlisted browser executable was found on this system".to_owned()
+                    })?
+                    .to_owned()
+            } else {
+                let Some(normalized) = normalize_target(&Value::String(lowered.clone())) else {
+                    return Err("target browser is not in the broker allowlist".into());
+                };
+                normalized
+            };
+            if !matches!(canonical.as_str(), "chrome" | "msedge" | "firefox") {
+                return Err("open_url supports only Chrome, Edge, or Firefox".into());
+            }
+            let entry =
+                app_entry(&canonical).expect("normalized browser must have a registry entry");
+            let program = resolve_program(entry).ok_or_else(|| {
+                "allowlisted browser executable was not found on this system".to_owned()
+            })?;
+            let url = url_raw
+                .as_str()
+                .ok_or_else(|| "open_url requires a URL string".to_owned())?;
+            let validated_url = validate_youtube_url(url)?;
+            let mut args = Vec::new();
+            let browser_cdp_port = if hidden_desktop.is_some() {
+                let profile = std::env::var("LC_HIDDEN_BROWSER_PROFILE_DIR")
+                    .map_err(|_| "hidden browser profile is not configured".to_owned())?;
+                validate_hidden_browser_profile(&profile)?;
+                let port = std::env::var("LC_HIDDEN_BROWSER_CDP_PORT")
+                    .map_err(|_| "hidden browser CDP port is not configured".to_owned())?
+                    .parse::<u16>()
+                    .map_err(|_| "hidden browser CDP port is invalid".to_owned())?;
+                if !(1024..=65535).contains(&port) {
+                    return Err("hidden browser CDP port is outside the user-port range".into());
+                }
+                if canonical == "firefox" {
+                    args.push("--profile".into());
+                    args.push(profile);
+                    args.push("--no-remote".into());
+                } else {
+                    args.push(format!("--user-data-dir={profile}"));
+                    args.push("--no-first-run".into());
+                    args.push("--no-default-browser-check".into());
+                }
+                args.push(format!("--remote-debugging-port={port}"));
+                Some(port)
+            } else {
+                None
+            };
+            args.push(validated_url.clone());
+            Ok(ResolvedLaunch {
+                program,
+                args,
+                process_names: entry.process_names,
+                allow_reparented_process: entry.allow_reparented_process,
+                shell_reused: false,
+                browser_url: Some(validated_url),
+                browser_cdp_port,
             })
         }
         other => Err(format!("unsupported broker action: {other}")),
     }
+}
+
+fn validate_hidden_browser_profile(raw: &str) -> Result<(), String> {
+    let profile = raw.trim();
+    if profile.is_empty() || profile.len() > 240 {
+        return Err("hidden browser profile path is invalid".into());
+    }
+    let local_appdata = std::env::var("LOCALAPPDATA")
+        .map_err(|_| "LOCALAPPDATA is unavailable for hidden browser profile".to_owned())?;
+    let root = format!(
+        "{}\\localcomethiddencu",
+        local_appdata.trim_end_matches(['\\', '/'])
+    );
+    let normalized_profile = profile.replace('/', "\\").to_ascii_lowercase();
+    let normalized_root = root.replace('/', "\\").to_ascii_lowercase();
+    if !normalized_profile.starts_with(&(normalized_root + "\\")) {
+        return Err("hidden browser profile must stay under LocalCometHiddenCU".into());
+    }
+    if !std::path::Path::new(profile).is_dir() {
+        return Err("hidden browser profile directory is unavailable".into());
+    }
+    Ok(())
 }
 
 fn resolve_program(entry: &AppEntry) -> Option<String> {
@@ -306,6 +452,98 @@ fn process_name(pid: u32) -> Option<String> {
     )]));
     let process = system.process(sysinfo::Pid::from_u32(pid))?;
     Some(process.name().to_string_lossy().to_ascii_lowercase())
+}
+
+fn process_descends_from(candidate_pid: u32, ancestor_pid: u32) -> bool {
+    if candidate_pid == ancestor_pid {
+        return true;
+    }
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All);
+    let mut current = sysinfo::Pid::from_u32(candidate_pid);
+    let mut visited = HashSet::new();
+    loop {
+        if !visited.insert(current.as_u32()) {
+            return false;
+        }
+        let Some(process) = system.process(current) else {
+            return false;
+        };
+        let Some(parent) = process.parent() else {
+            return false;
+        };
+        if parent.as_u32() == ancestor_pid {
+            return true;
+        }
+        current = parent;
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn hidden_process_observation(
+    root_pid: u32,
+    names: &[&str],
+    desktop: &str,
+    allow_reparented_process: bool,
+    baseline_hidden_pids: &HashSet<u32>,
+    baseline_user_pids: &HashSet<u32>,
+) -> (Option<u32>, bool, bool, Value) {
+    let Some(hidden_pids) = desktop_query::pids_with_windows(Some(desktop)) else {
+        return (
+            None,
+            false,
+            true,
+            json!({"observation_error": "hidden_desktop_query_unavailable"}),
+        );
+    };
+    let Some(user_pids) = desktop_query::pids_with_windows(None) else {
+        return (
+            None,
+            false,
+            true,
+            json!({"observation_error": "user_desktop_query_unavailable"}),
+        );
+    };
+    let is_spawned_allowlisted = |pid: u32, baseline: &HashSet<u32>| {
+        let has_provenance = process_descends_from(pid, root_pid)
+            || (allow_reparented_process && pid != root_pid && !baseline.contains(&pid));
+        has_provenance
+            && process_name(pid).is_some_and(|name| {
+                names
+                    .iter()
+                    .any(|allowed| name == allowed.to_ascii_lowercase())
+            })
+    };
+    let matching_hidden: Vec<u32> = hidden_pids
+        .iter()
+        .copied()
+        .filter(|pid| !user_pids.contains(pid))
+        .filter(|pid| is_spawned_allowlisted(*pid, baseline_hidden_pids))
+        .collect();
+    let matching_user: Vec<u32> = user_pids
+        .iter()
+        .copied()
+        .filter(|pid| is_spawned_allowlisted(*pid, baseline_user_pids))
+        .collect();
+    let diagnostics = json!({
+        "hidden_window_pid_count": hidden_pids.len(),
+        "user_window_pid_count": user_pids.len(),
+        "matching_hidden_pids": matching_hidden,
+        "matching_user_pids": matching_user,
+        "allow_reparented_process": allow_reparented_process,
+        "expected_process_names": names,
+    });
+    let observed_pid = diagnostics
+        .get("matching_hidden_pids")
+        .and_then(Value::as_array)
+        .and_then(|pids| pids.first())
+        .and_then(Value::as_u64)
+        .and_then(|pid| u32::try_from(pid).ok());
+    let leaked_to_user = diagnostics
+        .get("matching_user_pids")
+        .and_then(Value::as_array)
+        .is_some_and(|pids| !pids.is_empty());
+    (observed_pid, leaked_to_user, false, diagnostics)
 }
 
 /// Defined MVP readiness signal: the spawned PID is still alive, or a NEW
@@ -465,9 +703,10 @@ mod desktop_query {
         true
     }
 
-    pub fn pids_with_windows(desktop: Option<&str>) -> HashSet<u32> {
+    pub fn pids_with_windows(desktop: Option<&str>) -> Option<HashSet<u32>> {
         use windows_sys::Win32::System::StationsAndDesktops::{
-            CloseDesktop, EnumDesktopWindows, OpenDesktopW, DESKTOP_ENUMERATE, DESKTOP_READOBJECTS,
+            CloseDesktop, EnumDesktopWindows, OpenDesktopW, OpenInputDesktop, DESKTOP_ENUMERATE,
+            DESKTOP_READOBJECTS,
         };
         let mut collected = Collected {
             pids_with_windows: HashSet::new(),
@@ -479,7 +718,7 @@ mod desktop_query {
                     let handle =
                         OpenDesktopW(wide.as_ptr(), 0, 0, DESKTOP_ENUMERATE | DESKTOP_READOBJECTS);
                     if handle.is_null() {
-                        return collected.pids_with_windows;
+                        return None;
                     }
                     EnumDesktopWindows(
                         handle,
@@ -489,11 +728,25 @@ mod desktop_query {
                     CloseDesktop(handle);
                 }
                 None => {
-                    EnumWindows(Some(collect_cb), &mut collected as *mut Collected as isize);
+                    // The broker process may itself run on the named hidden
+                    // desktop. EnumWindows would then enumerate that hidden
+                    // desktop again and falsely classify the valid browser as
+                    // an interactive leak. Open the real input desktop
+                    // explicitly for the independent user-desktop check.
+                    let handle = OpenInputDesktop(0, 0, DESKTOP_ENUMERATE | DESKTOP_READOBJECTS);
+                    if handle.is_null() {
+                        return None;
+                    }
+                    EnumDesktopWindows(
+                        handle,
+                        Some(collect_cb),
+                        &mut collected as *mut Collected as isize,
+                    );
+                    CloseDesktop(handle);
                 }
             }
         }
-        collected.pids_with_windows
+        Some(collected.pids_with_windows)
     }
 }
 
@@ -504,7 +757,13 @@ mod desktop_query {
 #[derive(Clone)]
 struct SpawnRecord {
     pid: u32,
+    action: String,
+    browser_url: Option<String>,
+    browser_cdp_port: Option<u16>,
     process_names: &'static [&'static str],
+    allow_reparented_process: bool,
+    baseline_hidden_pids: HashSet<u32>,
+    baseline_user_pids: HashSet<u32>,
     shell_reused: bool,
     expires_at: Instant,
     desktop: Option<String>,
@@ -619,7 +878,8 @@ pub fn validate_broker_action(
     workspace_path: Option<&str>,
 ) -> Result<(), String> {
     let target = input.get("target").cloned().unwrap_or(Value::Null);
-    plan_launch(action, &target, workspace_path).map(|_| ())
+    let url = input.get("url").cloned().unwrap_or(Value::Null);
+    plan_launch(action, &target, &url, workspace_path, None).map(|_| ())
 }
 
 /// Execute a broker-managed computer_use action. The caller has already
@@ -713,12 +973,36 @@ pub fn execute_broker_action(
     let launch = match plan_launch(
         action,
         &input.get("target").cloned().unwrap_or(Value::Null),
+        &input.get("url").cloned().unwrap_or(Value::Null),
         workspace_path,
+        validated_desktop.as_deref(),
     ) {
         Ok(launch) => launch,
         Err(reason) => {
             return blocked_envelope_with_grant(action, &reason, &request_id, &action_id, grant)
         }
+    };
+
+    let (baseline_hidden_pids, baseline_user_pids) = match validated_desktop.as_deref() {
+        Some(name) => match (
+            desktop_query::pids_with_windows(Some(name)),
+            desktop_query::pids_with_windows(None),
+        ) {
+            (Some(hidden), Some(user)) => (
+                hidden.into_iter().collect::<HashSet<_>>(),
+                user.into_iter().collect::<HashSet<_>>(),
+            ),
+            _ => {
+                return blocked_envelope_with_grant(
+                    action,
+                    "hidden desktop baseline observation unavailable; refusing to spawn",
+                    &request_id,
+                    &action_id,
+                    grant,
+                )
+            }
+        },
+        None => (HashSet::new(), HashSet::new()),
     };
 
     let foreground_before = current_foreground();
@@ -738,6 +1022,9 @@ pub fn execute_broker_action(
                     "backend": "rust-host",
                     "program": launch.program,
                     "desktop": validated_desktop,
+                    "pid": Value::Null,
+                    "url": launch.browser_url.clone(),
+                    "cdp_port": launch.browser_cdp_port,
                     "approval_id": grant.approval_id,
                     "approval_call_id": grant.call_id,
                     "input_digest": hex_digest(&grant.input_digest),
@@ -756,35 +1043,61 @@ pub fn execute_broker_action(
         Some(name) => {
             let deadline = Instant::now() + POSTCONDITION_TIMEOUT;
             loop {
-                let hidden_pids = desktop_query::pids_with_windows(Some(name));
-                let user_pids = desktop_query::pids_with_windows(None);
-                let on_hidden = hidden_pids.contains(&pid)
-                    || (launch.shell_reused
-                        && hidden_pids.iter().any(|p| {
-                            process_name(*p).is_some_and(|n| {
-                                launch
-                                    .process_names
-                                    .iter()
-                                    .any(|a| n == a.to_ascii_lowercase())
-                            })
-                        }));
-                let leaked_to_user = user_pids.contains(&pid);
-                if on_hidden && !leaked_to_user {
-                    break (
-                        true,
-                        json!({"on_hidden_desktop": true, "on_user_desktop": false}),
+                let (observed_pid, leaked_to_user, observation_unavailable, observation_debug) =
+                    hidden_process_observation(
+                        pid,
+                        launch.process_names,
+                        name,
+                        launch.allow_reparented_process,
+                        &baseline_hidden_pids,
+                        &baseline_user_pids,
                     );
+                if observation_unavailable {
+                    break (
+                        false,
+                        json!({
+                            "on_hidden_desktop": false,
+                            "on_user_desktop": false,
+                            "observation_error": "desktop_observation_unavailable",
+                            "spawned_pid": pid,
+                            "observation": observation_debug,
+                        }),
+                    );
+                }
+                if let Some(observed_pid) = observed_pid {
+                    if !leaked_to_user {
+                        break (
+                            true,
+                            json!({
+                                "on_hidden_desktop": true,
+                                "on_user_desktop": false,
+                                "observed_pid": observed_pid,
+                                "spawned_pid": pid,
+                                "observation": observation_debug,
+                            }),
+                        );
+                    }
                 }
                 if leaked_to_user {
                     break (
                         false,
-                        json!({"on_hidden_desktop": false, "on_user_desktop": true}),
+                        json!({
+                            "on_hidden_desktop": false,
+                            "on_user_desktop": true,
+                            "spawned_pid": pid,
+                            "observation": observation_debug,
+                        }),
                     );
                 }
                 if Instant::now() >= deadline {
                     break (
                         false,
-                        json!({"on_hidden_desktop": false, "on_user_desktop": false}),
+                        json!({
+                            "on_hidden_desktop": false,
+                            "on_user_desktop": false,
+                            "spawned_pid": pid,
+                            "observation": observation_debug,
+                        }),
                     );
                 }
                 std::thread::sleep(POSTCONDITION_POLL);
@@ -804,6 +1117,11 @@ pub fn execute_broker_action(
 
     let foreground_after = current_foreground();
     let focus_unchanged = foreground_before == foreground_after;
+    let reported_pid = window_evidence
+        .get("observed_pid")
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .unwrap_or(pid);
 
     let (status, terminal, succeeded, verification, reason) = match verified {
         true => ("completed", true, true, "verified", ""),
@@ -821,7 +1139,13 @@ pub fn execute_broker_action(
             &request_id,
             SpawnRecord {
                 pid,
+                action: action.to_owned(),
+                browser_url: launch.browser_url.clone(),
+                browser_cdp_port: launch.browser_cdp_port,
                 process_names: launch.process_names,
+                allow_reparented_process: launch.allow_reparented_process,
+                baseline_hidden_pids,
+                baseline_user_pids,
                 shell_reused: launch.shell_reused,
                 expires_at: Instant::now() + CONTINUATION_TTL,
                 desktop: validated_desktop.clone(),
@@ -844,8 +1168,11 @@ pub fn execute_broker_action(
             "mode": "cu_broker_spawn",
             "backend": "rust-host",
             "program": launch.program,
-            "pid": pid,
+            "pid": reported_pid,
+            "spawn_pid": pid,
             "desktop": validated_desktop,
+            "url": launch.browser_url,
+            "cdp_port": launch.browser_cdp_port,
             "window_station": "winsta0",
             "window_evidence": window_evidence,
             "foreground_unchanged": focus_unchanged,
@@ -887,12 +1214,14 @@ pub fn observe_broker_action(request_id: &str) -> Option<Value> {
                 true,
                 false,
                 "failed",
-                "open_app",
+                &expired.action,
                 "continuation window expired before readiness was observed",
                 json!({
                     "mode": "cu_broker_observe",
                     "backend": "rust-host",
                     "action_id": expired.action_id,
+                    "url": expired.browser_url,
+                    "cdp_port": expired.browser_cdp_port,
                     "approval_id": expired.approval_id,
                     "approval_call_id": expired.approval_call_id,
                     "input_digest": hex_digest(&expired.input_digest),
@@ -903,38 +1232,102 @@ pub fn observe_broker_action(request_id: &str) -> Option<Value> {
         }
         record.clone()
     };
-    let verified = match record.desktop.as_deref() {
-        Some(name) => {
-            let hidden_pids = desktop_query::pids_with_windows(Some(name));
-            hidden_pids.contains(&record.pid)
-        }
-        None => {
-            record.shell_reused
-                || postcondition_reached(
-                    record.pid,
-                    record.process_names,
-                    &HashSet::new(),
-                    Duration::from_millis(1500),
-                )
-        }
-    };
-    if verified {
+    let (verified_pid, leaked_to_user, observation_unavailable, observation_debug) =
+        match record.desktop.as_deref() {
+            Some(name) => hidden_process_observation(
+                record.pid,
+                record.process_names,
+                name,
+                record.allow_reparented_process,
+                &record.baseline_hidden_pids,
+                &record.baseline_user_pids,
+            ),
+            None => (
+                (record.shell_reused
+                    || postcondition_reached(
+                        record.pid,
+                        record.process_names,
+                        &HashSet::new(),
+                        Duration::from_millis(1500),
+                    ))
+                .then_some(record.pid),
+                false,
+                false,
+                json!({}),
+            ),
+        };
+    if observation_unavailable {
         return Some(envelope(
-            "completed",
+            "failed",
             true,
-            true,
-            "verified",
-            "open_app",
-            "",
+            false,
+            "failed",
+            &record.action,
+            "desktop observation was unavailable; refusing to verify the spawn",
             json!({
                 "mode": "cu_broker_observe",
                 "backend": "rust-host",
                 "pid": record.pid,
                 "desktop": record.desktop,
+                "url": record.browser_url,
+                "cdp_port": record.browser_cdp_port,
                 "action_id": record.action_id,
                 "approval_id": record.approval_id,
                 "approval_call_id": record.approval_call_id,
                 "input_digest": hex_digest(&record.input_digest),
+                "observation": observation_debug,
+            }),
+            request_id,
+            &record.action_id,
+        ));
+    }
+    if leaked_to_user {
+        return Some(envelope(
+            "failed",
+            true,
+            false,
+            "failed",
+            &record.action,
+            "spawned process appeared on the interactive desktop",
+            json!({
+                "mode": "cu_broker_observe",
+                "backend": "rust-host",
+                "pid": record.pid,
+                "spawn_pid": record.pid,
+                "desktop": record.desktop,
+                "url": record.browser_url,
+                "cdp_port": record.browser_cdp_port,
+                "action_id": record.action_id,
+                "approval_id": record.approval_id,
+                "approval_call_id": record.approval_call_id,
+                "input_digest": hex_digest(&record.input_digest),
+                "observation": observation_debug,
+            }),
+            request_id,
+            &record.action_id,
+        ));
+    }
+    if let Some(observed_pid) = verified_pid {
+        return Some(envelope(
+            "completed",
+            true,
+            true,
+            "verified",
+            &record.action,
+            "",
+            json!({
+                "mode": "cu_broker_observe",
+                "backend": "rust-host",
+                "pid": observed_pid,
+                "spawn_pid": record.pid,
+                "desktop": record.desktop,
+                "url": record.browser_url,
+                "cdp_port": record.browser_cdp_port,
+                "action_id": record.action_id,
+                "approval_id": record.approval_id,
+                "approval_call_id": record.approval_call_id,
+                "input_digest": hex_digest(&record.input_digest),
+                "observation": observation_debug,
             }),
             request_id,
             &record.action_id,
@@ -945,15 +1338,18 @@ pub fn observe_broker_action(request_id: &str) -> Option<Value> {
         false,
         false,
         "pending",
-        "open_app",
+        &record.action,
         "readiness postcondition has not been observed yet",
         json!({
             "mode": "cu_broker_observe",
             "backend": "rust-host",
             "pid": record.pid,
             "desktop": record.desktop,
+            "url": record.browser_url,
+            "cdp_port": record.browser_cdp_port,
             "action_id": record.action_id,
             "input_digest": hex_digest(&record.input_digest),
+            "observation": observation_debug,
         }),
         request_id,
         &record.action_id,
@@ -1011,9 +1407,37 @@ mod tests {
             broker_action(&json!({"action": "open_folder", "target": "downloads"})),
             Some("open_folder")
         );
+        assert_eq!(
+            broker_action(&json!({
+                "action": "open_url",
+                "target": "msedge",
+                "url": "https://www.youtube.com/"
+            })),
+            Some("open_url")
+        );
         assert_eq!(broker_action(&json!({"action": "wait"})), None);
         assert_eq!(broker_action(&json!({"action": "screenshot"})), None);
         assert_eq!(broker_action(&json!({})), None);
+    }
+
+    #[test]
+    fn youtube_url_allowlist_is_exact_and_https_only() {
+        assert_eq!(
+            validate_youtube_url("https://www.youtube.com/watch?v=abc").unwrap(),
+            "https://www.youtube.com/watch?v=abc"
+        );
+        for invalid in [
+            "http://www.youtube.com/",
+            "https://youtube.com.evil.example/",
+            "https://www.youtube.com:443/",
+            "https://user:pass@www.youtube.com/",
+            "https://example.com/",
+        ] {
+            assert!(
+                validate_youtube_url(invalid).is_err(),
+                "must reject {invalid}"
+            );
+        }
     }
 
     #[test]
@@ -1028,6 +1452,12 @@ mod tests {
             .contains("path"));
         let notepad = json!({"action": "open_app", "target": "notepad"});
         assert!(validate_broker_action("open_app", &notepad, None).is_ok());
+        let youtube = json!({
+            "action": "open_url",
+            "target": "browser",
+            "url": "https://www.youtube.com/"
+        });
+        assert!(validate_broker_action("open_url", &youtube, None).is_ok());
     }
 
     #[test]
@@ -1136,18 +1566,29 @@ mod tests {
     }
 
     #[test]
-    fn calculator_alias_resolves() {
-        let input = json!({"action": "open_app", "target": "calculator"});
-        let result = execute_broker_action(
-            "open_app",
-            &input,
-            Some(&grant_for(&input)),
-            Some(REQUEST_ID),
-            Some(ACTION_ID),
-            None,
-            None,
+    fn calculator_alias_resolves_without_spawn() {
+        // Alias normalization is a pure registry contract. Do not call the
+        // broker execution path here: that would launch Calculator during a
+        // normal cargo test run.
+        assert_eq!(
+            normalize_target(&json!("calculator")),
+            Some("calc".to_owned())
         );
-        assert_ne!(result["status"], "blocked");
+    }
+
+    #[test]
+    fn hidden_calculator_is_blocked_before_spawn() {
+        let error = match plan_launch(
+            "open_app",
+            &json!("calculator"),
+            &Value::Null,
+            None,
+            Some("LocalCometHidden_test"),
+        ) {
+            Ok(_) => panic!("Calculator must be disabled in hidden/automatic mode"),
+            Err(error) => error,
+        };
+        assert!(error.contains("disabled in hidden/automatic mode"));
     }
 
     #[test]
@@ -1234,12 +1675,24 @@ mod tests {
     }
 
     #[test]
+    fn process_descends_from_accepts_the_same_process() {
+        let pid = std::process::id();
+        assert!(process_descends_from(pid, pid));
+    }
+
+    #[test]
     fn observe_expired_record_returns_honest_failed() {
         register_spawn(
             EXPIRED_REQUEST_ID,
             SpawnRecord {
                 pid: 0,
+                action: "open_app".into(),
+                browser_url: None,
+                browser_cdp_port: None,
                 process_names: &["notepad.exe"],
+                allow_reparented_process: false,
+                baseline_hidden_pids: HashSet::new(),
+                baseline_user_pids: HashSet::new(),
                 shell_reused: false,
                 expires_at: Instant::now() - Duration::from_secs(1),
                 desktop: None,
@@ -1263,7 +1716,13 @@ mod tests {
             PENDING_REQUEST_ID,
             SpawnRecord {
                 pid: 0,
+                action: "open_app".into(),
+                browser_url: None,
+                browser_cdp_port: None,
                 process_names: &["definitely-not-running-proc-xyz"],
+                allow_reparented_process: false,
+                baseline_hidden_pids: HashSet::new(),
+                baseline_user_pids: HashSet::new(),
                 shell_reused: false,
                 expires_at: Instant::now() + Duration::from_secs(600),
                 desktop: None,
@@ -1289,7 +1748,13 @@ mod tests {
             BINDING_REQUEST_ID,
             SpawnRecord {
                 pid: 4242,
+                action: "open_app".into(),
+                browser_url: None,
+                browser_cdp_port: None,
                 process_names: &["notepad.exe"],
+                allow_reparented_process: false,
+                baseline_hidden_pids: HashSet::new(),
+                baseline_user_pids: HashSet::new(),
                 shell_reused: false,
                 expires_at: Instant::now() + Duration::from_secs(600),
                 desktop: Some("LocalCometHiddenCU_test".to_owned()),
@@ -1300,7 +1765,9 @@ mod tests {
             },
         );
         let result = observe_broker_action(BINDING_REQUEST_ID).expect("record must exist");
-        assert_eq!(result["status"], "launch_pending");
+        assert_eq!(result["status"], "failed");
+        assert_eq!(result["terminal"], json!(true));
+        assert_eq!(result["succeeded"], json!(false));
         assert_eq!(result["request_id"], json!(BINDING_REQUEST_ID));
         assert_eq!(result["action_id"], json!("action-1"));
         assert_eq!(result["execution"]["pid"], json!(4242));

@@ -178,12 +178,6 @@
 </script>
 
 <div class="app-shell" data-theme={resolvedTheme}>
-  <a
-    class="skip-link"
-    href={$activeWorkspace === 'review' ? '#review-workspace' : $activeWorkspace === 'setup' ? '#setup-workspace' : '#chat-workspace'}
-  >
-    {$activeWorkspace === 'review' ? $t('review.skip_link') : $activeWorkspace === 'setup' ? $t('onboarding.skip_link') : $t('common.skip_link')}
-  </a>
   <ConversationSidebar />
 
   <div

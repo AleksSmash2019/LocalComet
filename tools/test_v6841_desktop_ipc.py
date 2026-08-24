@@ -168,6 +168,14 @@ def test_envelope_payload_and_constructors() -> None:
     _assert("object_too_large" in ipc.validate_payload({str(i): i for i in range(ipc.MAX_OBJECT_KEYS + 1)}), "Object key limit missing.")
     _assert("array_too_large" in ipc.validate_payload(list(range(ipc.MAX_ARRAY_LENGTH + 1))), "Array limit missing.")
     _assert("string_too_large" in ipc.validate_payload("x" * (ipc.MAX_STRING_CHARS + 1)), "String limit missing.")
+    _assert(
+        "string_too_large" not in ipc.validate_payload({"screenshot": "x" * (ipc.MAX_STRING_CHARS + 1)}),
+        "Bounded screenshot payload was rejected by the generic text limit.",
+    )
+    _assert(
+        "string_too_large" in ipc.validate_payload({"screenshot": "x" * (ipc.MAX_SCREENSHOT_BASE64_CHARS + 1)}),
+        "Oversized screenshot payload was accepted.",
+    )
     _assert("non_finite_number" in ipc.validate_payload({"x": float("nan")}), "Nested NaN accepted.")
     _assert("unsupported_payload_type" in ipc.validate_payload({"x": b"bytes"}), "Bytes accepted.")
     _assert("unsupported_payload_type" in ipc.validate_payload({"x": Path("x")}), "Path accepted.")
@@ -175,6 +183,11 @@ def test_envelope_payload_and_constructors() -> None:
     cyclic: list[Any] = []
     cyclic.append(cyclic)
     _assert("cyclic_payload" in ipc.validate_payload(cyclic), "Cycle not detected.")
+    shared_keys = ["ctrl", "f"]
+    _assert(
+        "cyclic_payload" not in ipc.validate_payload({"keys": shared_keys, "backup_keys": shared_keys}),
+        "Shared sibling container was falsely classified as cyclic.",
+    )
     _raises(lambda: ipc.make_request("../bad", "models.list", {}), "invalid_envelope")
     _raises(lambda: ipc.make_request("req_001", "bad..method", {}), "invalid_envelope")
     _raises(lambda: ipc.make_request("req_001", "models.list", {}, sequence=True), "invalid_envelope")

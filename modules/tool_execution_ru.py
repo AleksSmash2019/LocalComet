@@ -46,6 +46,12 @@ SUPPORTED_TOOLS = frozenset(
 # must present a Rust execution grant that is re-verified here: Rust-side
 # validation alone is not sufficient defense-in-depth (master prompt §3.3).
 DANGEROUS_TOOLS = frozenset(("files.delete", "shell", "computer_use", "skills.invoke"))
+# `computer_use` remains dangerous at the capability level in the canonical
+# registry, while Rust resolves the effective risk from the action. These
+# actions are the only no-grant subset; every other action stays grant-bound.
+COMPUTER_USE_READ_ONLY_ACTIONS = frozenset(
+    ("screenshot", "wait", "observe", "cursor_position", "mouse_move", "scroll")
+)
 
 
 class ToolExecutionError(Exception):
@@ -572,6 +578,10 @@ def _computer_use(
     if target_val is not None and not isinstance(target_val, str):
         raise ToolExecutionError("invalid_payload", "target must be a string")
     target = str(target_val or "").strip()
+    url_val = input_obj.get("url", "")
+    if url_val is not None and not isinstance(url_val, str):
+        raise ToolExecutionError("invalid_payload", "url must be a string")
+    url = str(url_val or "").strip()
     if target:
         _reject_unrenderable(target, "target")
     if not target and action in ("open_app", "open_folder") and isinstance(text_val, str):
@@ -579,6 +589,21 @@ def _computer_use(
 
     # Canonical bounded wait (seconds, 0.1..=30.0): the same field name and
     # range the Rust schema and the intent parser use.
+    goal_val = input_obj.get("goal", "")
+    if goal_val is not None and not isinstance(goal_val, str):
+        raise ToolExecutionError("invalid_payload", "goal must be a string")
+    goal = str(goal_val or "").strip()
+    if goal:
+        _reject_unrenderable(goal, "goal")
+        if len(goal) > 1200:
+            raise ToolExecutionError("invalid_payload", "goal exceeds 1200 chars")
+
+    max_steps_val = input_obj.get("max_steps", 6)
+    if isinstance(max_steps_val, bool) or not isinstance(max_steps_val, int):
+        raise ToolExecutionError("invalid_payload", "max_steps must be an integer")
+    if not (1 <= max_steps_val <= 8):
+        raise ToolExecutionError("invalid_payload", "max_steps must be within 1..8")
+
     seconds_val = input_obj.get("seconds")
     if seconds_val is not None:
         if isinstance(seconds_val, bool) or not isinstance(seconds_val, (int, float)):
@@ -591,6 +616,7 @@ def _computer_use(
     ALLOWED_ACTIONS = {
         "open_app",
         "open_folder",
+        "open_url",
         "click",
         "double_click",
         "type",
@@ -601,6 +627,7 @@ def _computer_use(
         "drag",
         "wait",
         "screenshot",
+        "task",
     }
     if action not in ALLOWED_ACTIONS:
         raise ToolExecutionError("invalid_payload", f"unsupported computer_use action: {action}")
@@ -614,6 +641,7 @@ def _computer_use(
     kind_map = {
         "open_app": "open_app",
         "open_folder": "open_folder",
+        "open_url": "open_url",
         "click": "click_element",
         "double_click": "double_click_element",
         "type": "paste_text",
@@ -624,10 +652,25 @@ def _computer_use(
         "drag": "drag",
         "wait": "wait_for_window",
         "screenshot": "screenshot",
+        "task": "task",
     }
     kind = kind_map[action]
+    if action == "open_url":
+        # Browser navigation is host-broker-only. Never let a malformed or
+        # direct sidecar call fall back to an interactive-desktop launcher.
+        raise ToolExecutionError(
+            "feature_disabled",
+            "computer_use.open_url requires the host broker",
+        )
 
     dispatched: dict[str, Any] = {"kind": kind, "target": target}
+    if action == "task":
+        if not goal:
+            raise ToolExecutionError("invalid_payload", "task action requires a non-empty goal")
+        dispatched["goal"] = goal
+        dispatched["max_steps"] = max_steps_val
+    if url:
+        dispatched["url"] = url
 
     if text_val:
         dispatched["text"] = text_val
@@ -648,6 +691,14 @@ def _computer_use(
         request_id=request_id,
         action_id=action_id,
     )
+    # The digest is public correlation evidence, not grant material: it lets
+    # the UI/harness prove that the executed action corresponds to the exact
+    # canonical input without exposing token/workspace/session secrets.
+    input_digest = canonical_input_digest_hex(input_obj)
+    result["input_digest"] = input_digest
+    execution = result.get("execution")
+    if isinstance(execution, Mapping):
+        result["execution"] = {**execution, "input_digest": input_digest}
 
     # Normalize sidecar response shape — always include tool identity.
     result.setdefault("tool", tool)
@@ -918,6 +969,11 @@ def _skills_invoke(policy: WorkspacePolicy, tool: str, payload: Mapping[str, Any
         raise ToolExecutionError(exc.code, exc.message) from exc
 
 
+def _computer_use_action_requires_grant(input_obj: Mapping[str, Any]) -> bool:
+    action = input_obj.get("action")
+    return not isinstance(action, str) or action.strip().lower() not in COMPUTER_USE_READ_ONLY_ACTIONS
+
+
 def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
     tool = _require_str(payload, "tool")
     workspace = _require_str(payload, "workspace")
@@ -928,10 +984,15 @@ def execute_tool_call(payload: Mapping[str, Any]) -> dict[str, Any]:
     input_obj = payload.get("input")
     if not isinstance(input_obj, Mapping):
         raise ToolExecutionError("invalid_payload", "input must be an object")
-    if tool in DANGEROUS_TOOLS:
+    requires_grant = tool in DANGEROUS_TOOLS
+    if tool == "computer_use":
+        requires_grant = _computer_use_action_requires_grant(input_obj)
+    if requires_grant:
         # Downstream defense-in-depth: the Rust boundary already consumed the
-        # one-time token; this boundary re-verifies the grant material before
-        # any dangerous action runs.
+        # one-time token for guarded/dangerous actions; this boundary re-verifies
+        # the grant material before any action runs. Rust's ReadOnly Computer Use
+        # subset is intentionally exempt and cannot spawn, type, click, or
+        # navigate because those actions remain grant-bound above.
         _verify_execution_grant(payload, tool, input_obj, workspace, session)
     elif isinstance(payload.get("grant"), Mapping):
         # A grant presented for a guarded tool must still be valid.

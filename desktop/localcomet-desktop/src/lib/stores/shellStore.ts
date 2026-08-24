@@ -257,7 +257,13 @@ export function setAssistantToolCalls(requestId: string, toolCalls: import('$lib
   return updated;
 }
 
-export function updateAssistantToolResult(requestId: string, toolIndex: number, status: 'PASS' | 'FAIL' | 'SKIPPED' | 'WAITING', result: string): boolean {
+export function updateAssistantToolResult(
+  requestId: string,
+  toolIndex: number,
+  status: 'PASS' | 'FAIL' | 'SKIPPED' | 'WAITING',
+  result: string,
+  detail?: string
+): boolean {
   if (!/^[0-9a-f]{24}$/.test(requestId)) return false;
   let updated = false;
   chatMessages.update((messages) => messages.map((message) => {
@@ -268,7 +274,8 @@ export function updateAssistantToolResult(requestId: string, toolIndex: number, 
     newToolCalls[toolIndex] = {
       ...newToolCalls[toolIndex],
       status,
-      result
+      result,
+      ...(detail ? { detail } : {})
     };
     return {
       ...message,

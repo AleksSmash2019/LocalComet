@@ -11,6 +11,7 @@ for path in (ROOT, TOOLS):
 from run_isolated_hidden_desktop_cu import (  # noqa: E402
     classify_case,
     validate_correlation,
+    GUARDED_SCENARIO_IDS,
     validate_screenshot_evidence,
     _uia_control_text,
 )
@@ -108,6 +109,65 @@ class HiddenEvidenceContractTests(unittest.TestCase):
             "screenshot_bytes": "0",
         })
         self.assertFalse(invalid["ok"])
+
+    def test_guarded_pass_without_approval_is_not_independently_verified(self):
+        self.assertIn("notepad_open_type", GUARDED_SCENARIO_IDS)
+        correlation = validate_correlation(
+            {},
+            {"request_id": "", "action_id": "", "approval_id": "", "approval_call_id": "", "input_digest": ""},
+            approvals=0,
+            approval_required=True,
+        )
+        self.assertFalse(correlation["ok"])
+        self.assertEqual(correlation["status"], "required_but_absent")
+        self.assertEqual(
+            classify_case(
+                "PASS",
+                0,
+                True,
+                correlation_ok=correlation["ok"],
+                text_ok=True,
+                approval_required=True,
+            ),
+            "NOT_INDEPENDENTLY_VERIFIED",
+        )
+
+    def test_guarded_session_capability_requires_digest_and_ids(self):
+        evidence = {
+            "request_id": REQUEST_ID,
+            "action_id": MODEL_ACTION_ID,
+            "input_digest": INPUT_DIGEST,
+        }
+        valid = validate_correlation(
+            {}, evidence, approvals=0, session_capability_required=True, session_capability_ok=True
+        )
+        self.assertTrue(valid["ok"], valid)
+        self.assertEqual(valid["status"], "session_capability_validated")
+        self.assertEqual(
+            classify_case(
+                "PASS",
+                0,
+                True,
+                correlation_ok=valid["ok"],
+                text_ok=True,
+                session_capability_required=True,
+                session_capability_ok=True,
+            ),
+            "VERIFIED_SUCCESS",
+        )
+        missing_digest = validate_correlation(
+            {}, {"request_id": REQUEST_ID, "action_id": MODEL_ACTION_ID},
+            approvals=0,
+            session_capability_required=True,
+            session_capability_ok=True,
+        )
+        self.assertFalse(missing_digest["ok"])
+        self.assertEqual(missing_digest["status"], "incomplete")
+
+    def test_read_only_pass_without_approval_remains_not_required(self):
+        correlation = validate_correlation({}, {}, approvals=0, approval_required=False)
+        self.assertTrue(correlation["ok"])
+        self.assertEqual(correlation["status"], "not_required")
 
     def test_pass_requires_text_and_screenshot_proof_when_requested(self):
         self.assertEqual(

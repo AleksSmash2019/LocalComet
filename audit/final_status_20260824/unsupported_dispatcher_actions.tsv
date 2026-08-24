@@ -1,0 +1,4 @@
+action	classification	status	verification	reason
+computer_use_observe	UNSUPPORTED_CURRENT_DISPATCHER	unsupported	unknown	No live computer_use dispatcher action
+computer_use_cursor_position	UNSUPPORTED_CURRENT_DISPATCHER	unsupported	unknown	No live computer_use dispatcher action
+computer_use_mouse_move	UNSUPPORTED_CURRENT_DISPATCHER	unsupported	unknown	No live computer_use dispatcher action

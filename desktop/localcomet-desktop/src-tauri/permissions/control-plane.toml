@@ -256,3 +256,31 @@ description = "Allow explicitly confirmed removal of one inactive approved manag
 commands.allow = [
   "remove_managed_model",
 ]
+
+[[permission]]
+identifier = "allow-import-custom-model"
+description = "Allow importing one explicitly selected custom model through the bounded managed-model flow."
+commands.allow = [
+  "import_custom_model",
+]
+
+[[permission]]
+identifier = "allow-cu-broker-observe"
+description = "Allow reading one bounded observation from the host-side Computer Use broker."
+commands.allow = [
+  "cu_broker_observe",
+]
+
+[[permission]]
+identifier = "allow-speak-local-text"
+description = "Allow speaking one bounded local text payload through the configured local voice runtime."
+commands.allow = [
+  "speak_local_text",
+]
+
+[[permission]]
+identifier = "allow-stop-local-text"
+description = "Allow stopping the active local text speech operation."
+commands.allow = [
+  "stop_local_text",
+]

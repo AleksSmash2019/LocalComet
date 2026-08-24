@@ -50,6 +50,10 @@ const _: () = assert!(HARD_MAX_IN_FLIGHT_REQUESTS >= MAX_IN_FLIGHT_REQUESTS);
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const TOOL_CALL_TIMEOUT: Duration = Duration::from_secs(30);
+// Real Computer Use may spend tens of seconds in UIA/native readback before
+// returning its verified envelope. Keep this aligned with the managed frontend
+// first-token watchdog while retaining the shorter bound for ordinary tools.
+const COMPUTER_USE_TOOL_CALL_TIMEOUT: Duration = Duration::from_secs(180);
 const MOCK_TURN_TIMEOUT: Duration = Duration::from_secs(10);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
 const MODEL_ATTACH_TIMEOUT: Duration = Duration::from_secs(300);
@@ -81,6 +85,8 @@ struct ModelToolArgumentSchema {
     optional_json_fields: &'static [&'static str],
     // Bounded numeric fields: (name, inclusive min, inclusive max).
     optional_number_fields: &'static [(&'static str, f64, f64)],
+    // Bounded integer fields: (name, inclusive min, inclusive max).
+    optional_integer_fields: &'static [(&'static str, i64, i64)],
 }
 
 fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
@@ -93,6 +99,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
                 optional_array_fields: &[],
                 optional_json_fields: &[],
                 optional_number_fields: &[],
+                optional_integer_fields: &[],
             })
         }
         "files.write" => Some(ModelToolArgumentSchema {
@@ -102,6 +109,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             optional_array_fields: &[],
             optional_json_fields: &[],
             optional_number_fields: &[],
+            optional_integer_fields: &[],
         }),
         "shell" => Some(ModelToolArgumentSchema {
             required_string_fields: &["command"],
@@ -110,16 +118,18 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             optional_array_fields: &[],
             optional_json_fields: &[],
             optional_number_fields: &[],
+            optional_integer_fields: &[],
         }),
         "computer_use" => Some(ModelToolArgumentSchema {
             required_string_fields: &["action"],
-            optional_string_fields: &["text", "target"],
+            optional_string_fields: &["text", "target", "url", "goal"],
             required_array_fields: &[],
             optional_array_fields: &["coordinate"],
             optional_json_fields: &[],
             // Canonical bounded wait: one format (seconds, 0.1..=30.0)
             // shared by the intent parser, this schema, and the executor.
             optional_number_fields: &[("seconds", 0.1, 30.0)],
+            optional_integer_fields: &[("max_steps", 1, 8)],
         }),
         "skills.invoke" => Some(ModelToolArgumentSchema {
             required_string_fields: &["skill_id"],
@@ -128,6 +138,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             optional_array_fields: &[],
             optional_json_fields: &["arguments"],
             optional_number_fields: &[],
+            optional_integer_fields: &[],
         }),
         "web.search" => Some(ModelToolArgumentSchema {
             required_string_fields: &["query"],
@@ -136,6 +147,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             optional_array_fields: &[],
             optional_json_fields: &[],
             optional_number_fields: &[],
+            optional_integer_fields: &[],
         }),
         "web.fetch" => Some(ModelToolArgumentSchema {
             required_string_fields: &["url"],
@@ -144,6 +156,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             optional_array_fields: &[],
             optional_json_fields: &[],
             optional_number_fields: &[],
+            optional_integer_fields: &[],
         }),
         "system.time" => Some(ModelToolArgumentSchema {
             required_string_fields: &[],
@@ -152,6 +165,7 @@ fn model_tool_argument_schema(name: &str) -> Option<ModelToolArgumentSchema> {
             optional_array_fields: &[],
             optional_json_fields: &[],
             optional_number_fields: &[],
+            optional_integer_fields: &[],
         }),
         _ => None,
     }
@@ -170,6 +184,10 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
             && !schema.optional_json_fields.contains(&key.as_str())
             && !schema
                 .optional_number_fields
+                .iter()
+                .any(|(field, _, _)| *field == key.as_str())
+            && !schema
+                .optional_integer_fields
                 .iter()
                 .any(|(field, _, _)| *field == key.as_str())
         {
@@ -239,6 +257,31 @@ fn validate_model_tool_arguments(name: &str, arguments: &Value) -> Result<(), Br
                     format!("tool {name} argument field {field} must be within {min}..={max}");
                 return Err(BridgeError::new("protocol_mismatch", &message));
             }
+        }
+    }
+    for (field, min, max) in schema.optional_integer_fields {
+        if let Some(val) = object.get(*field) {
+            let Some(integer) = val.as_i64() else {
+                let message = format!("tool {name} argument field {field} must be an integer");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            };
+            if !(*min..=*max).contains(&integer) {
+                let message =
+                    format!("tool {name} argument field {field} must be within {min}..={max}");
+                return Err(BridgeError::new("protocol_mismatch", &message));
+            }
+        }
+    }
+    if name == "computer_use" && object.get("action").and_then(Value::as_str) == Some("task") {
+        let valid_goal = object
+            .get("goal")
+            .and_then(Value::as_str)
+            .is_some_and(|goal| !goal.trim().is_empty() && goal.chars().count() <= 1200);
+        if !valid_goal {
+            return Err(BridgeError::new(
+                "protocol_mismatch",
+                "tool computer_use task requires a non-empty goal of at most 1200 characters",
+            ));
         }
     }
     Ok(())
@@ -321,6 +364,16 @@ impl ControlPlaneMethod {
             Self::KnowledgeTurnPreview => Duration::from_secs(15),
             _ => REQUEST_TIMEOUT,
         }
+    }
+}
+
+fn request_timeout_for_payload(method: ControlPlaneMethod, payload: &Value) -> Duration {
+    if method == ControlPlaneMethod::ToolCall
+        && payload.get("tool").and_then(Value::as_str) == Some("computer_use")
+    {
+        COMPUTER_USE_TOOL_CALL_TIMEOUT
+    } else {
+        method.timeout()
     }
 }
 
@@ -1022,7 +1075,8 @@ impl ControlPlaneBridge {
         method: ControlPlaneMethod,
         payload: Value,
     ) -> Result<Value, BridgeError> {
-        self.request_with_timeout(method, payload, method.timeout())
+        let timeout = request_timeout_for_payload(method, &payload);
+        self.request_with_timeout(method, payload, timeout)
     }
 
     pub(crate) fn request_with_timeout(
@@ -4219,6 +4273,7 @@ pub(crate) fn build_tool_call_request(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_tool_call_request_with_correlation(
     tool: &str,
     input: &Value,
@@ -5074,6 +5129,31 @@ mod tests {
             json!({"action": "wait", "seconds": "2"}),
             json!({"action": "wait", "seconds": null}),
             json!({"action": "wait", "duration_ms": 500}),
+        ] {
+            assert!(
+                validate_model_tool_arguments("computer_use", &invalid).is_err(),
+                "must reject {invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn computer_use_task_schema_is_bounded() {
+        let valid = json!({
+            "action": "task",
+            "goal": "Нажми Ctrl+F и прокрути вниз.",
+            "max_steps": 2
+        });
+        assert!(validate_model_tool_arguments("computer_use", &valid).is_ok());
+        let default_steps = json!({"action": "task", "goal": "safe interaction"});
+        assert!(validate_model_tool_arguments("computer_use", &default_steps).is_ok());
+        for invalid in [
+            json!({"action": "task", "goal": ""}),
+            json!({"action": "task", "goal": "x".repeat(1201)}),
+            json!({"action": "task", "goal": "safe", "max_steps": 0}),
+            json!({"action": "task", "goal": "safe", "max_steps": 9}),
+            json!({"action": "task", "goal": "safe", "max_steps": 2.5}),
+            json!({"action": "task", "goal": "safe", "unexpected": true}),
         ] {
             assert!(
                 validate_model_tool_arguments("computer_use", &invalid).is_err(),
@@ -6602,6 +6682,20 @@ mod tests {
         );
         assert_eq!(entry.next_sequence, 2);
         assert_eq!(entry.event_count, 2);
+    }
+
+    #[test]
+    fn computer_use_tool_call_has_a_longer_bounded_deadline() {
+        let computer_use = serde_json::json!({"tool": "computer_use"});
+        let ordinary_tool = serde_json::json!({"tool": "files.read"});
+        assert_eq!(
+            request_timeout_for_payload(ControlPlaneMethod::ToolCall, &computer_use),
+            COMPUTER_USE_TOOL_CALL_TIMEOUT
+        );
+        assert_eq!(
+            request_timeout_for_payload(ControlPlaneMethod::ToolCall, &ordinary_tool),
+            TOOL_CALL_TIMEOUT
+        );
     }
 
     #[test]

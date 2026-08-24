@@ -1,0 +1,181 @@
+{
+  "timestamp_utc": "2026-08-24T16:48:47.258265+00:00",
+  "worker_pid": 11332,
+  "launcher_pid": 3436,
+  "allowed_pid_count": 20,
+  "window_count": 20,
+  "windows": [
+    {
+      "hwnd": 198484,
+      "pid": 22452,
+      "title": "Input Flyout",
+      "class": "Shell_InputSwitchTopLevelWindow",
+      "visible": false
+    },
+    {
+      "hwnd": 3933616,
+      "pid": 22452,
+      "title": "Tooltip",
+      "class": "Touch Tooltip Window",
+      "visible": false
+    },
+    {
+      "hwnd": 984228,
+      "pid": 22452,
+      "title": "",
+      "class": "UAC_InputIndicatorOverlayWnd",
+      "visible": true
+    },
+    {
+      "hwnd": 329320,
+      "pid": 22452,
+      "title": "",
+      "class": "UAC Input Indicator",
+      "visible": true
+    },
+    {
+      "hwnd": 1902330,
+      "pid": 22452,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 853472,
+      "pid": 22452,
+      "title": "",
+      "class": "Base_PowerMessageWindow",
+      "visible": false
+    },
+    {
+      "hwnd": 655864,
+      "pid": 15224,
+      "title": "",
+      "class": "crashpad_SessionEndWatcher",
+      "visible": false
+    },
+    {
+      "hwnd": 395016,
+      "pid": 22064,
+      "title": "LocalComet",
+      "class": "Tauri Window",
+      "visible": false
+    },
+    {
+      "hwnd": 2164092,
+      "pid": 22064,
+      "title": "",
+      "class": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "hwnd": 18941804,
+      "pid": 18540,
+      "title": "GDI+ Window (VCTIP.EXE)",
+      "class": "GDI+ Hook Window Class",
+      "visible": false
+    },
+    {
+      "hwnd": 395074,
+      "pid": 18540,
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.2f3e4cc.0",
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.2f3e4cc.0",
+      "visible": false
+    },
+    {
+      "hwnd": 1050160,
+      "pid": 22452,
+      "title": "",
+      "class": "CicLoaderWndClass",
+      "visible": false
+    },
+    {
+      "hwnd": 5440970,
+      "pid": 22452,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 329318,
+      "pid": 22452,
+      "title": "CiceroUIWndFrame",
+      "class": "CiceroUIWndFrame",
+      "visible": false
+    },
+    {
+      "hwnd": 656866,
+      "pid": 22452,
+      "title": "TF_FloatingLangBar_WndTitle",
+      "class": "CiceroUIWndFrame",
+      "visible": false
+    },
+    {
+      "hwnd": 721686,
+      "pid": 22452,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 722752,
+      "pid": 15224,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 460252,
+      "pid": 22064,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 263986,
+      "pid": 18540,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 12453720,
+      "pid": 18540,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "violations": [],
+  "benign_invisible_external_windows": [
+    {
+      "hwnd": 18941804,
+      "pid": 18540,
+      "title": "GDI+ Window (VCTIP.EXE)",
+      "class": "GDI+ Hook Window Class",
+      "visible": false
+    },
+    {
+      "hwnd": 395074,
+      "pid": 18540,
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.2f3e4cc.0",
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.2f3e4cc.0",
+      "visible": false
+    },
+    {
+      "hwnd": 263986,
+      "pid": 18540,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 12453720,
+      "pid": 18540,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "isolated": true
+}

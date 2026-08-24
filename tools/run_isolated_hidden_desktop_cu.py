@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from urllib.parse import urlparse
 import uuid
 from typing import Any
 
@@ -30,11 +31,16 @@ for path in (VENDOR_ROOT, ROOT):
 PYTHON = Path(sys.executable).resolve()
 LAUNCHER = ROOT / "tools" / "launch_localcomet_dev.py"
 CURRENT_APP_DATA = Path(os.environ.get("LOCALAPPDATA", "")) / "LocalCometDev" / "app-data"
-DEFAULT_ISOLATED_ROOT = Path(os.environ.get("LOCALAPPDATA", "")) / "LocalCometHiddenCU20260821"
+DEFAULT_ISOLATED_ROOT = (
+    Path(os.environ.get("LOCALAPPDATA", "")) / "LocalCometHiddenCU" / "default"
+)
 REPORT_DIR = ROOT / "Projects" / "Reports" / "computer_use_real_actions" / "isolated_hidden_desktop"
 ISOLATED_VITE_PORT = int(os.environ.get("LC_ISOLATED_VITE_PORT", "1423"))
 ISOLATED_CDP_PORT = int(os.environ.get("LC_ISOLATED_CDP_PORT", "9223"))
+ISOLATED_BROWSER_CDP_PORT = int(os.environ.get("LC_ISOLATED_BROWSER_CDP_PORT", str(ISOLATED_CDP_PORT + 1)))
 ISOLATED_WEBVIEW2_UDF_NAME = "webview2-user-data"
+ISOLATED_BROWSER_PROFILE_NAME = "browser-user-data"
+HIDDEN_BROWSER_ROOT_NAME = "LocalCometHiddenCU"
 PROVENANCE_SUFFIX = ".provenance.json"
 HIDDEN_CARGO_TARGET_SUBKEY = "hidden-isolated"
 
@@ -58,6 +64,17 @@ def expected_isolated_dev_url(vite_port: int = ISOLATED_VITE_PORT) -> str:
     return f"http://127.0.0.1:{vite_port}"
 
 
+def hidden_browser_profile_path(isolated_root: Path) -> Path:
+    """Return the profile path matching the worker's effective LOCALAPPDATA.
+
+    The worker intentionally remaps LOCALAPPDATA to its isolated root. The
+    broker validates the profile against ``%LOCALAPPDATA%\\LocalCometHiddenCU``;
+    keeping this derivation in one helper prevents a root-level profile from
+    being rejected while still keeping all browser state manifest-owned.
+    """
+    return Path(isolated_root) / HIDDEN_BROWSER_ROOT_NAME / ISOLATED_BROWSER_PROFILE_NAME
+
+
 class IsolatedStartupError(RuntimeError):
     """Explicit infrastructure failure classification.
 
@@ -77,18 +94,56 @@ MODEL_SOURCE = CURRENT_APP_DATA / "models" / "custom" / MODEL_ID / MODEL_NAME
 
 SCENARIOS = (
     {"id": "notepad_open_type", "prompt": "Открой Блокнот и напечатай в нём: LocalComet isolated smoke test."},
+    {"id": "notepad_open_paste", "prompt": "Открой Блокнот и вставь в нём: LocalComet paste smoke."},
     {"id": "calculator_basic", "prompt": "Открой Калькулятор и вычисли 17 плюс 25. Покажи результат."},
     {"id": "desktop_screenshot", "prompt": "Сделай снимок экрана текущего изолированного рабочего стола и сообщи, что наблюдаешь."},
+    {"id": "browser_youtube", "prompt": "Открой YouTube в браузере."},
     {"id": "browser_readonly_search", "prompt": "Открой браузер и найди официальный сайт Python. Ничего не отправляй и не заполняй формы."},
     {"id": "file_explorer_open", "prompt": "Открой Проводник и покажи папку Документы. Не удаляй и не изменяй файлы."},
     {"id": "notepad_recovery", "prompt": "Если Блокнот открыт, переключись на него и добавь строку: recovery-check."},
     {"id": "active_window_observe", "prompt": "Определи активное окно на рабочем столе и сообщи его название."},
     {"id": "screenshot_after_actions", "prompt": "Сделай ещё один снимок экрана после предыдущих действий и сообщи, изменилось ли состояние."},
     {"id": "browser_second_readonly_search", "prompt": "В браузере найди справочную страницу о Windows Notepad. Только чтение, без публикаций и отправок."},
+    {"id": "computer_use_click", "prompt": "Кликни по кнопке Пуск и сообщи, что произошло."},
+    {"id": "computer_use_double_click", "prompt": "Двойной клик по кнопке Чат и сообщи результат."},
+    {"id": "computer_use_drag", "prompt": "Перетащи курсор из точки 100,100 в точку 200,200 и сообщи результат."},
+    {"id": "computer_use_type", "prompt": "Введи текст: LocalComet action type smoke."},
+    {"id": "computer_use_key", "prompt": "Нажми Enter и сообщи результат."},
+    {"id": "computer_use_hotkey", "prompt": "Нажми Ctrl+F и сообщи результат."},
+    {"id": "computer_use_scroll", "prompt": "Прокрути страницу вниз и сообщи результат."},
+    {"id": "computer_use_wait", "prompt": "Подожди 1 секунду и сообщи, что ожидание завершено."},
     {"id": "calculator_repeat", "prompt": "Открой Калькулятор и вычисли 144 разделить на 12. Сообщи результат."},
     {"id": "notepad_final_text", "prompt": "Открой Блокнот и напечатай финальную строку isolated-final-check."},
     {"id": "safe_recovery", "prompt": "Если предыдущее действие не завершилось, сообщи честное состояние и не повторяй опасные действия автоматически."},
 )
+
+# Calculator coverage remains documented for historical audit purposes, but it
+# is disabled for all automatic/hidden harness execution until explicitly
+# re-enabled in a separately reviewed change. This prevents the default cyclic
+# campaign from opening Calculator in front of the user.
+DISABLED_AUTO_SCENARIO_IDS = frozenset({"calculator_basic", "calculator_repeat"})
+AUTO_SCENARIOS = tuple(item for item in SCENARIOS if item["id"] not in DISABLED_AUTO_SCENARIO_IDS)
+
+# These scenarios contain a mutating, launch, navigation, or input action.
+# Their PASS verdict is invalid unless the UI exposes a real approval event and
+# the event is correlated to the model request/action and canonical input.
+GUARDED_SCENARIO_IDS = frozenset({
+    "notepad_open_type",
+    "notepad_open_paste",
+    "browser_youtube",
+    "browser_readonly_search",
+    "file_explorer_open",
+    "notepad_recovery",
+    "computer_use_click",
+    "computer_use_double_click",
+    "computer_use_drag",
+    "computer_use_type",
+    "computer_use_key",
+    "computer_use_hotkey",
+    "computer_use_scroll",
+    "notepad_final_text",
+})
+
 
 # Win32 desktop constants. The worker is born on this desktop and never calls
 # SwitchDesktop/SetForegroundWindow against the user's interactive desktop.
@@ -894,7 +949,40 @@ def binary_provenance_path(binary: Path) -> Path:
     return Path(str(binary) + PROVENANCE_SUFFIX)
 
 
-def evaluate_binary_provenance(binary: Path, expected_dev_url: str) -> dict[str, Any]:
+def rust_build_input_fingerprint(source_root: Path) -> str:
+    """Hash the source/config inputs that Tauri embeds into the debug binary.
+
+    A dev URL marker alone cannot detect a cached executable built before a
+    Rust control-plane or capability change. The hidden harness therefore
+    fingerprints the relevant source/config bytes and requires the marker to
+    match whenever it evaluates a binary for a live run.
+    """
+    rust_root = Path(source_root) / "desktop" / "localcomet-desktop" / "src-tauri"
+    if not rust_root.is_dir():
+        raise RuntimeError("Tauri source root is missing")
+    included_suffixes = {".rs", ".toml", ".lock", ".json", ".json5"}
+    digest = hashlib.sha256()
+    files = sorted(
+        path for path in rust_root.rglob("*")
+        if path.is_file() and "target" not in path.parts and path.suffix.lower() in included_suffixes
+    )
+    if not files:
+        raise RuntimeError("Tauri source inputs are missing")
+    for path in files:
+        relative = path.relative_to(rust_root).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        content = path.read_bytes()
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def evaluate_binary_provenance(
+    binary: Path,
+    expected_dev_url: str,
+    expected_source_fingerprint: str | None = None,
+) -> dict[str, Any]:
     """Decide whether a cached isolated debug binary may be reused.
 
     Tauri bakes build.devUrl into the executable at compile time. A stale
@@ -930,11 +1018,35 @@ def evaluate_binary_provenance(binary: Path, expected_dev_url: str) -> dict[str,
             "marked_dev_url": marked_url,
             "expected_dev_url": expected_dev_url,
         }
-    return {"usable": True, "reason": "verified", "sha256": observed, "dev_url": marked_url}
+    if expected_source_fingerprint is not None:
+        marked_source_fingerprint = marker.get("source_fingerprint")
+        if not isinstance(marked_source_fingerprint, str):
+            return {
+                "usable": False,
+                "reason": "source_fingerprint_missing",
+                "expected_source_fingerprint": expected_source_fingerprint,
+            }
+        if marked_source_fingerprint != expected_source_fingerprint:
+            return {
+                "usable": False,
+                "reason": "source_fingerprint_mismatch",
+                "marked_source_fingerprint": marked_source_fingerprint,
+                "expected_source_fingerprint": expected_source_fingerprint,
+            }
+    result = {"usable": True, "reason": "verified", "sha256": observed, "dev_url": marked_url}
+    if expected_source_fingerprint is not None:
+        result["source_fingerprint"] = expected_source_fingerprint
+    return result
 
 
-def write_binary_provenance(binary: Path, dev_url: str) -> dict[str, Any]:
+def write_binary_provenance(
+    binary: Path,
+    dev_url: str,
+    source_fingerprint: str | None = None,
+) -> dict[str, Any]:
     payload = {"dev_url": dev_url, "sha256": sha256(binary), "recorded_utc": utc_now()}
+    if source_fingerprint is not None:
+        payload["source_fingerprint"] = source_fingerprint
     write_json(binary_provenance_path(binary), payload)
     return payload
 
@@ -1157,8 +1269,13 @@ def launch_isolated_tauri(
     hidden_desktop = os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip()
     if hidden_desktop:
         env["LC_HIDDEN_DESKTOP_NAME"] = hidden_desktop
+        browser_profile = hidden_browser_profile_path(isolated_root)
+        browser_profile.mkdir(parents=True, exist_ok=True)
+        env["LC_HIDDEN_BROWSER_PROFILE_DIR"] = str(browser_profile)
+        env["LC_HIDDEN_BROWSER_CDP_PORT"] = str(ISOLATED_BROWSER_CDP_PORT)
     # One-line tool-failure tracing lands next to the other run artifacts.
     env["LOCALCOMET_TOOLCALL_TRACE"] = str(report_dir / "toolcall_trace.log")
+    env["LOCALCOMET_APPROVAL_TRACE"] = "1"
     env["LOCALCOMET_CU_DEBUG_PATH"] = str(report_dir / "cu_debug.jsonl")
     # Owner-scoped lifecycle lease: both direct children are assigned at
     # birth; closing this handle in run_worker's finally terminates exactly
@@ -1166,7 +1283,8 @@ def launch_isolated_tauri(
     cleanup_job = create_cleanup_job()
     app_log = (report_dir / "tauri_app.log").open("ab")
     expected_dev_url = expected_isolated_dev_url()
-    provenance = evaluate_binary_provenance(binary, expected_dev_url)
+    rust_source_fingerprint = rust_build_input_fingerprint(source_root)
+    provenance = evaluate_binary_provenance(binary, expected_dev_url, rust_source_fingerprint)
     owned_root_pids: list[int] = []
     if provenance["usable"]:
         # The prebuilt binary is byte-verified against THIS run's dev URL and
@@ -1201,6 +1319,7 @@ def launch_isolated_tauri(
         "binary_preexisting": binary.is_file(),
         "binary_provenance": provenance,
         "expected_dev_url": expected_dev_url,
+        "rust_source_fingerprint": rust_source_fingerprint,
         "launch_mode": launch_mode,
         "cdp_port": ISOLATED_CDP_PORT,
         "cargo_target_dir": str(cargo_target_dir),
@@ -1486,7 +1605,7 @@ class CdpDriver:
 
     def _ensure_loop(self):
         if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
+            self._loop = asyncio.SelectorEventLoop() if sys.platform == "win32" else asyncio.new_event_loop()
         return self._loop
 
     def _list_page_targets(self) -> list:
@@ -1509,6 +1628,12 @@ class CdpDriver:
             await conn.close()
         except Exception:
             pass
+        wait_closed = getattr(conn, "wait_closed", None)
+        if callable(wait_closed):
+            try:
+                await wait_closed()
+            except Exception:
+                pass
 
     def _dispose_socket(self) -> None:
         """Deterministically close the current socket, if any.
@@ -1546,7 +1671,12 @@ class CdpDriver:
         url = page.get("url") or ""
         if f":{ISOLATED_VITE_PORT}" not in url:
             raise RuntimeError(f"cdp: refusing non-isolated page {url!r} (expected :{ISOLATED_VITE_PORT})")
-        conn = await websockets.connect(page["webSocketDebuggerUrl"], max_size=32 * 1024 * 1024, open_timeout=10)
+        conn = await websockets.connect(
+            page["webSocketDebuggerUrl"],
+            max_size=32 * 1024 * 1024,
+            open_timeout=10,
+            ping_interval=None,
+        )
         self._conn = conn
         self.target_url = url
         return conn
@@ -1620,7 +1750,7 @@ class CdpDriver:
         """
         found = json.dumps(texts, ensure_ascii=False)
         result = self.eval(
-            "(() => { const d=document.querySelector('[role=dialog][data-approval-request-id]'); if(!d) return null;"
+            "(() => { const d=document.querySelector('[role=dialog][data-approval-request-id],[role=alertdialog][data-approval-request-id]'); if(!d) return null;"
             " const wanted = " + found + ";"
             " const els=[...d.querySelectorAll('button,[role=button]')];"
             " for (const w of wanted) { const m = els.filter(e=>!e.disabled && (((e.getAttribute('aria-label')||'')+' '+(e.textContent||'')).trim().includes(w)));"
@@ -1769,7 +1899,8 @@ PILL_EXPRESSION = (
     "action:m?m[0]:'',"
     "request_id:d.cuRequestId||'',action_id:d.cuActionId||'',"
     "approval_id:d.cuApprovalId||'',approval_call_id:d.cuApprovalCallId||'',"
-    "input_digest:d.cuInputDigest||'',screenshot_sha256:d.cuScreenshotSha256||'',"
+    "input_digest:d.cuInputDigest||'',process_pid:d.cuProcessPid||'',browser_url:d.cuBrowserUrl||'',"
+    "browser_cdp_port:d.cuBrowserCdpPort||'',screenshot_sha256:d.cuScreenshotSha256||'',"
     "screenshot_backend:d.cuScreenshotBackend||'',screenshot_scope:d.cuScreenshotScope||'',"
     "screenshot_bytes:d.cuScreenshotBytes||'',status:d.cuStatus||'',verification:d.cuVerification||'',card_count:cards.length,"
     "screenshot_present:!!img,"
@@ -1779,7 +1910,7 @@ PILL_EXPRESSION = (
 
 APPROVAL_EXPRESSION = (
     "JSON.stringify((()=>{"
-    "const ds=[...document.querySelectorAll('[role=dialog][data-approval-request-id]')];"
+    "const ds=[...document.querySelectorAll('[role=dialog][data-approval-request-id],[role=alertdialog][data-approval-request-id]')];"
     "const d=ds.length?ds[ds.length-1]:null;"
     "return d?{approval_request_id:d.dataset.approvalRequestId||'',"
     "model_request_id:d.dataset.modelRequestId||'',model_action_id:d.dataset.modelActionId||''}:null;})())"
@@ -1801,7 +1932,7 @@ def _json_object(raw: Any) -> dict[str, Any] | None:
 
 def _pill_evidence(driver, min_tool_cards: int = 0) -> dict[str, Any]:
     """Read the last mounted tool-card status, never a stale prior card."""
-    fallback = {"pill": None, "reason": "", "action": "", "request_id": "", "action_id": "", "approval_id": "", "approval_call_id": "", "input_digest": "", "screenshot_sha256": "", "screenshot_backend": "", "screenshot_scope": "", "screenshot_bytes": "", "status": "", "verification": "", "card_count": 0, "screenshot_present": False, "screenshot_src_length": 0}
+    fallback = {"pill": None, "reason": "", "action": "", "request_id": "", "action_id": "", "approval_id": "", "approval_call_id": "", "input_digest": "", "process_pid": "", "browser_url": "", "browser_cdp_port": "", "screenshot_sha256": "", "screenshot_backend": "", "screenshot_scope": "", "screenshot_bytes": "", "status": "", "verification": "", "card_count": 0, "screenshot_present": False, "screenshot_src_length": 0}
     for _ in range(3):
         parsed = _json_object(driver.eval(PILL_EXPRESSION))
         has_identity = bool(parsed and parsed.get("request_id") and parsed.get("action_id"))
@@ -1902,6 +2033,7 @@ SCENARIO_EXPECTED_PROCESS = {
     "notepad_open_type": ["notepad.exe"],
     "calculator_basic": ["calculatorapp.exe"],
     "file_explorer_open": ["explorer.exe"],
+    "browser_youtube": ["chrome.exe", "msedge.exe", "firefox.exe"],
     "browser_readonly_search": ["chrome.exe", "msedge.exe", "firefox.exe"],
     "notepad_recovery": ["notepad.exe"],
     "notepad_final_text": ["notepad.exe"],
@@ -1924,9 +2056,70 @@ def _process_present(image_names):
     return any(name.lower() in output for name in image_names)
 
 
+def _hidden_visible_window_pids() -> set[int]:
+    """Enumerate visible top-level windows on the worker's current desktop only."""
+    pids: set[int] = set()
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    @callback_type
+    def callback(hwnd: int, _lparam: int) -> bool:
+        if user32.IsWindowVisible(hwnd):
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value:
+                pids.add(int(pid.value))
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return pids
+
+
+def browser_youtube_evidence(cdp_port: int, expected_pid: int, timeout: float = 20.0) -> dict[str, Any]:
+    """Independently prove URL and hidden-desktop process ownership.
+
+    The WebView2 CDP endpoint is deliberately not used here: this endpoint is
+    launched by the broker's browser process with its own profile and port.
+    """
+    if not (1024 <= cdp_port <= 65535) or expected_pid <= 0:
+        return {"ok": False, "reason": "missing broker browser pid or cdp port", "cdp_port": cdp_port, "pid": expected_pid}
+    endpoint = f"http://127.0.0.1:{cdp_port}/json/list"
+    deadline = time.monotonic() + timeout
+    last_error = "browser CDP page not ready"
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(endpoint, timeout=2.0) as response:
+                targets = json.loads(response.read().decode("utf-8"))
+            if not isinstance(targets, list):
+                last_error = "browser CDP returned a non-list target payload"
+            else:
+                for target in targets:
+                    if not isinstance(target, dict) or target.get("type") != "page":
+                        continue
+                    url = str(target.get("url") or "")
+                    parsed = urlparse(url)
+                    host = (parsed.hostname or "").lower()
+                    if host not in {"youtube.com", "www.youtube.com"}:
+                        continue
+                    hidden_window_pid = expected_pid in _hidden_visible_window_pids()
+                    return {
+                        "ok": hidden_window_pid,
+                        "url": url,
+                        "host": host,
+                        "title": str(target.get("title") or ""),
+                        "cdp_port": cdp_port,
+                        "pid": expected_pid,
+                        "hidden_window_pid": hidden_window_pid,
+                        "reason": "" if hidden_window_pid else "broker pid has no visible window on worker hidden desktop",
+                    }
+        except Exception as exc:
+            last_error = f"browser CDP unavailable: {type(exc).__name__}"
+        time.sleep(0.5)
+    return {"ok": False, "reason": last_error, "cdp_port": cdp_port, "pid": expected_pid}
+
+
 def _tool_card_evidence(driver, min_tool_cards: int = 0) -> dict[str, Any]:
     """UI-level truth from the last new tool card, with bounded CDP retries."""
-    fallback = {"pill": None, "reason": "", "action": "", "request_id": "", "action_id": "", "approval_id": "", "approval_call_id": "", "input_digest": "", "screenshot_sha256": "", "screenshot_backend": "", "screenshot_scope": "", "screenshot_bytes": "", "status": "", "verification": "", "card_count": 0, "screenshot_present": False, "screenshot_src_length": 0}
+    fallback = {"pill": None, "reason": "", "action": "", "request_id": "", "action_id": "", "approval_id": "", "approval_call_id": "", "input_digest": "", "process_pid": "", "browser_url": "", "browser_cdp_port": "", "screenshot_sha256": "", "screenshot_backend": "", "screenshot_scope": "", "screenshot_bytes": "", "status": "", "verification": "", "card_count": 0, "screenshot_present": False, "screenshot_src_length": 0}
     for _ in range(4):
         parsed = _json_object(driver.eval(PILL_EXPRESSION))
         has_identity = bool(parsed and parsed.get("request_id") and parsed.get("action_id"))
@@ -1940,12 +2133,39 @@ def _valid_id(value: Any, pattern: str) -> bool:
     return isinstance(value, str) and bool(re.fullmatch(pattern, value))
 
 
-def validate_correlation(observation: dict[str, Any], evidence: dict[str, Any], approvals: int) -> dict[str, Any]:
+def validate_correlation(
+    observation: dict[str, Any],
+    evidence: dict[str, Any],
+    approvals: int,
+    *,
+    approval_required: bool = False,
+    session_capability_required: bool = False,
+    session_capability_ok: bool = False,
+) -> dict[str, Any]:
     """Validate identities from mounted UI evidence; never synthesize missing IDs."""
     if approvals <= 0:
+        if approval_required:
+            return {
+                "status": "required_but_absent",
+                "ok": False,
+                "checks": {"approval_observed": False},
+            }
+        if session_capability_required:
+            checks = {
+                "session_capability_granted": session_capability_ok,
+                "model_request_id": _valid_id(evidence.get("request_id"), r"[0-9a-f]{24}"),
+                "model_action_id": _valid_id(evidence.get("action_id"), r"[A-Za-z0-9_.:-]{1,128}"),
+                "input_digest": _valid_id(evidence.get("input_digest"), r"[0-9a-f]{64}"),
+            }
+            return {
+                "status": "session_capability_validated" if all(checks.values()) else "incomplete",
+                "ok": all(checks.values()),
+                "checks": checks,
+            }
         return {"status": "not_required", "ok": True, "checks": {}}
     prompt = observation.get("approval_prompt") if isinstance(observation.get("approval_prompt"), dict) else {}
     checks = {
+        "approval_observed": approvals > 0,
         "approval_prompt_request_id": _valid_id(prompt.get("approval_request_id"), r"appr_[0-9a-f]{32}"),
         "model_request_id": _valid_id(evidence.get("request_id"), r"[0-9a-f]{24}"),
         "model_action_id": _valid_id(evidence.get("action_id"), r"[A-Za-z0-9_.:-]{1,128}"),
@@ -1977,11 +2197,19 @@ def classify_case(
     correlation_ok: bool = True,
     text_ok: bool | None = None,
     screenshot_ok: bool | None = None,
+    browser_ok: bool | None = None,
+    approval_required: bool = False,
+    session_capability_required: bool = False,
+    session_capability_ok: bool = False,
 ) -> str:
     if pill == "PASS":
-        if process_present is False or (approvals > 0 and not correlation_ok):
+        if approval_required and approvals <= 0:
             return "NOT_INDEPENDENTLY_VERIFIED"
-        if text_ok is False or screenshot_ok is False:
+        if session_capability_required and not session_capability_ok:
+            return "NOT_INDEPENDENTLY_VERIFIED"
+        if process_present is False or not correlation_ok:
+            return "NOT_INDEPENDENTLY_VERIFIED"
+        if text_ok is False or screenshot_ok is False or browser_ok is False:
             return "NOT_INDEPENDENTLY_VERIFIED"
         return "VERIFIED_SUCCESS"
     if pill == "BLOCKED":
@@ -2083,7 +2311,11 @@ def run_worker(args: argparse.Namespace) -> int:
         if str(meta.get("launch_mode", "")).startswith("tauri_dev"):
             rebuilt_binary = Path(str(meta.get("binary", "")))
             if rebuilt_binary.is_file():
-                write_binary_provenance(rebuilt_binary, expected_dev_url)
+                write_binary_provenance(
+                    rebuilt_binary,
+                    expected_dev_url,
+                    rust_build_input_fingerprint(ROOT),
+                )
                 summary["binary_provenance_recorded"] = True
         if args.probe_only:
             time.sleep(15)  # let the webview finish hydration
@@ -2184,11 +2416,12 @@ def run_worker(args: argparse.Namespace) -> int:
             campaign_id = f"campaign-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
             consecutive_blocked = 0
             driver = CdpDriver()
+            scenario_pool = SCENARIOS if args.scenario else AUTO_SCENARIOS
             for index in range(args.cases):
                 if args.scenario:
-                    scenario = next(item for item in SCENARIOS if item["id"] == args.scenario)
+                    scenario = next(item for item in scenario_pool if item["id"] == args.scenario)
                 else:
-                    scenario = SCENARIOS[index % len(SCENARIOS)]
+                    scenario = scenario_pool[index % len(scenario_pool)]
                 row: dict[str, Any] = {
                     "campaign_id": campaign_id,
                     "case_id": f"ISO-CU-{index + 1:04d}",
@@ -2248,6 +2481,9 @@ def run_worker(args: argparse.Namespace) -> int:
                                     "approval_id": observed_turn.get("approval_id", ""),
                                     "approval_call_id": observed_turn.get("approval_call_id", ""),
                                     "input_digest": observed_turn.get("input_digest", ""),
+                                    "process_pid": observed_turn.get("process_pid", ""),
+                                    "browser_url": observed_turn.get("browser_url", ""),
+                                    "browser_cdp_port": observed_turn.get("browser_cdp_port", ""),
                                     "screenshot_sha256": observed_turn.get("screenshot_sha256", ""),
                                     "screenshot_backend": observed_turn.get("screenshot_backend", ""),
                                     "screenshot_scope": observed_turn.get("screenshot_scope", ""),
@@ -2312,12 +2548,42 @@ def run_worker(args: argparse.Namespace) -> int:
                                 (turn for turn, item in indexed if item.get("approval_id") and item.get("input_digest")),
                                 observations[0],
                             )
-                            correlation = validate_correlation(correlation_turn, evidence, approvals)
+                            session_capability_required = scenario["id"] in GUARDED_SCENARIO_IDS
+                            # Rust's request_approval intentionally issues Guarded
+                            # envelopes without a modal after the explicit hidden
+                            # session capability is enabled. The classifier must
+                            # verify that capability and model IDs, not invent an
+                            # approval click that never occurred.
+                            approval_required = False
+                            session_capability_ok = bool(args.enable_computer_use)
+                            correlation = validate_correlation(
+                                correlation_turn,
+                                evidence,
+                                approvals,
+                                approval_required=approval_required,
+                                session_capability_required=session_capability_required,
+                                session_capability_ok=session_capability_ok,
+                            )
                             screenshot_required = scenario["id"] in {"desktop_screenshot", "screenshot_after_actions"}
                             screenshot_evidence = validate_screenshot_evidence(final_evidence) if screenshot_required else {"ok": True, "status": "not_required", "checks": {}}
+                            browser_required = scenario["id"] == "browser_youtube"
+                            browser_pid_raw = str(final_evidence.get("process_pid") or "")
+                            browser_port_raw = str(final_evidence.get("browser_cdp_port") or "")
+                            browser_evidence = (
+                                browser_youtube_evidence(
+                                    int(browser_port_raw) if browser_port_raw.isdigit() else 0,
+                                    int(browser_pid_raw) if browser_pid_raw.isdigit() else 0,
+                                )
+                                if browser_required
+                                else {"ok": True, "status": "not_required"}
+                            )
                             row["observation"] = observations[-1]
                             row["observations"] = observations
                             row["body_snippet"] = driver.body_snippet(500)
+                            row["approval_required"] = approval_required
+                            row["session_capability_required"] = session_capability_required
+                            row["session_capability_enabled"] = session_capability_ok
+                            row["authorization_mode"] = "approval" if approval_required else ("session_capability" if session_capability_required else "none")
                             row["approval_decision"] = "approved" if approvals else "none"
                             prompt_evidence = correlation_turn.get("approval_prompt") or {}
                             row["approval_request_id"] = prompt_evidence.get("approval_request_id", "")
@@ -2330,6 +2596,7 @@ def run_worker(args: argparse.Namespace) -> int:
                             row["correlation_evidence"] = correlation
                             row["screenshot_evidence"] = screenshot_evidence
                             row["text_evidence"] = text_proof
+                            row["browser_evidence"] = browser_evidence
                             row["process_evidence"] = {
                                 "expected_any": expected,
                                 "present": proc_present,
@@ -2341,6 +2608,10 @@ def run_worker(args: argparse.Namespace) -> int:
                                 correlation_ok=bool(correlation.get("ok")),
                                 text_ok=text_proof.get("ok") if expected_text else None,
                                 screenshot_ok=screenshot_evidence.get("ok") if screenshot_required else None,
+                                browser_ok=browser_evidence.get("ok") if browser_required else None,
+                                approval_required=approval_required,
+                                session_capability_required=session_capability_required,
+                                session_capability_ok=session_capability_ok,
                             )
                             row["final_classification"] = classification
                             summary_key = classification.lower()
@@ -2416,6 +2687,13 @@ def main() -> int:
     args = parser.parse_args()
     if os.name != "nt":
         raise SystemExit("This harness requires Windows")
+    if args.scenario in DISABLED_AUTO_SCENARIO_IDS:
+        print(json.dumps({
+            "outcome": "BLOCKED_SCENARIO_DISABLED",
+            "scenario": args.scenario,
+            "reason": "Calculator scenarios are disabled for hidden/automatic execution",
+        }, ensure_ascii=False))
+        return 2
     # The worker calls the same resource packager as the trusted launcher.
     # Re-exec before any worker is created so packaging and sidecar ABI remain
     # on the manifest-declared CPython 3.14, even when the shell's `python`

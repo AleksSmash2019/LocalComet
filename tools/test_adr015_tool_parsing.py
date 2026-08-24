@@ -37,6 +37,7 @@ from modules.local_model_gateway_ru import (  # noqa: E402
     validate_tool_call,
     _reject_tool_markers,
     _validate_assistant_context,
+    _deterministic_computer_use_call,
 )
 
 
@@ -160,6 +161,24 @@ class ValidateToolCallTests(unittest.TestCase):
         for name, arguments in valid_arguments.items():
             with self.subTest(tool=name):
                 validate_tool_call(name, arguments)
+
+    def test_deterministic_youtube_request_uses_bounded_open_url(self) -> None:
+        for prompt, expected_browser in (
+            ("Открой YouTube в браузере", "browser"),
+            ("Открой YouTube в Chrome", "chrome"),
+            ("Открой браузер и YouTube", "browser"),
+        ):
+            with self.subTest(prompt=prompt):
+                call = _deterministic_computer_use_call(prompt)
+                self.assertIsNotNone(call)
+                assert call is not None
+                self.assertEqual(call["name"], "computer_use")
+                self.assertEqual(call["arguments"], {
+                    "action": "open_url",
+                    "target": expected_browser,
+                    "url": "https://www.youtube.com/",
+                })
+                validate_tool_call(call["name"], call["arguments"])
 
     def test_unknown_tool_is_rejected(self) -> None:
         _raises(lambda: validate_tool_call("files.rename", {"path": "a"}), "invalid_payload")

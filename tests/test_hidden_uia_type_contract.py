@@ -3,8 +3,13 @@ from __future__ import annotations
 import ctypes
 import sys
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from modules import computer_use_real_actions_ru as real_actions
 

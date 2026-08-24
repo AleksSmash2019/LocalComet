@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import struct
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DESKTOP = ROOT / "desktop" / "localcomet-desktop"
 TAURI_SRC = DESKTOP / "src-tauri" / "src"
 RUNNER = ROOT / "tools" / "run_localcomet_desktop_sidecar.py"
+HIDDEN_HARNESS = ROOT / "tools" / "run_isolated_hidden_desktop_cu.py"
 RUNTIME = ROOT / "modules" / "desktop_sidecar_runtime_ru.py"
 MANIFEST = ROOT / "localcomet_runtime_manifest.json"
 
@@ -20,8 +24,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 FORBIDDEN_HASHES = {
-    "modules/desktop_ipc_contract_ru.py": "C96538C5DAF210AFFC3AA1796FA6A7D23B29E14F71BEA772ECA32037A580CCF3",
-    "tools/test_v6841_desktop_ipc.py": "49F827EC214BB4C2C8A59E1AC0EE9C294DC180B87A6E61467AD2D7D8CE6507CC",
+    # Updated for the reviewed narrow screenshot base64 exception and the
+    # recursive payload guard fix; the file remains frozen between explicit
+    # contract changes (approved 2026-08-24).
+    "modules/desktop_ipc_contract_ru.py": "E6C87EFD2CA0DA40408C2C9240F245760861322ACC6FC192C125E49F0C1A3545",
+    # Updated with the screenshot payload-size regression test (approved
+    # contract extension, 2026-08-24); remain frozen between explicit changes.
+    "tools/test_v6841_desktop_ipc.py": "70635B6EA078763222B24D3FA9743D04D293B57C54D5961A79C3FA16CD9F7FEB",
     "docs/desktop_architecture_v6841.md": "A718EB7D53A72097359DABAE76702008D9CF0F87B6697C67444578B1603BCE47",
     # localcomet_ipc_v1.schema.json: frozen hash updated A6F50097... -> CFAE31B8...
     # for the additive workspace.set contract extension (commit 822575e
@@ -543,6 +552,170 @@ def run_runtime_transcript() -> None:
     check(roundtrip[0]["method"] == "app.health", "runtime encode roundtrip failed")
 
 
+def run_tool_call_health_interleaving_regression() -> None:
+    spec = importlib.util.spec_from_file_location("localcomet_sidecar_runner_test", RUNNER)
+    check(spec is not None and spec.loader is not None, "sidecar runner module spec unavailable")
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+
+    tool_started = threading.Event()
+    release_tool = threading.Event()
+    tool_finished = threading.Event()
+    health_seen = threading.Event()
+    writes: list[dict[str, object]] = []
+
+    class FakeRuntime:
+        def handle_message(self, message):
+            method = message.get("method")
+            if method == "tool.call":
+                tool_started.set()
+                check(release_tool.wait(timeout=2.0), "long tool call was not released")
+                tool_finished.set()
+            elif method == "app.health":
+                health_seen.set()
+            return ({"type": "response", "method": method, "reply_to": message.get("id")},)
+
+        def protocol_error_messages(self, error, *, reply_to="unknown"):
+            return ({"type": "error", "code": error.code, "reply_to": reply_to},)
+
+    def capture(_runtime, messages) -> bool:
+        writes.extend(messages)
+        return True
+
+    runtime = FakeRuntime()
+    acceptance_gate = runner._AcceptanceWriteGate(runtime)
+    tool_calls = runner._ToolCallCoordinator(runtime)
+    try:
+        with patch.object(runner, "_write_messages", side_effect=capture):
+            check(
+                runner._handle_and_write(
+                    runtime,
+                    {"id": "tool-long", "method": "tool.call"},
+                    acceptance_gate,
+                    tool_calls,
+                ),
+                "long tool.call was not accepted asynchronously",
+            )
+            check(tool_started.wait(timeout=1.0), "tool.call worker did not start")
+
+            check(
+                runner._handle_and_write(
+                    runtime,
+                    {"id": "tool-second", "method": "tool.call"},
+                    acceptance_gate,
+                    tool_calls,
+                ),
+                "busy tool.call did not return a bounded error",
+            )
+            check(
+                any(item.get("code") == "busy" for item in writes),
+                "concurrent tool.call was not rejected with busy",
+            )
+
+            started_at = time.monotonic()
+            check(
+                runner._handle_and_write(
+                    runtime,
+                    {"id": "health-during-tool", "method": "app.health"},
+                    acceptance_gate,
+                    tool_calls,
+                ),
+                "health probe was not handled during tool.call",
+            )
+            check(time.monotonic() - started_at < 0.5, "health probe waited behind tool.call")
+            check(health_seen.is_set(), "health probe did not reach runtime during tool.call")
+            release_tool.set()
+            tool_calls.close(timeout=2.0)
+
+        check(tool_finished.is_set(), "tool.call worker did not finish before coordinator close")
+        check(
+            any(item.get("reply_to") == "health-during-tool" for item in writes),
+            "health response was not written",
+        )
+        check(
+            any(item.get("reply_to") == "tool-long" for item in writes),
+            "tool.call terminal response was not written",
+        )
+    finally:
+        release_tool.set()
+        tool_calls.close(timeout=2.0)
+
+
+def run_real_runtime_state_lock_regression() -> None:
+    from modules import desktop_sidecar_runtime_ru as runtime_module
+    from modules.desktop_ipc_contract_ru import make_hello, make_request
+    from modules.desktop_sidecar_runtime_ru import DesktopSidecarRuntime
+
+    tool_started = threading.Event()
+    release_tool = threading.Event()
+    writes: list[dict[str, object]] = []
+
+    def fake_tool(_payload):
+        tool_started.set()
+        check(release_tool.wait(timeout=2.0), "real runtime fake tool was not released")
+        return {"status": "completed", "verification": "not_applicable"}
+
+    def capture(_runtime, messages) -> bool:
+        writes.extend(messages)
+        return True
+
+    runtime = DesktopSidecarRuntime(session_nonce="7" * 24)
+    runtime.handle_message(make_hello("real-runtime-hello", session_nonce="8" * 24, capabilities=("lifecycle",)))
+    spec = importlib.util.spec_from_file_location("localcomet_sidecar_runner_real_runtime_test", RUNNER)
+    check(spec is not None and spec.loader is not None, "sidecar runner module spec unavailable for real runtime test")
+    runner = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(runner)
+    acceptance_gate = runner._AcceptanceWriteGate(runtime)
+    tool_calls = runner._ToolCallCoordinator(runtime)
+    try:
+        with patch.object(runtime_module, "execute_tool_call", side_effect=fake_tool), patch.object(runner, "_write_messages", side_effect=capture):
+            check(
+                runner._handle_and_write(
+                    runtime,
+                    make_request("real-tool-call", "tool.call", {}),
+                    acceptance_gate,
+                    tool_calls,
+                ),
+                "real runtime tool.call was not accepted asynchronously",
+            )
+            check(tool_started.wait(timeout=1.0), "real runtime tool.call did not start")
+            health_id = "real-health-call"
+            health_payload = {
+                "type": "health.check",
+                "protocolVersion": 1,
+                "requestId": health_id,
+                "generationId": 1,
+                "startupNonce": "scn_" + "3" * 64,
+                "runtimeInstanceId": "rti_" + "4" * 32,
+                "sentAtUnixMs": 1002,
+            }
+            started_at = time.monotonic()
+            check(
+                runner._handle_and_write(
+                    runtime,
+                    make_request(health_id, "app.health", health_payload),
+                    acceptance_gate,
+                    tool_calls,
+                ),
+                "real runtime health response was not handled",
+            )
+            check(time.monotonic() - started_at < 0.5, "real runtime health waited behind tool.call")
+            release_tool.set()
+            tool_calls.close(timeout=2.0)
+        check(any(item.get("reply_to") == health_id for item in writes), "real runtime health response missing")
+        check(any(item.get("reply_to") == "real-tool-call" for item in writes), "real runtime tool response missing")
+        ids = [str(item["id"]) for item in writes if item.get("id")]
+        sequences = [int(item["sequence"]) for item in writes if item.get("sequence") is not None]
+        check(len(ids) == len(set(ids)), "real runtime emitted duplicate message IDs under interleave")
+        check(len(sequences) == len(set(sequences)), "real runtime emitted duplicate sequences under interleave")
+    finally:
+        release_tool.set()
+        tool_calls.close(timeout=2.0)
+        runtime.close()
+
+
 def run_runner_transcript() -> None:
     from modules.desktop_ipc_contract_ru import encode_frame, make_hello, make_request
 
@@ -636,6 +809,7 @@ def run_runner_transcript() -> None:
 def run_source_scans() -> None:
     runtime_text = read(RUNTIME)
     runner_text = read(RUNNER)
+    hidden_harness_text = read(HIDDEN_HARNESS)
     app_data_root_text = read(TAURI_SRC / "app_data_root.rs")
     artifact_trust_text = read(TAURI_SRC / "artifact_trust.rs")
     lib_text = read(TAURI_SRC / "lib.rs")
@@ -669,6 +843,12 @@ def run_source_scans() -> None:
     check("sys.path.insert" in runner_text, "runner does not prepare import path under isolated Python")
     check("is_symlink()" in runner_text, "runner does not reject symlink runner")
     check("FrameDecoder" in runner_text, "runner does not use contract frame decoder")
+    check("class _ToolCallCoordinator" in runner_text, "runner has no bounded tool-call coordinator")
+    check("tool.call already running" in runner_text, "runner has no single-flight busy response")
+    check("_state_lock = threading.RLock()" in runtime_text, "runtime mutable state is not protected by RLock")
+    check("DISABLED_AUTO_SCENARIO_IDS" in hidden_harness_text and "AUTO_SCENARIOS" in hidden_harness_text, "hidden harness Calculator deny list missing")
+    check("BLOCKED_SCENARIO_DISABLED" in hidden_harness_text, "explicit disabled scenario refusal missing")
+    check("session_capability_required" in hidden_harness_text and "input_digest" in hidden_harness_text, "guarded session correlation contract missing")
     check("stdout.buffer.write" in runner_text and "stderr.write(\"localcomet sidecar fatal" in runner_text, "runner stdout/stderr handling changed")
 
     check(
@@ -904,6 +1084,8 @@ def main() -> None:
         print(f"ALL STARTUP LOG PACKAGING-SCAN TESTS PASSED ({CHECK_COUNT} checks, {elapsed:.2f}s)")
         return
     run_runtime_transcript()
+    run_tool_call_health_interleaving_regression()
+    run_real_runtime_state_lock_regression()
     run_runner_transcript()
     run_source_scans()
     run_startup_log_scan_regressions()

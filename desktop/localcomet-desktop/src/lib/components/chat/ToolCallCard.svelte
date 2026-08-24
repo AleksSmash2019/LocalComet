@@ -22,6 +22,9 @@
     approvalId: string;
     approvalCallId: string;
     inputDigest: string;
+    processPid: string;
+    browserUrl: string;
+    browserCdpPort: string;
     screenshotSha256: string;
     screenshotBackend: string;
     screenshotScope: string;
@@ -48,6 +51,9 @@
         approvalId: evidenceString(execution.approval_id ?? payload.approval_id),
         approvalCallId: evidenceString(execution.approval_call_id ?? payload.approval_call_id),
         inputDigest: evidenceString(execution.input_digest ?? payload.input_digest),
+        processPid: typeof (execution.pid ?? payload.pid) === 'number' ? String(execution.pid ?? payload.pid) : '',
+        browserUrl: evidenceString(execution.url ?? payload.url),
+        browserCdpPort: typeof (execution.cdp_port ?? payload.cdp_port) === 'number' ? String(execution.cdp_port ?? payload.cdp_port) : '',
         screenshotSha256: evidenceString(execution.screenshot_sha256 ?? payload.screenshot_sha256),
         screenshotBackend: evidenceString(execution.capture_backend ?? payload.capture_backend),
         screenshotScope: evidenceString(execution.capture_scope ?? payload.capture_scope),
@@ -60,8 +66,26 @@
     }
   }
 
+  function pngDataUrl(encoded: unknown): string | null {
+    if (typeof encoded !== 'string') return null;
+    const raw = encoded.trim();
+    if (!raw.startsWith('iVBORw0KGgo') || raw.length > MAX_TOOL_IMAGE_BASE64_CHARS) return null;
+    if (!/^[A-Za-z0-9+/=]+$/.test(raw)) return null;
+    return `data:image/png;base64,${raw}`;
+  }
+
   function shot(result: string | undefined): string | null {
     if (!result) return null;
+    try {
+      const payload = JSON.parse(result) as Record<string, unknown>;
+      const execution = typeof payload.execution === 'object' && payload.execution
+        ? payload.execution as Record<string, unknown>
+        : {};
+      const structured = pngDataUrl(execution.screenshot ?? payload.screenshot);
+      if (structured) return structured;
+    } catch {
+      // Keep the legacy string fallback below for older tool responses.
+    }
     const source = String(result);
     const dataIndex = source.indexOf('data:image');
     if (dataIndex !== -1) {
@@ -134,6 +158,9 @@
   data-cu-approval-id={cueEvidence?.approvalId ?? ''}
   data-cu-approval-call-id={cueEvidence?.approvalCallId ?? ''}
   data-cu-input-digest={cueEvidence?.inputDigest ?? ''}
+  data-cu-process-pid={cueEvidence?.processPid ?? ''}
+  data-cu-browser-url={cueEvidence?.browserUrl ?? ''}
+  data-cu-browser-cdp-port={cueEvidence?.browserCdpPort ?? ''}
   data-cu-screenshot-sha256={cueEvidence?.screenshotSha256 ?? ''}
   data-cu-screenshot-backend={cueEvidence?.screenshotBackend ?? ''}
   data-cu-screenshot-scope={cueEvidence?.screenshotScope ?? ''}

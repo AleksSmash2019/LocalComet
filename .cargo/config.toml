@@ -1,13 +1,11 @@
 # LocalComet repository-level Cargo routing.
 #
-# Keep direct/IDE cargo invocations on the same external target used by the
-# normal Windows launcher. This machine-specific path is intentional for the
-# attached LocalComet workspace: it prevents a second sibling target tree from
-# silently consuming disk and keeps all cargo artifacts under the audited
-# LocalComet BuildCache. The launcher and gate scripts still pass an explicit
-# CARGO_TARGET_DIR and remain authoritative for portable/deployed runs.
+# Keep direct/IDE cargo invocations outside the source tree. The repository
+# launcher and CI may still provide an explicit CARGO_TARGET_DIR for the
+# canonical per-user BuildCache. These relative paths resolve outside this
+# repository from the workspace root and avoid creating a local target tree.
 #
 # INC-006 evidence must fail if a cargo invocation resolves elsewhere.
 [build]
-target-dir = "C:/Users/DNS/AppData/Local/LocalComet/BuildCache/CargoTarget"
-build-dir = "C:/Users/DNS/AppData/Local/LocalComet/BuildCache/CargoTarget/build"
+target-dir = "../../AppData/Local/LocalComet/BuildCache/CargoTarget"
+build-dir = "../../AppData/Local/LocalComet/BuildCache/CargoTarget/build"

@@ -99,6 +99,27 @@ describe('component smoke tests', () => {
     expect(html).not.toContain('Не выполнено');
   });
 
+  it('renders canonical JSON screenshot payload as an image preview', () => {
+    const html = render(ToolCallCard, { props: { tool: {
+      operation: 'computer_use',
+      target: '{"action":"screenshot"}',
+      status: 'PASS',
+      elapsed: '-',
+      detail: 'Screenshot captured',
+      result: JSON.stringify({
+        schema_version: 'computer_use.result.v1',
+        action: 'screenshot',
+        status: 'completed',
+        terminal: true,
+        succeeded: true,
+        verification: 'not_applicable',
+        screenshot: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'
+      })
+    } } }).body;
+    expect(html).toContain('cu-img');
+    expect(html).toContain('data:image/png;base64,iVBORw0KGgo');
+  });
+
   it('does not render malformed structured computer-use success as completed', () => {
     const html = render(ToolCallCard, { props: { tool: {
       operation: 'computer_use',

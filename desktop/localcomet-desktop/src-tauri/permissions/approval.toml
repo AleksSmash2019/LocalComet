@@ -4,7 +4,8 @@ description = "Allow issuing a scoped one-time approval token bound to tool, inp
 commands.allow = [
   "request_approval",
   "resolve_tool_approval",
-  "run_tool_call"
+  "run_tool_call",
+  "cu_broker_observe"
 ]
 
 [[permission]]

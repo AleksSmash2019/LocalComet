@@ -24,6 +24,7 @@ import {
   setGatewayPortText
 } from '../src/lib/stores/modelGateway';
 import { appendAcceptedChatTurn, chatMessages, resetShellStores, setAgentPermissions } from '../src/lib/stores/shellStore';
+import { deriveBoundedNotepadTypeContinuation } from '../src/lib/tools/computerUseContinuation';
 import type { ModelGatewayEvent } from '../src/lib/types/modelGateway';
 import phaseCContract from '../../../security/contracts/adr015_tool_event_parity_v1.json';
 
@@ -173,6 +174,17 @@ function modelEvent(method: ModelGatewayEvent['method'], sequence: number, patch
 }
 
 describe('Local Model Gateway frontend', () => {
+  it('derives a bounded Notepad paste continuation without broadening the target scope', () => {
+    expect(deriveBoundedNotepadTypeContinuation(
+      'Открой Блокнот и вставь в нём: LocalComet paste smoke.',
+      { name: 'computer_use', arguments: { action: 'open_app', target: 'notepad' } }
+    )).toEqual({ name: 'computer_use', arguments: { action: 'paste', text: 'LocalComet paste smoke.' } });
+    expect(deriveBoundedNotepadTypeContinuation(
+      'Открой Калькулятор и вставь в нём: no.',
+      { name: 'computer_use', arguments: { action: 'open_app', target: 'calculator' } }
+    )).toBeNull();
+  });
+
   beforeEach(() => {
     vi.useRealTimers();
     resetModelGatewayStore();
@@ -394,6 +406,53 @@ describe('Local Model Gateway frontend', () => {
     expect(get(inferenceRequestStore).lifecycle).toBe('completed');
     const assistant = get(chatMessages);
     expect(assistant.find((message) => message.role === 'assistant' && message.requestId === TURN_ID)?.toolCalls?.[0]?.status).toBe('PASS');
+  });
+
+  it('projects completed not_applicable Computer Use actions as PASS', async () => {
+    setAgentPermissions({ computerUse: true });
+    runToolCallResponse = {
+      tool: 'computer_use',
+      schema_version: 'computer_use.result.v1',
+      status: 'completed',
+      terminal: true,
+      succeeded: true,
+      verification: 'not_applicable',
+      action: { kind: 'press_key', target: 'enter' }
+    };
+    modelGatewayStore.update((state) => ({
+      ...state,
+      binding: {
+        provider_id: 'openai-compatible-local',
+        harness_id: 'minimal',
+        host: '127.0.0.1',
+        port: 1234,
+        base_path: '/v1',
+        model_id: 'local-model',
+        binding_fingerprint: FINGERPRINT,
+        discovered_fingerprint: FINGERPRINT,
+        persistence: false
+      }
+    }));
+    inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, effort: 'off', chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
+    appendAcceptedChatTurn(TURN_ID, 'Нажми Enter');
+
+    applyModelGatewayEvent(modelEvent('model.turn.started', 0));
+    applyModelGatewayEvent(modelEvent('model.tool.request', 1, {
+      tools_executed: 1,
+      tool_calls: [{ id: 'call_1', name: 'computer_use', arguments: { action: 'key', text: 'enter' } }]
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(get(inferenceRequestStore).lifecycle).toBe('completed');
+    const assistant = get(chatMessages);
+    expect(assistant.find((message) => message.role === 'assistant' && message.requestId === TURN_ID)?.toolCalls?.[0]?.status).toBe('PASS');
+
+    applyModelGatewayEvent(modelEvent('model.turn.tool_calls', 2, {
+      tools_executed: 1,
+      tool_calls: [{ id: 'call_1', name: 'computer_use', arguments: { action: 'key', text: 'enter' } }]
+    }));
+    expect(get(inferenceRequestStore).lifecycle).toBe('completed');
+    expect(get(chatMessages).find((message) => message.role === 'assistant' && message.requestId === TURN_ID)?.toolCalls?.[0]?.status).toBe('PASS');
   });
 
   it('executes exactly one correlated type continuation after verified Notepad open', async () => {

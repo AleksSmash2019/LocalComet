@@ -16,6 +16,11 @@ MAX_NESTING_DEPTH = 16
 MAX_OBJECT_KEYS = 256
 MAX_ARRAY_LENGTH = 10_000
 MAX_STRING_CHARS = 1_048_576
+# A real hidden-desktop PNG can exceed the generic text limit. Keep the
+# exception narrow and bounded by the 4 MiB frame limit; all other strings
+# retain MAX_STRING_CHARS.
+MAX_SCREENSHOT_BASE64_CHARS = 3_000_000
+SCREENSHOT_PAYLOAD_KEYS = frozenset({"screenshot"})
 MAX_LOG_STRING_CHARS = 4_096
 MAX_DELTA_TEXT_CHARS = 65_536
 FRAME_PREFIX_BYTES = 4
@@ -192,50 +197,59 @@ def validate_envelope(message: Mapping[str, Any]) -> tuple[str, ...]:
 
 def validate_payload(value: Any) -> tuple[str, ...]:
     findings: list[str] = []
-    seen: set[int] = set()
+    # Track only the current recursion path. A global visited set falsely rejects
+    # legitimate DAG-shaped payloads where the same immutable/container object is
+    # referenced by two sibling fields (for example a normalized key list).
+    active: set[int] = set()
 
-    def walk(item: Any, depth: int) -> None:
+    def walk(item: Any, depth: int, *, allow_large_string: bool = False) -> None:
         if depth > MAX_NESTING_DEPTH:
             findings.append("max_depth_exceeded")
             return
+        marker: int | None = None
         if isinstance(item, (Mapping, list, tuple)):
             marker = id(item)
-            if marker in seen:
+            if marker in active:
                 findings.append("cyclic_payload")
                 return
-            seen.add(marker)
-        if item is None or isinstance(item, bool):
-            return
-        if isinstance(item, int):
-            return
-        if isinstance(item, float):
-            if not math.isfinite(item):
-                findings.append("non_finite_number")
-            return
-        if isinstance(item, str):
-            if len(item) > MAX_STRING_CHARS:
-                findings.append("string_too_large")
-            return
-        if isinstance(item, (bytes, bytearray, Path)) or callable(item):
+            active.add(marker)
+        try:
+            if item is None or isinstance(item, bool):
+                return
+            if isinstance(item, int):
+                return
+            if isinstance(item, float):
+                if not math.isfinite(item):
+                    findings.append("non_finite_number")
+                return
+            if isinstance(item, str):
+                max_chars = MAX_SCREENSHOT_BASE64_CHARS if allow_large_string else MAX_STRING_CHARS
+                if len(item) > max_chars:
+                    findings.append("string_too_large")
+                return
+            if isinstance(item, (bytes, bytearray, Path)) or callable(item):
+                findings.append("unsupported_payload_type")
+                return
+            if isinstance(item, Mapping):
+                if len(item) > MAX_OBJECT_KEYS:
+                    findings.append("object_too_large")
+                for key, child in item.items():
+                    if not isinstance(key, str):
+                        findings.append("non_string_key")
+                    elif len(key) > 128:
+                        findings.append("key_too_large")
+                    walk(child, depth + 1, allow_large_string=key in SCREENSHOT_PAYLOAD_KEYS)
+                return
+            if isinstance(item, (list, tuple)):
+                if len(item) > MAX_ARRAY_LENGTH:
+                    findings.append("array_too_large")
+                for child in item:
+                    walk(child, depth + 1)
+                return
             findings.append("unsupported_payload_type")
-            return
-        if isinstance(item, Mapping):
-            if len(item) > MAX_OBJECT_KEYS:
-                findings.append("object_too_large")
-            for key, child in item.items():
-                if not isinstance(key, str):
-                    findings.append("non_string_key")
-                elif len(key) > 128:
-                    findings.append("key_too_large")
-                walk(child, depth + 1)
-            return
-        if isinstance(item, (list, tuple)):
-            if len(item) > MAX_ARRAY_LENGTH:
-                findings.append("array_too_large")
-            for child in item:
-                walk(child, depth + 1)
-            return
-        findings.append("unsupported_payload_type")
+        finally:
+            if marker is not None:
+                active.remove(marker)
 
     walk(value, 0)
     return tuple(sorted(set(findings)))

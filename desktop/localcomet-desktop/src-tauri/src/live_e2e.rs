@@ -221,13 +221,14 @@ mod tests {
             "model_id": model_id,
             "runtime_instance_id": runtime_instance_id,
         });
-        let envelope = crate::approval_commands::request_approval(
+        let envelope = tauri::async_runtime::block_on(crate::approval_commands::request_approval(
             harness
                 ._app
                 .state::<crate::approval_commands::ApprovalState>(),
+            harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
             "model.binding.set".to_owned(),
             input,
-        )
+        ))
         .expect("binding approval issued through the real prompt roundtrip");
         tauri::async_runtime::block_on(crate::control_plane::model_binding_set(
             harness._app.state::<Arc<ControlPlaneBridge>>(),
@@ -281,7 +282,7 @@ mod tests {
         );
         harness
             .bridge
-            .reserve_model_turn(&identity, Vec::new(), wire_digest)?;
+            .reserve_model_turn(&identity, Vec::new(), wire_digest, "medium")?;
         crate::control_plane::dispatch_gate_for_model_turn(
             &harness.runtime,
             &harness.bridge,
@@ -293,6 +294,7 @@ mod tests {
             prompt.to_owned(),
             assistant_context,
             Vec::new(),
+            "medium".to_owned(),
         )
     }
 
@@ -624,11 +626,13 @@ mod tests {
         let state_ref = harness
             ._app
             .state::<crate::approval_commands::ApprovalState>();
-        let envelope = crate::approval_commands::request_approval(
+        let runtime_ref = harness._app.state::<Arc<ManagedRuntimeSupervisor>>();
+        let envelope = tauri::async_runtime::block_on(crate::approval_commands::request_approval(
             state_ref,
+            runtime_ref,
             "runtime.start".to_owned(),
             input.clone(),
-        )
+        ))
         .expect("approval issued through the real prompt roundtrip");
 
         // Consume the token through the same validator the command uses,
@@ -659,14 +663,16 @@ mod tests {
         assert_eq!(replay.code, "approval_token_consumed");
 
         // Fresh approval, then the real command start with exact approval.
-        let envelope_two = crate::approval_commands::request_approval(
-            harness
-                ._app
-                .state::<crate::approval_commands::ApprovalState>(),
-            "runtime.start".to_owned(),
-            input.clone(),
-        )
-        .expect("second approval issued");
+        let envelope_two =
+            tauri::async_runtime::block_on(crate::approval_commands::request_approval(
+                harness
+                    ._app
+                    .state::<crate::approval_commands::ApprovalState>(),
+                harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
+                "runtime.start".to_owned(),
+                input.clone(),
+            ))
+            .expect("second approval issued");
 
         let started = tauri::async_runtime::block_on(managed_runtime_start(
             harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),

@@ -49,3 +49,38 @@
 - [ ] Внедрить backend-authoritative per-session capability state и permission_denied до tool dispatch.
 - [ ] Убрать allowlisted Computer Use bypass и требовать scoped one-time approval grant на опасное действие.
 - [ ] Исправить shared nested agentPermissions defaults и привести F-03 regression к fail-closed security contract.
+
+
+## Current continuation board — 2026-08-24
+
+Контекст этой секции актуальнее исторических пунктов выше. Старые пункты не удаляются и не переписываются.
+
+- [x] Зафиксировать единую ветку `feat/up00-wp01-windows-one-click-launch` и текущий HEAD `962503816099ce2cddf412b51ae0fe77fc299f20` до commit.
+- [x] Обновить Obsidian `Status.md`, `Blockers.md`, единый индекс, корневую страницу и session note текущей фактической оценкой **7,2/10**.
+- [x] Сохранить все текущие WIP-наработки: screenshot IPC/UI, pinned Qwen3, host CU broker, bounded task contracts, parser/schema/risk changes, UI cleanup и runtime parity.
+- [x] Добавить explicit capability mappings для `import_custom_model`, `cu_broker_observe`, `speak_local_text` и `stop_local_text`; capability/security contract tests PASS.
+- [x] Исправить repo-level Cargo routing: target/build directories больше не указывают абсолютный machine-specific путь и резолвятся наружу из репозитория.
+- [x] Восстановить in-memory archive helpers для Skills lifecycle; `tests/test_skills_lifecycle.py` PASS.
+- [x] Исправить hidden UIA type-test import boundary и сохранить fail-closed UIA assertions.
+- [x] Исправить security-negative false positive для `std::process::ExitStatus` и оставить запрет реальных `exit()/abort()` вызовов.
+- [x] Запретить Calculator в hidden/automatic host-broker mode до любого spawn; alias regression переведён в pure no-spawn test.
+- [x] Проверить новый Calculator guard и pure alias test: PASS; новые Calculator runs не выполнять.
+- [x] Не трогать внешний пользовательский helper `N:\ANTHOLOGY\...\start_helper.ps1` и его процессы; ownership LocalComet не доказан, внешние процессы не изменялись.
+- [x] Устранить sidecar liveness starvation во время длительного Computer Use call: single-flight coordinator, health interleave, busy response, runtime RLock; real-runtime regression PASS.
+- [x] Повторно доказать named-hidden цепочку Notepad: host broker launch → readiness/continuation → type → independent UIA text proof; one case `VERIFIED_SUCCESS`.
+- [ ] Доказать production UIA grounding для безопасных click/double-click без coordinate/search-only fallback.
+- [x] Выполнить post-fix targeted gate matrix и refresh evidence provenance: CURRENT evidence **4/4 fresh and intact**, tree `19fa0c05d9582b46...`; полный auto-discovered matrix не запускался повторно из-за прежнего hang.
+- [ ] Сделать commit только после финальной проверки состава всех сохранённых изменений; удаление reports/worktrees/stashes/models не входит в текущий scope.
+
+
+### Checkpoint — 2026-08-24 после Calculator guard и liveness patch
+
+- [x] Подтвердить отсутствие Calculator execution path в Rust tests; alias test теперь pure no-spawn.
+- [x] Добавить hidden/automatic host-broker guard, блокирующий Calculator до любого spawn.
+- [x] Устранить обнаруженную runner starvation seam: `tool.call` работает single-flight daemon worker, `app.health` interleaves, concurrent tool call получает bounded `busy`.
+- [x] Добавить и пройти v6.84.3 regression: **261 checks PASS**, включая real-runtime state-lock interleave и hidden-harness classifier/scenario guards.
+- [x] Полный Rust library suite: **568 passed, 0 failed, 7 ignored**; `cargo fmt --check` и clippy `-D warnings` PASS.
+- [x] Evidence provenance refresh: **4/4 fresh and intact**, current tree `19fa0c05d9582b469c927c5745fbb6c49f76826d052eec95c6cceb73d63fe770`.
+- [x] Bundle parity после runtime sync: **422/422 modules match**, exit 0.
+- [x] Повторить единственный безопасный named-hidden Notepad flow после liveness/digest patch и получить independent UIA text proof: `VERIFIED_SUCCESS`; Calculator не запускался.
+- [x] Обновить score/status перед commit: текущая оценка **8,1/10**, public acceptance остаётся `NOT_FINALLY_ACCEPTED` из-за открытых click/screenshot/task blockers.

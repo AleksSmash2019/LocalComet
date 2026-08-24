@@ -20,7 +20,13 @@ from tools.test_fixtures.assertions import assert_condition
 from tools.test_fixtures.assertions import make_gateway_error_assertion
 
 from modules.desktop_control_plane_ru import DESKTOP_CONTROL_PLANE_VERSION  # noqa: E402
-from modules.desktop_ipc_contract_ru import IPC_PROTOCOL, IPC_PROTOCOL_VERSION  # noqa: E402
+from modules.desktop_ipc_contract_ru import (  # noqa: E402
+    IPC_PROTOCOL,
+    IPC_PROTOCOL_VERSION,
+    encode_frame,
+    make_event,
+    validate_envelope,
+)
 from modules.desktop_sidecar_runtime_ru import DESKTOP_SIDECAR_RUNTIME_VERSION  # noqa: E402
 from modules.local_model_gateway_ru import (  # noqa: E402
     HARNESS_REGISTRY,
@@ -221,6 +227,37 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         },
         "turn payload shape changed",
     )
+    tool_calls = [{
+        "id": "call_test",
+        "name": "computer_use",
+        "arguments": {"action": "open_url", "target": "browser", "url": "https://www.youtube.com/"},
+    }]
+    tool_payload = _turn_payload(
+        request,
+        "Streaming",
+        binding,
+        model_called=True,
+        tools_executed=1,
+        tool_calls=tool_calls,
+        audit_metadata={"tool_calls": tool_calls},
+    )
+    assert_condition(tool_payload["tool_calls"] == tool_calls, "tool calls must be top-level in model.tool.request")
+    assert_condition(
+        tool_payload["tool_calls"] is not tool_payload["metadata"]["tool_calls"]
+        and tool_payload["tool_calls"][0] is not tool_payload["metadata"]["tool_calls"][0]
+        and tool_payload["tool_calls"][0]["arguments"] is not tool_payload["metadata"]["tool_calls"][0]["arguments"],
+        "top-level and metadata tool calls must not share mutable objects",
+    )
+    event = make_event(
+        "evt_tool_001",
+        "model.tool.request",
+        tool_payload,
+        run_id=request.turn_id,
+        sequence=1,
+    )
+    assert_condition(validate_envelope(event) == (), "model tool event envelope must validate")
+    assert_condition(encode_frame(event), "model tool event must be serializable over IPC")
+
     assert_condition(
         set(payload["metadata"])
         == {

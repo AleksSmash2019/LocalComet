@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
   import { invoke } from '@tauri-apps/api/core';
   import { get } from 'svelte/store';
@@ -22,6 +22,7 @@
   let resolving = false;
   let resolutionError = "";
   let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+  let modalEl: HTMLElement | undefined;
 
   function clearDismissTimer(): void {
     if (dismissTimer) {
@@ -122,17 +123,50 @@
     }
     return new Date(expiresAtUnixMs).toLocaleTimeString();
   }
-</script>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && currentRequest && !resolving) resolve('reject'); }} />
+  async function focusApprovalModal(): Promise<void> {
+    await tick();
+    if (!modalEl || !currentRequest || resolving) return;
+    const firstAction = modalEl.querySelector<HTMLElement>('button:not([disabled])');
+    firstAction?.focus();
+  }
+
+  function handleModalKeydown(event: KeyboardEvent): void {
+    if (!currentRequest || resolving) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      void resolve('reject');
+      return;
+    }
+    if (event.key !== 'Tab' || !modalEl) return;
+    const focusable = Array.from(modalEl.querySelectorAll<HTMLElement>('button:not([disabled])'));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  $: if (currentRequest) void focusApprovalModal();
+</script>
 
 {#if currentRequest}
   <div class="modal-backdrop">
     <div
       class="modal-content card-surface"
-      role="dialog"
+      role="alertdialog"
       aria-modal="true"
+      tabindex="-1"
       aria-labelledby="approval-title"
+      aria-describedby={currentRequest.risk_level === 'dangerous' ? 'approval-warning' : undefined}
+      aria-busy={resolving ? 'true' : 'false'}
+      bind:this={modalEl}
+      on:keydown={handleModalKeydown}
       data-approval-request-id={currentRequest.request_id}
       data-model-request-id={currentRequest.model_request_id ?? ''}
       data-model-action-id={currentRequest.model_action_id ?? ''}
@@ -159,7 +193,7 @@
       </dl>
 
       {#if currentRequest.risk_level === 'dangerous'}
-        <div class="warning-banner">
+        <div id="approval-warning" class="warning-banner" role="alert" aria-live="assertive">
           ⚠️ {$t(currentRequest.destructive ? 'approval.warning_destructive' : 'approval.warning_sensitive')}
         </div>
       {/if}

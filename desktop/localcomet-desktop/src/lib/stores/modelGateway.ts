@@ -1313,7 +1313,7 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
     return;
   }
 
-  if (event.method === 'model.tool.request' || event.method === 'model.turn.tool_calls') {
+  if (event.method === 'model.tool.request') {
     if (current.lifecycle === 'cancelling') return;
     if (event.tool_calls) {
       const toolCalls = event.tool_calls.map((tc) => ({
@@ -1385,7 +1385,13 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
           }
           if (outcome.kind === 'failed' || outcome.kind === 'malformed') {
             if (!canAcceptToolCallback(event.request_id)) return;
-            updateAssistantToolResult(event.request_id, 0, 'FAIL', outcome.reason || 'tool returned no confirmed success');
+            updateAssistantToolResult(
+              event.request_id,
+              0,
+              'FAIL',
+              outcome.reason || 'tool returned no confirmed success',
+              outcome.reason || 'tool returned no confirmed success'
+            );
             terminalizeCurrentRequest('failed', 'model.turn.failed', {
               code: outcome.kind === 'malformed' ? 'invalid_payload' : 'tool_execution_failed',
               message: outcome.reason || 'tool returned no confirmed success'
@@ -1414,7 +1420,7 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
         const onError = (error: unknown): void => {
           if (!canAcceptToolCallback(event.request_id)) return;
           const normalized = normalizeGatewayError(error);
-          updateAssistantToolResult(event.request_id, 0, 'FAIL', normalized.message);
+          updateAssistantToolResult(event.request_id, 0, 'FAIL', normalized.message, normalized.message);
           terminalizeCurrentRequest('failed', 'model.turn.failed', normalized);
         };
         const readOnlyWorkspaceTool =
@@ -1444,10 +1450,12 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
         return;
       }
     }
-    // `model.turn.tool_calls` is an informational terminal event for the
-    // current one-shot sidecar contract. It is not a failed model turn.
-    return;
   }
+
+  // `model.turn.tool_calls` is an informational terminal event for the
+  // current one-shot sidecar contract. It must not reinitialize the ToolCallCard
+  // or be treated as a failed model turn after the authoritative request event.
+  if (event.method === 'model.turn.tool_calls') return;
 
   if (event.method === 'model.turn.completed') {
     if (!latest.receivedContent) {

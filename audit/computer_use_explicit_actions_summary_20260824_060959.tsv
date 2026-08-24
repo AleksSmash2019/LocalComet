@@ -1,0 +1,7 @@
+family`tattempted`tsubmitted`tsuccess`tfailed`tpending`tinfra`tclassification`tapproval`tapprovals`tpill`tstatus`tverification`tprocess`tbrowser`tscreenshot`ttext`tcorrelation
+computer_use_click	1	1	0	1	0	0	VERIFIED_FAILED	none	0	FAIL				True	True	True	not_required
+computer_use_type	1	1	0	1	0	0	VERIFIED_FAILED	none	0	FAIL				True	True	True	not_required
+computer_use_key	1	1	0	1	0	0	VERIFIED_FAILED	none	0	FAIL				True	True	True	not_required
+computer_use_hotkey	1	1	0	1	0	0	VERIFIED_FAILED	none	0	FAIL				True	True	True	not_required
+computer_use_scroll	1	1	0	1	0	0	VERIFIED_FAILED	none	0	FAIL				True	True	True	not_required
+computer_use_wait	1	1	0	1	0	0	VERIFIED_FAILED	none	0	FAIL				True	True	True	not_required

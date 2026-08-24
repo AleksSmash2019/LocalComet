@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import codecs
+import copy
 import hashlib
 import http.client
 import json
@@ -94,7 +95,7 @@ MAX_RECENT_REQUEST_IDS = 256
 MAX_TOOL_CALLS_PER_TURN = 10
 COMPUTER_USE_INTENT_RE = re.compile(
     r"(?:открой|запусти|закрой|нажми|кликни|введи|набери|перетащи|прокрути|"
-    r"сделай\s+скриншот|переключи|сверни|разверни|open|launch|close|click|"
+    r"сделай\s+скриншот|переключи|сверни|разверни|youtube|ютуб|браузер|browser|open|launch|close|click|"
     r"type|enter|drag|scroll|take\s+(?:a\s+)?screenshot|press)",
     re.IGNORECASE,
 )
@@ -107,6 +108,10 @@ def _requires_computer_use_tool(prompt: str) -> bool:
 
 _COMPUTER_USE_OPEN_APP_RE = re.compile(
     r"(?:^|\s)(?:открой|запусти|open|launch)(?:\s+приложение)?\s+",
+    re.IGNORECASE,
+)
+_COMPUTER_USE_OPEN_YOUTUBE_RE = re.compile(
+    r"(?=.*(?:youtube|ютуб))(?=.*(?:браузер|browser|chrome|хром|edge|firefox|мозил))",
     re.IGNORECASE,
 )
 _COMPUTER_USE_SAFE_APP_ALIASES = (
@@ -127,8 +132,25 @@ _COMPUTER_USE_READ_FILE_RE = re.compile(
     r"(?:^|\s)(?:прочитай|покажи|read)\s+(?:файл\s+)?(?P<path>[A-Za-zА-Яа-яЁё0-9_./\\ -]{1,180})\s*[.!?]*$",
     re.IGNORECASE,
 )
+_COMPUTER_USE_DOUBLE_CLICK_RE = re.compile(
+    r"(?:^|\s)(?:двойной\s+клик|double[\s-]+click)\s+(?:на|по|по кнопке|кнопку)?\s*"
+    r"(?P<target>[^.!?]{1,120}?)(?:\s+и\s+(?:сообщи|скажи|расскажи)\b[^.!?]*)?\s*[.!?]*$",
+    re.IGNORECASE,
+)
 _COMPUTER_USE_CLICK_RE = re.compile(
-    r"(?:^|\s)(?:нажми|кликни|click)\s+(?:на|по|по кнопке|кнопку)?\s*(?P<target>[^.!?]{1,120})[.!?]*$",
+    r"(?:^|\s)(?:кликни|click)\s+(?:на|по|по кнопке|кнопку)?\s*"
+    r"(?P<target>[^.!?]{1,120}?)(?:\s+и\s+(?:сообщи|скажи|расскажи)\b[^.!?]*)?\s*[.!?]*$",
+    re.IGNORECASE,
+)
+_COMPUTER_USE_PASTE_RE = re.compile(
+    r"(?:^|\s)(?:вставь|paste)\s+(?:текст\s+)?(?P<text>[^.!?]{1,240})",
+    re.IGNORECASE,
+)
+_COMPUTER_USE_DRAG_RE = re.compile(
+    r"(?:^|\s)(?:перетащи|drag)\s+(?:курсор\s+)?(?:из|from)\s+(?:точки?\s+|point\s+)?\(?\s*"
+    r"(?P<x0>\d{1,4})\s*[,;]\s*(?P<y0>\d{1,4})\s*\)?\s+"
+    r"(?:в|to)\s+(?:точку\s+|point\s+)?\(?\s*"
+    r"(?P<x1>\d{1,4})\s*[,;]\s*(?P<y1>\d{1,4})\s*\)?",
     re.IGNORECASE,
 )
 _COMPUTER_USE_TYPE_RE = re.compile(
@@ -136,7 +158,8 @@ _COMPUTER_USE_TYPE_RE = re.compile(
     re.IGNORECASE,
 )
 _COMPUTER_USE_KEY_RE = re.compile(
-    r"(?:^|\s)(?:нажми|press)\s+(?P<key>(?:ctrl|control|shift|alt|enter|tab|escape|esc|backspace|delete|space)(?:\s*\+\s*(?:ctrl|control|shift|alt|enter|tab|escape|esc|backspace|delete|space|[a-z]))*)\s*[.!?]*$",
+    r"(?:^|\s)(?:нажми|press)\s+(?P<key>(?:ctrl|control|shift|alt|enter|tab|escape|esc|backspace|delete|space)(?:\s*\+\s*(?:ctrl|control|shift|alt|enter|tab|escape|esc|backspace|delete|space|[a-z]))*)"
+    r"(?:\s+и\s+(?:сообщи|скажи|расскажи)\b[^.!?]*)?\s*[.!?]*$",
     re.IGNORECASE,
 )
 _COMPUTER_USE_SCREENSHOT_RE = re.compile(
@@ -147,6 +170,26 @@ _COMPUTER_USE_WAIT_RE = re.compile(
     r"(?:подожди|ожидай|wait)\s*(?P<seconds>\d+(?:[.,]\d+)?)?\s*(?:секунд[уы]?|seconds?)?",
     re.IGNORECASE,
 )
+_COMPUTER_USE_MULTI_STEP_RE = re.compile(
+    r"(?=.*(?:кликни|двойной\s+клик|double\s*click|click\s+(?:по|на|button)|нажми\s+(?:кнопку|на)))"
+    r"(?=.*(?:введи|напиши|набери|type|paste|вставь|press|scroll|прокрути))"
+    r"(?=.*(?:затем|после этого|потом|и|then|after that|and))",
+    re.IGNORECASE,
+)
+
+
+def _is_pure_multi_step_interaction(prompt: str) -> bool:
+    normalized = " ".join(str(prompt or "").casefold().split())
+    if not _COMPUTER_USE_MULTI_STEP_RE.search(normalized):
+        return False
+    # Composite sidecar execution must not be used to launch apps, navigate
+    # externally, or handle browser profiles. Those remain host-broker/single
+    # action flows with their existing consent and continuation semantics.
+    if _COMPUTER_USE_OPEN_APP_RE.search(normalized) or _COMPUTER_USE_OPEN_YOUTUBE_RE.search(normalized):
+        return False
+    if _COMPUTER_USE_OPEN_FOLDER_RE.search(normalized):
+        return False
+    return True
 
 
 def _safe_relative_file_path(value: str) -> str | None:
@@ -164,6 +207,31 @@ def _deterministic_computer_use_call(prompt: str) -> dict[str, Any] | None:
     Multi-step missions remain on the normal model/tool loop.
     """
     normalized = " ".join(prompt.casefold().split())
+    prompt_with_original_case = " ".join(str(prompt or "").split())
+    if _is_pure_multi_step_interaction(prompt_with_original_case):
+        return {
+            "name": "computer_use",
+            "arguments": {
+                "action": "task",
+                "goal": prompt_with_original_case,
+                "max_steps": 6,
+            },
+        }
+    if _COMPUTER_USE_OPEN_YOUTUBE_RE.search(normalized):
+        if re.search(r"(?:chrome|хром)", normalized, re.IGNORECASE):
+            browser = "chrome"
+        elif re.search(r"(?:firefox|мозил)", normalized, re.IGNORECASE):
+            browser = "firefox"
+        else:
+            browser = "browser"
+        return {
+            "name": "computer_use",
+            "arguments": {
+                "action": "open_url",
+                "target": browser,
+                "url": "https://www.youtube.com/",
+            },
+        }
     if _COMPUTER_USE_OPEN_APP_RE.search(normalized):
         for alias, target in _COMPUTER_USE_SAFE_APP_ALIASES:
             if alias.search(normalized):
@@ -185,10 +253,29 @@ def _deterministic_computer_use_call(prompt: str) -> dict[str, Any] | None:
         if "+" in key:
             return {"name": "computer_use", "arguments": {"action": "hotkey", "text": key}}
         return {"name": "computer_use", "arguments": {"action": "key", "text": key}}
-    click_match = _COMPUTER_USE_CLICK_RE.search(normalized)
+    drag_match = _COMPUTER_USE_DRAG_RE.search(prompt_with_original_case)
+    if drag_match:
+        coords = [int(drag_match.group(name)) for name in ("x0", "y0", "x1", "y1")]
+        if all(0 <= value <= 1000 for value in coords):
+            return {"name": "computer_use", "arguments": {"action": "drag", "coordinate": coords}}
+    double_click_match = _COMPUTER_USE_DOUBLE_CLICK_RE.search(prompt_with_original_case)
+    if double_click_match:
+        target = double_click_match.group("target").strip()
+        target = re.sub(r"^(?:на|по)\s+", "", target, flags=re.IGNORECASE)
+        target = re.sub(r"^(?:кнопке|кнопку)\s+", "", target, flags=re.IGNORECASE)
+        return {"name": "computer_use", "arguments": {"action": "double_click", "target": target}}
+    click_match = _COMPUTER_USE_CLICK_RE.search(prompt_with_original_case)
     if click_match:
-        return {"name": "computer_use", "arguments": {"action": "click", "target": click_match.group("target").strip()}}
-    prompt_with_original_case = " ".join(str(prompt or "").split())
+        target = click_match.group("target").strip()
+        target = re.sub(r"^(?:на|по)\s+", "", target, flags=re.IGNORECASE)
+        target = re.sub(r"^(?:кнопке|кнопку)\s+", "", target, flags=re.IGNORECASE)
+        return {"name": "computer_use", "arguments": {"action": "click", "target": target}}
+    paste_match = _COMPUTER_USE_PASTE_RE.search(prompt_with_original_case)
+    if paste_match:
+        text = paste_match.group("text").strip(" :,-—")
+        text = re.sub(r"^текст\s*:\s*", "", text, flags=re.IGNORECASE).strip()
+        if text:
+            return {"name": "computer_use", "arguments": {"action": "paste", "text": text}}
     type_match = _COMPUTER_USE_TYPE_RE.search(prompt_with_original_case)
     if type_match:
         text = type_match.group("text").strip(" :,-—")
@@ -1110,6 +1197,7 @@ class LocalModelGateway:
                                 model_called=True,
                                 text=None,
                                 tools_executed=1,
+                                tool_calls=correlated_fallback,
                                 audit_metadata={"tool_calls": correlated_fallback},
                             ),
                         )
@@ -2198,6 +2286,7 @@ def _turn_payload(
     text: str | None = None,
     generated_bytes: int = 0,
     tools_executed: int = 0,
+    tool_calls: list[dict[str, Any]] | None = None,
     audit_metadata: Mapping[str, Any] | None = None,
     stream_channel: str = "content",
 ) -> dict[str, Any]:
@@ -2246,6 +2335,12 @@ def _turn_payload(
             "generated_bytes": int(generated_bytes),
         },
     }
+    if tool_calls is not None:
+        # The same semantic calls are also carried in metadata for the Rust/TS
+        # control-plane contract. Keep the top-level compatibility field, but
+        # deep-copy it: the IPC payload validator rejects shared object identity
+        # across branches as a cyclic payload.
+        payload["tool_calls"] = copy.deepcopy(tool_calls)
     if audit_metadata:
         payload["metadata"] = {**payload["metadata"], **dict(audit_metadata)}
     return payload
@@ -2683,7 +2778,7 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "files.create_folder": {"required": ("path",), "properties": {"path": str}},
     "files.delete": {"required": ("path",), "properties": {"path": str}},
     "shell": {"required": ("command",), "properties": {"command": str}},
-    "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str, "target": str, "seconds": (int, float)}},
+    "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str, "target": str, "url": str, "goal": str, "max_steps": int, "seconds": (int, float)}},
     "web.search": {"required": ("query",), "properties": {"query": str}},
     "web.fetch": {"required": ("url",), "properties": {"url": str}},
     "skills.invoke": {"required": ("skill_id", "permissions"), "properties": {"skill_id": str, "permissions": list, "arguments": (dict, list)}},
@@ -2700,7 +2795,7 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "web.search": "Web search (guarded). Required: query (<=200 chars). Returns up to 5 results {url,title,snippet}. Rate-limited, cached 10m. Use for fresh news/facts when local knowledge is stale.",
     "web.fetch": "Web fetch (guarded). Required: url (https:// or http://, <=2000 chars). Fetches and strips HTML to ~8k text, cached 10m. Use to read a page found via web.search.",
     "skills.invoke": "Invoke one installed and enabled skill with a bounded JSON request. Required: skill_id and permissions (non-empty manifest-granted strings). Optional: arguments as an object or array. The skill runs without shell=True, inherits no secrets, and has a 30-second timeout with bounded output. Approval is required for this dangerous tool.",
-    "computer_use": "Desktop Computer Use. Actions are allowlisted only. Valid action values: open_app, open_folder, click, double_click, type, paste, key, hotkey, scroll, wait, drag. Use target for app/folder/element identifiers, text for type/paste/key/hotkey payload, and optional coordinate [x,y] as advisory hint (0-1000 normalized or pixel advisory; for small targets zoom/enable_zoom and retry with precise targeting). Dangerous: user approval is required before execution. Delegated to the local allowlisted executor; free-form OS commands are rejected. After each computer_use step, call screenshot, evaluate outcome, retry if not achieved (Anthropic best-practice self-correction loop).",
+    "computer_use": "Desktop Computer Use. Actions are allowlisted only: open_app, open_folder, open_url, click, double_click, type, paste, key, hotkey, scroll, wait, drag, screenshot, or bounded task. Use task only for a pure multi-step UI interaction that does not launch an app, navigate externally, access secrets, or change files; provide goal and max_steps 1..8. For open_url, use only the explicit HTTPS YouTube navigation contract with target chrome or msedge and a URL on youtube.com; never emit arbitrary command-line arguments. Use target for app/folder/browser/element identifiers, goal for the bounded interaction task, url for the validated navigation target, text for type/paste/key/hotkey payload, and optional coordinate [x,y] as advisory hint. Dangerous/guarded actions require user approval; the composite task inherits that grant and stops on confirmation, error, dialog, or insufficient UIA evidence. Free-form OS commands and ungrounded coordinate fallbacks are rejected.",
     "system.time": "Get the current system time and date. Takes no arguments.",
 }
 
@@ -2732,7 +2827,7 @@ def build_tool_schemas(for_tools: tuple[str, ...] | None = None) -> list[dict[st
             else:
                 properties[field_name] = {"type": _TYPE_TO_JSON.get(expected_type, "string")}
                 if name == "computer_use" and field_name == "action":
-                    properties[field_name]["enum"] = ["open_app", "open_folder", "click", "double_click", "type", "paste", "key", "hotkey", "scroll", "wait", "drag", "screenshot"]
+                    properties[field_name]["enum"] = ["open_app", "open_folder", "open_url", "click", "double_click", "type", "paste", "key", "hotkey", "scroll", "wait", "drag", "screenshot", "task"]
         schemas.append(
             {
                 "type": "function",
@@ -2771,6 +2866,13 @@ def validate_tool_call(name: str, arguments: object) -> None:
         seconds = arguments["seconds"]
         if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not (0.1 <= float(seconds) <= 30.0):
             raise GatewayError("invalid_payload", "tool computer_use field seconds must be within 0.1..30.0")
+    if name == "computer_use" and arguments.get("action") == "task":
+        goal = arguments.get("goal")
+        if not isinstance(goal, str) or not goal.strip() or len(goal) > 1200:
+            raise GatewayError("invalid_payload", "tool computer_use task goal must be non-empty and <=1200 chars")
+        max_steps = arguments.get("max_steps", 6)
+        if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not (1 <= max_steps <= 8):
+            raise GatewayError("invalid_payload", "tool computer_use task max_steps must be within 1..8")
 
 
 MAX_ARGUMENT_BYTES = 65_536

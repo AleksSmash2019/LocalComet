@@ -51,11 +51,14 @@ def detect_archive_kind(data: bytes, filename: str) -> str:
 
 def read_manifest_bytes(archive_path: Path) -> bytes:
     """Read and return skill.json bytes from a validated archive (no execution)."""
-    data = archive_path.read_bytes()
+    return read_manifest_bytes_from_data(archive_path.read_bytes(), archive_path.name)
+
+
+def read_manifest_bytes_from_data(data: bytes, filename: str) -> bytes:
+    """Read skill.json from already-loaded archive bytes without executing content."""
     if len(data) > MAX_ARCHIVE_BYTES:
         raise SkillError(SkillErrorCode.ARCHIVE_TOO_LARGE, "archive exceeds maximum size")
-    kind = detect_archive_kind(data, archive_path.name)
-
+    kind = detect_archive_kind(data, filename)
     if kind == "zip":
         return _read_manifest_zip(data)
     return _read_manifest_targz(data)
@@ -142,10 +145,14 @@ def parse_manifest(manifest_bytes: bytes) -> dict:
 
 def extract_archive(archive_path: Path, dest_dir: Path) -> list[str]:
     """Extract a validated archive into dest_dir. Returns relative file paths."""
-    data = archive_path.read_bytes()
+    return extract_archive_from_data(archive_path.read_bytes(), archive_path.name, dest_dir)
+
+
+def extract_archive_from_data(data: bytes, filename: str, dest_dir: Path) -> list[str]:
+    """Extract validated archive bytes into dest_dir without executing content."""
     if len(data) > MAX_ARCHIVE_BYTES:
         raise SkillError(SkillErrorCode.ARCHIVE_TOO_LARGE, "archive exceeds maximum size")
-    kind = detect_archive_kind(data, archive_path.name)
+    kind = detect_archive_kind(data, filename)
     dest_dir.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
     if kind == "zip":

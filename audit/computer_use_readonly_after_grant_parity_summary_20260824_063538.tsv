@@ -1,0 +1,4 @@
+family`tattempted`tsubmitted`tsuccess`tfailed`tinfra`tclassification`tapproval`tapprovals`tpill`tstatus`tverification`treason`ttrace
+computer_use_wait	1	1	1	0	0	VERIFIED_SUCCESS	none	0	PASS	executed	not_applicable	Tool execution requested	2026-08-24T06:36:41 result wait status=completed ok=True succeeded=True verification=not_applicable reason=
+computer_use_scroll	1	1	1	0	0	VERIFIED_SUCCESS	none	0	PASS	executed	not_applicable	Tool execution requested	2026-08-24T06:37:48 result scroll status=completed ok=True succeeded=True verification=not_applicable reason=
+desktop_screenshot	1	1	0	1	0	VERIFIED_FAILED	none	0	FAIL			Tool execution requested	2026-08-24T06:37:48 result scroll status=completed ok=True succeeded=True verification=not_applicable reason=

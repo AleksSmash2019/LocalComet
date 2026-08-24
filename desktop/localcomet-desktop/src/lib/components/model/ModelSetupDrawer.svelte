@@ -31,6 +31,7 @@
     initializeArtifactAcquisition
   } from '$lib/stores/artifactAcquisition';
   import type { HarnessId } from '$lib/types/modelGateway';
+  import { selectManagedSetupModelId } from '$lib/stores/modelDefault';
   import { t } from '$lib/i18n';
 
   export let onClose: () => void = () => {};
@@ -91,9 +92,7 @@
   $: canBindManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModelId);
   $: managedTone = managedState === 'Ready' ? 'ready' : managedState === 'Failed' ? 'danger' : managedState === 'Starting' || managedState === 'Validating' || managedState === 'Stopping' ? 'info' : 'disabled';
   $: selectedModelIdIsAvailable = visibleManagedModels.some((model) => model.model_id === $managedRuntimeStore.selectedModelId);
-  $: setupTargetModelId = selectedModelIdIsAvailable
-    ? $managedRuntimeStore.selectedModelId
-    : visibleManagedModels[0]?.model_id ?? '';
+  $: setupTargetModelId = selectManagedSetupModelId(visibleManagedModels, $managedRuntimeStore.selectedModelId);
   $: setupTargetLabel = visibleManagedModels.find((model) => model.model_id === setupTargetModelId)?.display_name ?? $t('setup.select_local_model');
   $: canSetupManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModelId);
   $: activeDownload = Object.values($artifactAcquisitionStore.downloads).find(d => !['cancelled', 'completed', 'failed'].includes(d.lifecycle)) ?? null;

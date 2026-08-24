@@ -86,6 +86,26 @@ class ComputerUseReliabilityTests(unittest.TestCase):
         self.assertEqual(result["request_id"], "r1")
         self.assertEqual(result["action_id"], "a1")
 
+    def test_computer_use_result_exposes_canonical_digest_without_grant_material(self) -> None:
+        input_obj = {"action": "wait", "seconds": 1}
+        with patch.object(
+            tool_execution,
+            "_execute_real_action_bounded",
+            return_value={"ok": True, "status": "completed", "verification": "verified"},
+        ):
+            result = tool_execution._computer_use(
+                None,
+                "computer_use",
+                input_obj,
+                request_id="0123456789abcdef01234567",
+                action_id="call_0123456789abcdef0123456789ab",
+            )
+        expected_digest = tool_execution.canonical_input_digest_hex(input_obj)
+        self.assertEqual(result["input_digest"], expected_digest)
+        self.assertEqual(result["execution"]["input_digest"], expected_digest)
+        self.assertNotIn("token", result)
+        self.assertNotIn("grant", result)
+
     def test_structured_result_requires_verified_terminal_success(self) -> None:
         result = tool_execution._normalize_computer_use_result(
             {"ok": True, "status": "executed", "verification": "verified"},
@@ -166,6 +186,24 @@ class ComputerUseReliabilityTests(unittest.TestCase):
         self.assertEqual(plan["actions"], [])
 
 
+    def test_task_registry_validates_bounded_goal_and_steps(self) -> None:
+        from modules.local_model_gateway_ru import GatewayError, validate_tool_call
+
+        validate_tool_call(
+            "computer_use",
+            {"action": "task", "goal": "Нажми Ctrl+F и прокрути вниз.", "max_steps": 2},
+        )
+        for bad in (
+            {"action": "task", "goal": "", "max_steps": 2},
+            {"action": "task", "goal": "x" * 1201, "max_steps": 2},
+            {"action": "task", "goal": "safe", "max_steps": 0},
+            {"action": "task", "goal": "safe", "max_steps": 9},
+            {"action": "task", "goal": "safe", "max_steps": True},
+        ):
+            with self.assertRaises(GatewayError):
+                validate_tool_call("computer_use", bad)
+
+
 class ExecutionGrantBoundaryTests(unittest.TestCase):
     """P0-2: the Python execution boundary re-verifies Rust grants for
     dangerous tools (missing/mismatched/expired/replayed material denies
@@ -217,14 +255,15 @@ class ExecutionGrantBoundaryTests(unittest.TestCase):
             '{"a":"привет","b":1,"c":[1.5,true,null],"d":{"й":"э"},"e":1e+30,"f":1.5e-7}',
         )
 
-    def test_dangerous_tool_without_grant_denied(self) -> None:
-        payload = self._payload("computer_use", {"action": "screenshot"}, None)
+    def test_guarded_task_without_grant_denied(self) -> None:
+        input_obj = {"action": "task", "goal": "Нажми Ctrl+F и прокрути вниз.", "max_steps": 2}
+        payload = self._payload("computer_use", input_obj, None)
         with self.assertRaises(tool_execution.ToolExecutionError) as ctx:
             tool_execution.execute_tool_call(payload)
         self.assertEqual(ctx.exception.code, "approval_required")
 
-    def test_dangerous_tool_with_valid_grant_passes(self) -> None:
-        input_obj = {"action": "screenshot"}
+    def test_guarded_task_with_valid_grant_passes(self) -> None:
+        input_obj = {"action": "task", "goal": "Нажми Ctrl+F и прокрути вниз.", "max_steps": 2}
         payload = self._payload(
             "computer_use", input_obj, self._valid_grant("computer_use", input_obj), "g" * 32
         )
