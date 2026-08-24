@@ -84,3 +84,57 @@
 - [x] Bundle parity после runtime sync: **422/422 modules match**, exit 0.
 - [x] Повторить единственный безопасный named-hidden Notepad flow после liveness/digest patch и получить independent UIA text proof: `VERIFIED_SUCCESS`; Calculator не запускался.
 - [x] Обновить score/status перед commit: текущая оценка **8,1/10**, public acceptance остаётся `NOT_FINALLY_ACCEPTED` из-за открытых click/screenshot/task blockers.
+
+
+## Roadmap до 9,5/10 — 2026-08-25
+
+**Цель:** поднять LocalComet с текущих **8,1/10** до честного минимума **9,5/10**. Нельзя считать задачу закрытой по одному `exit 0`: каждый пользовательский поток должен иметь независимый postcondition proof, корректную authorization/correlation evidence и честный terminal verdict.
+
+**Ограничения кампании:** только named hidden desktops для GUI; без физического пользовательского desktop; без автоматических Calculator-запусков; внешний Anthology helper не трогать; не запускать кампании на 100/200/1000 сценариев; сохранять Qwen3-1.7B Q4_K_M без silent substitution; не удалять отчёты, worktrees, stashes, модели и runtime caches вслепую.
+
+| Шаг | Направление | Что сделать | Критерий завершения | Статус |
+|---:|---|---|---|---|
+| 1 | Baseline и acceptance matrix | Зафиксировать 8,1/10, commit `b8d6bac`, открытые blockers и единый список базовых действий | Matrix содержит browser, folders, files, Notepad, type/paste/key/hotkey/wait/scroll, click/double-click, screenshot, task и voice; для каждого задан verdict contract | DONE |
+| 2 | Готовые skills | Провести read-only inventory доступных LocalComet/Obsidian skills и известных Computer Use подходов | Для каждого кандидата указаны источник, лицензия, зависимости, security risks, Windows compatibility и решение `adopt/adapt/reject`; без слепого копирования | NEXT |
+| 3 | Skill adapter | Подключить только принятые skills через существующий skills runtime и capability boundary | Skill не получает произвольный shell/filesystem; permissions explicit; deterministic dispatch, timeout, cancellation и error envelope покрыты tests | BLOCKED_BY_2 |
+| 4 | Browser/open_url | Исправить текущую ошибку «Открой браузер хром», разделив `open_app chrome` и HTTPS `open_url`; добавить Chrome discovery, readiness, single-instance/reuse и честный failure | На новом hidden desktop: Chrome запускается/переиспользуется, HTTPS URL открывается, readiness подтверждается, invalid/non-HTTPS URL блокируется, никакого physical-browser control | P0 |
+| 5 | Папки | Довести `open_folder`, list/create folder и navigation до workspace-constrained поведения | Valid folder работает; outside workspace, symlink/reparse, missing path и malformed input дают fail-closed result; independent filesystem postcondition | P0 |
+| 6 | Файлы | Довести list/read/create/write с atomicity, encoding, size limits и recovery | Test files создаются только в temp workspace; bytes/hash/contents проверяются независимо; partial write и path escape не проходят | P0 |
+| 7 | Notepad и базовые actions | Закрепить launch→readiness→type/paste→key/hotkey→wait→UIA proof; добавить устойчивость к focus/readiness race | Fresh hidden Notepad даёт `VERIFIED_SUCCESS` по exact marker/UIA/process/scope/correlation; errors остаются `VERIFIED_FAILED` или `NOT_INDEPENDENTLY_VERIFIED` | P0 |
+| 8 | UIA grounding | Реализовать production-safe semantic grounding для click/double-click/scroll/drag; убрать search-only и coordinate-only false positives | Реальный target найден по role/name/automation id, target scope подтверждён, action postcondition проверен; coordinate fallback не считается PASS | P0 |
+| 9 | Observe/screenshot | Довести hidden screenshot backend, capture metadata, scope/hash/bytes и observe-after-action | Fresh hidden screenshot имеет PNG magic, sha256, backend, scope, byte count и correlated action IDs; capture failure не превращается в PASS | P0 |
+| 10 | Multi-step task | Замкнуть bounded observe→action→observe loop с max 8 steps, continuation, replan, stop и liveness | Один ограниченный task-level hidden flow получает `VERIFIED_SUCCESS` с каждым шагом correlated; timeout/cancel/uncertain state дают terminal non-PASS | P1 |
+| 11 | Голос и характер | После стабилизации core flow подобрать спокойный русскоязычный voice profile, добавить лаконичный характер LocalComet и исправить Stop lifecycle | Voice start/stop idempotent, no replay loop, stale completion ignored; personality не меняет security decisions и не раскрывает внутренние данные | P1 |
+| 12 | Security/performance/resources | Провести audit grants, allowlists, IPC limits, memory/temp/cache growth, process ownership и cleanup policy | Security-negative gates PASS; no orphan owned workers; memory/temporary files bounded; чужие процессы не останавливаются | P0/P1 |
+| 13 | Verification matrix | Добавить deterministic tests и ограниченный hidden acceptance: по одному representative flow на каждый класс, без массовой кампании | Python/Rust/frontend/bundle/evidence gates PASS; каждый live row имеет один из корректных verdict classes и supporting proof | P0 |
+| 14 | Release decision | Обновить evidence, Obsidian, scorecard и сделать один clean commit только после review | 9,5/10 разрешается только при закрытых P0 и доказанных representative flows; иначе честно фиксируется меньший score и остаточные blockers | FINAL |
+
+### Целевые критерии оценки
+
+| Область | Минимум для 9,5/10 |
+|---|---|
+| Browser | Открытие Chrome и HTTPS-навигация независимо подтверждены на hidden desktop; readiness/reuse/error paths проверены |
+| Folders/files | CRUD и navigation работают в разрешённом workspace, path escape/symlink/reparse/partial-write закрыты |
+| Notepad/actions | Launch, focus, type, paste, key, hotkey, wait и UIA postcondition имеют live proof |
+| UIA | Click/double-click/scroll/drag grounded по реальным semantic targets; search-only и coordinate-only доказательства отклоняются |
+| Observe | Screenshot/observe proof независимы и содержат scope/hash/backend/bytes/correlation |
+| Orchestration | Bounded task умеет продолжение, replan, stop, timeout и не теряет liveness |
+| Security | Approval/session capability, grant digest, broker allowlist, IPC limits и fail-closed errors покрыты negative tests |
+| UX/voice | Характер последователен и краток; русский голос приятен; Stop не допускает циклов и stale playback |
+| Evidence | Свежие evidence, clean branch, reproducible commands; exit 0 не подменяет product PASS |
+
+### Текущий dashboard checkpoint
+
+- **DONE:** Calculator hidden/automatic guard; sidecar liveness; false-PASS classifier; canonical input digest; named-hidden Notepad single-case `VERIFIED_SUCCESS`; targeted gates; commit `b8d6bac`.
+- **IN PROGRESS:** browser/open_url failure diagnosis; inventory/adaptation of ready-made skills.
+- **OPEN P0:** browser; folders/files; UIA semantic grounding; screenshot revalidation; task-level live proof.
+- **OPEN P1:** personality/voice polish; broader performance/resource audit.
+- **Release rule:** до закрытия всех P0 итоговый статус остаётся `NOT_FINALLY_ACCEPTED`, даже если все offline tests зелёные.
+
+### Следующий конкретный микроцикл
+
+1. Завершить read-only browser diagnosis и сопоставить ошибку с точным execution path.
+2. Выполнить inventory готовых skills и выбрать только совместимые с LocalComet boundary.
+3. Исправить browser/open_url, затем добавить deterministic regressions.
+4. Проверить один browser flow и один folder/file flow на свежих named hidden desktops.
+5. Только после этого переходить к UIA grounding и screenshot/task acceptance.
