@@ -1,6 +1,7 @@
 import { isRecord } from './guards';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { isLanguage } from '$lib/i18n/locales';
 import type {
   ApprovedModelSummary,
   ApprovedRuntimeSummary,
@@ -401,7 +402,7 @@ function validateFileIds(value: readonly string[]): readonly string[] {
 }
 
 function validateLocale(value: unknown): AssistantLocale {
-  if (value !== 'ru' && value !== 'en') throw invalid();
+  if (!isLanguage(value)) throw invalid();
   return value;
 }
 

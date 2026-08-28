@@ -1,8 +1,9 @@
 export type ProviderId = 'openai-compatible-local' | 'managed-llama-cpp';
+import type { Language } from '$lib/i18n/locales';
 import type { EffortLevel } from './effort';
 
 export type HarnessId = 'minimal' | 'native-localcomet';
-export type AssistantLocale = 'ru' | 'en';
+export type AssistantLocale = Language;
 export type GatewayStatus =
   | 'Not configured'
   | 'Probing'

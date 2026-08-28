@@ -9,6 +9,12 @@ default-run = "localcomet-desktop"
 name = "localcomet_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+# Only the canonical hidden-desktop harness enables this to exercise a real
+# post-grant cancellation path. It is intentionally absent from normal builds.
+isolated-cu-test-hook = []
+
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
 

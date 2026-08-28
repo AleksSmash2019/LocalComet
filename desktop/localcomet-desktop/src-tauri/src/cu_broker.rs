@@ -9,7 +9,7 @@
 //! * no arbitrary executable paths — only entries of the built-in app registry
 //!   (resolved from System32 or the App Paths registration);
 //! * no shell, no arbitrary command-line arguments; browser navigation passes
-//!   exactly one validated HTTPS YouTube URL (plus harness-owned isolation flags);
+//!   exactly one validated HTTP(S) URL (plus harness-owned isolation flags);
 //! * the execution grant consumed by `run_tool_call` is RE-VERIFIED here
 //!   against the exact canonical input bytes before anything is launched;
 //! * HIDDEN MODE: when the harness provides a hidden desktop name, every
@@ -34,12 +34,48 @@ const POSTCONDITION_POLL: Duration = Duration::from_millis(250);
 /// How long a spawned launch stays observable for continuation checks.
 const CONTINUATION_TTL: Duration = Duration::from_secs(600);
 
+/// Test-only readiness fault injection for the canonical hidden desktop harness.
+/// This function is compiled only when the harness explicitly builds the
+/// dedicated `isolated-cu-test-hook` Cargo feature. Normal product builds do
+/// not contain an environment-driven continuation-forcing path at all.
+#[cfg(feature = "isolated-cu-test-hook")]
+fn isolated_pending_fault_injection_enabled(action: &str, hidden_desktop: Option<&str>) -> bool {
+    matches!(action, "open_app" | "open_url")
+        && hidden_desktop.is_some()
+        && std::env::var("LOCALCOMET_ISOLATED_CU_CAPABILITIES")
+            .ok()
+            .as_deref()
+            == Some(crate::permission_context::ISOLATED_TEST_SENTINEL)
+        && std::env::var("LC_FORCE_BROKER_CONTINUATION_PENDING")
+            .ok()
+            .as_deref()
+            == Some("1")
+}
+
+#[cfg(not(feature = "isolated-cu-test-hook"))]
+fn isolated_pending_fault_injection_enabled(_action: &str, _hidden_desktop: Option<&str>) -> bool {
+    false
+}
+
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::{
-    Foundation::{CloseHandle, HANDLE},
-    System::Threading::{CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW},
+    Foundation::{CloseHandle, FILETIME, HANDLE},
+    System::Threading::{
+        CreateProcessW, GetProcessTimes, OpenProcess, PROCESS_INFORMATION,
+        PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
+    },
     UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible},
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ProcessIdentity {
+    pid: u32,
+    creation_time_100ns: u64,
+}
+
+fn process_identity_matches(expected: Option<u64>, observed: Option<u64>) -> bool {
+    matches!((expected, observed), (Some(expected), Some(observed)) if expected == observed)
+}
 
 struct AppEntry {
     /// Static path relative to `%SystemRoot%`, when the app lives there.
@@ -172,6 +208,7 @@ pub fn broker_action(input: &Value) -> Option<&'static str> {
         "open_app" => Some("open_app"),
         "open_folder" => Some("open_folder"),
         "open_url" => Some("open_url"),
+        "close_owned" => Some("close_owned"),
         _ => None,
     }
 }
@@ -209,30 +246,78 @@ struct ResolvedLaunch {
     browser_cdp_port: Option<u16>,
 }
 
-fn validate_youtube_url(raw: &str) -> Result<String, String> {
+fn validate_browser_url(raw: &str) -> Result<String, String> {
     let raw = raw.trim();
+    if raw.is_empty() || raw.len() > 2048 {
+        return Err("URL must be non-empty and at most 2048 characters".into());
+    }
+    if raw
+        .chars()
+        .any(|character| character.is_ascii_control() || character.is_whitespace())
+    {
+        return Err("URL must not contain whitespace or control characters".into());
+    }
     let authority = raw
-        .strip_prefix("https://")
+        .strip_prefix("http://")
+        .or_else(|| raw.strip_prefix("https://"))
         .and_then(|rest| rest.split(['/', '?', '#']).next())
         .unwrap_or_default();
     if authority.contains('@') || authority.contains(':') {
-        return Err("URL credentials and explicit ports are not allowed".into());
+        return Err("URL credentials, explicit ports, and IPv6 literals are not allowed".into());
     }
     let parsed = Url::parse(raw).map_err(|_| "URL is not valid".to_owned())?;
-    if parsed.scheme() != "https" {
-        return Err("only HTTPS URLs are allowed".into());
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("only HTTP and HTTPS URLs are allowed".into());
     }
     if parsed.username() != "" || parsed.password().is_some() || parsed.port().is_some() {
         return Err("URL credentials and explicit ports are not allowed".into());
     }
-    let host = parsed
+    parsed
         .host_str()
-        .ok_or_else(|| "URL host is missing".to_owned())?
-        .to_ascii_lowercase();
-    if !matches!(host.as_str(), "youtube.com" | "www.youtube.com") {
-        return Err("only youtube.com URLs are allowed".into());
-    }
+        .filter(|host| !host.trim().is_empty())
+        .ok_or_else(|| "URL host is missing".to_owned())?;
     Ok(parsed.to_string())
+}
+
+fn hidden_browser_launch_options(
+    hidden_desktop: Option<&str>,
+    canonical: &str,
+) -> Result<(Vec<String>, Option<u16>), String> {
+    if hidden_desktop.is_none() || !matches!(canonical, "chrome" | "msedge" | "firefox") {
+        return Ok((Vec::new(), None));
+    }
+    let profile = std::env::var("LC_HIDDEN_BROWSER_PROFILE_DIR")
+        .map_err(|_| "hidden browser profile is not configured".to_owned())?;
+    validate_hidden_browser_profile(&profile)?;
+    let port = std::env::var("LC_HIDDEN_BROWSER_CDP_PORT")
+        .map_err(|_| "hidden browser CDP port is not configured".to_owned())?
+        .parse::<u16>()
+        .map_err(|_| "hidden browser CDP port is invalid".to_owned())?;
+    if !(1024..=65535).contains(&port) {
+        return Err("hidden browser CDP port is outside the user-port range".into());
+    }
+    if std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
+        return Err("hidden browser CDP port is already in use".into());
+    }
+    let mut args = Vec::new();
+    if canonical == "firefox" {
+        args.push("--profile".into());
+        args.push(profile);
+        args.push("--no-remote".into());
+    } else {
+        args.push(format!("--user-data-dir={profile}"));
+        args.push("--no-first-run".into());
+        args.push("--no-default-browser-check".into());
+    }
+    args.push(format!("--remote-debugging-port={port}"));
+    if canonical != "firefox" {
+        // An explicit blank document makes open_app observable through the
+        // broker-owned CDP endpoint before any user-driven navigation. It is a
+        // fixed internal argument, never model-controlled URL data.
+        args.push("--new-window".into());
+        args.push("about:blank".into());
+    }
+    Ok((args, Some(port)))
 }
 
 fn plan_launch(
@@ -260,6 +345,21 @@ fn plan_launch(
     let lowered = target_value.to_ascii_lowercase();
     match action {
         "open_app" => {
+            // Strict separation: open_app must not carry a URL. If the planner
+            // sent a URL, the typed contract requires open_url instead.
+            if let Some(url_str) = url_raw.as_str() {
+                if !url_str.trim().is_empty() {
+                    return Err(
+                        "open_app must not include a URL; use open_url for browser navigation"
+                            .into(),
+                    );
+                }
+            } else if !url_raw.is_null() && url_raw != &Value::Null {
+                // Non-string URL payload is a schema violation.
+                if !url_raw.is_null() {
+                    return Err("open_app URL field must be absent or empty".into());
+                }
+            }
             let Some(canonical) = normalize_target(&Value::String(lowered.clone())) else {
                 return Err("target app is not in the broker allowlist".into());
             };
@@ -271,14 +371,16 @@ fn plan_launch(
             let program = resolve_program(entry).ok_or_else(|| {
                 "allowlisted app executable was not found on this system".to_owned()
             })?;
+            let (args, browser_cdp_port) =
+                hidden_browser_launch_options(hidden_desktop, &canonical)?;
             Ok(ResolvedLaunch {
                 program,
-                args: Vec::new(),
+                args,
                 process_names: entry.process_names,
                 allow_reparented_process: entry.allow_reparented_process,
                 shell_reused: canonical == "explorer",
                 browser_url: None,
-                browser_cdp_port: None,
+                browser_cdp_port,
             })
         }
         "open_folder" => {
@@ -326,33 +428,9 @@ fn plan_launch(
             let url = url_raw
                 .as_str()
                 .ok_or_else(|| "open_url requires a URL string".to_owned())?;
-            let validated_url = validate_youtube_url(url)?;
-            let mut args = Vec::new();
-            let browser_cdp_port = if hidden_desktop.is_some() {
-                let profile = std::env::var("LC_HIDDEN_BROWSER_PROFILE_DIR")
-                    .map_err(|_| "hidden browser profile is not configured".to_owned())?;
-                validate_hidden_browser_profile(&profile)?;
-                let port = std::env::var("LC_HIDDEN_BROWSER_CDP_PORT")
-                    .map_err(|_| "hidden browser CDP port is not configured".to_owned())?
-                    .parse::<u16>()
-                    .map_err(|_| "hidden browser CDP port is invalid".to_owned())?;
-                if !(1024..=65535).contains(&port) {
-                    return Err("hidden browser CDP port is outside the user-port range".into());
-                }
-                if canonical == "firefox" {
-                    args.push("--profile".into());
-                    args.push(profile);
-                    args.push("--no-remote".into());
-                } else {
-                    args.push(format!("--user-data-dir={profile}"));
-                    args.push("--no-first-run".into());
-                    args.push("--no-default-browser-check".into());
-                }
-                args.push(format!("--remote-debugging-port={port}"));
-                Some(port)
-            } else {
-                None
-            };
+            let validated_url = validate_browser_url(url)?;
+            let (mut args, browser_cdp_port) =
+                hidden_browser_launch_options(hidden_desktop, &canonical)?;
             args.push(validated_url.clone());
             Ok(ResolvedLaunch {
                 program,
@@ -612,7 +690,11 @@ fn to_wide(value: &str) -> Vec<u16> {
 /// STARTUPINFO.lpDesktop — the binding happens BEFORE process creation, so the
 /// child can never flash on the interactive desktop in hidden mode.
 #[cfg(target_os = "windows")]
-fn create_process_on(program: &str, args: &[String], desktop: Option<&str>) -> Result<u32, String> {
+fn create_process_on(
+    program: &str,
+    args: &[String],
+    desktop: Option<&str>,
+) -> Result<ProcessIdentity, String> {
     use windows_sys::Win32::System::Threading::CREATE_UNICODE_ENVIRONMENT;
 
     let mut command_line = format!("\"{program}\"");
@@ -631,6 +713,7 @@ fn create_process_on(program: &str, args: &[String], desktop: Option<&str>) -> R
 
     let mut process_info: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
     let flags = CREATE_UNICODE_ENVIRONMENT;
+    crate::startup::record_runtime("broker_create_process", "enter", "open_app");
     let ok = unsafe {
         CreateProcessW(
             program_w.as_mut_ptr(),
@@ -645,6 +728,11 @@ fn create_process_on(program: &str, args: &[String], desktop: Option<&str>) -> R
             &mut process_info,
         )
     };
+    crate::startup::record_runtime(
+        "broker_create_process",
+        "return",
+        if ok == 0 { "failed" } else { "success" },
+    );
     if ok == 0 {
         return Err(format!(
             "CreateProcessW failed (desktop={:?}): error {}",
@@ -653,11 +741,63 @@ fn create_process_on(program: &str, args: &[String], desktop: Option<&str>) -> R
         ));
     }
     let pid = process_info.dwProcessId;
+    crate::startup::record_runtime("broker_create_process", "identity_start", "open_app");
+    let mut creation_time = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    // GetProcessTimes requires valid writable buffers for all four FILETIME
+    // outputs. Passing NULL for the unused exit/kernel/user times is an invalid
+    // Win32 FFI contract and can surface as an access violation in the host
+    // process immediately after CreateProcessW succeeds.
+    let mut exit_time = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let mut kernel_time = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let mut user_time = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let queried = unsafe {
+        GetProcessTimes(
+            process_info.hProcess as HANDLE,
+            &mut creation_time,
+            &mut exit_time,
+            &mut kernel_time,
+            &mut user_time,
+        )
+    };
+    crate::startup::record_runtime(
+        "broker_create_process",
+        "identity_return",
+        if queried == 0 { "failed" } else { "success" },
+    );
     unsafe {
+        if queried == 0 {
+            // The process is ours and has not been exposed to the registry yet;
+            // terminate it before returning a failed launch so identity-query
+            // failure cannot leak a broker-owned child.
+            let _ = windows_sys::Win32::System::Threading::TerminateProcess(
+                process_info.hProcess as HANDLE,
+                1,
+            );
+        }
         CloseHandle(process_info.hThread as HANDLE);
         CloseHandle(process_info.hProcess as HANDLE);
     }
-    Ok(pid)
+    crate::startup::record_runtime("broker_create_process", "handles_closed", "open_app");
+    if queried == 0 {
+        return Err("GetProcessTimes failed; refusing to register an unidentifiable child".into());
+    }
+    Ok(ProcessIdentity {
+        pid,
+        creation_time_100ns: ((creation_time.dwHighDateTime as u64) << 32)
+            | creation_time.dwLowDateTime as u64,
+    })
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -665,7 +805,7 @@ fn create_process_on(
     _program: &str,
     _args: &[String],
     _desktop: Option<&str>,
-) -> Result<u32, String> {
+) -> Result<ProcessIdentity, String> {
     Err("broker spawn requires Windows".into())
 }
 
@@ -776,6 +916,8 @@ struct SpawnRecord {
     approval_id: String,
     approval_call_id: String,
     input_digest: [u8; 32],
+    /// Stable OS process creation identity used to reject same-image PID reuse.
+    creation_time_100ns: Option<u64>,
 }
 
 static SPAWN_REGISTRY: Mutex<Option<HashMap<String, SpawnRecord>>> = Mutex::new(None);
@@ -877,6 +1019,27 @@ pub fn validate_broker_action(
     input: &Value,
     workspace_path: Option<&str>,
 ) -> Result<(), String> {
+    if action == "close_owned" {
+        let target = input
+            .get("target")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        let ownership_request_id = input
+            .get("ownership_request_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        if target.is_empty()
+            || normalize_target(&Value::String(target.to_ascii_lowercase())).is_none()
+        {
+            return Err("close_owned target must be an allowlisted application".to_owned());
+        }
+        if !valid_request_id(ownership_request_id) {
+            return Err("close_owned ownership_request_id is invalid".to_owned());
+        }
+        return Ok(());
+    }
     let target = input.get("target").cloned().unwrap_or(Value::Null);
     let url = input.get("url").cloned().unwrap_or(Value::Null);
     plan_launch(action, &target, &url, workspace_path, None).map(|_| ())
@@ -970,6 +1133,16 @@ pub fn execute_broker_action(
         None => None,
     };
 
+    if action == "close_owned" {
+        return close_owned_process(
+            input,
+            grant,
+            &request_id,
+            &action_id,
+            validated_desktop.as_deref(),
+        );
+    }
+
     let launch = match plan_launch(
         action,
         &input.get("target").cloned().unwrap_or(Value::Null),
@@ -1007,114 +1180,138 @@ pub fn execute_broker_action(
 
     let foreground_before = current_foreground();
 
-    let pid = match create_process_on(&launch.program, &launch.args, validated_desktop.as_deref()) {
-        Ok(pid) => pid,
-        Err(error) => {
-            return envelope(
-                "failed",
-                true,
-                false,
-                "failed",
-                action,
-                &error,
-                json!({
-                    "mode": "cu_broker_spawn",
-                    "backend": "rust-host",
-                    "program": launch.program,
-                    "desktop": validated_desktop,
-                    "pid": Value::Null,
-                    "url": launch.browser_url.clone(),
-                    "cdp_port": launch.browser_cdp_port,
-                    "approval_id": grant.approval_id,
-                    "approval_call_id": grant.call_id,
-                    "input_digest": hex_digest(&grant.input_digest),
-                }),
-                &request_id,
-                &action_id,
-            );
-        }
-    };
+    crate::startup::record_runtime("broker_dispatch", "pre_spawn", action);
+    let identity =
+        match create_process_on(&launch.program, &launch.args, validated_desktop.as_deref()) {
+            Ok(identity) => identity,
+            Err(error) => {
+                return envelope(
+                    "failed",
+                    true,
+                    false,
+                    "failed",
+                    action,
+                    &error,
+                    json!({
+                        "mode": "cu_broker_spawn",
+                        "backend": "rust-host",
+                        "program": launch.program,
+                        "desktop": validated_desktop,
+                        "pid": Value::Null,
+                        "url": launch.browser_url.clone(),
+                        "cdp_port": launch.browser_cdp_port,
+                        "approval_id": grant.approval_id,
+                        "approval_call_id": grant.call_id,
+                        "input_digest": hex_digest(&grant.input_digest),
+                    }),
+                    &request_id,
+                    &action_id,
+                );
+            }
+        };
+    let pid = identity.pid;
+    crate::startup::record_runtime("broker_dispatch", "spawn_return", action);
 
     // Postcondition differs by mode:
     // hidden  — a visible window owned by the expected image MUST exist on the
     //           hidden desktop AND MUST NOT exist on the interactive desktop;
     // user    — legacy liveness/name signal (explicitly requested user mode).
-    let (verified, window_evidence): (bool, Value) = match validated_desktop.as_deref() {
-        Some(name) => {
-            let deadline = Instant::now() + POSTCONDITION_TIMEOUT;
-            loop {
-                let (observed_pid, leaked_to_user, observation_unavailable, observation_debug) =
-                    hidden_process_observation(
-                        pid,
-                        launch.process_names,
-                        name,
-                        launch.allow_reparented_process,
-                        &baseline_hidden_pids,
-                        &baseline_user_pids,
-                    );
-                if observation_unavailable {
-                    break (
-                        false,
-                        json!({
-                            "on_hidden_desktop": false,
-                            "on_user_desktop": false,
-                            "observation_error": "desktop_observation_unavailable",
-                            "spawned_pid": pid,
-                            "observation": observation_debug,
-                        }),
-                    );
-                }
-                if let Some(observed_pid) = observed_pid {
-                    if !leaked_to_user {
+    crate::startup::record_runtime("broker_dispatch", "postcondition_start", action);
+    let (postcondition_verified, mut window_evidence): (bool, Value) =
+        match validated_desktop.as_deref() {
+            Some(name) => {
+                let deadline = Instant::now() + POSTCONDITION_TIMEOUT;
+                loop {
+                    let (observed_pid, leaked_to_user, observation_unavailable, observation_debug) =
+                        hidden_process_observation(
+                            pid,
+                            launch.process_names,
+                            name,
+                            launch.allow_reparented_process,
+                            &baseline_hidden_pids,
+                            &baseline_user_pids,
+                        );
+                    if observation_unavailable {
                         break (
-                            true,
+                            false,
                             json!({
-                                "on_hidden_desktop": true,
+                                "on_hidden_desktop": false,
                                 "on_user_desktop": false,
-                                "observed_pid": observed_pid,
+                                "observation_error": "desktop_observation_unavailable",
                                 "spawned_pid": pid,
                                 "observation": observation_debug,
                             }),
                         );
                     }
+                    if let Some(observed_pid) = observed_pid {
+                        if !leaked_to_user {
+                            break (
+                                true,
+                                json!({
+                                    "on_hidden_desktop": true,
+                                    "on_user_desktop": false,
+                                    "observed_pid": observed_pid,
+                                    "spawned_pid": pid,
+                                    "observation": observation_debug,
+                                }),
+                            );
+                        }
+                    }
+                    if leaked_to_user {
+                        break (
+                            false,
+                            json!({
+                                "on_hidden_desktop": false,
+                                "on_user_desktop": true,
+                                "spawned_pid": pid,
+                                "observation": observation_debug,
+                            }),
+                        );
+                    }
+                    if Instant::now() >= deadline {
+                        break (
+                            false,
+                            json!({
+                                "on_hidden_desktop": false,
+                                "on_user_desktop": false,
+                                "spawned_pid": pid,
+                                "observation": observation_debug,
+                            }),
+                        );
+                    }
+                    std::thread::sleep(POSTCONDITION_POLL);
                 }
-                if leaked_to_user {
-                    break (
-                        false,
-                        json!({
-                            "on_hidden_desktop": false,
-                            "on_user_desktop": true,
-                            "spawned_pid": pid,
-                            "observation": observation_debug,
-                        }),
-                    );
-                }
-                if Instant::now() >= deadline {
-                    break (
-                        false,
-                        json!({
-                            "on_hidden_desktop": false,
-                            "on_user_desktop": false,
-                            "spawned_pid": pid,
-                            "observation": observation_debug,
-                        }),
-                    );
-                }
-                std::thread::sleep(POSTCONDITION_POLL);
             }
+            None => {
+                let reached = launch.shell_reused
+                    || postcondition_reached(
+                        pid,
+                        launch.process_names,
+                        &snapshot_pids(),
+                        POSTCONDITION_TIMEOUT,
+                    );
+                (reached, json!({"mode": "process_liveness"}))
+            }
+        };
+    let forced_pending =
+        isolated_pending_fault_injection_enabled(action, validated_desktop.as_deref());
+    let verified = if forced_pending {
+        if let Value::Object(details) = &mut window_evidence {
+            details.insert(
+                "isolated_pending_fault_injection".to_owned(),
+                Value::Bool(true),
+            );
         }
-        None => {
-            let reached = launch.shell_reused
-                || postcondition_reached(
-                    pid,
-                    launch.process_names,
-                    &snapshot_pids(),
-                    POSTCONDITION_TIMEOUT,
-                );
-            (reached, json!({"mode": "process_liveness"}))
-        }
+        false
+    } else {
+        postcondition_verified
     };
 
+    crate::startup::record_runtime(
+        "broker_dispatch",
+        "postcondition_return",
+        if verified { "verified" } else { "pending" },
+    );
     let foreground_after = current_foreground();
     let focus_unchanged = foreground_before == foreground_after;
     let reported_pid = window_evidence
@@ -1153,10 +1350,82 @@ pub fn execute_broker_action(
                 approval_id: grant.approval_id.clone(),
                 approval_call_id: grant.call_id.clone(),
                 input_digest: grant.input_digest,
+                creation_time_100ns: Some(identity.creation_time_100ns),
             },
         );
     }
 
+    crate::startup::record_runtime("broker_dispatch", "continuation_start", action);
+    // Broker-owned one-time continuation capability (master prompt Part I):
+    // issued by Rust only, bound to this exact approved spawn correlation.
+    // Raw token lives only inside this response envelope; the registry keeps
+    // solely its SHA-256 hash. Duplicate issue for the same correlation does
+    // not re-reveal the token.
+    let mut continuation_json = Value::Null;
+    if !request_id.is_empty() {
+        // F-02 honesty contract: advertise ONLY actions the host runtime can
+        // actually verify. The broker implements exactly one continuation
+        // primitive today (bounded readiness observation); wait/wait_for_window
+        // have no host-side postcondition executor and must not be promised.
+        let allowed_next: Vec<String> = crate::cu_continuation::HOST_IMPLEMENTED_NEXT_ACTIONS
+            .iter()
+            .map(|kind| (*kind).to_owned())
+            .collect();
+        let idempotency_key = format!(
+            "{}:{}:{}",
+            hex_digest(&grant.input_digest),
+            request_id,
+            action_id
+        );
+        let task_id = format!("task_{request_id}");
+        let step_id = format!("step_{action_id}");
+        let postcondition_kind = if launch.browser_url.is_some() {
+            "browser_readiness"
+        } else {
+            "process_liveness"
+        };
+        // ExecutionGrant.workspace is the canonical path used by the approval
+        // scope, not its digest. Recompute the digest from that Rust-validated
+        // path here; consume validates against the confirmed WorkspaceIdentity
+        // digest. Passing the path into `workspace_digest` was a latent binding
+        // bug that made every real continuation consume fail closed.
+        let continuation_workspace_digest =
+            crate::workspace::workspace_digest(std::path::Path::new(&grant.workspace));
+        if let Ok(receipt) = crate::cu_continuation::issue_continuation_grant(
+            &crate::cu_continuation::ContinuationIssueRequest {
+                task_id: &task_id,
+                step_id: &step_id,
+                parent_request_id: &request_id,
+                parent_action_id: &action_id,
+                parent_input_digest: &grant.input_digest,
+                session_id: &grant.session,
+                workspace_digest: &continuation_workspace_digest,
+                hidden_desktop: validated_desktop.as_deref(),
+                target: input
+                    .get("target")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                allowed_next_actions: &allowed_next,
+                expected_postcondition_kind: postcondition_kind,
+                step_index: 0,
+                remaining_steps: 2,
+                ttl_ms: crate::cu_continuation::default_ttl_ms(),
+                idempotency_key: &idempotency_key,
+            },
+        ) {
+            continuation_json = json!({
+                "schema_version": receipt.schema_version,
+                "grant_ref": receipt.grant_ref,
+                "grant_state": receipt.grant_state,
+                "allowed_next_actions": receipt.allowed_next_actions,
+                "step_index": receipt.step_index,
+                "remaining_steps": receipt.remaining_steps,
+                "expires_at_unix_ms": receipt.expires_at_unix_ms,
+            });
+        }
+    }
+
+    crate::startup::record_runtime("broker_dispatch", "envelope", action);
     envelope(
         status,
         terminal,
@@ -1179,10 +1448,277 @@ pub fn execute_broker_action(
             "approval_id": grant.approval_id,
             "approval_call_id": grant.call_id,
             "input_digest": hex_digest(&grant.input_digest),
+            "continuation": continuation_json,
         }),
         &request_id,
         &action_id,
     )
+}
+
+fn close_owned_process(
+    input: &Value,
+    grant: &crate::approval::ExecutionGrant,
+    request_id: &str,
+    action_id: &str,
+    hidden_desktop: Option<&str>,
+) -> Value {
+    let parent_request_id = input
+        .get("ownership_request_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let target = input
+        .get("target")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    if !valid_request_id(request_id)
+        || !valid_action_id(action_id)
+        || !valid_request_id(parent_request_id)
+        || target.is_empty()
+    {
+        return blocked_envelope(
+            "close_owned",
+            "close_owned requires valid current and ownership request ids plus a target",
+            request_id,
+            action_id,
+        );
+    }
+
+    let record = {
+        let mut guard = registry();
+        let map = guard.get_or_insert_with(HashMap::new);
+        let now = Instant::now();
+        map.retain(|_, record| record.expires_at > now);
+        let Some(record) = map.get(parent_request_id) else {
+            return blocked_envelope(
+                "close_owned",
+                "ownership record is missing or expired; refusing to close",
+                request_id,
+                action_id,
+            );
+        };
+        record.clone()
+    };
+
+    if record.action != "open_app" && record.action != "open_url" && record.action != "open_folder"
+    {
+        return blocked_envelope(
+            "close_owned",
+            "ownership record is not a broker launch",
+            request_id,
+            action_id,
+        );
+    }
+    if record.input_digest == grant.input_digest {
+        return blocked_envelope(
+            "close_owned",
+            "close approval must be distinct from the launch approval",
+            request_id,
+            action_id,
+        );
+    }
+    if let Some(expected_desktop) = record.desktop.as_deref() {
+        if hidden_desktop != Some(expected_desktop) {
+            return blocked_envelope(
+                "close_owned",
+                "close desktop binding does not match the owned launch",
+                request_id,
+                action_id,
+            );
+        }
+    } else if hidden_desktop.is_some() {
+        return blocked_envelope(
+            "close_owned",
+            "hidden close cannot target an interactive-desktop launch",
+            request_id,
+            action_id,
+        );
+    }
+
+    let expected_target = normalize_target(&Value::String(target.to_ascii_lowercase()));
+    let target_entry = expected_target.and_then(|name| app_entry(&name));
+    let Some(target_entry) = target_entry else {
+        return blocked_envelope(
+            "close_owned",
+            "close target is not in the broker allowlist",
+            request_id,
+            action_id,
+        );
+    };
+    if !target_entry.process_names.iter().any(|expected| {
+        record
+            .process_names
+            .iter()
+            .any(|observed| observed == expected)
+    }) {
+        return blocked_envelope(
+            "close_owned",
+            "close target does not match the owned launch image",
+            request_id,
+            action_id,
+        );
+    }
+
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All);
+    let process = system.process(sysinfo::Pid::from_u32(record.pid));
+    let Some(process) = process else {
+        let mut guard = registry();
+        if let Some(map) = guard.as_mut() {
+            map.remove(parent_request_id);
+        }
+        return envelope(
+            "completed",
+            true,
+            true,
+            "verified",
+            "close_owned",
+            "",
+            json!({
+                "mode": "cu_broker_close_owned",
+                "backend": "rust-host",
+                "ownership_request_id": parent_request_id,
+                "pid": record.pid,
+                "already_exited": true,
+                "approval_id": grant.approval_id,
+                "approval_call_id": grant.call_id,
+                "input_digest": hex_digest(&grant.input_digest),
+            }),
+            request_id,
+            action_id,
+        );
+    };
+    let process_name = process.name().to_string_lossy().to_ascii_lowercase();
+    #[cfg(target_os = "windows")]
+    let observed_creation_time = {
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, record.pid) };
+        if handle.is_null() {
+            None
+        } else {
+            let mut creation = FILETIME {
+                dwLowDateTime: 0,
+                dwHighDateTime: 0,
+            };
+            let ok = unsafe {
+                GetProcessTimes(
+                    handle,
+                    &mut creation,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+            unsafe {
+                CloseHandle(handle);
+            }
+            (ok != 0)
+                .then_some(((creation.dwHighDateTime as u64) << 32) | creation.dwLowDateTime as u64)
+        }
+    };
+    #[cfg(not(target_os = "windows"))]
+    let observed_creation_time: Option<u64> = None;
+    if !process_identity_matches(record.creation_time_100ns, observed_creation_time) {
+        return blocked_envelope(
+            "close_owned",
+            "owned PID creation identity changed or is unavailable; refusing to terminate",
+            request_id,
+            action_id,
+        );
+    }
+    if !record
+        .process_names
+        .iter()
+        .any(|expected| *expected == process_name)
+    {
+        return blocked_envelope(
+            "close_owned",
+            "owned PID image changed; refusing to terminate a reused PID",
+            request_id,
+            action_id,
+        );
+    }
+    if record.desktop.is_some() {
+        let Some(pids) = desktop_query::pids_with_windows(record.desktop.as_deref()) else {
+            return blocked_envelope(
+                "close_owned",
+                "owned desktop observation unavailable; refusing to close",
+                request_id,
+                action_id,
+            );
+        };
+        if !pids.contains(&record.pid) {
+            return blocked_envelope(
+                "close_owned",
+                "owned process is not observed on its bound desktop",
+                request_id,
+                action_id,
+            );
+        }
+    }
+    if !process.kill() {
+        return blocked_envelope(
+            "close_owned",
+            "owned process termination was rejected by the OS",
+            request_id,
+            action_id,
+        );
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let mut verify = sysinfo::System::new();
+        verify.refresh_processes(sysinfo::ProcessesToUpdate::All);
+        if verify.process(sysinfo::Pid::from_u32(record.pid)).is_none() {
+            let mut guard = registry();
+            if let Some(map) = guard.as_mut() {
+                map.remove(parent_request_id);
+            }
+            return envelope(
+                "completed",
+                true,
+                true,
+                "verified",
+                "close_owned",
+                "",
+                json!({
+                    "mode": "cu_broker_close_owned",
+                    "backend": "rust-host",
+                    "ownership_request_id": parent_request_id,
+                    "pid": record.pid,
+                    "terminated": true,
+                    "approval_id": grant.approval_id,
+                    "approval_call_id": grant.call_id,
+                    "input_digest": hex_digest(&grant.input_digest),
+                }),
+                request_id,
+                action_id,
+            );
+        }
+        if Instant::now() >= deadline {
+            return envelope(
+                "launch_pending",
+                false,
+                false,
+                "pending",
+                "close_owned",
+                "termination was requested but the owned process is still alive",
+                json!({
+                    "mode": "cu_broker_close_owned",
+                    "backend": "rust-host",
+                    "ownership_request_id": parent_request_id,
+                    "pid": record.pid,
+                    "terminated": false,
+                    "approval_id": grant.approval_id,
+                    "approval_call_id": grant.call_id,
+                    "input_digest": hex_digest(&grant.input_digest),
+                }),
+                request_id,
+                action_id,
+            );
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn current_foreground() -> usize {
@@ -1368,7 +1904,7 @@ pub(crate) fn valid_action_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"_-.:".contains(&byte))
 }
 
-fn hex_digest(digest: &[u8; 32]) -> String {
+pub(crate) fn hex_digest(digest: &[u8; 32]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -1382,6 +1918,19 @@ mod tests {
     const EXPIRED_REQUEST_ID: &str = "111111111111111111111111";
     const PENDING_REQUEST_ID: &str = "222222222222222222222222";
     const BINDING_REQUEST_ID: &str = "333333333333333333333333";
+
+    // Serialise tests that touch the global SPAWN_REGISTRY. Without this,
+    // parallel cargo test interleaves register_spawn retain() (which prunes
+    // expired entries) with concurrent observe_broker_action, causing
+    // observe_expired_record_returns_honest_failed to flap.
+    static REGISTRY_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn clear_registry_for_test() {
+        let mut guard = super::SPAWN_REGISTRY
+            .lock()
+            .expect("cu_broker spawn registry poisoned for test");
+        *guard = Some(HashMap::new());
+    }
 
     fn grant_for(input: &Value) -> crate::approval::ExecutionGrant {
         crate::approval::ExecutionGrant {
@@ -1415,29 +1964,89 @@ mod tests {
             })),
             Some("open_url")
         );
+        assert_eq!(
+            broker_action(&json!({
+                "action": "close_owned",
+                "target": "notepad",
+                "ownership_request_id": REQUEST_ID
+            })),
+            Some("close_owned")
+        );
         assert_eq!(broker_action(&json!({"action": "wait"})), None);
         assert_eq!(broker_action(&json!({"action": "screenshot"})), None);
         assert_eq!(broker_action(&json!({})), None);
     }
 
     #[test]
-    fn youtube_url_allowlist_is_exact_and_https_only() {
+    fn close_owned_without_ownership_record_is_blocked() {
+        let input = json!({
+            "action": "close_owned",
+            "target": "notepad",
+            "ownership_request_id": REQUEST_ID,
+        });
+        let result = execute_broker_action(
+            "close_owned",
+            &input,
+            Some(&grant_for(&input)),
+            Some(BINDING_REQUEST_ID),
+            Some(ACTION_ID),
+            None,
+            None,
+        );
+        assert_eq!(result["status"], "blocked");
+        assert_eq!(result["terminal"], json!(true));
+        assert_eq!(result["succeeded"], json!(false));
+        assert!(result["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("ownership"));
+    }
+
+    #[test]
+    fn browser_url_accepts_http_or_https_without_credentials_or_port() {
         assert_eq!(
-            validate_youtube_url("https://www.youtube.com/watch?v=abc").unwrap(),
+            validate_browser_url("https://www.youtube.com/watch?v=abc").unwrap(),
             "https://www.youtube.com/watch?v=abc"
         );
+        assert_eq!(
+            validate_browser_url("http://example.com/path?q=1").unwrap(),
+            "http://example.com/path?q=1"
+        );
         for invalid in [
-            "http://www.youtube.com/",
-            "https://youtube.com.evil.example/",
-            "https://www.youtube.com:443/",
-            "https://user:pass@www.youtube.com/",
-            "https://example.com/",
+            "javascript:alert(1)",
+            "file:///C:/Windows/System32/notepad.exe",
+            "https://example.com:443/",
+            "https://user:pass@example.com/",
+            "https://example.com/with whitespace",
+            "https://example.com/\u{0000}",
         ] {
             assert!(
-                validate_youtube_url(invalid).is_err(),
-                "must reject {invalid}"
+                validate_browser_url(invalid).is_err(),
+                "must reject {invalid:?}"
             );
         }
+    }
+
+    #[test]
+    fn close_owned_preflight_is_allowlisted_and_id_bound() {
+        let valid = json!({
+            "action": "close_owned",
+            "target": "notepad",
+            "ownership_request_id": REQUEST_ID,
+        });
+        assert!(validate_broker_action("close_owned", &valid, None).is_ok());
+        let invalid_id = json!({
+            "action": "close_owned",
+            "target": "notepad",
+            "ownership_request_id": "not-a-request",
+        });
+        assert!(validate_broker_action("close_owned", &invalid_id, None).is_err());
+        let path = json!({
+            "action": "close_owned",
+            "target": "C:\\Windows\\System32\\notepad.exe",
+            "ownership_request_id": REQUEST_ID,
+        });
+        assert!(validate_broker_action("close_owned", &path, None).is_err());
     }
 
     #[test]
@@ -1458,6 +2067,12 @@ mod tests {
             "url": "https://www.youtube.com/"
         });
         assert!(validate_broker_action("open_url", &youtube, None).is_ok());
+        let generic_https = json!({
+            "action": "open_url",
+            "target": "browser",
+            "url": "https://example.com/"
+        });
+        assert!(validate_broker_action("open_url", &generic_https, None).is_ok());
     }
 
     #[test]
@@ -1675,6 +2290,14 @@ mod tests {
     }
 
     #[test]
+    fn same_image_pid_reuse_is_rejected_without_exact_creation_identity() {
+        assert!(!process_identity_matches(Some(100), Some(101)));
+        assert!(!process_identity_matches(Some(100), None));
+        assert!(!process_identity_matches(None, Some(100)));
+        assert!(process_identity_matches(Some(100), Some(100)));
+    }
+
+    #[test]
     fn process_descends_from_accepts_the_same_process() {
         let pid = std::process::id();
         assert!(process_descends_from(pid, pid));
@@ -1682,6 +2305,10 @@ mod tests {
 
     #[test]
     fn observe_expired_record_returns_honest_failed() {
+        let _lock = REGISTRY_TEST_LOCK
+            .lock()
+            .expect("registry test lock poisoned");
+        clear_registry_for_test();
         register_spawn(
             EXPIRED_REQUEST_ID,
             SpawnRecord {
@@ -1700,6 +2327,7 @@ mod tests {
                 approval_id: String::new(),
                 approval_call_id: String::new(),
                 input_digest: [0u8; 32],
+                creation_time_100ns: None,
             },
         );
         let result =
@@ -1710,6 +2338,10 @@ mod tests {
 
     #[test]
     fn observe_unready_record_stays_pending_without_respawn() {
+        let _lock = REGISTRY_TEST_LOCK
+            .lock()
+            .expect("registry test lock poisoned");
+        clear_registry_for_test();
         // pid 0 never matches a real process and the name cannot appear, so
         // the observation must stay pending — proving no respawn happened.
         register_spawn(
@@ -1730,6 +2362,7 @@ mod tests {
                 approval_id: String::new(),
                 approval_call_id: String::new(),
                 input_digest: [0u8; 32],
+                creation_time_100ns: None,
             },
         );
         let result = observe_broker_action(PENDING_REQUEST_ID).expect("record must exist");
@@ -1739,7 +2372,29 @@ mod tests {
     }
 
     #[test]
+    fn open_app_rejects_url_field_strict_separation() {
+        let with_url =
+            json!({"action": "open_app", "target": "notepad", "url": "https://example.com"});
+        assert!(validate_broker_action("open_app", &with_url, None)
+            .expect_err("open_app with URL must be blocked")
+            .contains("open_app must not include a URL"));
+        let notepad = json!({"action": "open_app", "target": "notepad"});
+        assert!(validate_broker_action("open_app", &notepad, None).is_ok());
+        let url_for_browser =
+            json!({"action": "open_url", "target": "chrome", "url": "https://example.com"});
+        assert!(validate_broker_action("open_url", &url_for_browser, None).is_ok());
+        let url_missing = json!({"action": "open_url", "target": "chrome"});
+        assert!(validate_broker_action("open_url", &url_missing, None)
+            .expect_err("open_url missing URL must be blocked")
+            .contains("URL"));
+    }
+
+    #[test]
     fn observe_envelope_echoes_persisted_binding() {
+        let _lock = REGISTRY_TEST_LOCK
+            .lock()
+            .expect("registry test lock poisoned");
+        clear_registry_for_test();
         // Plan P0.2: the continuation record carries request_id, action_id,
         // PID, target input digest and desktop binding; every observation
         // echoes them so UI/acceptance can verify the binding end-to-end.
@@ -1762,6 +2417,7 @@ mod tests {
                 approval_id: "appr_test".to_owned(),
                 approval_call_id: "call_test".to_owned(),
                 input_digest: digest,
+                creation_time_100ns: None,
             },
         );
         let result = observe_broker_action(BINDING_REQUEST_ID).expect("record must exist");

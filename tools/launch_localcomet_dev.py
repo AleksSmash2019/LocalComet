@@ -71,7 +71,7 @@ RUNTIME_IDENTITY_RELATIVE = (
 )
 RUNTIME_BINARIES_PREFIX = "desktop/localcomet-desktop/src-tauri/binaries/"
 LEGACY_RUNTIME_MANIFEST_RELATIVE = "localcomet_runtime_manifest.json"
-EXPECTED_TAURI_RESOURCE_IDENTITIES = 69
+EXPECTED_TAURI_RESOURCE_IDENTITIES = 76
 
 RUNTIME_IDENTITY_HEADER = "path\tbytes\tsha256\n"
 
@@ -1201,7 +1201,85 @@ def ensure_runtime_python(source_root: Path, *, script_path: Path | None = None)
     completed = subprocess.run(command, cwd=str(source_root), env=os.environ.copy(), check=False)
     raise SystemExit(completed.returncode)
 
+LAUNCHER_USAGE = """LocalComet Developer Launcher
+Usage: python tools/launch_localcomet_dev.py [--help] [--dry-run]
+
+Options:
+  --help, -h     Show this help and exit without launching
+  --dry-run      Validate source layout and runtime paths without launching
+  --probe-only   Alias for --dry-run (probe without side effects)
+  --stage-only   Synchronize and stage the runtime, then exit without launching
+
+Any other --flag is treated as unknown and exits without launching.
+"""
+
+ALLOWED_LAUNCHER_FLAGS = frozenset({"--help", "-h", "--dry-run", "--probe-only", "--stage-only", "--usage"})
+
+
+def _handle_launcher_cli_args() -> int | None:
+    """Validate CLI flags before any side effect or re-exec.
+
+    Returns None to continue normal launch, otherwise the process exit code
+    that must be returned without launching. Unknown flags print usage and
+    exit 2 without starting any native process (AC-001).
+    """
+    args = sys.argv[1:]
+    if not args:
+        return None
+    # Help always wins and never launches.
+    if any(flag in ("--help", "-h", "--usage") for flag in args):
+        print(LAUNCHER_USAGE, end="")
+        return 0
+    if any(flag == "--dry-run" or flag == "--probe-only" for flag in args):
+        # --dry-run is a safe probe: validate and exit with usage, never launch.
+        # If mixed with unknown flags, unknown wins as a hard error.
+        unknown = [flag for flag in args if flag.startswith("-") and flag not in ALLOWED_LAUNCHER_FLAGS]
+        if unknown:
+            print(f"Unknown flag(s): {' '.join(unknown)}", file=sys.stderr)
+            print(LAUNCHER_USAGE, file=sys.stderr, end="")
+            return 2
+        print(LAUNCHER_USAGE, end="")
+        # Lightweight validation only — no sync, no npm, no process spawn.
+        try:
+            source_root = source_root_from_launcher()
+            validate_source_layout(source_root)
+            paths = resolve_runtime_paths()
+            print(f"[dry-run] source={source_root}")
+            print(f"[dry-run] runtime={paths.workspace}")
+            print("[dry-run] validation OK - no process launched")
+        except LauncherHold as exc:
+            print(f"HOLD: {exc}", file=sys.stderr)
+            return 2
+        except Exception as exc:
+            print(f"HOLD: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
+        return 0
+    if "--stage-only" in args:
+        unknown = [flag for flag in args if flag.startswith("-") and flag not in ALLOWED_LAUNCHER_FLAGS]
+        if unknown:
+            print(f"Unknown flag(s): {' '.join(unknown)}", file=sys.stderr)
+            print(LAUNCHER_USAGE, file=sys.stderr, end="")
+            return 2
+        return None
+    # Any other flag-like argument is unknown -> usage and hard stop.
+    unknown_flags = [flag for flag in args if flag.startswith("-")]
+
+    if unknown_flags:
+        print(f"Unknown flag(s): {' '.join(unknown_flags)}", file=sys.stderr)
+        print(LAUNCHER_USAGE, file=sys.stderr, end="")
+        return 2
+    # Positional args are also not supported for the dev launcher.
+    if args:
+        print(f"Unknown argument(s): {' '.join(args)}", file=sys.stderr)
+        print(LAUNCHER_USAGE, file=sys.stderr, end="")
+        return 2
+    return None
+
+
 def main() -> int:
+    cli_exit = _handle_launcher_cli_args()
+    if cli_exit is not None:
+        return cli_exit
     source_root = source_root_from_launcher()
     ensure_runtime_python(source_root)
     log_path: Path | None = None
@@ -1271,8 +1349,13 @@ def main() -> int:
         write_log(log_path, f"sidecar_python={env['LOCALCOMET_TEST_PYTHON']}")
         write_log(log_path, f"application_data_root={env['LOCALCOMET_APP_DATA_ROOT']}")
         print_startup_summary(source_root, paths, dependency, env)
+        if "--stage-only" in sys.argv[1:]:
+            write_log(log_path, "stage_only=1; launch_skipped=1")
+            print("Runtime synchronized and staged; launch skipped (--stage-only)")
+            return 0
         write_log(log_path, "launch_start=npm run tauri dev")
         exit_code = launch_localcomet(runtime_app_dir, env)
+
         write_log(log_path, f"launch_exit_code={exit_code}")
         return exit_code
     except LauncherHold as exc:

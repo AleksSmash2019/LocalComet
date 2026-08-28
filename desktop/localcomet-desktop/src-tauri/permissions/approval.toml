@@ -5,7 +5,11 @@ commands.allow = [
   "request_approval",
   "resolve_tool_approval",
   "run_tool_call",
-  "cu_broker_observe"
+  "cu_broker_observe",
+  "cu_broker_continuation_consume",
+  "cu_broker_continuation_complete",
+  "cu_broker_continuation_revoke",
+  "intent_compile"
 ]
 
 [[permission]]

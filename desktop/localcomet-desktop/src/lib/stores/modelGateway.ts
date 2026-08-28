@@ -2,6 +2,12 @@ import { derived, get, writable } from 'svelte/store';
 import { DEFAULT_CONVERSATION_ID } from './conversationStore';
 import { parseToolCallResult } from '$lib/tools/computerUseEnvelope';
 import {
+  extractBrokerContinuationAndScrub,
+  redactGrantRefsInPlace,
+  stringifyForPersistence,
+  type BrokerContinuationHandle
+} from '$lib/security/redactContinuation';
+import {
   cancelModelTurn,
   getManagedInstalledArtifacts,
   getManagedModelCatalog,
@@ -64,7 +70,10 @@ import { assistantLocaleFor, locale } from '$lib/i18n';
 import { reportFilesContextInclusion, reportFilesRequestError } from '$lib/stores/files';
 import { workspaceStore } from '$lib/stores/workspace';
 import { runToolCall } from '$lib/bridge/approval';
-import { deriveBoundedNotepadTypeContinuation } from '$lib/tools/computerUseContinuation';
+import {
+  deriveBoundedBrowserSearchContinuation,
+  deriveBoundedNotepadTypeContinuation
+} from '$lib/tools/computerUseContinuation';
 import { invoke } from '@tauri-apps/api/core';
 import { rejectActiveApproval, requestApprovalForTool, setApprovalCorrelation } from '$lib/stores/approvalStore';
 import { DEFAULT_BASE_MODEL_ID } from '$lib/stores/modelDefault';
@@ -215,15 +224,87 @@ const CONTINUATION_POLL_INTERVAL_MS = 2000;
 // answers with a terminal failed envelope when it expires.
 const CONTINUATION_MAX_ATTEMPTS = 320;
 const activeContinuationRequests = new Set<string>();
+// Opaque broker continuation refs keyed by requestId (master prompt Part I).
+// In-memory only: raw refs never reach logs, ledger or evidence.
+const activeContinuationGrants = new Map<string, { grantRef: string }>();
 const activeTurnPrompts = new Map<string, string>();
 const activeTurnCalls = new Map<string, ModelToolCall>();
 
+type ContinuationTraceEvent = {
+  event: string;
+  request_id?: string;
+  status?: string;
+  revoked?: number;
+  found?: boolean;
+  error_code?: string;
+};
+
+/**
+ * Bounded, secret-free diagnostic trace for native acceptance only. The raw
+ * grant_ref and lease_id never enter this structure; it records only lifecycle
+ * transitions and request correlation so Stop/revoke/no-replay can be proven.
+ */
+function continuationErrorCode(error: unknown): string {
+  const raw = typeof error === 'string'
+    ? error
+    : error && typeof error === 'object'
+      ? String((error as { code?: unknown; message?: unknown }).code ?? (error as { message?: unknown }).message ?? '')
+      : '';
+  const match = raw.match(/[a-z][a-z0-9_]{2,}/g)?.find((token) => token.includes('_'));
+  return match ?? 'invoke_failed';
+}
+
+function recordContinuationTrace(event: ContinuationTraceEvent): void {
+  const target = globalThis as typeof globalThis & {
+    __LOCALCOMET_CONTINUATION_TRACE?: ContinuationTraceEvent[];
+  };
+  const trace = target.__LOCALCOMET_CONTINUATION_TRACE ?? [];
+  trace.push({ ...event });
+  if (trace.length > 64) trace.splice(0, trace.length - 64);
+  target.__LOCALCOMET_CONTINUATION_TRACE = trace;
+}
+
 export function cancelComputerUseContinuations(requestId?: string): void {
   if (requestId === undefined) {
+    for (const [id, grant] of activeContinuationGrants) {
+      recordContinuationTrace({ event: 'continuation_revoke_requested', request_id: id });
+      void invoke('cu_broker_continuation_revoke', {
+        grantRef: grant.grantRef,
+        reason: 'turn cancelled or stopped'
+      }).then((raw) => {
+        const response = raw as { revoked?: unknown };
+        recordContinuationTrace({
+          event: 'continuation_revoke_succeeded',
+          request_id: id,
+          revoked: typeof response.revoked === 'number' ? response.revoked : 0
+        });
+      }).catch((error) => {
+        recordContinuationTrace({ event: 'continuation_revoke_failed', request_id: id, error_code: continuationErrorCode(error) });
+      });
+      activeContinuationGrants.delete(id);
+    }
     activeContinuationRequests.clear();
     activeTurnPrompts.clear();
     activeTurnCalls.clear();
     return;
+  }
+  const grant = activeContinuationGrants.get(requestId);
+  if (grant) {
+    recordContinuationTrace({ event: 'continuation_revoke_requested', request_id: requestId });
+    void invoke('cu_broker_continuation_revoke', {
+      grantRef: grant.grantRef,
+      reason: 'turn cancelled or stopped'
+    }).then((raw) => {
+      const response = raw as { revoked?: unknown };
+      recordContinuationTrace({
+        event: 'continuation_revoke_succeeded',
+        request_id: requestId,
+        revoked: typeof response.revoked === 'number' ? response.revoked : 0
+      });
+    }).catch((error) => {
+      recordContinuationTrace({ event: 'continuation_revoke_failed', request_id: requestId, error_code: continuationErrorCode(error) });
+    });
+    activeContinuationGrants.delete(requestId);
   }
   activeContinuationRequests.delete(requestId);
 }
@@ -739,6 +820,8 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
         .catch(() => undefined);
     }, MANAGED_START_PROGRESS_POLL_MS);
     let watchdogFired = false;
+    let startFailed = false;
+    let startError: unknown;
     let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
     try {
       await Promise.race([
@@ -750,17 +833,39 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
           }, MANAGED_START_WATCHDOG_MS);
         })
       ]);
+    } catch (error) {
+      startFailed = true;
+      startError = error;
     } finally {
       clearInterval(progressTimer);
       if (watchdogTimer) clearTimeout(watchdogTimer);
     }
     if (watchdogFired) {
+      if (stillCurrent()) {
+        managedRuntimeStore.update((current) => ({
+          ...current,
+          lastError: normalizeGatewayError(startError)
+        }));
+      }
+      // Do not retry or abandon the original start. Its eventual backend
+      // result is observed once and converges the UI without spawning a second
+      // runtime or losing the terminal error.
       void startPromise
-        .catch(() => undefined)
         .then(() => {
-          if (stillCurrent()) void refreshManagedRuntimeStatus();
+          if (stillCurrent()) void refreshManagedRuntimeStatus().catch(() => undefined);
+        })
+        .catch((error) => {
+          if (stillCurrent()) {
+            managedRuntimeStore.update((current) => ({
+              ...current,
+              lastError: normalizeGatewayError(error)
+            }));
+            void refreshManagedRuntimeStatus().catch(() => undefined);
+          }
         });
+      return;
     }
+    if (startFailed) throw startError;
     if (!stillCurrent()) {
       void refreshManagedRuntimeStatus();
       return;
@@ -796,10 +901,25 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
     const normalized = normalizeGatewayError(error);
     managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: normalized }));
     clearManagedGatewayBinding();
+    try {
+      await refreshManagedRuntimeStatus();
+    } catch {
+      // Keep the normalized start error when the authoritative status endpoint
+      // is unavailable; never turn a failed start into an apparently healthy
+      // or indefinitely optimistic Starting state.
+    }
+    if (stillCurrent() && !get(managedRuntimeStore).lastError) {
+      managedRuntimeStore.update((current) => ({ ...current, lastError: normalized }));
+    }
   }
 }
 
 export async function stopSelectedManagedRuntime(): Promise<void> {
+  await stopSelectedManagedRuntimeInternal(true);
+}
+
+async function stopSelectedManagedRuntimeInternal(invalidatePending: boolean): Promise<void> {
+  if (invalidatePending) subscriptionGeneration += 1;
   const stateBeforeStop = get(managedRuntimeStore);
   const activeModelId = stateBeforeStop.status?.model_id ?? stateBeforeStop.selectedModelId;
   const activeModel = stateBeforeStop.catalog.find((model) => model.model_id === activeModelId);
@@ -940,7 +1060,7 @@ async function connectSelectedManagedModelOnce(): Promise<boolean> {
       state.status.model_id === state.selectedModelId;
     let runtimeWasStarted = false;
     if (!runningSelectedModel) {
-      if (state.status?.state === 'Ready') await stopSelectedManagedRuntime();
+      if (state.status?.state === 'Ready') await stopSelectedManagedRuntimeInternal(false);
       if (!stillCurrent()) return false;
       runtimeWasStarted = true;
       await startSelectedManagedRuntime(readiness);
@@ -1173,10 +1293,10 @@ export async function cancelLocalModelTurn(): Promise<void> {
   // not mutate cards after the user cancelled the turn (plan P0.2).
   if (requestId) cancelComputerUseContinuations(requestId);
   if (!requestId || !['submitted', 'accepted', 'streaming', 'awaiting_approval', 'awaiting_verification'].includes(current.lifecycle)) return;
-  if (current.lifecycle === 'awaiting_verification') {
-    terminalizeCurrentRequest('cancelled', 'model.turn.cancelled');
-    return;
-  }
+  // A launch_pending turn is still an active model turn: the UI is awaiting
+  // host verification, but the sidecar worker remains cancellable. Do not
+  // terminalize locally before the authoritative Rust acknowledgement; doing
+  // so made Stop race the continuation lease and left no terminal proof.
   clearInferenceTimer('acceptance');
   clearInferenceTimer('firstToken');
   clearInferenceTimer('inactivity');
@@ -1256,6 +1376,17 @@ export function applyModelGatewayEvent(event: ModelGatewayEvent): void {
   applyAcceptedModelEvent(event);
 }
 
+function enrichToolResultForPersistence(result: unknown, requestId: string, actionId: string): unknown {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
+  const payload = { ...(result as Record<string, unknown>) };
+  // These IDs are already authenticated at the model-event boundary. Add them
+  // only when the broker envelope omitted the optional display copy; preserve
+  // any conflicting value so the harness and UI can still expose a mismatch.
+  if (typeof payload.request_id !== 'string' || !payload.request_id) payload.request_id = requestId;
+  if (typeof payload.action_id !== 'string' || !payload.action_id) payload.action_id = actionId;
+  return payload;
+}
+
 function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
   const current = get(inferenceRequestStore);
   if (event.sequence !== current.nextSequence) {
@@ -1316,14 +1447,30 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
   if (event.method === 'model.tool.request') {
     if (current.lifecycle === 'cancelling') return;
     if (event.tool_calls) {
-      const toolCalls = event.tool_calls.map((tc) => ({
-        operation: tc.name,
-        target: JSON.stringify(tc.arguments),
-        status: 'WAITING' as const,
-        elapsed: '-',
-        detail: 'Tool execution requested',
-        result: ''
-      }));
+      const modelCall = event.tool_calls[0];
+      const originalPrompt = activeTurnPrompts.get(event.request_id);
+      const browserSearchOverride = modelCall && originalPrompt
+        ? deriveBoundedBrowserSearchContinuation(originalPrompt, modelCall)
+        : null;
+      // Some local models emit the initial browser open_app even though the
+      // explicit guarded smoke prompt has a prevalidated read-only Python.org
+      // navigation. Normalize only that exact shape before execution; the
+      // original model action ID remains the correlation identity and the
+      // replacement still goes through the ordinary Rust approval/broker path.
+      const executionCall = browserSearchOverride && modelCall
+        ? { ...browserSearchOverride, id: modelCall.id }
+        : modelCall;
+      const toolCalls = event.tool_calls.map((tc, index) => {
+        const visibleCall = index === 0 && executionCall ? executionCall : tc;
+        return {
+          operation: visibleCall.name,
+          target: stringifyForPersistence(visibleCall.arguments),
+          status: 'WAITING' as const,
+          elapsed: '-',
+          detail: 'Tool execution requested',
+          result: ''
+        };
+      });
       setAssistantToolCalls(event.request_id, toolCalls);
       inferenceRequestStore.update((state) => ({
         ...state,
@@ -1339,7 +1486,7 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
         clearInferenceTimer('inactivity');
         // Computer Use is dangerous in the Rust risk registry, so every action
         // must receive a scoped approval token before sidecar execution.
-        const call = event.tool_calls[0];
+        const call = executionCall;
         if (!call) {
           terminalizeCurrentRequest('failed', 'model.turn.failed', {
             code: 'invalid_payload',
@@ -1351,10 +1498,15 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
         const onResult = (result: unknown): void => {
           if (!canAcceptToolCallback(event.request_id)) return;
           const outcome = parseToolCallResult(call.name, result);
+          const persistableResult = enrichToolResultForPersistence(result, event.request_id, call.id);
           if (outcome.kind === 'pending') {
             if (!canAcceptToolCallback(event.request_id)) return;
+            // F-03: capture the one-time continuation capability FIRST, then
+            // scrub the raw cgr_ token from the envelope before it is
+            // stringified into chat card state or any persisted artifact.
+            const continuationHandle = extractBrokerContinuationAndScrub(result);
             setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
-              index === 0 ? { ...item, status: 'WAITING' as const, result: JSON.stringify(result) } : item
+              index === 0 ? { ...item, status: 'WAITING' as const, result: stringifyForPersistence(persistableResult) } : item
             ));
             // launch_pending is never terminal success: the turn stops in the
             // truthful awaiting-verification state instead of claiming
@@ -1364,18 +1516,22 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
             // Bounded continuation (plan P0.2): re-observe the recorded spawn
             // through cu_broker_observe - observation-only, no respawn, no new
             // token - until the broker reports a terminal envelope or its own
-            // continuation TTL expires with an honest failed answer.
+            // continuation TTL expires with an honest failed answer. When the
+            // broker issued a typed continuation capability, the poll loop
+            // consumes it once and completes it against the observed result.
             runBoundedLaunchContinuation(
               event.request_id,
               toolCalls[0],
-              call.name
+              call.name,
+              result,
+              continuationHandle
             );
             return;
           }
           if (outcome.kind === 'blocked') {
             if (!canAcceptToolCallback(event.request_id)) return;
             setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
-              index === 0 ? { ...item, status: 'BLOCKED' as const, result: JSON.stringify(result) } : item
+              index === 0 ? { ...item, status: 'BLOCKED' as const, result: stringifyForPersistence(persistableResult) } : item
             ));
             terminalizeCurrentRequest('failed', 'model.turn.failed', {
               code: 'tool_execution_blocked',
@@ -1400,22 +1556,30 @@ function applyAcceptedModelEvent(event: ModelGatewayEvent): void {
           }
           if (outcome.kind === 'verified_success' && call.name === 'computer_use') {
             if (maybeStartBoundedNotepadTypeContinuation(event.request_id, toolCalls[0], call, result)) return;
+            if (maybeStartBoundedBrowserSearchContinuation(event.request_id, toolCalls[0], call, result)) return;
           }
           if (outcome.kind === 'unverified_success' && call.name === 'computer_use') {
             if (!canAcceptToolCallback(event.request_id)) return;
             // Legacy adapter result (ok=true without the v1 envelope): at most
             // an unverified success - never a PASS pill or a completed turn.
             setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
-              index === 0 ? { ...item, status: 'UNVERIFIED' as const, result: JSON.stringify(result) } : item
+              index === 0 ? { ...item, status: 'UNVERIFIED' as const, result: stringifyForPersistence(persistableResult) } : item
             ));
             terminalizeCurrentRequest('awaiting_verification', 'model.turn.completed');
             return;
           }
           if (!canAcceptToolCallback(event.request_id)) return;
           setAssistantToolCalls(event.request_id, toolCalls.map((item, index) =>
-            index === 0 ? { ...item, status: 'PASS' as const, result: JSON.stringify(result) } : item
+            index === 0 ? { ...item, status: 'PASS' as const, result: stringifyForPersistence(persistableResult) } : item
           ));
-          terminalizeCurrentRequest('completed', 'model.turn.completed');
+          // Let Svelte mount the evidence-bearing ToolCallCard before terminal
+          // lifecycle cleanup runs. A macrotask is required here: a microtask
+          // can still run before the framework flushes the store update.
+          setTimeout(() => {
+            if (canAcceptToolCallback(event.request_id)) {
+              terminalizeCurrentRequest('completed', 'model.turn.completed');
+            }
+          }, 0);
         };
         const onError = (error: unknown): void => {
           if (!canAcceptToolCallback(event.request_id)) return;
@@ -1529,7 +1693,46 @@ function maybeStartBoundedNotepadTypeContinuation(
     inferenceRequestStore.update((state) => ({ ...state, lifecycle: 'streaming' }));
     modelGatewayStore.update((state) => ({ ...state, status: 'Generating' }));
   }
-  startBoundedNotepadTypeContinuation(requestId, firstToolCard, firstResult, continuationCall);
+  startBoundedInteractionContinuation(
+    requestId,
+    firstToolCard,
+    firstResult,
+    continuationCall,
+    'Bounded continuation requested after verified Notepad open'
+  );
+  return true;
+}
+
+function maybeStartBoundedBrowserSearchContinuation(
+  requestId: string,
+  firstToolCard: import('$lib/data/mockData').ToolCallMock,
+  firstCall: ModelToolCall,
+  firstResult: unknown
+): boolean {
+  const originalPrompt = activeTurnPrompts.get(requestId);
+  const derivedContinuation = originalPrompt
+    ? deriveBoundedBrowserSearchContinuation(originalPrompt, firstCall)
+    : null;
+  if (!derivedContinuation) return false;
+  let continuationCall: ModelToolCall;
+  try {
+    continuationCall = { ...derivedContinuation, id: createModelActionId() };
+  } catch (error) {
+    terminalizeCurrentRequest('failed', 'model.turn.failed', normalizeGatewayError(error));
+    return true;
+  }
+  const current = get(inferenceRequestStore);
+  if (current.requestId === requestId && current.lifecycle === 'awaiting_verification') {
+    inferenceRequestStore.update((state) => ({ ...state, lifecycle: 'streaming' }));
+    modelGatewayStore.update((state) => ({ ...state, status: 'Generating' }));
+  }
+  startBoundedInteractionContinuation(
+    requestId,
+    firstToolCard,
+    firstResult,
+    continuationCall,
+    'Bounded browser search requested after verified Chrome open'
+  );
   return true;
 }
 
@@ -1542,22 +1745,29 @@ function createModelActionId(): string {
   return `call_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function startBoundedNotepadTypeContinuation(
+function startBoundedInteractionContinuation(
   requestId: string,
   firstToolCard: import('$lib/data/mockData').ToolCallMock,
   firstResult: unknown,
-  continuationCall: ModelToolCall
+  continuationCall: ModelToolCall,
+  continuationDetail: string
 ): void {
   const continuationToolCard: import('$lib/data/mockData').ToolCallMock = {
     operation: continuationCall.name,
-    target: JSON.stringify(continuationCall.arguments),
+    target: stringifyForPersistence(continuationCall.arguments),
     status: 'WAITING',
     elapsed: '-',
-    detail: 'Bounded continuation requested after verified Notepad open',
+    detail: continuationDetail,
     result: ''
   };
   setAssistantToolCalls(requestId, [
-    { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
+    // F-03 defense in depth: no raw continuation secret can ride into card
+    // state even if an upstream layer changes.
+    {
+      ...firstToolCard,
+      status: 'PASS',
+      result: stringifyForPersistence(firstResult)
+    },
     continuationToolCard
   ]);
 
@@ -1565,14 +1775,14 @@ function startBoundedNotepadTypeContinuation(
     if (!canAcceptToolCallback(requestId)) return;
     const outcome = parseToolCallResult(continuationCall.name, rawResult);
     if (outcome.kind === 'verified_success') {
-      updateAssistantToolResult(requestId, 1, 'PASS', JSON.stringify(rawResult));
+      updateAssistantToolResult(requestId, 1, 'PASS', stringifyForPersistence(rawResult));
       terminalizeCurrentRequest('completed', 'model.turn.completed');
       return;
     }
     if (outcome.kind === 'blocked') {
       setAssistantToolCalls(requestId, [
-        { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
-        { ...continuationToolCard, status: 'BLOCKED', detail: outcome.reason || continuationToolCard.detail, result: JSON.stringify(rawResult) }
+        { ...firstToolCard, status: 'PASS', result: stringifyForPersistence(firstResult) },
+        { ...continuationToolCard, status: 'BLOCKED', detail: outcome.reason || continuationToolCard.detail, result: stringifyForPersistence(rawResult) }
       ]);
       terminalizeCurrentRequest('failed', 'model.turn.failed', {
         code: 'tool_execution_blocked',
@@ -1582,8 +1792,8 @@ function startBoundedNotepadTypeContinuation(
     }
     if (outcome.kind === 'pending') {
       setAssistantToolCalls(requestId, [
-        { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
-        { ...continuationToolCard, status: 'WAITING', detail: outcome.reason || continuationToolCard.detail, result: JSON.stringify(rawResult) }
+        { ...firstToolCard, status: 'PASS', result: stringifyForPersistence(firstResult) },
+        { ...continuationToolCard, status: 'WAITING', detail: outcome.reason || continuationToolCard.detail, result: stringifyForPersistence(rawResult) }
       ]);
       terminalizeCurrentRequest('failed', 'model.turn.failed', {
         code: 'tool_execution_pending',
@@ -1593,13 +1803,13 @@ function startBoundedNotepadTypeContinuation(
     }
     if (outcome.kind === 'unverified_success') {
       setAssistantToolCalls(requestId, [
-        { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
-        { ...continuationToolCard, status: 'UNVERIFIED', detail: outcome.reason || continuationToolCard.detail, result: JSON.stringify(rawResult) }
+        { ...firstToolCard, status: 'PASS', result: stringifyForPersistence(firstResult) },
+        { ...continuationToolCard, status: 'UNVERIFIED', detail: outcome.reason || continuationToolCard.detail, result: stringifyForPersistence(rawResult) }
       ]);
     } else {
       setAssistantToolCalls(requestId, [
-        { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
-        { ...continuationToolCard, status: 'FAIL', detail: outcome.reason || continuationToolCard.detail, result: JSON.stringify(rawResult) }
+        { ...firstToolCard, status: 'PASS', result: stringifyForPersistence(firstResult) },
+        { ...continuationToolCard, status: 'FAIL', detail: outcome.reason || continuationToolCard.detail, result: stringifyForPersistence(rawResult) }
       ]);
     }
     terminalizeCurrentRequest(
@@ -1615,7 +1825,7 @@ function startBoundedNotepadTypeContinuation(
     if (!canAcceptToolCallback(requestId)) return;
     const normalized = normalizeGatewayError(error);
     setAssistantToolCalls(requestId, [
-      { ...firstToolCard, status: 'PASS', result: JSON.stringify(firstResult) },
+      { ...firstToolCard, status: 'PASS', result: stringifyForPersistence(firstResult) },
       { ...continuationToolCard, status: 'FAIL', detail: normalized.message, result: normalized.message }
     ]);
     terminalizeCurrentRequest('failed', 'model.turn.failed', normalized);
@@ -1638,14 +1848,88 @@ function startBoundedNotepadTypeContinuation(
 function runBoundedLaunchContinuation(
   requestId: string,
   toolCall: import('$lib/data/mockData').ToolCallMock,
-  toolName: string
+  toolName: string,
+  launchEnvelope?: unknown,
+  // F-03: the raw grant never travels through the envelope copy that reaches
+  // UI state; the caller captures it via extractBrokerContinuationAndScrub
+  // and hands over this in-memory-only handle instead.
+  continuationHandle?: BrokerContinuationHandle | null
 ): void {
   activeContinuationRequests.add(requestId);
   let attempts = 0;
+  // Typed continuation capability issued by the Rust broker (master prompt
+  // Part I). Only the opaque handle is held in bounded in-memory state; it is
+  // never logged or persisted. task/step correlation must match the Rust
+  // issuance exactly: task_{request_id} / step_{action_id}.
+  let continuation: BrokerContinuationHandle | null = continuationHandle ?? null;
+  if (!continuation && launchEnvelope) {
+    // Defensive fallback for legacy call sites: capture + scrub in one step.
+    const scrubbed = extractBrokerContinuationAndScrub(launchEnvelope);
+    if (scrubbed) {
+      redactGrantRefsInPlace(launchEnvelope);
+      continuation = scrubbed;
+    }
+  }
+  const actionId = activeTurnCalls.get(requestId)?.id ?? '';
+  let leaseId: string | null = null;
+  if (continuation) {
+    activeContinuationGrants.set(requestId, { grantRef: continuation.grantRef });
+    recordContinuationTrace({
+      event: 'continuation_issued',
+      request_id: requestId,
+      status: 'issued'
+    });
+  }
+
+  // Re-lease the broker grant, or no-op when a lease is already held (the
+  // Rust grant is one-time; an in_flight grant must not be re-consumed).
+  const consumeGrant = (): Promise<string | null> => {
+    if (!continuation || leaseId) return Promise.resolve(leaseId);
+    recordContinuationTrace({ event: 'continuation_consume_requested', request_id: requestId });
+    return invoke('cu_broker_continuation_consume', {
+      grantRef: continuation.grantRef,
+      taskId: `task_${requestId}`,
+      stepId: `step_${actionId}`,
+      requestId,
+      actionKind: 'observe',
+      input: { action: 'observe' },
+      expectedStepIndex: continuation.stepIndex + 1
+    })
+      .then((raw) => {
+        const lease = raw as { status?: string; lease_id?: string };
+        if (lease?.status === 'leased' && typeof lease.lease_id === 'string') {
+          leaseId = lease.lease_id;
+          recordContinuationTrace({ event: 'continuation_consume_leased', request_id: requestId, status: 'leased' });
+          return leaseId;
+        }
+        recordContinuationTrace({ event: 'continuation_consume_rejected', request_id: requestId });
+        return null;
+      })
+      .catch((error) => {
+        recordContinuationTrace({ event: 'continuation_consume_failed', request_id: requestId, error_code: continuationErrorCode(error) });
+        return null;
+      });
+  };
+
+  const completeGrant = (status: 'verified' | 'failed' | 'blocked' | 'pending', verified: boolean): void => {
+    if (!leaseId) return;
+    const currentLease = leaseId;
+    if (status !== 'pending') leaseId = null;
+    recordContinuationTrace({ event: 'continuation_complete_requested', request_id: requestId, status });
+    invoke('cu_broker_continuation_complete', {
+      leaseId: currentLease,
+      status,
+      postconditionVerified: verified
+    }).then(() => {
+      recordContinuationTrace({ event: 'continuation_complete_succeeded', request_id: requestId, status });
+    }).catch((error) => {
+      recordContinuationTrace({ event: 'continuation_complete_failed', request_id: requestId, status, error_code: continuationErrorCode(error) });
+    });
+  };
   const finish = (status: 'PASS' | 'FAIL', envelope: Record<string, unknown>, lifecycle: 'completed' | 'failed'): void => {
     activeContinuationRequests.delete(requestId);
     if (!isActiveInferenceRequest(requestId)) return;
-    setAssistantToolCalls(requestId, [{ ...toolCall, status, result: JSON.stringify(envelope) }]);
+    setAssistantToolCalls(requestId, [{ ...toolCall, status, result: stringifyForPersistence(envelope) }]);
     if (lifecycle === 'completed') {
       terminalizeCurrentRequest('completed', 'model.turn.completed');
     } else {
@@ -1657,13 +1941,16 @@ function runBoundedLaunchContinuation(
     }
   };
   const tick = (): void => {
-    // Revoked by Stop/reject/reload/new-turn: keep the truthful state only.
+    // Revoked by Stop/reject/reload/new-turn (see cancelComputerUseContinuations):
+    // keep only the truthful pending state while the grant is being revoked.
     if (!activeContinuationRequests.has(requestId) || !isActiveInferenceRequest(requestId)) {
+      cancelComputerUseContinuations(requestId);
       activeContinuationRequests.delete(requestId);
       return;
     }
     attempts += 1;
     if (attempts > CONTINUATION_MAX_ATTEMPTS) {
+      cancelComputerUseContinuations(requestId);
       activeContinuationRequests.delete(requestId);
       // Honest local expiry (broker TTL should have answered first).
       setAssistantToolCalls(requestId, [{
@@ -1680,10 +1967,16 @@ function runBoundedLaunchContinuation(
       });
       return;
     }
-    void invoke('cu_broker_observe', { requestId })
+    consumeGrant()
+      .then(() => {
+        if (!activeContinuationRequests.has(requestId)) return undefined;
+        recordContinuationTrace({ event: 'continuation_observe_requested', request_id: requestId });
+        return invoke('cu_broker_observe', { requestId }) as Promise<unknown>;
+      })
       .then((raw) => {
-        if (!activeContinuationRequests.has(requestId)) return;
+        if (!raw || !activeContinuationRequests.has(requestId)) return;
         const res = raw as { found: boolean; envelope?: Record<string, unknown> };
+        recordContinuationTrace({ event: 'continuation_observe_result', request_id: requestId, found: res.found === true });
         if (!res?.found || !res.envelope) {
           scheduleNextTick();
           return;
@@ -1692,14 +1985,24 @@ function runBoundedLaunchContinuation(
         if (outcome.kind === 'verified_success') {
           const firstCall = activeTurnCalls.get(requestId);
           if (firstCall && maybeStartBoundedNotepadTypeContinuation(requestId, toolCall, firstCall, res.envelope)) {
+            completeGrant('verified', true);
             activeContinuationRequests.delete(requestId);
             return;
           }
+          if (firstCall && maybeStartBoundedBrowserSearchContinuation(requestId, toolCall, firstCall, res.envelope)) {
+            completeGrant('verified', true);
+            activeContinuationRequests.delete(requestId);
+            return;
+          }
+          completeGrant('verified', true);
           finish('PASS', res.envelope, 'completed');
         } else if (outcome.kind === 'failed' || outcome.kind === 'blocked') {
+          completeGrant(outcome.kind === 'blocked' ? 'blocked' : 'failed', false);
           finish('FAIL', res.envelope, 'failed');
         } else {
-          // Still pending -> bounded re-observe; card stays WAITING/truthful.
+          // Still pending -> re-arm the one-time grant for the next bounded
+          // observation; card stays WAITING/truthful.
+          completeGrant('pending', false);
           scheduleNextTick();
         }
       })
