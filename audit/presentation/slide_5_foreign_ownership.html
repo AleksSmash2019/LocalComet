@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container {
+            width: 1280px;
+            min-height: 720px;
+            background-color: #FFFFFF;
+            color: #0A192F;
+            font-family: 'Courier New', Consolas, monospace;
+            padding: 40px 40px 16px; /* keep top padding, reduce bottom */
+            display: flex;
+            flex-direction: column;
+        }
+        h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+        .header-box {
+            border: 1px solid #0A192F;
+            padding: 20px 30px; /* keep title padding (do not shrink upper padding) */
+            margin-bottom: 10px; /* reduced */
+            background-color: #E3F2FD;
+        }
+        .slide-title {
+            font-size: 36px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .requirement-box {
+            border: 1px solid #0A192F;
+            padding: 10px 16px; /* reduced */
+            margin-bottom: 10px; /* reduced */
+            background-color: rgba(10, 25, 47, 0.03);
+        }
+        .requirement-title {
+            font-size: 20px;
+            text-transform: uppercase;
+            margin-bottom: 6px; /* reduced */
+            border-bottom: 1px solid #0A192F;
+            padding-bottom: 2px; /* reduced */
+        }
+        .requirement-text {
+            font-size: 18px;
+            line-height: 1.4;
+        }
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px; /* reduced */
+            flex-grow: 1;
+            margin-bottom: 10px; /* reduced */
+        }
+        .column-box {
+            border: 1px solid #0A192F;
+            padding: 8px; /* reduced */
+            display: flex;
+            flex-direction: column;
+        }
+        .column-title {
+            font-size: 22px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #0A192F;
+            padding-bottom: 6px; /* reduced */
+        }
+        .column-title.missing {
+            color: #D32F2F;
+            border-bottom-color: #D32F2F;
+        }
+        .list-item {
+            font-size: 17px;
+            line-height: 1.4;
+            margin-bottom: 6px; /* reduced */
+            padding-left: 12px; /* slightly reduced */
+            position: relative;
+        }
+        .list-item::before {
+            content: "-";
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+        .conclusion-box {
+            border: 1px solid #D32F2F;
+            padding: 8px 12px; /* reduced */
+            background-color: rgba(211, 47, 47, 0.05);
+        }
+        .conclusion-text {
+            font-size: 20px;
+            font-weight: 600;
+            color: #D32F2F;
+        }
+        .conclusion-subtext {
+            font-size: 18px;
+            margin-top: 6px; /* reduced */
+            color: #0A192F;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header-box">
+            <h1 class="slide-title">Почему foreign ownership заблокировала 9/10</h1>
+        </div>
+
+        <div class="requirement-box">
+            <h2 class="requirement-title">Требование MASTERPROMPT</h2>
+            <p class="requirement-text">Окно/процесс с тем же title, но чужим PID должен остаться полностью <strong>untouched</strong>; action должен быть заблокирован до click/close.</p>
+        </div>
+
+        <div class="content-grid">
+            <div class="column-box">
+                <h2 class="column-title">Что есть (Contract Evidence)</h2>
+                <div class="list-item">Rust <code>close_owned</code> принимает только allowlisted target и valid <code>ownership_request_id</code>.</div>
+                <div class="list-item">Ownership record связывает action с PID, creation identity, process image, desktop и input digest.</div>
+                <div class="list-item">При mismatch desktop, target image, PID creation identity или отсутствии записи broker возвращает blocked и не вызывает termination.</div>
+                <div class="list-item">Screenshot/UIA paths фильтруют visible windows по broker-observed owner PID.</div>
+                <div class="list-item">Offline tests покрывают wrong-PID/creation/ownership mismatch и listener foreign PID/profile mismatch.</div>
+            </div>
+
+            <div class="column-box" style="border-color: #D32F2F;">
+                <h2 class="column-title missing">Что отсутствует (Native Gaps)</h2>
+                <div class="list-item">Нет native same-title/wrong-PID fixture, исполненного через production close/click path.</div>
+                <div class="list-item">Нет before/after доказательства, что foreign window не изменилось и не было закрыто.</div>
+                <div class="list-item">Нет отдельного raw report с foreign PID, title, owner record, attempted action, blocked verdict и unchanged postcondition.</div>
+            </div>
+        </div>
+
+        <div class="conclusion-box">
+            <p class="conclusion-text">ИТОГ: SEC-011 остаётся NOT_INDEPENDENTLY_VERIFIED</p>
+            <p class="conclusion-subtext">Contract evidence = класс C; native negative protected postcondition = отсутствует.</p>
+        </div>
+    </div>
+</body>
+</html>

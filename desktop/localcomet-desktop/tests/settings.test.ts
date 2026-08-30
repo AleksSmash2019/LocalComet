@@ -6,7 +6,8 @@ import { controlPlaneStore, resetControlPlaneStore } from '../src/lib/stores/con
 import {
   resetShellStores,
   setDiagnosticsPanelOpen,
-  setThemeMode
+  setThemeMode,
+  setVoiceGender
 } from '../src/lib/stores/shellStore';
 
 function settingsHtml(language: 'ru' | 'en' = 'ru'): string {
@@ -41,6 +42,26 @@ describe('minimal Settings surface', () => {
     expect(html.match(/aria-pressed=/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
+  it('exposes assistant voice choices with female selected by default', () => {
+    const html = settingsHtml('en');
+    expect(html).toContain('Assistant voice');
+    expect(html).toContain('Current playback stops when you switch');
+    expect(html).toContain('voice input stays unchanged');
+    expect(html).toContain('Local speech output is currently available for Russian responses only');
+    expect(html).toContain('title="Female voice"');
+    expect(html).toContain('title="Male voice"');
+    expect(html).toContain('Play sample');
+    expect(html.match(/aria-label="Play sample"/g)?.length).toBe(2);
+    expect(html).toMatch(/aria-pressed="true"[^>]*title="Female voice"/);
+  });
+
+  it('reflects a persisted male voice choice in Settings', () => {
+    setVoiceGender('male');
+    const html = settingsHtml('en');
+    expect(html).toMatch(/aria-pressed="true"[^>]*title="Male voice"/);
+    expect(html).toMatch(/aria-pressed="false"[^>]*title="Female voice"/);
+  });
+
   it('exposes language choice as a labelled select listing every locale', () => {
     const html = settingsHtml('en');
     expect(html).toContain('aria-label="Select language"');
@@ -71,6 +92,7 @@ describe('minimal Settings surface', () => {
 
     const russian = settingsHtml('ru');
     expect(russian).toContain('Текущие возможности');
+    expect(russian).toContain('Локальная озвучка сейчас доступна только для ответов на русском языке');
     expect(russian).toContain('Контекст проекта недоступен');
   });
 

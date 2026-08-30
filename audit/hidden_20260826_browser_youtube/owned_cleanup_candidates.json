@@ -1,0 +1,30 @@
+{
+  "mode": "owned_current_run",
+  "deleted_count": 1,
+  "note": "parent-side cleanup after worker exit; only manifest-listed paths",
+  "candidates": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\Temp\\LocalCometHiddenCU_browser_youtube_20260826",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\Temp\\LocalCometHiddenCU_browser_youtube_20260826",
+      "run_id": "c76c9f699af64ba1adcf1415e02c0079",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.032
+    }
+  ],
+  "results": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\Temp\\LocalCometHiddenCU_browser_youtube_20260826",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\Temp\\LocalCometHiddenCU_browser_youtube_20260826",
+      "run_id": "c76c9f699af64ba1adcf1415e02c0079",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.032,
+      "action": "deleted"
+    }
+  ]
+}

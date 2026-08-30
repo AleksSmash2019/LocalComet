@@ -85,17 +85,20 @@ mod platform {
     };
     use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
     use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
+        JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
+        TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
     use windows_sys::Win32::System::Pipes::{CreatePipe, SetNamedPipeHandleState, PIPE_NOWAIT};
     use windows_sys::Win32::System::Threading::{
-        CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
-        ResumeThread, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
-        CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
-        EXTENDED_STARTUPINFO_PRESENT, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
-        PROC_THREAD_ATTRIBUTE_HANDLE_LIST, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
+        CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
+        InitializeProcThreadAttributeList, ResumeThread, TerminateProcess,
+        UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED,
+        CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, LPPROC_THREAD_ATTRIBUTE_LIST,
+        PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, STARTF_USESTDHANDLES,
+        STARTUPINFOEXW, STARTUPINFOW,
     };
 
     pub struct ContainedSidecarProcess {
@@ -172,6 +175,44 @@ mod platform {
         pub fn terminate(&self, exit_code: u32) {
             unsafe {
                 TerminateProcess(self.process.raw(), exit_code);
+            }
+        }
+
+        /// Kill the ENTIRE process tree inside the job (child + descendants),
+        /// not just the direct child. Returns true when the OS accepted the
+        /// termination request for the job object.
+        pub fn terminate_job_tree(&self, exit_code: u32) -> bool {
+            unsafe { TerminateJobObject(self.job.raw(), exit_code) != 0 }
+        }
+
+        /// Authoritative live-process count inside the job. `Some(0)` means
+        /// no child and no descendant is running anymore.
+        pub fn job_active_processes(&self) -> Option<u32> {
+            let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+            let ok = unsafe {
+                QueryInformationJobObject(
+                    self.job.raw(),
+                    JobObjectBasicAccountingInformation,
+                    &mut info as *mut _ as *mut c_void,
+                    size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                    null_mut(),
+                ) != 0
+            };
+            if ok {
+                Some(info.ActiveProcesses)
+            } else {
+                None
+            }
+        }
+
+        /// Process exit code, or None while the process is still active.
+        pub fn exit_code(&self) -> Option<i32> {
+            let mut code: u32 = 0;
+            let ok = unsafe { GetExitCodeProcess(self.process.raw(), &mut code) != 0 };
+            if !ok || code == STILL_ACTIVE_CODE {
+                None
+            } else {
+                Some(code as i32)
             }
         }
 
@@ -403,6 +444,23 @@ mod platform {
         spec: &ManagedRuntimeLaunchSpec,
     ) -> io::Result<ContainedManagedRuntimeProcess> {
         let job = create_single_process_kill_on_close_job()?;
+        spawn_managed_with_job(spec, job)
+    }
+
+    /// Terminal-runner containment: kill-on-close job WITHOUT the single
+    /// active-process cap, because toolchains legitimately spawn short-lived
+    /// helper processes. Tree containment and cleanup verification stay.
+    pub fn spawn_terminal_contained(
+        spec: &ManagedRuntimeLaunchSpec,
+    ) -> io::Result<ContainedManagedRuntimeProcess> {
+        let job = create_kill_on_close_job()?;
+        spawn_managed_with_job(spec, job)
+    }
+
+    fn spawn_managed_with_job(
+        spec: &ManagedRuntimeLaunchSpec,
+        job: OwnedHandle,
+    ) -> io::Result<ContainedManagedRuntimeProcess> {
         let mut stdout_read = null_mut();
         let mut stdout_write = null_mut();
         let mut stderr_read = null_mut();
@@ -518,6 +576,24 @@ mod platform {
         Ok(job)
     }
 
+    fn create_kill_on_close_job() -> io::Result<OwnedHandle> {
+        let job = OwnedHandle::new(unsafe { CreateJobObjectW(null(), null()) })?;
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job.raw(),
+                JobObjectExtendedLimitInformation,
+                &limits as *const _ as *const c_void,
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            ) != 0
+        };
+        if !configured {
+            return Err(last_error());
+        }
+        Ok(job)
+    }
+
     fn set_parent_only(handle: HANDLE) -> io::Result<()> {
         let ok = unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) != 0 };
         if ok {
@@ -599,6 +675,9 @@ mod platform {
         wide.push(0);
         wide
     }
+
+    /// GetExitCodeProcess reports this while the process is alive.
+    const STILL_ACTIVE_CODE: u32 = 259;
 
     fn invalid_handle(handle: HANDLE) -> bool {
         handle.is_null() || handle == INVALID_HANDLE_VALUE
@@ -708,6 +787,18 @@ mod platform {
 
         pub fn terminate(&self, _exit_code: u32) {}
 
+        pub fn terminate_job_tree(&self, _exit_code: u32) -> bool {
+            false
+        }
+
+        pub fn job_active_processes(&self) -> Option<u32> {
+            None
+        }
+
+        pub fn exit_code(&self) -> Option<i32> {
+            None
+        }
+
         pub fn wait_bounded(&self, _millis: u32) -> bool {
             true
         }
@@ -715,6 +806,9 @@ mod platform {
 }
 
 pub use platform::{ContainedManagedRuntimeProcess, ContainedSidecarProcess};
+
+#[cfg(windows)]
+pub use platform::spawn_terminal_contained;
 
 #[cfg(test)]
 mod bounded_write_tests {

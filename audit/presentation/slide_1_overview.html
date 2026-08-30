@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container {
+            width: 1280px;
+            min-height: 720px;
+            background-color: #FFFFFF;
+            color: #0A192F;
+            font-family: 'Courier New', Consolas, monospace;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 600;
+        }
+        .header-box {
+            border: 1px solid #0A192F;
+            padding: 30px;
+            margin-bottom: 30px;
+            background-color: #E3F2FD;
+        }
+        .main-title {
+            font-size: 48px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .subtitle {
+            font-size: 24px;
+            font-weight: 400;
+        }
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .meta-box {
+            border: 1px solid #0A192F;
+            padding: 20px;
+        }
+        .meta-label {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        .meta-value {
+            font-size: 18px;
+            word-break: break-all;
+        }
+        .status-box {
+            border: 1px solid #D32F2F;
+            padding: 20px;
+            margin-bottom: 30px;
+            background-color: rgba(211, 47, 47, 0.05);
+        }
+        .status-title {
+            color: #D32F2F;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .status-text {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .conclusion-box {
+            border: 1px solid #0A192F;
+            padding: 25px;
+            border-left: 8px solid #0A192F;
+            font-size: 22px;
+            line-height: 1.5;
+            font-weight: 400;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header-box">
+            <h1 class="main-title">LocalComet: девятичасовой evidence-based аудит</h1>
+            <h2 class="subtitle">Windows-first control plane | 27 августа 2026</h2>
+        </div>
+
+        <div class="status-box">
+            <h3 class="status-title">ИТОГ АУДИТА</h3>
+            <p class="status-text">Release candidate НЕ закрыт; статус PENDING_TERMINAL; честный score cap остаётся ниже 9/10.</p>
+        </div>
+
+        <div class="metadata-grid">
+            <div class="meta-box">
+                <div class="meta-label">Ветка / HEAD</div>
+                <div class="meta-value">
+                    <strong>Branch:</strong> feat/up00-wp01-windows-one-click-launch<br><br>
+                    <strong>HEAD:</strong> 74f527d5cc97526a791eca81a8d995e2cc5a6aa7
+                </div>
+            </div>
+            <div class="meta-box">
+                <div class="meta-label">Current Evidence Digest</div>
+                <div class="meta-value">
+                    dc22a3b4e77280f3aef86ba277da3300b3a12b2a3cedf6b1cc09d52e08781634<br><br>
+                    (589 source files)
+                </div>
+            </div>
+        </div>
+
+        <div class="conclusion-box">
+            <strong>Главный вывод:</strong> зелёные тесты и положительные native runs усилили доказательную базу, но P0 acceptance matrix ещё не закрыта.
+        </div>
+    </div>
+</body>
+</html>

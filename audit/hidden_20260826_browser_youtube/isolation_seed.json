@@ -1,0 +1,10 @@
+{
+  "created_utc": "2026-08-24T21:38:54.281954+00:00",
+  "source": "C:\\Users\\DNS\\AppData\\Local\\LocalCometDev\\app-data\\models\\custom\\custom-hf-72962196cbe48a1dc6b432301cb3666a0aad360a53a43139094d52aa62b0f4f6\\Qwen3-1.7B.Q4_K_M.gguf",
+  "target": "C:\\Users\\DNS\\AppData\\Local\\Temp\\LocalCometHiddenCU_browser_youtube_20260826\\LocalCometDev\\app-data\\models\\custom\\custom-hf-72962196cbe48a1dc6b432301cb3666a0aad360a53a43139094d52aa62b0f4f6\\Qwen3-1.7B.Q4_K_M.gguf",
+  "sha256": "ea2aa5f1cce3c8df81ae5fd292a6ed265b8393cc89534dc21fc5327cc974116a",
+  "qwen25_copied": false,
+  "runtime_seeded": true,
+  "runtime_state_seeded": true,
+  "manifest_repaired": true
+}

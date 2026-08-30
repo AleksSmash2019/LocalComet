@@ -1149,10 +1149,41 @@ def patch_isolated_workspace_port(isolated_root: Path, port: int, timeout: float
                 package_json.write_text(package_text, encoding="utf-8")
             tauri_text = tauri_config.read_text(encoding="utf-8")
             tauri_text = re.sub(r"http://(127\.0\.0\.1|localhost):\d+", f"http://127.0.0.1:{port}", tauri_text)
+            tauri_text = patch_tauri_webview_browser_args(tauri_text)
             tauri_config.write_text(tauri_text, encoding="utf-8")
             return True
         time.sleep(0.1)
     return False
+
+
+def patch_tauri_webview_browser_args(tauri_text: str) -> str:
+    """Inject additionalBrowserArgs into the runtime config copy.
+
+    Recent WebView2 runtime builds stopped honoring the
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS environment variable when the
+    environment is created explicitly (observed 2026-08-28: the browser
+    process started without the harness flags and the CDP endpoint never
+    opened). The isolated runtime workspace copy is the authoritative
+    harness-only transport config: the product repository config stays
+    untouched, and the flags match the env contract exactly.
+    """
+    if "additionalBrowserArgs" in tauri_text:
+        return tauri_text
+    # Replicate wry defaults exactly (wry omits its own defaults whenever
+    # additional_browser_args is set), matching the observed successful
+    # command line; the CDP port is the only harness-specific addition.
+    args = ("--autoplay-policy=no-user-gesture-required"
+                    f" --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
+                    f" --remote-debugging-port={ISOLATED_CDP_PORT}")
+    marker = '"visible": false'
+    if marker in tauri_text:
+        injection = marker + ',\n        "additionalBrowserArgs": "' + args + '"'
+    else:
+        marker = '"fullscreen": false'
+        if marker not in tauri_text:
+            raise RuntimeError("tauri.conf.json window block has no visible/fullscreen marker")
+        injection = marker + ',\n        "additionalBrowserArgs": "' + args + '"'
+    return tauri_text.replace(marker, injection, 1)
 
 
 def binary_provenance_path(binary: Path) -> Path:
@@ -2217,29 +2248,27 @@ class CdpDriver:
         return int(result) if isinstance(result, (int, float)) else 0
 
     def install_cancel_trace(self) -> dict[str, Any]:
-        """Install a page-local trace for cancel and redacted continuation events.
+        """Install the page-local cancel watcher without touching Tauri invoke.
 
-        The isolated probe also clicks the real composer Stop control at the
-        first successful continuation lease. This closes the timing race without
-        minting or directly invoking a cancellation capability from the harness:
-        the click still enters the production ``cancelLocalModelTurn`` path.
+        The diagnostic continuation trace is written by the application itself
+        (``recordContinuationTrace`` in modelGateway.ts) into
+        ``window.__LOCALCOMET_CONTINUATION_TRACE``; the harness only reads that
+        trace and clicks the real composer Stop control at the first successful
+        continuation lease. The replay proof therefore belongs to the app, not
+        to a harness-injected invoke wrapper. Monkey-patching ``T.invoke`` is
+        impossible on Tauri 2.11.5 (the property is non-configurable), so the
+        rewriting probe reports ``internals_invoke_writable`` from the internals
+        object itself instead of attempting the dead assignment.
+        ``__lcCancelTrace`` is kept as an always-empty array so ``cancel_trace()``
+        and the existing flow observe a bounded, honest trace (the harness no
+        longer records or scrubs anything itself).
         """
         result = self.eval(
             "(() => {"
             " const T=window.__TAURI_INTERNALS__; if(!T||typeof T.invoke!=='function') return {installed:false,reason:'tauri_internals_missing'};"
-            " if(T.__lcCancelTraceInstalled) return {installed:true,already:true};"
-            " const original=T.invoke.bind(T); window.__lcCancelTrace=[]; window.__lcContinuationStopAttempt=null; window.__lcContinuationStopWatcher=null; let replayGrantRef=null; let replayConsumeArgs=null;"
-            " const traced=new Set(['model_turn_cancel','cu_broker_observe','cu_broker_continuation_consume','cu_broker_continuation_complete','cu_broker_continuation_revoke']);"
-            " const scrub=(command,args,response)=>{"
-            "  const a=(args&&typeof args==='object')?{...args}:{};"
-            "  if('grantRef' in a) a.grantRef='<redacted:cgr>';"
-            "  if('leaseId' in a) a.leaseId='<redacted:lease>';"
-            "  const r=(response&&typeof response==='object')?{...response}:response;"
-            "  if(r&&typeof r==='object'){ if('lease_id' in r) r.lease_id='<redacted:lease>'; if('grant_ref_hash' in r) r.grant_ref_hash='<redacted:hash>'; }"
-            "  return {command,args:a,response:r};"
-            " };"
-            " const trace=(entry)=>{window.__lcCancelTrace.push(entry); if(window.__lcCancelTrace.length>64)window.__lcCancelTrace.splice(0,window.__lcCancelTrace.length-64);};"
-            " const continuationEvent=(entry)=>{const t=window.__LOCALCOMET_CONTINUATION_TRACE||[]; t.push(entry); if(t.length>64)t.splice(0,t.length-64); window.__LOCALCOMET_CONTINUATION_TRACE=t;};"
+            " const internalsInvokeWritable=(()=>{try{const k='__lcRewriteProbe'+Date.now(); T[k]=1; const writable=delete T[k]; return writable;}catch(e){return false;}})();"
+            " if(T.__lcCancelTraceInstalled) return {installed:true,already:true,internals_invoke_writable:internalsInvokeWritable};"
+            " window.__lcCancelTrace=[]; window.__lcContinuationStopAttempt=null; window.__lcContinuationStopWatcher=null;"
             " const clickStopAfterLease=(requestId)=>{"
             "  if(window.__lcContinuationStopAttempt) return;"
             "  const button=[...document.querySelectorAll('[data-testid=\\\"send-button\\\"][data-send=\\\"submit\\\"]')].find(item=>item.getAttribute('data-composer-action')==='stop' || ((item.getAttribute('aria-label')||'')==='Остановить'));"
@@ -2251,24 +2280,7 @@ class CdpDriver:
             "  const leased=(window.__LOCALCOMET_CONTINUATION_TRACE||[]).find(e=>e&&e.event==='continuation_consume_leased');"
             "  if(leased&&typeof leased.request_id==='string') clickStopAfterLease(leased.request_id);"
             " },25);"
-            " T.invoke=async (command,args)=>{"
-            "  if(command==='cu_broker_continuation_consume' && args && typeof args==='object' && typeof args.requestId==='string') replayConsumeArgs={...args};"
-            "  if(command==='cu_broker_continuation_revoke' && args && typeof args==='object' && typeof args.grantRef==='string') replayGrantRef=args.grantRef;"
-            "  try { const response=await original(command,args);"
-            "    if(traced.has(command)) trace(scrub(command,args,response));"
-            "    if(command==='cu_broker_continuation_consume' && response && response.status==='leased' && args && typeof args.requestId==='string') clickStopAfterLease(args.requestId);"
-            "    if(command==='cu_broker_continuation_revoke' && response && Number(response.revoked)>0 && replayGrantRef && replayConsumeArgs && typeof replayConsumeArgs.requestId==='string'){"
-            "      const rid=replayConsumeArgs.requestId; const replayArgs={...replayConsumeArgs,grantRef:replayGrantRef};"
-            "      try { const replay=await original('cu_broker_continuation_consume',replayArgs); continuationEvent({event:replay&&replay.status==='leased'?'continuation_replay_unexpected_success':'continuation_replay_rejected',request_id:rid,status:replay&&replay.status==='leased'?'unexpected_success':'replay_rejected'}); }"
-            "      catch(error){ const raw=error&&typeof error==='object'?String(error.code||error.message||''):String(error||''); const status=raw.includes('continuation_replayed')?'continuation_replayed':'replay_rejected'; continuationEvent({event:'continuation_replay_rejected',request_id:rid,status}); }"
-            "      replayGrantRef=null; replayConsumeArgs=null;"
-            "    }"
-            "    return response;"
-            "  } catch(error) {"
-            "    if(traced.has(command)){ const raw=error&&typeof error==='object'?String(error.code||error.message||''):String(error||''); const code=(raw.match(/[a-z][a-z0-9_]{2,}/g)||[]).find(token=>token.includes('_'))||'invoke_failed'; trace({command,args:scrub(command,args,null).args,error_code:code}); }"
-            "    throw error;"
-            "  }"
-            " }; T.__lcCancelTraceInstalled=true; return {installed:true}; })()"
+            " T.__lcCancelTraceInstalled=true; return {installed:true,internals_invoke_writable:internalsInvokeWritable}; })()"
         )
         return result if isinstance(result, dict) else {"installed": False, "reason": "trace_install_invalid"}
 

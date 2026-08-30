@@ -1,0 +1,22 @@
+{
+  "schema_version": "localcomet.owned-run.v1",
+  "run_id": "5a411cb0c8af469bbf48df5fc7e77419",
+  "created_utc": "2026-08-24T23:04:19.447712+00:00",
+  "owner": "localcomet-hidden-harness",
+  "repo_root": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean",
+  "isolated_root": "C:\\Users\\DNS\\AppData\\Local\\Temp\\LocalCometHiddenCU_browser_readonly_search_20260829_cont4",
+  "cargo_target_dir": "C:\\Users\\DNS\\AppData\\Local\\LocalComet\\BuildCache\\CargoTarget\\hidden-isolated",
+  "vite_port": 1423,
+  "cdp_port": 9223,
+  "hidden_desktop": "LocalCometHiddenCU_15748",
+  "root_pid": 17740,
+  "owned_pids": [
+    23756,
+    24592
+  ],
+  "owned_paths": [
+    "C:\\Users\\DNS\\AppData\\Local\\Temp\\LocalCometHiddenCU_browser_readonly_search_20260829_cont4"
+  ],
+  "cleanup_policy_version": "localcomet.cleanup-policy.v1",
+  "completed_utc": "2026-08-24T23:08:02.806169+00:00"
+}

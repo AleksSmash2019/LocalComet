@@ -1,5 +1,6 @@
 import { get, writable } from 'svelte/store';
 import { cancelTurn } from '$lib/bridge/controlPlane';
+import { errorDisplayText, normalizeUnknownError } from '$lib/errors/normalizedError';
 import {
   decideKnowledgeTurn,
   requestKnowledgePreview,
@@ -198,12 +199,9 @@ function isDecisionLocked(state: KnowledgeUiState): boolean {
 }
 
 function normalizeError(error: unknown): { code: string; message: string } {
-  if (typeof error === 'object' && error !== null) {
-    const record = error as Record<string, unknown>;
-    return {
-      code: String(record.code ?? 'knowledge_error').slice(0, 64),
-      message: String(record.message ?? 'Project knowledge request failed').slice(0, 240)
-    };
-  }
-  return { code: 'knowledge_error', message: 'Project knowledge request failed' };
+  const normalized = normalizeUnknownError(error);
+  return {
+    code: normalized.code.slice(0, 64),
+    message: errorDisplayText(error).slice(0, 240)
+  };
 }

@@ -19,6 +19,7 @@ export type UiTheme = 'system' | 'light' | 'dark';
  */
 export type UiLocale = Language;
 export type DiagnosticsPanelPreference = 'open' | 'closed';
+export type VoiceGender = 'female' | 'male';
 
 export interface AgentPermissions {
   files: boolean;
@@ -34,6 +35,7 @@ export interface UiPreferences {
   diagnosticsPanel: DiagnosticsPanelPreference;
   agentPermissions: AgentPermissions;
   voiceMode: boolean;
+  voiceGender: VoiceGender;
   ctxSizeOverride: number | null;
   gpuLayersOverride: number | null;
   computeMode: ComputeMode;
@@ -45,6 +47,7 @@ export const DEFAULT_UI_PREFERENCES: Readonly<UiPreferences> = Object.freeze({
   locale: 'ru',
   diagnosticsPanel: 'closed',
   voiceMode: false,
+  voiceGender: 'female',
   agentPermissions: {
     files: true,
     shell: false,
@@ -77,6 +80,10 @@ function isDiagnosticsPanel(value: unknown): value is DiagnosticsPanelPreference
   return value === 'open' || value === 'closed';
 }
 
+export function isVoiceGender(value: unknown): value is VoiceGender {
+  return value === 'female' || value === 'male';
+}
+
 function isAgentPermissions(value: unknown): value is Partial<AgentPermissions> {
   if (!isRecord(value)) return false;
   const allowed = ['files', 'shell', 'tools', 'computerUse', 'internet'] as const;
@@ -98,6 +105,7 @@ function normalizePreferences(value: unknown): UiPreferences {
   if (isEffortLevel(value.effort)) preferences.effort = value.effort;
   if (isComputeMode(value.computeMode)) preferences.computeMode = value.computeMode;
   if (typeof value.voiceMode === 'boolean') preferences.voiceMode = value.voiceMode;
+  if (isVoiceGender(value.voiceGender)) preferences.voiceGender = value.voiceGender;
   if (isAgentPermissions(value.agentPermissions)) {
     const nextPermissions = value.agentPermissions;
     for (const key of ['files', 'shell', 'tools', 'computerUse', 'internet'] as const) {
@@ -163,6 +171,7 @@ export function updateUiPreferences(patch: Readonly<Partial<UiPreferences>>): Ui
     if (isTheme(patch.theme)) preferences.theme = patch.theme;
     if (isLocale(patch.locale)) preferences.locale = patch.locale;
     if (typeof patch.voiceMode === 'boolean') preferences.voiceMode = patch.voiceMode;
+    if (isVoiceGender(patch.voiceGender)) preferences.voiceGender = patch.voiceGender;
     if (isDiagnosticsPanel(patch.diagnosticsPanel)) {
       preferences.diagnosticsPanel = patch.diagnosticsPanel;
     }

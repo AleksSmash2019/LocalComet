@@ -116,6 +116,7 @@ pub struct ApprovalState {
     registry: Mutex<ApprovalRegistry>,
     workspace: Mutex<Option<WorkspaceIdentity>>,
     permissions: Mutex<AgentPermissions>,
+    permission_context: Mutex<Option<crate::permission_context::PermissionContext>>,
     prompt: Arc<dyn ApprovalPrompt>,
     pub dispatcher: Option<Arc<FrontendApprovalDispatcher>>,
 }
@@ -126,6 +127,7 @@ impl Default for ApprovalState {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
             permissions: Mutex::new(disabled_agent_permissions()),
+            permission_context: Mutex::new(None),
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Reject,
             }), // Tests can override this
@@ -141,10 +143,150 @@ impl ApprovalState {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
             permissions: Mutex::new(disabled_agent_permissions()),
+            permission_context: Mutex::new(None),
             prompt: Arc::new(FrontendApprovalPrompt {
                 dispatcher: Arc::clone(&dispatcher),
             }),
             dispatcher: Some(dispatcher),
+        }
+    }
+
+    /// Digest of the armed permission context, if any (typed evidence only).
+    pub fn permission_context_digest(&self) -> String {
+        let guard = self
+            .permission_context
+            .lock()
+            .expect("permission context lock poisoned");
+        guard
+            .as_ref()
+            .map(|c| c.context_digest.clone())
+            .unwrap_or_default()
+    }
+
+    /// Read-only accessor for typed consumers (checkpoint commands): the
+    /// confirmed workspace identity, if any.
+    pub(crate) fn workspace_identity(&self) -> Option<(String, String)> {
+        let guard = self
+            .workspace
+            .lock()
+            .expect("approval workspace lock poisoned");
+        guard
+            .as_ref()
+            .map(|identity| (identity.canonical_path.clone(), identity.digest.clone()))
+    }
+
+    /// Arm the typed permission context (F-03 isolated harness path).
+    pub fn set_permission_context(&self, context: crate::permission_context::PermissionContext) {
+        let mut guard = self
+            .permission_context
+            .lock()
+            .expect("permission context lock poisoned");
+        *guard = Some(context);
+    }
+
+    /// F-03 runtime gate: when an armed context exists it must still be
+    /// valid (unexpired, unrevoked) before any guarded/dangerous dispatch.
+    /// A normal session has `None` here and is governed purely by the
+    /// backend-authoritative capability flags above.
+    #[allow(dead_code)]
+    pub(crate) fn permission_context_valid(&self) -> bool {
+        let guard = self
+            .permission_context
+            .lock()
+            .expect("permission context lock poisoned");
+        match guard.as_ref() {
+            None => true,
+            Some(context) => {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                now < context.expires_at_unix_ms && !context.revoked
+            }
+        }
+    }
+
+    pub(crate) fn require_permission_context_for_tool(
+        &self,
+        tool: &str,
+    ) -> Result<(), BridgeError> {
+        let (session_id, workspace_digest, desktop) = {
+            let registry = self.registry.lock().expect("approval registry poisoned");
+            let ws_guard = self
+                .workspace
+                .lock()
+                .expect("approval workspace lock poisoned");
+            let (workspace_digest, _) = match ws_guard.as_ref() {
+                Some(identity) => (identity.digest.clone(), identity.canonical_path.clone()),
+                None if is_non_workspace_operation(tool) => (
+                    crate::approval::NON_WORKSPACE_APPROVAL_SCOPE.to_string(),
+                    crate::approval::NON_WORKSPACE_APPROVAL_SCOPE.to_string(),
+                ),
+                None => {
+                    // No workspace confirmed: only read_only tools allowed without context;
+                    // guarded/dangerous will later fail on no_workspace.
+                    return Ok(());
+                }
+            };
+            let desktop = std::env::var("LC_HIDDEN_DESKTOP_NAME")
+                .ok()
+                .map(|v| v.trim().to_owned())
+                .filter(|v| !v.is_empty());
+            (registry.session_id().to_owned(), workspace_digest, desktop)
+        };
+        let guard = self
+            .permission_context
+            .lock()
+            .expect("permission context lock poisoned");
+        let Some(context) = guard.as_ref() else {
+            return Ok(());
+        };
+        if let Err(code) = context.verify_digest() {
+            return Err(BridgeError::new(code, code));
+        }
+        let Some(capability_id) =
+            crate::permission_context::PermissionContext::capability_for_tool(tool)
+        else {
+            // Unknown tool already denied elsewhere; no context check.
+            return Ok(());
+        };
+        context
+            .validate(
+                &session_id,
+                &workspace_digest,
+                desktop.as_deref(),
+                capability_id,
+            )
+            .map_err(|code| BridgeError::new(code, code))?;
+        // Isolated context must be IsolatedHiddenTest; Normal sessions never arm a context.
+        context
+            .validate_mode(crate::permission_context::ExecutionMode::IsolatedHiddenTest)
+            .map_err(|code| BridgeError::new(code, code))?;
+        Ok(())
+    }
+
+    pub(crate) fn session_id(&self) -> String {
+        self.registry
+            .lock()
+            .expect("approval registry poisoned")
+            .session_id()
+            .to_owned()
+    }
+
+    pub(crate) fn sync_isolated_workspace_digest(&self, new_digest: &str) {
+        let mut guard = self
+            .permission_context
+            .lock()
+            .expect("permission context lock poisoned");
+        if let Some(ctx) = guard.as_mut() {
+            if ctx.execution_mode == crate::permission_context::ExecutionMode::IsolatedHiddenTest {
+                // Re-bind workspace scope for all capabilities and recompute digest.
+                ctx.workspace_digest = new_digest.to_owned();
+                for cap in &mut ctx.capabilities {
+                    cap.workspace_scope = new_digest.to_owned();
+                }
+                ctx.context_digest = ctx.compute_digest();
+            }
         }
     }
 
@@ -188,6 +330,31 @@ impl ApprovalState {
         }
     }
 
+    /// Test-only state for the deterministic intent→approval→broker e2e seam
+    /// /// (live_e2e). Scripted Approve prompt, confirmed workspace, all caps on.
+    #[cfg(test)]
+    pub(crate) fn for_intent_e2e() -> Self {
+        Self {
+            registry: Mutex::new(ApprovalRegistry::new()),
+            workspace: Mutex::new(Some(WorkspaceIdentity {
+                canonical_path: r"C:\Windows".to_string(),
+                digest: "intent-e2e-ws".to_string(),
+            })),
+            permission_context: Mutex::new(None),
+            permissions: Mutex::new(AgentPermissions {
+                files: true,
+                shell: true,
+                tools: true,
+                computer_use: true,
+                internet: true,
+            }),
+            prompt: Arc::new(ScriptedApprovalPrompt {
+                decision: ApprovalDecision::Approve,
+            }),
+            dispatcher: None,
+        }
+    }
+
     fn allows_tool(&self, tool: &str) -> bool {
         let permissions = self
             .permissions
@@ -200,7 +367,9 @@ impl ApprovalState {
             | "files.create_folder"
             | "files.delete"
             | "files.rollback"
-            | "files.rollback_undo" => permissions.files,
+            | "files.rollback_undo"
+            | "checkpoint.restore_files"
+            | "checkpoint.restore_task" => permissions.files,
             "shell" => permissions.shell,
             "computer_use" => permissions.computer_use,
             "web.search" | "web.fetch" => permissions.internet,
@@ -244,6 +413,8 @@ pub(crate) fn risk_level_for_tool(tool: &str) -> Result<RiskLevel, BridgeError> 
         | "files.create_folder"
         | "files.rollback"
         | "files.rollback_undo"
+        | "checkpoint.restore_files"
+        | "checkpoint.restore_task"
         | "web.search"
         | "web.fetch"
         | "artifact.download"
@@ -398,7 +569,8 @@ fn computer_use_risk_for_input(input: &Value) -> Result<(RiskLevel, String, bool
     }
 
     match action.as_str() {
-        "screenshot" | "wait" | "observe" | "cursor_position" | "mouse_move" | "scroll" => Ok((
+        "screenshot" | "wait" | "wait_for_window" | "observe" | "cursor_position"
+        | "mouse_move" | "scroll" => Ok((
             RiskLevel::ReadOnly,
             "computer_use_observation".to_owned(),
             false,
@@ -420,9 +592,15 @@ fn computer_use_risk_for_input(input: &Value) -> Result<(RiskLevel, String, bool
             "computer_use_browser_navigation".to_owned(),
             false,
         )),
-        "click" | "double_click" | "type" | "paste" | "key" | "hotkey" | "drag" | "task" => Ok((
+        "click" | "double_click" | "type" | "type_element" | "paste" | "key" | "hotkey"
+        | "drag" | "task" => Ok((
             RiskLevel::Guarded,
             "computer_use_ui_interaction".to_owned(),
+            false,
+        )),
+        "close_owned" => Ok((
+            RiskLevel::Dangerous,
+            "computer_use_owned_lifecycle".to_owned(),
             false,
         )),
         _ => Err(BridgeError::new(
@@ -445,6 +623,8 @@ fn build_approval_scope_and_descriptor(
     state: &ApprovalState,
     tool: &str,
     input: &Value,
+    model_request_id: Option<String>,
+    model_action_id: Option<String>,
 ) -> Result<(ApprovalScope, ApprovalDescriptor), BridgeError> {
     require_tool_permission(state, tool)?;
     let tool_risk_level = risk_level_for_tool(tool)?;
@@ -494,11 +674,49 @@ fn build_approval_scope_and_descriptor(
         tool: tool.to_string(),
         command_family,
         risk_level,
+        input_digest: digest,
+        model_request_id,
+        model_action_id,
         target_summary: serde_json::to_string(input).unwrap_or_default(),
         side_effect_category,
         destructive,
     };
     Ok((scope, descriptor))
+}
+
+fn validate_model_request_id(value: Option<String>) -> Result<Option<String>, BridgeError> {
+    match value {
+        None => Ok(None),
+        Some(id)
+            if id.len() == 24
+                && id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) =>
+        {
+            Ok(Some(id))
+        }
+        Some(_) => Err(BridgeError::new(
+            "invalid_correlation",
+            "model request id must be exactly 24 lowercase hexadecimal characters",
+        )),
+    }
+}
+
+fn validate_model_action_id(value: Option<String>) -> Result<Option<String>, BridgeError> {
+    match value {
+        None => Ok(None),
+        Some(id)
+            if !id.is_empty()
+                && id.len() <= 256
+                && !id.chars().any(|character| character.is_control()) =>
+        {
+            Ok(Some(id))
+        }
+        Some(_) => Err(BridgeError::new(
+            "invalid_correlation",
+            "model action id must be a bounded non-control string",
+        )),
+    }
 }
 
 fn issue_scoped_envelope(
@@ -529,8 +747,13 @@ pub async fn request_approval(
     _runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
     tool: String,
     input: Value,
+    request_id: Option<String>,
+    action_id: Option<String>,
 ) -> Result<ApprovalEnvelope, BridgeError> {
-    let (scope, descriptor) = build_approval_scope_and_descriptor(&state, &tool, &input)?;
+    let request_id = validate_model_request_id(request_id)?;
+    let action_id = validate_model_action_id(action_id)?;
+    let (scope, descriptor) =
+        build_approval_scope_and_descriptor(&state, &tool, &input, request_id, action_id)?;
     if descriptor.risk_level == RiskLevel::Dangerous {
         // The prompt blocks for up to PROMPT_TIMEOUT_SECS on a user decision;
         // run it on the blocking pool so no async worker is parked.
@@ -559,12 +782,13 @@ pub async fn request_approval(
 }
 
 #[cfg(test)]
-fn request_approval_inner(
+pub(crate) fn request_approval_inner(
     state: &ApprovalState,
     tool: String,
     input: Value,
 ) -> Result<ApprovalEnvelope, BridgeError> {
-    let (scope, descriptor) = build_approval_scope_and_descriptor(state, &tool, &input)?;
+    let (scope, descriptor) =
+        build_approval_scope_and_descriptor(state, &tool, &input, None, None)?;
     if descriptor.risk_level == RiskLevel::Dangerous {
         match state.prompt.decide(&descriptor) {
             Ok(ApprovalDecision::Approve) => {}
@@ -634,6 +858,30 @@ pub fn execute_approved(
         "workspace": grant.workspace,
         "session": grant.session,
     }))
+}
+
+/// Issue a scoped one-time approval envelope for a GUARDED tool input on
+/// behalf of a Rust-internal typed command (e.g. `coding_start_approval`).
+///
+/// Guarded tools use the documented background boundary: the frontend reaches
+/// this only through an explicit per-operation user action, and the resulting
+/// token stays scoped to (tool, input digest, workspace, session), single-use,
+/// expiring. Dangerous tools must NEVER route through this helper — they
+/// always require the interactive prompt path in `request_approval`.
+pub(crate) fn issue_guarded_approval_for_input(
+    state: &ApprovalState,
+    tool: &str,
+    input: &Value,
+) -> Result<ApprovalEnvelope, BridgeError> {
+    if risk_level_for_tool(tool)? != RiskLevel::Guarded {
+        return Err(BridgeError::new(
+            "invalid_tool_risk_path",
+            "guarded-only issuance helper refused a non-guarded tool",
+        ));
+    }
+    require_tool_permission(state, tool)?;
+    let (scope, descriptor) = build_approval_scope_and_descriptor(state, tool, input, None, None)?;
+    issue_scoped_envelope(state, scope, &descriptor)
 }
 
 #[cfg(test)]
@@ -751,6 +999,7 @@ pub fn run_tool_call(
     action_id: Option<String>,
 ) -> Result<Value, BridgeError> {
     activation_gate(is_tool_execution_enabled())?;
+    let tool_for_detail = tool.clone();
     run_tool_call_inner(
         &state,
         Some(&bridge),
@@ -759,13 +1008,22 @@ pub fn run_tool_call(
         token,
         approval_id,
         call_id,
-        request_id,
-        action_id,
+        request_id.clone(),
+        action_id.clone(),
     )
+    .map_err(|error| {
+        // INV-ERR-001: dispatch-stage rejections carry the versioned envelope
+        // with model-turn correlation so the UI can show a diagnostic id
+        // instead of an opaque failure.
+        error
+            .with_phase("tool_dispatch")
+            .with_correlation(request_id.as_deref().or(action_id.as_deref()))
+            .with_detail("tool", &Value::String(tool_for_detail))
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_tool_call_inner(
+pub(crate) fn run_tool_call_inner(
     state: &ApprovalState,
     bridge: Option<&ControlPlaneBridge>,
     tool: String,
@@ -777,6 +1035,10 @@ fn run_tool_call_inner(
     action_id: Option<String>,
 ) -> Result<Value, BridgeError> {
     require_tool_permission(state, &tool)?;
+    // F-03 full binding gate: when an armed context exists it must match
+    // session/workspace/desktop/capability/digest/expiry/mode before ANY
+    // guarded/dangerous dispatch. Normal sessions (None) pass through.
+    state.require_permission_context_for_tool(&tool)?;
     let risk_level = effective_risk_level(&tool, &input)?;
     let command_family = command_family_for_tool(&tool)
         .ok_or_else(|| BridgeError::new("unknown_tool", "unknown tool has no command family"))?;
@@ -879,6 +1141,10 @@ fn run_tool_call_inner(
     // every spawn is desktop-bound BEFORE process creation.
     if tool == "computer_use" {
         if let Some(action) = crate::cu_broker::broker_action(&input) {
+            // Runtime telemetry is intentionally reduced to a fixed stage,
+            // status and broker action. Never log raw tool input, grants,
+            // tokens, request ids or digests at this boundary.
+            crate::startup::record_runtime("broker_dispatch", "start", action);
             let hidden_desktop = std::env::var("LC_HIDDEN_DESKTOP_NAME")
                 .ok()
                 .map(|value| value.trim().to_owned())
@@ -892,6 +1158,11 @@ fn run_tool_call_inner(
                 Some(workspace_path.as_str()),
                 hidden_desktop.as_deref(),
             );
+            let outcome = envelope
+                .get("status")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown");
+            crate::startup::record_runtime("broker_dispatch", "return", outcome);
             if let Some(receipt) = idempotency_receipt {
                 state
                     .registry
@@ -971,6 +1242,124 @@ pub fn cu_broker_observe(request_id: String) -> Result<Value, BridgeError> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Broker-owned continuation grant commands (master prompt Part I). These are
+// thin typed transports: all authority lives in the Rust continuation
+// registry; the frontend can only carry opaque refs back and never mints,
+// extends or reinterprets a grant.
+// ---------------------------------------------------------------------------
+
+fn continuation_session_workspace(
+    state: &ApprovalState,
+) -> Result<(String, String, String), BridgeError> {
+    let registry = state
+        .registry
+        .lock()
+        .map_err(|_| BridgeError::new("internal_error", "approval registry poisoned"))?;
+    let workspace_guard = state
+        .workspace
+        .lock()
+        .map_err(|_| BridgeError::new("internal_error", "workspace lock poisoned"))?;
+    let identity = workspace_guard.as_ref().ok_or_else(|| {
+        BridgeError::new(
+            "no_workspace",
+            "continuation requires a confirmed workspace",
+        )
+    })?;
+    Ok((
+        registry.session_id().to_owned(),
+        identity.canonical_path.clone(),
+        identity.digest.clone(),
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn cu_broker_continuation_consume(
+    state: State<'_, ApprovalState>,
+    grant_ref: String,
+    task_id: String,
+    step_id: String,
+    request_id: String,
+    action_kind: String,
+    input: Value,
+    expected_step_index: u16,
+) -> Result<Value, BridgeError> {
+    activation_gate(is_tool_execution_enabled())?;
+    let (session, _workspace_path, workspace_digest) = continuation_session_workspace(&state)?;
+    // Authority recomputes the canonical digest from the exact input bytes;
+    // a caller-supplied hex is never trusted (master prompt section 4.2).
+    let input_digest = crate::approval::canonical_input_digest(&input);
+    let hidden_desktop = std::env::var("LC_HIDDEN_DESKTOP_NAME")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    match crate::cu_continuation::consume_continuation_grant(
+        &grant_ref,
+        &task_id,
+        &step_id,
+        &request_id,
+        &action_kind,
+        &input_digest,
+        &session,
+        &workspace_digest,
+        hidden_desktop.as_deref(),
+        expected_step_index,
+    ) {
+        Ok(mut lease) => {
+            // Echo the authoritative digest so evidence can correlate without
+            // exposing any capability material.
+            lease.canonical_input_digest_hex = crate::cu_broker::hex_digest(&input_digest);
+            serde_json::to_value(lease)
+                .map_err(|error| BridgeError::new("internal_error", &error.to_string()))
+        }
+        Err(code) => Err(BridgeError::new(code, code)),
+    }
+}
+
+#[tauri::command]
+pub fn cu_broker_continuation_complete(
+    state: State<'_, ApprovalState>,
+    lease_id: String,
+    status: String,
+    postcondition_verified: bool,
+) -> Result<Value, BridgeError> {
+    activation_gate(is_tool_execution_enabled())?;
+    let _session = continuation_session_workspace(&state)?;
+    match crate::cu_continuation::complete_continuation_grant(
+        &lease_id,
+        &status,
+        postcondition_verified,
+    ) {
+        Ok((completed_status, grant_state)) => Ok(json!({
+            "schema_version": crate::cu_continuation::CONTINUATION_GRANT_SCHEMA,
+            "status": completed_status,
+            "grant_state": grant_state,
+        })),
+        Err(code) => Err(BridgeError::new(code, code)),
+    }
+}
+
+#[tauri::command]
+pub fn cu_broker_continuation_revoke(
+    state: State<'_, ApprovalState>,
+    grant_ref: String,
+    reason: String,
+) -> Result<Value, BridgeError> {
+    activation_gate(is_tool_execution_enabled())?;
+    let _ = continuation_session_workspace(&state)?;
+    if reason.trim().is_empty() {
+        return Err(BridgeError::new(
+            "invalid_payload",
+            "revoke requires a non-empty reason",
+        ));
+    }
+    match crate::cu_continuation::revoke_continuation_grants(&grant_ref) {
+        Ok(revoked) => Ok(json!({ "revoked": revoked })),
+        Err(code) => Err(BridgeError::new(code, code)),
+    }
+}
+
 /// Confirm a workspace: validate the path, invalidate tokens bound to the
 /// previous workspace, and store the new identity. Fails closed on invalid
 /// paths or symlink/reparse escape.
@@ -991,6 +1380,12 @@ fn set_workspace_inner(state: &ApprovalState, path: String) -> Result<Value, Bri
     let identity = crate::workspace::change_workspace(raw, &mut registry, &current)
         .map_err(|error| BridgeError::new("workspace_error", &error.to_string()))?;
     *workspace_guard = Some(identity.clone());
+    // Re-bind isolated-test context to the concrete workspace digest so B1
+    // workspace binding stays verifiable after the workspace becomes known.
+    drop(registry);
+    drop(workspace_guard);
+    state.sync_isolated_workspace_digest(&identity.digest);
+    // Re-acquire for response (already stored)
     Ok(json!({
         "status": "ok",
         "canonical_path": identity.canonical_path,
@@ -1009,6 +1404,22 @@ mod tests {
 
     const TEST_APPROVAL_ID: &str = "appr_00000000000000000000000000000000";
     const TEST_CALL_ID: &str = "call_00000000000000000000000000000000";
+
+    #[test]
+    fn p0_approval_correlation_rejects_malformed_model_request_id() {
+        let error = validate_model_request_id(Some("not-a-turn".to_owned())).unwrap_err();
+        assert_eq!(error.code, "invalid_correlation");
+        assert!(validate_model_request_id(Some("0123456789abcdef01234567".to_owned())).is_ok());
+        assert!(validate_model_request_id(None).unwrap().is_none());
+    }
+
+    #[test]
+    fn p0_approval_correlation_rejects_unbounded_or_control_action_id() {
+        let error = validate_model_action_id(Some("\u{0}".to_owned())).unwrap_err();
+        assert_eq!(error.code, "invalid_correlation");
+        assert!(validate_model_action_id(Some(TEST_CALL_ID.to_owned())).is_ok());
+        assert!(validate_model_action_id(None).unwrap().is_none());
+    }
 
     #[test]
     fn b3r_known_read_only_unchanged() {
@@ -1105,6 +1516,7 @@ mod tests {
                 canonical_path: "C:\\test-workspace".to_string(),
                 digest: "abcd1234".to_string(),
             })),
+            permission_context: Mutex::new(None),
             permissions: Mutex::new(AgentPermissions {
                 files: true,
                 shell: true,
@@ -1693,6 +2105,7 @@ mod tests {
                 canonical_path: "C:\\test-workspace".to_string(),
                 digest: "abcd1234".to_string(),
             })),
+            permission_context: Mutex::new(None),
             permissions: Mutex::new(AgentPermissions {
                 files: true,
                 shell: true,
@@ -1777,6 +2190,7 @@ mod tests {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
             permissions: Mutex::new(disabled_agent_permissions()),
+            permission_context: Mutex::new(None),
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Approve,
             }),
@@ -1822,6 +2236,7 @@ mod tests {
             registry: Mutex::new(ApprovalRegistry::new()),
             workspace: Mutex::new(None),
             permissions: Mutex::new(disabled_agent_permissions()),
+            permission_context: Mutex::new(None),
             prompt: Arc::new(ScriptedApprovalPrompt {
                 decision: ApprovalDecision::Approve,
             }),

@@ -1,0 +1,19 @@
+{
+  "started_utc": "2026-08-26T04:02:12.643023+00:00",
+  "worker_pid": 15168,
+  "launcher_pid": 8864,
+  "isolated_root": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_intent_rerun_20260826_090155",
+  "desktop_name": "LocalCometHiddenCU_intent_rerun_20260826_090155",
+  "reader_startup_attachment": {
+    "ok": true,
+    "desktop_name": "LocalCometHiddenCU_intent_rerun_20260826_090155",
+    "mode": "already_on_named_desktop",
+    "current_desktop_name": "LocalCometHiddenCU_intent_rerun_20260826_090155",
+    "set_thread_desktop_winerror": 170
+  },
+  "isolated_vite_port": 1423,
+  "expected_dev_url": "http://127.0.0.1:1423",
+  "port_patched": true,
+  "enable_computer_use": true,
+  "scenario": "browser_youtube"
+}

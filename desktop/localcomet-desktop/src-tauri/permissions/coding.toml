@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-coding"
+description = "Typed coding-task seam: mint the scoped one-time patch grant, start a bounded orchestrator run over the confirmed workspace, poll/recover the confirmed workspace ledger, cancel a running task. Risk/approval/patch policy stays in Rust."
+commands.allow = [
+  "coding_start_approval",
+  "coding_start",
+  "coding_events",
+  "coding_list_tasks",
+  "coding_recover_task",
+  "coding_cancel"
+]

@@ -49,8 +49,12 @@ DANGEROUS_TOOLS = frozenset(("files.delete", "shell", "computer_use", "skills.in
 # `computer_use` remains dangerous at the capability level in the canonical
 # registry, while Rust resolves the effective risk from the action. These
 # actions are the only no-grant subset; every other action stays grant-bound.
+# Keep this set exactly aligned with ALLOWED_ACTIONS — legacy observe/cursor
+# probes are not dispatched via _computer_use but via the core observe side
+# channel; advertising them here without an allowlist entry produced
+# invalid_payload instead of a read-only execution.
 COMPUTER_USE_READ_ONLY_ACTIONS = frozenset(
-    ("screenshot", "wait", "observe", "cursor_position", "mouse_move", "scroll")
+    ("screenshot", "wait", "wait_for_window", "observe", "scroll")
 )
 
 
@@ -465,6 +469,8 @@ def _normalize_computer_use_result(
     else:
         normalized_verification = "failed"
 
+    execution = result.get("execution")
+    execution_payload = dict(execution) if isinstance(execution, Mapping) else result
     normalized: dict[str, Any] = {
         **result,
         "schema_version": _COMPUTER_USE_RESULT_SCHEMA,
@@ -473,7 +479,7 @@ def _normalize_computer_use_result(
         "terminal": terminal,
         "succeeded": succeeded,
         "verification": normalized_verification,
-        "execution": result,
+        "execution": execution_payload,
     }
     if request_id:
         normalized["request_id"] = request_id
@@ -626,6 +632,9 @@ def _computer_use(
         "scroll",
         "drag",
         "wait",
+        "wait_for_window",
+        "type_element",
+        "observe",
         "screenshot",
         "task",
     }
@@ -645,12 +654,15 @@ def _computer_use(
         "click": "click_element",
         "double_click": "double_click_element",
         "type": "paste_text",
+        "type_element": "type_element",
         "paste": "paste_text",
         "key": "press_key",
         "hotkey": "hotkey",
         "scroll": "scroll",
         "drag": "drag",
         "wait": "wait_for_window",
+        "wait_for_window": "wait_for_window",
+        "observe": "observe",
         "screenshot": "screenshot",
         "task": "task",
     }
@@ -679,7 +691,7 @@ def _computer_use(
         dispatched["keys"] = [k.strip() for k in text_val.split("+") if k.strip()]
     if coordinate is not None:
         dispatched["coordinate"] = coordinate
-    if action == "wait" and seconds_val is not None:
+    if action in ("wait", "wait_for_window") and seconds_val is not None:
         dispatched["seconds"] = float(seconds_val)
     # Caller-provided coordinate is treated as advisory — real click planning
     # is delegated to computer_use_click_planner_ru via the backend.
@@ -943,9 +955,13 @@ def _shell(
 
 
 def _skills_invoke(policy: WorkspacePolicy, tool: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-    from modules.skills.skills_invoker import SkillInvokeError, invoke_skill
+    from modules.skills.skills_invoker import SkillInvokeError, _skills_root, invoke_skill
+    from modules.skills.skills_manager import SkillsManager
 
     skill_id = _require_str(payload, "skill_id")
+    operation = payload.get("operation", "execute")
+    if operation not in {"execute", "compile_workflow"}:
+        raise ToolExecutionError("invalid_payload", "unsupported skill operation")
     arguments = payload.get("arguments")
     if arguments is not None and not isinstance(arguments, (Mapping, list)):
         raise ToolExecutionError(
@@ -964,9 +980,23 @@ def _skills_invoke(policy: WorkspacePolicy, tool: str, payload: Mapping[str, Any
             "permissions must be a non-empty list of unique strings",
         )
     try:
+        if operation == "compile_workflow":
+            if not isinstance(arguments, Mapping):
+                raise ToolExecutionError("invalid_payload", "workflow compile arguments must be an object")
+            manager = SkillsManager(_skills_root())
+            manager.ensure_builtins()
+            plan = manager.compile_workflow(skill_id, arguments)
+            return {"tool": tool, "operation": operation, "skill": skill_id, "plan": plan}
         return invoke_skill(skill_id, arguments, requested_permissions)
+    except ToolExecutionError:
+        raise
     except SkillInvokeError as exc:
         raise ToolExecutionError(exc.code, exc.message) from exc
+    except Exception as exc:
+        from modules.skills.skills_contract import SkillError
+        if isinstance(exc, SkillError):
+            raise ToolExecutionError(exc.code.value, exc.message) from exc
+        raise
 
 
 def _computer_use_action_requires_grant(input_obj: Mapping[str, Any]) -> bool:

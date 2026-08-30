@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container {
+            width: 1280px;
+            min-height: 720px;
+            background-color: #FFFFFF;
+            color: #0A192F;
+            font-family: 'Courier New', Consolas, monospace;
+            /* keep top padding for title consistency */
+            padding: 40px 36px 24px 36px;
+            display: flex;
+            flex-direction: column;
+        }
+        h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+        .header-box {
+            border: 1px solid #0A192F;
+            /* keep top padding for title consistency */
+            padding: 20px 18px;
+            margin-bottom: 12px;
+            background-color: #E3F2FD;
+        }
+        .slide-title {
+            font-size: 36px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .content-box {
+            border: 1px solid #0A192F;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+        .box-title {
+            font-size: 22px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #0A192F;
+            padding-bottom: 6px;
+        }
+        .body-text {
+            font-size: 18px;
+            font-weight: 400;
+            line-height: 1.45;
+            margin-bottom: 8px;
+        }
+        .highlight-list {
+            list-style-type: none;
+            margin-bottom: 8px;
+        }
+        .highlight-list li {
+            font-size: 18px;
+            margin-bottom: 4px;
+            padding-left: 8px;
+            border-left: 3px solid #0A192F;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #0A192F;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #0A192F;
+            padding: 6px 8px;
+            text-align: left;
+            font-size: 16px;
+        }
+        .data-table th {
+            background-color: #E3F2FD;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .warning-box {
+            border: 1px solid #D32F2F;
+            padding: 8px;
+            background-color: rgba(211, 47, 47, 0.05);
+            margin-top: 8px;
+        }
+        .warning-text {
+            color: #D32F2F;
+            font-size: 18px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header-box">
+            <h1 class="slide-title">Как оценивалась доказательность</h1>
+        </div>
+
+        <div class="content-grid">
+            <div class="content-box">
+                <h2 class="box-title">Источник Authority</h2>
+                <p class="body-text">
+                    <strong>Rust</strong> владеет risk policy, approval/grant, host spawn/ownership и terminal state.
+                </p>
+                <p class="body-text">
+                    Frontend, Python sidecar, model output, UI pill, body text и открытый порт <strong>не могут</strong> повышать verdict.
+                </p>
+                
+                <h2 class="box-title">Требования к Acceptance</h2>
+                <p class="body-text">Требуются не только source tests, а <strong>independent protected postconditions</strong>:</p>
+                <ul class="highlight-list">
+                    <li>Exact PID / desktop / profile</li>
+                    <li>Correlated request / action / input digest</li>
+                    <li>Before / after bytes</li>
+                    <li>No mutation &amp; No replay</li>
+                    <li>Exact cleanup</li>
+                </ul>
+
+                <div class="warning-box">
+                    <p class="warning-text">ВАЖНО: Contract test не закрывает native row, если MASTERPROMPT требует protected postcondition.</p>
+                </div>
+            </div>
+
+            <div class="content-box">
+                <h2 class="box-title">Классификация Evidence</h2>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 20%;">Класс</th>
+                            <th>Значение в этом аудите</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>A</strong></td>
+                            <td>Verified current native evidence</td>
+                        </tr>
+                        <tr>
+                            <td><strong>B</strong></td>
+                            <td>Verified historical / current-code-cutoff evidence</td>
+                        </tr>
+                        <tr>
+                            <td><strong>C</strong></td>
+                            <td>Source / contract evidence only</td>
+                        </tr>
+                        <tr>
+                            <td><strong>G</strong></td>
+                            <td>Unsupported for native</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h2 class="box-title">Verdict Vocabulary</h2>
+                <table class="data-table">
+                    <tbody>
+                        <tr>
+                            <td style="background-color: #E3F2FD; font-weight: 600;">Успех</td>
+                            <td>VERIFIED_SUCCESS</td>
+                        </tr>
+                        <tr>
+                            <td style="background-color: #E3F2FD; font-weight: 600;">Отказ / Блок</td>
+                            <td>VERIFIED_FAILED<br>VERIFIED_BLOCKED</td>
+                        </tr>
+                        <tr>
+                            <td style="background-color: #E3F2FD; font-weight: 600;">Ожидание</td>
+                            <td>PENDING_TERMINAL</td>
+                        </tr>
+                        <tr>
+                            <td style="background-color: #E3F2FD; font-weight: 600;">Не доказано</td>
+                            <td style="color: #D32F2F; font-weight: 600;">NOT_INDEPENDENTLY_VERIFIED</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

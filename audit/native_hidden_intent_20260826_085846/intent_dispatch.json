@@ -1,0 +1,11 @@
+{
+  "schema_version": "localcomet.intent-dispatch.v1",
+  "timestamp_utc": "2026-08-26T03:59:27.275673+00:00",
+  "prompt": "РћС‚РєСЂРѕР№ https://example.com РІ Р±СЂР°СѓР·РµСЂРµ",
+  "branch_head": "74f527d5cc97526a791eca81a8d995e2cc5a6aa7",
+  "payload": {
+    "__error": "cdp eval failed: cdp: no page target on isolated port 1423; observed page targets: <endpoint unreachable or empty>"
+  },
+  "outcome": "NO_EVIDENCE",
+  "classification": "NOT_INDEPENDENTLY_VERIFIED"
+}

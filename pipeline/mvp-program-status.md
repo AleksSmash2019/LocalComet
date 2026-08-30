@@ -58,3 +58,32 @@
 | M3 Release MVP | NOT_STARTED |
 
 ## Tool Activation: TOOLS_ACTIVATION_BLOCKED
+
+
+---
+
+## Current canonical continuation — 2026-08-28
+
+Исторические блоки выше не переписаны и не являются текущим release status.
+
+| Поле | Текущее значение |
+|---|---|
+| Branch | `feat/up00-wp01-windows-one-click-launch` |
+| HEAD | `74f527d5cc97526a791eca81a8d995e2cc5a6aa7` |
+| Source tree digest | `6820f0b3eb2afbf17ec50eaa9751e4f1f64b49086bf0b6152505685f6d2c10c9` (598 source files) |
+| Working tree | Dirty WIP/history preserved; `git status --short -uall`: 782 lines |
+| Fresh gates | Frontend, Rust, Python mandatory pack, real-sidecar, full pytest, diff-check and py_compile green |
+| Full pytest | `1385 passed, 2 skipped, 413 subtests passed in 214.54s`, exit 0 |
+| Release score | **9/10 не достигнуто; conservative cap 8.0/10** |
+
+### Fresh independently verified native evidence
+
+Notepad UIA/type — 2/2 `VERIFIED_SUCCESS`; browser readonly search — 2/2 successful isolated runs with correlated approval, HTTPS Python title, isolated profile and listener identity; screenshot — 2/2 `VERIFIED_SUCCESS` with owner context, capture PID, PNG/SHA and rendered proof; coding E2E — 2/2 `VERIFIED_SUCCESS` with replay/tamper/rollback checks, honestly `compile_verified_only`; fake-DOM approval — 2/2 `VERIFIED_BLOCKED`; foreign ownership — 2/2 `VERIFIED_BLOCKED` for the tested random unregistered close path; application restart — `VERIFIED_SUCCESS` with `paused_for_review`, `requires_review=true`, `terminal=false`, zero automatic `coding_start`, duplicate approval `task_exists` and unchanged workspace SHA.
+
+Cancellation remains `PENDING_TERMINAL`: Stop and `model_turn_cancel` terminal acknowledgement, worker death, no new cards, composer readiness and absent Stop control are proven, but post-grant host-continuation revocation/no-replay is not proven.
+
+### Security and release blockers
+
+Superseding matrix: `audit/sec_matrix_current_20260828_final.json`. Only SEC-002, scoped SEC-011 and SEC-016 are closed by current evidence. SEC-001, SEC-003–010 and SEC-012–015 remain `NOT_INDEPENDENTLY_VERIFIED`; source tests and synthetic fixtures do not promote them to A evidence. Hostile prompt-injection/no-upload, non-allowlisted URL/profile, cross-session grant attack, corrupt-ledger application recovery, native resource bounds, ordered failure, skills tamper/quarantine and headless OAuth/MCP cases remain open. Performance coverage is partial, and provenance/legal decisions for models, voices, notices, redistribution and commercial use remain owner/legal decisions.
+
+Detailed current evidence and gate tails: `audit/final_audit_20260828_ru.md`.

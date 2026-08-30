@@ -35,7 +35,7 @@ describe('UI preferences', () => {
     expect(UI_PREFERENCES_KEY).toBe('localcomet.ui.preferences.v1');
     expect(loadUiPreferences()).toEqual(DEFAULT_UI_PREFERENCES);
     expect(Object.keys(loadUiPreferences())).toEqual(['theme', 'locale', 'diagnosticsPanel',
-      'voiceMode', 'agentPermissions', 'ctxSizeOverride', 'gpuLayersOverride', 'computeMode', 'effort']);
+      'voiceMode', 'voiceGender', 'agentPermissions', 'ctxSizeOverride', 'gpuLayersOverride', 'computeMode', 'effort']);
   });
 
   it('does not mutate nested default permissions while normalizing stored preferences', () => {
@@ -60,6 +60,7 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
@@ -71,6 +72,7 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
@@ -83,13 +85,15 @@ describe('UI preferences', () => {
     localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
       theme: 'sepia',
       locale: 'en',
-      diagnosticsPanel: 'floating'
+      diagnosticsPanel: 'floating',
+      voiceGender: 'robot'
     }));
     expect(loadUiPreferences()).toEqual({
       theme: 'system',
       locale: 'en',
       diagnosticsPanel: 'closed',
       voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
@@ -112,6 +116,7 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'closed',
       voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
@@ -136,6 +141,7 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
@@ -147,6 +153,7 @@ describe('UI preferences', () => {
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
@@ -174,6 +181,7 @@ describe('UI preferences', () => {
       locale: 'ru',
       diagnosticsPanel: 'open',
       voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       ctxSizeOverride: null,
       gpuLayersOverride: null,
@@ -185,6 +193,7 @@ describe('UI preferences', () => {
       'locale',
       'diagnosticsPanel',
       'voiceMode',
+      'voiceGender',
       'agentPermissions',
       'ctxSizeOverride',
       'gpuLayersOverride',

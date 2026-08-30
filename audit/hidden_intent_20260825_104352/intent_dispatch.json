@@ -1,0 +1,75 @@
+{
+  "schema_version": "localcomet.intent-dispatch.v1",
+  "timestamp_utc": "2026-08-25T05:46:19.052422+00:00",
+  "prompt": "Открой https://example.com в браузере",
+  "branch_head": "74f527d5cc97526a791eca81a8d995e2cc5a6aa7",
+  "payload": {
+    "requestId": "6522648437f7fa037ebef775",
+    "actionId": "call_e5c438413fdd3df50139f8910f13af29",
+    "intent_id": "intent_484737404bada59b",
+    "plan_digest": "793c99dd8513f3883e7ec0a367847c162d22b958fab1ead7ffdbad37e65ced38",
+    "source_text_hash": "484737404bada59b9a5c2a8b163ef125d1374797d213396ea1ad514774165ba4",
+    "envelope": {
+      "approval_id": "appr_ba5ba64583f8550c3ebc48674d35b641"
+    },
+    "result": {
+      "action": "open_url",
+      "action_id": "call_e5c438413fdd3df50139f8910f13af29",
+      "execution": {
+        "approval_call_id": "call_5018a0f945eb2cc11956e7f8e3f7abce",
+        "approval_id": "appr_ba5ba64583f8550c3ebc48674d35b641",
+        "backend": "rust-host",
+        "cdp_port": 9224,
+        "continuation": {
+          "allowed_next_actions": [
+            "observe",
+            "wait",
+            "wait_for_window"
+          ],
+          "expires_at_unix_ms": 1787636809050,
+          "grant_ref": "cgr_0982717a7820320a0508f0d6dea54627",
+          "grant_state": "issued",
+          "remaining_steps": 2,
+          "schema_version": "cu.broker.continuation.grant.v1",
+          "step_index": 0
+        },
+        "desktop": "LocalCometHiddenCU_23720",
+        "foreground_unchanged": true,
+        "input_digest": "c24680c3fe3f430e2ea95967d566cf2c3f2980d1ea4ae37f32bd0bcc87101542",
+        "mode": "cu_broker_spawn",
+        "pid": 12180,
+        "program": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "spawn_pid": 12180,
+        "url": "https://example.com/",
+        "window_evidence": {
+          "observation": {
+            "allow_reparented_process": false,
+            "expected_process_names": [
+              "chrome.exe"
+            ],
+            "hidden_window_pid_count": 3,
+            "matching_hidden_pids": [
+              12180
+            ],
+            "matching_user_pids": [],
+            "user_window_pid_count": 10
+          },
+          "observed_pid": 12180,
+          "on_hidden_desktop": true,
+          "on_user_desktop": false,
+          "spawned_pid": 12180
+        },
+        "window_station": "winsta0"
+      },
+      "request_id": "6522648437f7fa037ebef775",
+      "schema_version": "computer_use.result.v1",
+      "status": "completed",
+      "succeeded": true,
+      "terminal": true,
+      "tool": "computer_use",
+      "verification": "verified"
+    }
+  },
+  "outcome": "COMPLETED_VERIFIED",
+  "classification": "VERIFIED_SUCCESS"
+}

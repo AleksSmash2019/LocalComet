@@ -1,0 +1,21 @@
+{
+  "timestamp_utc": "2026-08-26T04:13:57.276891+00:00",
+  "source_root": "C:\\Users\\DNS\\Documents\\LocalComet-build-week-clean",
+  "runtime_root": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_inputevent_20260826_091344\\LocalCometDev",
+  "sync_summary": {
+    "copied": 614,
+    "updated": 0,
+    "reused": 0,
+    "removed_stale": 0
+  },
+  "resource_summary": {
+    "copied": 71,
+    "updated": 0,
+    "reused": 0,
+    "removed_stale": 0
+  },
+  "malformed_state": false,
+  "dependency": "INSTALLED",
+  "port": 1423,
+  "port_patched": true
+}

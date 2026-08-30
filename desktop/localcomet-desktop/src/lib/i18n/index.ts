@@ -74,15 +74,10 @@ export function setLocale(lang: Language): void {
 export const availableLanguages = LANGUAGES;
 
 /**
- * Map an interface language onto a locale the assistant backend accepts.
- *
- * The Rust control plane validates the turn locale against `ru | en`
- * (src-tauri/src/control_plane.rs) and the prompt scaffolding only exists in
- * those two languages. Interface chrome may be shown in any registered
- * language, but a model turn must still declare a supported locale, so
- * everything other than Russian is sent as English. Widening the backend enum
- * instead would claim prompt support that does not exist.
+ * Keep the assistant response locale aligned with the interface locale. The
+ * backend validates this against the same registry and adds an explicit
+ * model-facing language directive for every registered language.
  */
-export function assistantLocaleFor(lang: Language): 'ru' | 'en' {
-  return lang === 'ru' ? 'ru' : 'en';
+export function assistantLocaleFor(lang: Language): Language {
+  return lang;
 }

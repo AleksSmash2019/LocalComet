@@ -14,7 +14,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from modules.skills.skills_archive import (
     extract_archive_from_data,
@@ -24,11 +24,16 @@ from modules.skills.skills_archive import (
 )
 from modules.skills.skills_contract import (
     MAX_ARCHIVE_BYTES,
+    MAX_WORKFLOW_BYTES,
+    SKILL_WORKFLOW_CONTRACT_VERSION,
     SkillError,
     SkillErrorCode,
     SkillManifest,
     SkillState,
+    SkillWorkflow,
+    bind_workflow,
     validate_manifest_dict,
+    validate_workflow_dict,
 )
 
 _REGISTRY_NAME = "registry.json"
@@ -45,6 +50,23 @@ def _hash_skill_tree(root: Path) -> str:
         digest.update(b"\0")
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def _load_workflow(path: Path, skill_id: str) -> SkillWorkflow:
+    """Load and validate a declarative workflow as untrusted data.
+
+    This function never imports or executes the skill entrypoint. The returned
+    workflow still goes through the normal host approval/dispatch pipeline.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size > MAX_WORKFLOW_BYTES:
+            raise SkillError(SkillErrorCode.WORKFLOW_MISSING, "skill workflow is missing or too large")
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except SkillError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SkillError(SkillErrorCode.WORKFLOW_INVALID, "skill workflow is unreadable") from exc
+    return validate_workflow_dict(raw, expected_skill_id=skill_id)
 
 
 class SkillsManager:
@@ -104,6 +126,8 @@ class SkillsManager:
             entrypoint = source_dir / manifest.entrypoint
             if not entrypoint.is_file():
                 raise SkillError(SkillErrorCode.ENTRYPOINT_MISSING, f"bundled skill entrypoint missing: {manifest.skill_id}")
+            if manifest.workflow:
+                _load_workflow(source_dir / manifest.workflow, manifest.skill_id)
             install_dir = installed_root / manifest.skill_id
             staging = Path(tempfile.mkdtemp(prefix=".builtin-", dir=installed_root))
             try:
@@ -130,6 +154,9 @@ class SkillsManager:
                 "capabilities": list(manifest.capabilities),
                 "builtin": True,
                 "hidden": False,
+                "contract": manifest.contract,
+                "workflow": manifest.workflow,
+                "trust_tier": manifest.trust_tier,
             }
             seeded.append(manifest.skill_id)
             changed = True
@@ -160,6 +187,9 @@ class SkillsManager:
                 "description": e.get("description", ""),
                 "capabilities": e.get("capabilities", []),
                 "builtin": bool(e.get("builtin", False)),
+                "contract": e.get("contract", "localcomet.skill/1.0"),
+                "workflow": e.get("workflow", ""),
+                "trustTier": e.get("trust_tier", "community_unreviewed"),
             }
             for sid, e in sorted(self._registry.items())
             if not e.get("hidden", False)
@@ -197,6 +227,8 @@ class SkillsManager:
             written = extract_archive_from_data(data, path.name, staging)
             if manifest.entrypoint not in written:
                 raise SkillError(SkillErrorCode.ENTRYPOINT_MISSING, f"entrypoint '{manifest.entrypoint}' not in package")
+            if manifest.workflow:
+                _load_workflow(staging / manifest.workflow, manifest.skill_id)
             installed_tree_sha = _hash_skill_tree(staging)
             if install_dir.exists():
                 shutil.rmtree(install_dir)
@@ -217,6 +249,9 @@ class SkillsManager:
             "capabilities": list(manifest.capabilities),
             "builtin": False,
             "hidden": False,
+            "contract": manifest.contract,
+            "workflow": manifest.workflow,
+            "trust_tier": manifest.trust_tier,
         }
         self._save_registry()
         return {"id": manifest.skill_id, "state": SkillState.DISABLED.value, "permissions": list(manifest.permissions)}
@@ -264,9 +299,32 @@ class SkillsManager:
         if not hmac.compare_digest(expected, actual):
             raise SkillError(SkillErrorCode.CHECKSUM_MISMATCH, "skill package changed after installation")
 
-    def entrypoint_path(self, skill_id: str) -> Path:
-        """Resolve the entrypoint only for ENABLED skills (execution gate)."""
+    def get_contract(self, skill_id: str) -> str:
+        return str(self._entry(skill_id).get("contract", "localcomet.skill/1.0"))
+
+    def workflow_path(self, skill_id: str) -> Path:
+        """Resolve a validated workflow only for enabled, intact v2 skills."""
         entry = self._entry(skill_id)
+        if entry.get("contract") != SKILL_WORKFLOW_CONTRACT_VERSION or not entry.get("workflow"):
+            raise SkillError(SkillErrorCode.SKILL_WORKFLOW_ONLY, f"skill '{skill_id}' has no declarative workflow")
+        if entry.get("state") != SkillState.ENABLED.value:
+            raise SkillError(SkillErrorCode.SKILL_STATE_CONFLICT, f"skill '{skill_id}' is not enabled")
+        self.verify_integrity(skill_id)
+        path = (self._root / entry["path"] / entry["workflow"]).resolve()
+        if not path.is_relative_to(self._root) or not path.is_file():
+            raise SkillError(SkillErrorCode.WORKFLOW_MISSING, "skill workflow is missing")
+        return path
+
+    def compile_workflow(self, skill_id: str, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        path = self.workflow_path(skill_id)
+        workflow = _load_workflow(path, skill_id)
+        return bind_workflow(workflow, arguments)
+
+    def entrypoint_path(self, skill_id: str) -> Path:
+        """Resolve the legacy entrypoint only for enabled non-workflow skills."""
+        entry = self._entry(skill_id)
+        if entry.get("contract") == SKILL_WORKFLOW_CONTRACT_VERSION:
+            raise SkillError(SkillErrorCode.SKILL_WORKFLOW_ONLY, "declarative workflow skills do not execute Python entrypoints")
         if entry.get("state") != SkillState.ENABLED.value:
             raise SkillError(SkillErrorCode.SKILL_STATE_CONFLICT, f"skill '{skill_id}' is not enabled")
         self.verify_integrity(skill_id)

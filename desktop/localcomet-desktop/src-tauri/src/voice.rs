@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -11,24 +11,73 @@ use std::os::windows::ffi::OsStrExt;
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_FILENAME, SND_PURGE, SND_SYNC};
 
 const MAX_TTS_CHARS: usize = 8_192;
-const PIPER_LENGTH_SCALE: &str = "1.04";
+const PIPER_LENGTH_SCALE: &str = "0.96";
 static TTS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static TTS_CANCEL_GENERATION: AtomicU64 = AtomicU64::new(0);
 #[cfg(target_os = "windows")]
-static ACTIVE_PIPER_CHILD: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
+static ACTIVE_TTS_CHILD: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TtsVoiceProfile {
+    Female,
+    Male,
+}
+
+impl TtsVoiceProfile {
+    fn parse(value: Option<&str>) -> Result<Self, String> {
+        match value.unwrap_or("female") {
+            "female" => Ok(Self::Female),
+            "male" => Ok(Self::Male),
+            _ => Err("Неподдерживаемый профиль локального TTS-голоса".to_string()),
+        }
+    }
+
+    fn model_filename(self) -> &'static str {
+        match self {
+            Self::Female => "ru_RU-irina-medium.onnx",
+            Self::Male => "ru_RU-ruslan-medium.onnx",
+        }
+    }
+
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::Female => "женский",
+            Self::Male => "мужской",
+        }
+    }
+}
+
+fn resolve_voice_files(
+    root: &Path,
+    profile: TtsVoiceProfile,
+) -> Result<(PathBuf, PathBuf), String> {
+    let piper = root.join("piper.exe");
+    let model = root.join(profile.model_filename());
+    let config = root.join(format!("{}.json", profile.model_filename()));
+    if !piper.is_file() {
+        return Err("Локальный Piper не найден".to_string());
+    }
+    if !model.is_file() || !config.is_file() {
+        return Err(format!(
+            "Локальный {} TTS-голос не найден вместе с конфигурацией",
+            profile.display_name()
+        ));
+    }
+    Ok((piper, model))
+}
 
 fn tts_lock() -> &'static Mutex<()> {
     TTS_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[cfg(target_os = "windows")]
-fn active_piper_child() -> &'static Mutex<Option<Child>> {
-    ACTIVE_PIPER_CHILD.get_or_init(|| Mutex::new(None))
+fn active_tts_child() -> &'static Mutex<Option<Child>> {
+    ACTIVE_TTS_CHILD.get_or_init(|| Mutex::new(None))
 }
 
 #[cfg(target_os = "windows")]
-fn cancel_active_piper() {
-    if let Ok(mut active) = active_piper_child().lock() {
+fn cancel_active_tts() {
+    if let Ok(mut active) = active_tts_child().lock() {
         if let Some(child) = active.as_mut() {
             let _ = child.kill();
         }
@@ -36,24 +85,24 @@ fn cancel_active_piper() {
 }
 
 #[cfg(target_os = "windows")]
-fn wait_for_piper(generation: u64) -> Result<std::process::ExitStatus, String> {
+fn wait_for_tts_child(generation: u64) -> Result<std::process::ExitStatus, String> {
     loop {
         if TTS_CANCEL_GENERATION.load(Ordering::SeqCst) != generation {
-            cancel_active_piper();
+            cancel_active_tts();
         }
         let status = {
-            let mut active = active_piper_child()
+            let mut active = active_tts_child()
                 .lock()
-                .map_err(|_| "Локальный Piper lock повреждён".to_string())?;
+                .map_err(|_| "Локальный TTS lock повреждён".to_string())?;
             let child = active
                 .as_mut()
-                .ok_or_else(|| "Активный Piper process отсутствует".to_string())?;
+                .ok_or_else(|| "Активный локальный TTS process отсутствует".to_string())?;
             child
                 .try_wait()
-                .map_err(|error| format!("Piper не завершился: {error}"))?
+                .map_err(|error| format!("Локальный TTS процесс не завершился: {error}"))?
         };
         if let Some(status) = status {
-            if let Ok(mut active) = active_piper_child().lock() {
+            if let Ok(mut active) = active_tts_child().lock() {
                 active.take();
             }
             return Ok(status);
@@ -71,6 +120,101 @@ fn piper_root() -> PathBuf {
                 .map(|home| home.join("Documents").join("piper"))
         })
         .unwrap_or_else(|| PathBuf::from("piper"))
+}
+
+#[cfg(target_os = "windows")]
+const RHVOICE_FEMALE_VOICE_NAME: &str = "Elena";
+#[cfg(target_os = "windows")]
+const RHVOICE_MALE_VOICE_NAME: &str = "Aleksandr";
+
+#[cfg(target_os = "windows")]
+const SAPI_SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+try {
+    $voice = New-Object -ComObject SAPI.SpVoice
+    $target = $env:LOCALCOMET_TTS_VOICE
+    $match = $voice.GetVoices() | Where-Object { $_.GetDescription() -eq $target } | Select-Object -First 1
+    if ($null -eq $match) { exit 3 }
+    $voice.Voice = $match
+    $voice.Rate = 0
+    $voice.Volume = 100
+    [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+    $text = [Console]::In.ReadToEnd()
+    if (-not [string]::IsNullOrWhiteSpace($text)) { [void]$voice.Speak($text) }
+    exit 0
+} catch {
+    exit 3
+}
+"#;
+
+#[cfg(target_os = "windows")]
+fn powershell_path() -> Option<PathBuf> {
+    let root = std::env::var_os("WINDIR").map(PathBuf::from)?;
+    let path = root
+        .join("System32")
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe");
+    path.is_file().then_some(path)
+}
+
+#[cfg(target_os = "windows")]
+fn speak_with_sapi(
+    text: String,
+    generation: u64,
+    voice_name: &'static str,
+) -> Result<bool, String> {
+    if TTS_CANCEL_GENERATION.load(Ordering::SeqCst) != generation {
+        return Ok(true);
+    }
+    let Some(powershell) = powershell_path() else {
+        return Ok(false);
+    };
+    let child = Command::new(powershell)
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            SAPI_SCRIPT,
+        ])
+        .env("LOCALCOMET_TTS_VOICE", voice_name)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Не удалось запустить Windows SAPI: {error}"))?;
+    {
+        let mut active = active_tts_child()
+            .lock()
+            .map_err(|_| "Локальный TTS lock повреждён".to_string())?;
+        *active = Some(child);
+    }
+    if let Ok(mut active) = active_tts_child().lock() {
+        if let Some(child) = active.as_mut() {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                if let Err(error) = stdin.write_all(text.as_bytes()) {
+                    let _ = child.kill();
+                    active.take();
+                    return Err(format!("Не удалось передать текст в Windows SAPI: {error}"));
+                }
+            }
+        }
+    }
+    let status = wait_for_tts_child(generation)?;
+    if TTS_CANCEL_GENERATION.load(Ordering::SeqCst) != generation {
+        return Ok(true);
+    }
+    if status.code() == Some(3) {
+        return Ok(false);
+    }
+    if !status.success() {
+        return Err("Windows SAPI не смогла озвучить текст".to_string());
+    }
+    Ok(true)
 }
 
 fn normalized_text(text: String) -> Option<String> {
@@ -119,17 +263,17 @@ fn normalized_text(text: String) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn speak_with_piper(text: String, generation: u64) -> Result<(), String> {
+fn speak_with_piper(
+    text: String,
+    generation: u64,
+    voice_profile: TtsVoiceProfile,
+) -> Result<(), String> {
     if TTS_CANCEL_GENERATION.load(Ordering::SeqCst) != generation {
         return Ok(());
     }
 
     let root = piper_root();
-    let piper = root.join("piper.exe");
-    let voice = root.join("ru_RU-denis-medium.onnx");
-    if !piper.is_file() || !voice.is_file() {
-        return Err("Локальный русский Piper Denis не найден".to_string());
-    }
+    let (piper, voice) = resolve_voice_files(&root, voice_profile)?;
 
     let output = std::env::temp_dir().join(format!(
         "localcomet-tts-{}-{}.wav",
@@ -154,13 +298,13 @@ fn speak_with_piper(text: String, generation: u64) -> Result<(), String> {
         .map_err(|error| format!("Не удалось запустить Piper: {error}"))?;
 
     {
-        let mut active = active_piper_child()
+        let mut active = active_tts_child()
             .lock()
-            .map_err(|_| "Локальный Piper lock повреждён".to_string())?;
+            .map_err(|_| "Локальный TTS lock повреждён".to_string())?;
         *active = Some(child);
     }
 
-    if let Ok(mut active) = active_piper_child().lock() {
+    if let Ok(mut active) = active_tts_child().lock() {
         if let Some(child) = active.as_mut() {
             if let Some(mut stdin) = child.stdin.take() {
                 use std::io::Write;
@@ -173,7 +317,7 @@ fn speak_with_piper(text: String, generation: u64) -> Result<(), String> {
         }
     }
 
-    let status = wait_for_piper(generation)?;
+    let status = wait_for_tts_child(generation)?;
     if TTS_CANCEL_GENERATION.load(Ordering::SeqCst) != generation {
         let _ = std::fs::remove_file(&output);
         return Ok(());
@@ -205,16 +349,57 @@ fn speak_with_piper(text: String, generation: u64) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+fn rhvoice_voice_name(profile: TtsVoiceProfile) -> &'static str {
+    match profile {
+        TtsVoiceProfile::Female => RHVOICE_FEMALE_VOICE_NAME,
+        TtsVoiceProfile::Male => RHVOICE_MALE_VOICE_NAME,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn speak_with_selected_voice(
+    text: String,
+    generation: u64,
+    voice_profile: TtsVoiceProfile,
+    language: &str,
+) -> Result<(), String> {
+    if language != "ru-RU" {
+        return Err("Локальная озвучка сейчас поддерживает только русский язык".to_string());
+    }
+    // Piper neural voices sound clearly better than the SAPI/RHVoice formant
+    // voices, so the local Piper bundle is the primary engine and SAPI/RHVoice
+    // is only the fallback when the bundle is missing or fails.
+    if let Err(piper_error) = speak_with_piper(text.clone(), generation, voice_profile) {
+        let rhvoice_name = rhvoice_voice_name(voice_profile);
+        if !speak_with_sapi(text, generation, rhvoice_name)? {
+            return Err(piper_error);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(not(target_os = "windows"))]
-fn speak_with_piper(_text: String, _generation: u64) -> Result<(), String> {
-    Err("Локальная Piper озвучка доступна только в Windows desktop build".to_string())
+fn speak_with_selected_voice(
+    text: String,
+    generation: u64,
+    voice_profile: TtsVoiceProfile,
+    _language: &str,
+) -> Result<(), String> {
+    speak_with_piper(text, generation, voice_profile)
 }
 
 #[tauri::command]
-pub async fn speak_local_text(text: String, language: Option<String>) -> Result<(), String> {
-    if language.as_deref().unwrap_or("ru-RU") != "ru-RU" {
-        return Ok(());
+pub async fn speak_local_text(
+    text: String,
+    language: Option<String>,
+    voice_profile: Option<String>,
+) -> Result<(), String> {
+    let language = language.unwrap_or_else(|| "ru-RU".to_string());
+    if language != "ru-RU" {
+        return Err("Неподдерживаемый язык локального TTS-голоса".to_string());
     }
+    let voice_profile = TtsVoiceProfile::parse(voice_profile.as_deref())?;
     let Some(text) = normalized_text(text) else {
         return Ok(());
     };
@@ -226,7 +411,7 @@ pub async fn speak_local_text(text: String, language: Option<String>) -> Result<
         if TTS_CANCEL_GENERATION.load(Ordering::SeqCst) != generation {
             return Ok(());
         }
-        speak_with_piper(text, generation)
+        speak_with_selected_voice(text, generation, voice_profile, &language)
     })
     .await
     .map_err(|error| format!("Локальный TTS worker завершился с ошибкой: {error}"))?
@@ -235,6 +420,8 @@ pub async fn speak_local_text(text: String, language: Option<String>) -> Result<
 #[tauri::command]
 pub fn stop_local_text() -> Result<(), String> {
     TTS_CANCEL_GENERATION.fetch_add(1, Ordering::SeqCst);
+    #[cfg(target_os = "windows")]
+    cancel_active_tts();
     #[cfg(target_os = "windows")]
     unsafe {
         // Interrupt a synchronous PlaySound call if one is active. The
@@ -247,7 +434,9 @@ pub fn stop_local_text() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalized_text;
+    use super::{normalized_text, resolve_voice_files, TtsVoiceProfile};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn normalized_text_removes_markdown_and_urls() {
@@ -261,5 +450,51 @@ mod tests {
     fn normalized_text_skips_code_blocks() {
         let text = normalized_text("Ответ\n```rust\nfn main() {}\n```\nПродолжение".to_string());
         assert_eq!(text.as_deref(), Some("Ответ. Продолжение"));
+    }
+
+    #[test]
+    fn voice_profile_defaults_to_female_and_rejects_unknown_values() {
+        assert_eq!(TtsVoiceProfile::parse(None), Ok(TtsVoiceProfile::Female));
+        assert_eq!(
+            TtsVoiceProfile::parse(Some("male")),
+            Ok(TtsVoiceProfile::Male)
+        );
+        assert!(TtsVoiceProfile::parse(Some("irina")).is_err());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn rhvoice_profiles_use_only_expected_local_voice_names() {
+        assert_eq!(super::rhvoice_voice_name(TtsVoiceProfile::Female), "Elena");
+        assert_eq!(
+            super::rhvoice_voice_name(TtsVoiceProfile::Male),
+            "Aleksandr"
+        );
+    }
+
+    #[test]
+    fn voice_profile_resolver_uses_only_fixed_model_and_config_names() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("localcomet-tts-test-{suffix}"));
+        fs::create_dir_all(&root).expect("test root");
+        fs::write(root.join("piper.exe"), b"test").expect("piper marker");
+        fs::write(root.join("ru_RU-irina-medium.onnx"), b"test").expect("female model marker");
+        fs::write(root.join("ru_RU-irina-medium.onnx.json"), b"{}").expect("female config");
+        fs::write(root.join("ru_RU-ruslan-medium.onnx"), b"test").expect("male model marker");
+        fs::write(root.join("ru_RU-ruslan-medium.onnx.json"), b"{}").expect("male config");
+
+        let (piper, model) =
+            resolve_voice_files(&root, TtsVoiceProfile::Female).expect("female files");
+        assert_eq!(piper, root.join("piper.exe"));
+        assert_eq!(model, root.join("ru_RU-irina-medium.onnx"));
+        let (male_piper, male_model) =
+            resolve_voice_files(&root, TtsVoiceProfile::Male).expect("male files");
+        assert_eq!(male_piper, root.join("piper.exe"));
+        assert_eq!(male_model, root.join("ru_RU-ruslan-medium.onnx"));
+
+        fs::remove_dir_all(root).expect("cleanup");
     }
 }

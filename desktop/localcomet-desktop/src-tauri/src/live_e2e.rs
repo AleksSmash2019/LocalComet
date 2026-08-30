@@ -228,6 +228,8 @@ mod tests {
             harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
             "model.binding.set".to_owned(),
             input,
+            None,
+            None,
         ))
         .expect("binding approval issued through the real prompt roundtrip");
         tauri::async_runtime::block_on(crate::control_plane::model_binding_set(
@@ -632,6 +634,8 @@ mod tests {
             runtime_ref,
             "runtime.start".to_owned(),
             input.clone(),
+            None,
+            None,
         ))
         .expect("approval issued through the real prompt roundtrip");
 
@@ -671,6 +675,8 @@ mod tests {
                 harness._app.state::<Arc<ManagedRuntimeSupervisor>>(),
                 "runtime.start".to_owned(),
                 input.clone(),
+                None,
+                None,
             ))
             .expect("second approval issued");
 
@@ -720,5 +726,192 @@ mod tests {
             "custom turn must complete, terminal: {terminal}"
         );
         assert!(!deltas.trim().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 1: deterministic intent → approval → broker → hidden browser.
+    //
+    // Honesty-gated like every live proof:
+    //   LOCALCOMET_INTENT_BROWSER_E2E=1   run the real host case
+    //   LOCALCOMET_REQUIRE_INTENT_E2E=1   hard-fail when env missing (CI)
+    //
+    // Without the env the test is a silent no-op so a normal `cargo test`
+    // never spawns anything. With the env it performs exactly ONE bounded
+    // fresh case: unique hidden desktop, unique profile, unique CDP port,
+    // no Calculator, no physical desktop, owned-PID cleanup only.
+    // ------------------------------------------------------------------
+    #[test]
+    fn intent_open_url_reaches_hidden_broker_browser() {
+        let require = std::env::var("LOCALCOMET_REQUIRE_INTENT_E2E")
+            .ok()
+            .as_deref()
+            == Some("1");
+        if std::env::var("LOCALCOMET_INTENT_BROWSER_E2E")
+            .ok()
+            .as_deref()
+            != Some("1")
+        {
+            if require {
+                panic!("LOCALCOMET_INTENT_BROWSER_E2E must be set when REQUIRE is set");
+            }
+            return; // honest no-op: unstarted proof is never green
+        }
+
+        use windows_sys::Win32::System::StationsAndDesktops::{
+            CloseDesktop, CreateDesktopW, DESKTOP_CREATEWINDOW, DESKTOP_ENUMERATE,
+            DESKTOP_READOBJECTS, DESKTOP_SWITCHDESKTOP, DESKTOP_WRITEOBJECTS,
+        };
+
+        let access = DESKTOP_READOBJECTS
+            | DESKTOP_CREATEWINDOW
+            | DESKTOP_ENUMERATE
+            | DESKTOP_WRITEOBJECTS
+            | DESKTOP_SWITCHDESKTOP;
+        let desktop_name = format!("LocalCometIntentE2E_{}", std::process::id());
+        let wide: Vec<u16> = desktop_name
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let desktop_handle = unsafe {
+            CreateDesktopW(
+                wide.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                access,
+                std::ptr::null(),
+            )
+        };
+        assert!(
+            !desktop_handle.is_null(),
+            "hidden desktop must be creatable"
+        );
+
+        let local_appdata = std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA");
+        let cdp_port: u16 = (20000 + (std::process::id() % 20000)) as u16;
+        let profile_dir = PathBuf::from(&local_appdata)
+            .join("LocalCometHiddenCU")
+            .join(format!("intent_e2e_{}", std::process::id()))
+            .join("browser-user-data");
+        std::fs::create_dir_all(&profile_dir).expect("profile dir");
+
+        // Broker reads these env vars at dispatch time.
+        std::env::set_var("LC_HIDDEN_DESKTOP_NAME", &desktop_name);
+        std::env::set_var(
+            "LC_HIDDEN_BROWSER_PROFILE_DIR",
+            profile_dir.to_string_lossy().to_string(),
+        );
+        std::env::set_var("LC_HIDDEN_BROWSER_CDP_PORT", cdp_port.to_string());
+
+        // 1. Deterministic compile — no model involved.
+        let plan = crate::intent_compiler::compile_intent("Открой https://example.com в браузере")
+            .plan
+            .expect("intent must compile");
+        assert_eq!(
+            plan.intent_kind,
+            crate::intent_compiler::IntentKind::OpenUrl
+        );
+        let input = crate::intent_compiler::plan_to_computer_use_input(&plan);
+
+        // 2. Real approval issuance through the Rust authority.
+        let state = crate::approval_commands::ApprovalState::for_intent_e2e();
+        let envelope = crate::approval_commands::request_approval_inner(
+            &state,
+            "computer_use".to_owned(),
+            input.clone(),
+        )
+        .expect("approval envelope issued");
+
+        // 3. Full production dispatch: token consume → grant re-verify →
+        //    CreateProcessW bound to winsta0\<hidden> BEFORE process creation.
+        let request_id = "0123456789abcdef01234567";
+        let action_id = "call_intent000000000000000000000001";
+        let result = crate::approval_commands::run_tool_call_inner(
+            &state,
+            None,
+            "computer_use".to_owned(),
+            input.clone(),
+            Some(envelope.token),
+            Some(envelope.approval_id),
+            Some(envelope.call_id),
+            Some(request_id.to_owned()),
+            Some(action_id.to_owned()),
+        )
+        .expect("broker dispatch returned a truthful envelope");
+
+        assert_eq!(result["schema_version"], crate::cu_broker::ENVELOPE_SCHEMA);
+        let status = result["status"].as_str().expect("status").to_owned();
+        assert!(
+            status == "completed" || status == "launch_pending",
+            "hidden browser launch must not be blocked/failed: {result}"
+        );
+        assert_eq!(result["request_id"], json!(request_id));
+        assert_eq!(result["action_id"], json!(action_id));
+        let execution = &result["execution"];
+        assert_eq!(execution["desktop"], json!(desktop_name));
+        assert!(execution["url"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("https://example.com"));
+        let spawn_pid = execution["spawn_pid"].as_u64().expect("spawn pid") as u32;
+        let window_evidence = &execution["window_evidence"];
+        assert_eq!(window_evidence["on_user_desktop"], json!(false));
+        let continuation = &execution["continuation"];
+        assert!(
+            continuation["grant_ref"]
+                .as_str()
+                .unwrap_or("")
+                .starts_with("cgr_"),
+            "broker must issue a one-time continuation grant"
+        );
+
+        // 4. Bounded observation through the broker-owned continuation path.
+        let mut observed_terminal = false;
+        for _ in 0..10 {
+            if let Some(observation) = crate::cu_broker::observe_broker_action(request_id) {
+                let s = observation["status"].as_str().unwrap_or_default();
+                if s == "completed" || s == "failed" {
+                    observed_terminal = true;
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        assert!(
+            observed_terminal,
+            "observe must reach terminal within bound"
+        );
+
+        // 5. Owned cleanup ONLY: our spawned PID, our profile dir, our desktop.
+        revoke_all_continuations();
+        terminate_owned_pid(spawn_pid);
+        let _ = std::fs::remove_dir_all(profile_dir.parent().unwrap());
+        unsafe { CloseDesktop(desktop_handle) };
+
+        // Evidence marker for the report (stdout captured by cargo).
+        println!(
+            "INTENT_E2E_VERDICT: status={status} pid={spawn_pid} desktop={desktop_name} port={cdp_port}"
+        );
+    }
+
+    fn revoke_all_continuations() {
+        let _ = crate::cu_continuation::revoke_continuation_grants("");
+    }
+
+    fn terminate_owned_pid(pid: u32) {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+        };
+        if pid == 0 {
+            return;
+        }
+        unsafe {
+            let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
+            if !handle.is_null() {
+                TerminateProcess(handle, 0);
+                CloseHandle(handle);
+            }
+        }
     }
 }

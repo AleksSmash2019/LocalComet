@@ -312,7 +312,26 @@ def stage_runtime(source_root: Path, workspace: Path) -> Path:
     return binaries
 
 
+def refresh_build_source(root: Path) -> dict[str, object]:
+    """Refresh only the ignored Tauri build-source mirror from the manifest."""
+    manifest = load_runtime_manifest(root)
+    binaries = require_within(root / TAURI_DIR / "binaries", root, "build-source refresh")
+    if not binaries.is_dir():
+        raise PackagingHold("Tauri build-source binaries directory is missing")
+    copy_runtime_sources(root, binaries, manifest)
+    shutil.copy2(root / RUNTIME_MANIFEST, binaries / "up00-runtime-manifest.json")
+    identity = binaries / "runtime-manifest.tsv"
+    write_identity_manifest(binaries)
+    return {
+        "binaries": str(binaries),
+        "runtime_manifest": str(binaries / "up00-runtime-manifest.json"),
+        "identity_manifest": str(identity),
+        "source_files": len(manifest["sourceFiles"]),
+    }
+
+
 def resolve_npm() -> str:
+
     for name in ("npm.cmd", "npm.exe", "npm"):
         value = shutil.which(name)
         if value:
@@ -365,6 +384,8 @@ def build_installer(root: Path, workspace: Path) -> tuple[Path, ...]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the bounded UP00-WP01 Windows installer.")
     parser.add_argument("--build", action="store_true", help="Run offline tests and the Tauri NSIS build after staging.")
+    parser.add_argument("--refresh-build-source", action="store_true", help="Refresh the ignored Tauri build-source mirror without building or launching.")
+
     parser.add_argument("--workspace", default=None, help="New generated workspace below target/up00-wp01.")
     return parser.parse_args(argv)
 
@@ -374,7 +395,12 @@ def main(argv: list[str] | None = None) -> int:
     root = repository_root()
     try:
         ensure_bundle_runtime(root)
+        if args.refresh_build_source:
+            result = refresh_build_source(root)
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 0
         commit = require_clean_feature_branch(root)
+
         generated_root = require_within(root / GENERATED_ROOT, root, "generated root")
         generated_root.mkdir(parents=True, exist_ok=True)
         if args.workspace:

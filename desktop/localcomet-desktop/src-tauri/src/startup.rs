@@ -39,9 +39,30 @@ impl StartupPhase {
 }
 
 pub fn record(phase: StartupPhase, status: &str, code: &str) {
+    record_named(phase.log_name(), status, code);
+}
+
+/// Bounded runtime diagnostics for security-sensitive host boundaries. Values
+/// are reduced by `safe_token`; this function never accepts request payloads,
+/// approval tokens, digests or filesystem paths.
+pub fn record_runtime(stage: &str, status: &str, code: &str) {
+    record_named(stage, status, code);
+    // The hidden harness supplies both values explicitly so broker boundary
+    // telemetry lands beside the run artifacts even when startup-log routing
+    // is unavailable. Never honor this trace path in a normal user session.
+    if let Some(path) = hidden_harness_trace_path() {
+        append_record(&path, stage, status, code);
+    }
+}
+
+fn record_named(stage: &str, status: &str, code: &str) {
     let Some(path) = startup_log_path() else {
         return;
     };
+    append_record(&path, stage, status, code);
+}
+
+fn append_record(path: &PathBuf, stage: &str, status: &str, code: &str) {
     let Some(parent) = path.parent() else {
         return;
     };
@@ -54,17 +75,17 @@ pub fn record(phase: StartupPhase, status: &str, code: &str) {
         .unwrap_or(0);
     let row = format!(
         "timestamp_unix={timestamp}\tphase={}\tstatus={}\tcode={}\n",
-        phase.log_name(),
+        safe_token(stage),
         safe_token(status),
         safe_token(code)
     );
-    if let Ok(metadata) = std::fs::metadata(&path) {
+    if let Ok(metadata) = std::fs::metadata(path) {
         if metadata.len() > STARTUP_LOG_MAX_BYTES {
             let _ = OpenOptions::new()
                 .create(true)
                 .truncate(true)
                 .write(true)
-                .open(&path);
+                .open(path);
         }
     }
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
@@ -108,6 +129,16 @@ fn startup_log_path() -> Option<PathBuf> {
         .ok()
         .flatten()
         .map(|root| root.join("logs").join("startup.log"))
+}
+
+fn hidden_harness_trace_path() -> Option<PathBuf> {
+    let report_dir = std::env::var_os("LC_HIDDEN_REPORT_DIR")?;
+    let trace = std::env::var_os("LOCALCOMET_TOOLCALL_TRACE")?;
+    let report_dir = std::fs::canonicalize(report_dir).ok()?;
+    let trace = PathBuf::from(trace);
+    let parent = trace.parent()?.to_path_buf();
+    let parent = std::fs::canonicalize(parent).ok()?;
+    parent.starts_with(&report_dir).then_some(trace)
 }
 
 fn safe_token(value: &str) -> String {
@@ -188,5 +219,29 @@ mod tests {
         assert!(message.contains("LOCALCOMET_APP_DATA_ROOT"));
         assert!(message.contains("relative_app_data_root_override"));
         assert!(!message.contains("C:\\Users"));
+    }
+}
+
+/// F-03 migration: the legacy boolean env seam is replaced by the typed
+/// `permission_context::try_isolated_hidden_provider` (exact sentinel,
+/// expiring, session/workspace/desktop-bound). Production runtime never
+/// consults ambient env for authorization; this delegate exists only so the
+/// isolated startup path can arm the typed context.
+pub fn isolated_permission_context(
+    session_id: &str,
+    workspace_digest: &str,
+    desktop: Option<&str>,
+) -> Option<crate::permission_context::PermissionContext> {
+    crate::permission_context::try_isolated_hidden_provider(session_id, workspace_digest, desktop)
+}
+
+#[cfg(test)]
+mod isolated_caps_tests {
+    #[test]
+    fn provider_denies_without_sentinel() {
+        // Default-deny: absent/legacy values never produce a context here;
+        // the authoritative checks live in permission_context tests.
+        std::env::remove_var("LOCALCOMET_ISOLATED_CU_CAPABILITIES");
+        assert!(crate::permission_context::try_isolated_hidden_provider("s", "w", None).is_none());
     }
 }

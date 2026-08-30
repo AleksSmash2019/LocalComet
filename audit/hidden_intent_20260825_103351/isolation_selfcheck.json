@@ -1,0 +1,47 @@
+{
+  "timestamp_utc": "2026-08-25T05:34:08.174448+00:00",
+  "worker_pid": 20736,
+  "launcher_pid": 10912,
+  "allowed_pid_count": 10,
+  "window_count": 5,
+  "windows": [
+    {
+      "hwnd": 14616330,
+      "pid": 24280,
+      "title": "",
+      "class": "crashpad_SessionEndWatcher",
+      "visible": false
+    },
+    {
+      "hwnd": 3211908,
+      "pid": 10912,
+      "title": "LocalComet",
+      "class": "Tauri Window",
+      "visible": false
+    },
+    {
+      "hwnd": 5113936,
+      "pid": 10912,
+      "title": "",
+      "class": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "hwnd": 3606808,
+      "pid": 24280,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 4260800,
+      "pid": 10912,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "violations": [],
+  "benign_invisible_external_windows": [],
+  "isolated": true
+}

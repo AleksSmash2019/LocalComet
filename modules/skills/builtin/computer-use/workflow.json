@@ -1,0 +1,52 @@
+{
+  "schema_version": "localcomet.skill.workflow/1.0",
+  "skill_id": "computer-use",
+  "parameters": {
+    "app": {
+      "type": "string",
+      "required": true,
+      "max_length": 40
+    }
+  },
+  "max_runtime_ms": 30000,
+  "steps": [
+    {
+      "id": "open_app",
+      "action": "computer_use.open_app",
+      "risk": "guarded",
+      "requires_approval": true,
+      "arguments": {
+        "target": "${app}"
+      },
+      "precondition": {
+        "kind": "owned_session_ready"
+      },
+      "postcondition": {
+        "kind": "owned_process_window",
+        "app": "${app}"
+      },
+      "timeout_ms": 10000,
+      "max_retries": 0
+    },
+    {
+      "id": "wait_window",
+      "action": "computer_use.wait_for_window",
+      "risk": "read_only",
+      "requires_approval": false,
+      "arguments": {
+        "target": "${app}",
+        "seconds": 1
+      },
+      "precondition": {
+        "kind": "launch_pending",
+        "step": "open_app"
+      },
+      "postcondition": {
+        "kind": "wait_complete",
+        "app": "${app}"
+      },
+      "timeout_ms": 5000,
+      "max_retries": 0
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "started_utc": "2026-08-25T18:22:56.194769+00:00",
+  "worker_pid": 18208,
+  "launcher_pid": 15448,
+  "isolated_root": "C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_20260825_232241",
+  "desktop_name": "LocalCometHiddenCU_20260825_232241",
+  "reader_startup_attachment": {
+    "ok": true,
+    "desktop_name": "LocalCometHiddenCU_20260825_232241",
+    "mode": "already_on_named_desktop",
+    "current_desktop_name": "LocalCometHiddenCU_20260825_232241",
+    "set_thread_desktop_winerror": 170
+  },
+  "isolated_vite_port": 1423,
+  "expected_dev_url": "http://127.0.0.1:1423",
+  "port_patched": true,
+  "enable_computer_use": false,
+  "scenario": "notepad_open_type"
+}

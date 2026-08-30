@@ -20,6 +20,7 @@
   import { includedFileIds, addFiles } from '$lib/stores/files';
   import { voiceMode, setVoiceMode } from '$lib/stores/shellStore';
   import { stopLocalText } from '$lib/bridge/voice';
+  import { createVoiceInputSubmissionGate } from '$lib/tools/voiceInputSubmission';
 
   let textarea: HTMLTextAreaElement;
   let restoreComposerFocus = false;
@@ -28,6 +29,8 @@
   let isListening = false;
   let recognition: any = null;
   let voiceNotice = '';
+  let activeVoiceSessionId: number | null = null;
+  const voiceSubmissionGate = createVoiceInputSubmissionGate();
 
   $: isGenerating = ['submitted', 'accepted', 'streaming', 'awaiting_approval', 'awaiting_verification', 'cancelling'].includes($inferenceRequestStore.lifecycle);
   $: if ($selectedConversationId !== observedConversationId) {
@@ -58,6 +61,10 @@
     voiceNotice = '';
     if (isListening) {
       recognition?.stop();
+      if (activeVoiceSessionId !== null) {
+        voiceSubmissionGate.abort(activeVoiceSessionId);
+        activeVoiceSessionId = null;
+      }
       isListening = false;
       return;
     }
@@ -74,14 +81,17 @@
       voiceNotice = $t('chat.speech_unsupported');
       return;
     }
+    const sessionId = voiceSubmissionGate.begin();
+    if (sessionId === null) return;
+    activeVoiceSessionId = sessionId;
     recognition = new SpeechRecognition();
     recognition.lang = 'ru-RU';
     recognition.continuous = false;
     recognition.interimResults = true;
     let finalTranscript = '';
     let interimTranscript = '';
-    let autoSendStarted = false;
     recognition.onresult = (event: any) => {
+      if (!voiceSubmissionGate.isCurrent(sessionId)) return;
       interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         const result = event.results[i];
@@ -95,30 +105,46 @@
         recognition?.abort();
         recognition = null;
         isListening = false;
+        voiceSubmissionGate.abort(sessionId);
+        if (activeVoiceSessionId === sessionId) activeVoiceSessionId = null;
         setComposerDraft('');
         resizeDraftBox();
         return;
       }
       setComposerDraft(transcript);
       resizeDraftBox();
-      if (finalTranscript && !autoSendStarted) {
-        autoSendStarted = true;
+      if (finalTranscript) {
+        const submission = voiceSubmissionGate.finalize(sessionId, finalTranscript);
+        if (!submission || !voiceSubmissionGate.claimSubmit(sessionId)) return;
         isListening = false;
         recognition.stop();
-        void send(finalTranscript);
+        void send(submission.transcript).finally(() => {
+          voiceSubmissionGate.finish(sessionId);
+          if (activeVoiceSessionId === sessionId) activeVoiceSessionId = null;
+        });
       }
     };
     recognition.onerror = () => {
+      if (!voiceSubmissionGate.isCurrent(sessionId)) return;
       isListening = false;
       recognition = null;
+      if (!voiceSubmissionGate.isSubmitting(sessionId)) {
+        voiceSubmissionGate.abort(sessionId);
+        if (activeVoiceSessionId === sessionId) activeVoiceSessionId = null;
+      }
       if (!$managedModelReady || isGenerating) {
         setComposerDraft('');
         resizeDraftBox();
       }
     };
     recognition.onend = () => {
+      if (!voiceSubmissionGate.isCurrent(sessionId)) return;
       isListening = false;
       recognition = null;
+      if (!voiceSubmissionGate.isSubmitting(sessionId)) {
+        voiceSubmissionGate.abort(sessionId);
+        if (activeVoiceSessionId === sessionId) activeVoiceSessionId = null;
+      }
       if (!$managedModelReady || isGenerating) {
         setComposerDraft('');
         resizeDraftBox();
@@ -184,8 +210,8 @@
   }
 </script>
 
-<div class="composer-region">
-  <form class="composer-wrap" aria-label={$t('chat.type_message')} onsubmit={(event) => event.preventDefault()}>
+<div class="composer-region" data-testid="composer-region" data-lc="composer-region" data-model-status={$managedModelReady ? 'ready' : $acquisitionBusy ? 'installing' : 'not_ready'}>
+  <form class="composer-wrap" data-testid="composer-form" aria-label={$t('chat.type_message')} onsubmit={(event) => event.preventDefault()}>
     <FilesPanel />
     <KnowledgeToggle />
     <!--
@@ -193,7 +219,7 @@
       offers the single "Set up local AI" action, so a second control would be
       a duplicate.
     -->
-    <div class="composer pill-surface">
+    <div class="composer pill-surface" data-testid="composer-input-area" data-composer="container">
       <div class="composer-actions composer-actions-left">
         <EffortSelector />
 
@@ -206,6 +232,10 @@
         <label class="sr-only" for="composer-draft">{$t('chat.type_message')}</label>
         <textarea
           id="composer-draft"
+          data-testid="composer-textarea"
+          data-composer="message"
+          data-lc="composer-input"
+          aria-label={$t('chat.type_message')}
           bind:this={textarea}
           value={$composerDraft}
           maxlength="12000"
@@ -242,6 +272,10 @@
         <button
           type="button"
           class="send-button pill-send"
+          data-testid="send-button"
+          data-send="submit"
+          data-lc="composer-send"
+          data-composer-action={isGenerating ? 'stop' : 'send'}
           aria-label={$t(isGenerating ? 'chat.stop' : 'chat.send')}
           title={$t(isGenerating ? 'chat.stop' : 'chat.send')}
           disabled={isGenerating ? false : !canSend}

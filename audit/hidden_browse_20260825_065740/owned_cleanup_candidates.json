@@ -1,0 +1,30 @@
+{
+  "mode": "owned_current_run",
+  "deleted_count": 1,
+  "note": "parent-side cleanup after worker exit; only manifest-listed paths",
+  "candidates": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\isolated_20260825_065740",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\isolated_20260825_065740",
+      "run_id": "0fd1b8fe68f346da99822e89ed6781c9",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.029
+    }
+  ],
+  "results": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\isolated_20260825_065740",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\isolated_20260825_065740",
+      "run_id": "0fd1b8fe68f346da99822e89ed6781c9",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.029,
+      "action": "deleted"
+    }
+  ]
+}

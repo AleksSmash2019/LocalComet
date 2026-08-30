@@ -343,6 +343,80 @@ class HiddenEvidenceContractTests(unittest.TestCase):
         leaked_facts = continuation_cancel_trace_verified(leaked, REQUEST_ID)
         self.assertFalse(leaked_facts["trace_secret_free"])
 
+    def test_replay_rejection_requires_matching_request_and_typed_status(self):
+        base = [
+            {
+                "command": "cu_broker_continuation_consume",
+                "args": {"grantRef": "<redacted:cgr>", "requestId": REQUEST_ID, "actionKind": "observe"},
+                "response": {"status": "leased"},
+            },
+            {
+                "command": "cu_broker_observe",
+                "args": {"requestId": REQUEST_ID},
+                "response": {"found": False},
+            },
+            {
+                "command": "cu_broker_continuation_revoke",
+                "args": {"grantRef": "<redacted:cgr>", "reason": "turn cancelled or stopped"},
+                "response": {"revoked": 1},
+            },
+        ]
+        foreign = continuation_cancel_trace_verified(
+            base + [{"event": "continuation_replay_rejected", "request_id": "deadbeef" + REQUEST_ID[8:], "status": "continuation_replayed"}],
+            REQUEST_ID,
+        )
+        self.assertFalse(foreign["replay_rejected"])
+        self.assertFalse(foreign["no_stale_host_replay"])
+        untyped = continuation_cancel_trace_verified(
+            base + [{"event": "continuation_replay_rejected", "request_id": REQUEST_ID, "status": "replay_rejected"}],
+            REQUEST_ID,
+        )
+        self.assertFalse(untyped["replay_rejected"])
+        self.assertFalse(untyped["no_stale_host_replay"])
+        unexpected = continuation_cancel_trace_verified(
+            base + [{"event": "continuation_replay_unexpected_success", "request_id": REQUEST_ID, "status": "unexpected_success"}],
+            REQUEST_ID,
+        )
+        self.assertTrue(unexpected["replay_unexpected_success"])
+        self.assertFalse(unexpected["no_stale_host_replay"])
+
+    def test_replay_unexpected_success_fails_safe_state(self):
+        terminal = {
+            "backend_acknowledged": True,
+            "terminal_cancelled": True,
+            "no_new_tool_cards": True,
+            "composer_ready_after": True,
+            "stop_control_gone": True,
+        }
+        base = [
+            {
+                "command": "cu_broker_continuation_consume",
+                "args": {"grantRef": "<redacted:cgr>", "requestId": REQUEST_ID, "actionKind": "observe"},
+                "response": {"status": "leased"},
+            },
+            {
+                "command": "cu_broker_observe",
+                "args": {"requestId": REQUEST_ID},
+                "response": {"found": False},
+            },
+            {
+                "command": "cu_broker_continuation_revoke",
+                "args": {"grantRef": "<redacted:cgr>", "reason": "turn cancelled or stopped"},
+                "response": {"revoked": 1},
+            },
+        ]
+        rejected = continuation_cancel_trace_verified(
+            base + [{"event": "continuation_replay_rejected", "request_id": REQUEST_ID, "status": "continuation_replayed"}],
+            REQUEST_ID,
+        )
+        self.assertTrue(cancel_safe_state_verified({**terminal, **rejected}))
+        unexpected = continuation_cancel_trace_verified(
+            base + [{"event": "continuation_replay_unexpected_success", "request_id": REQUEST_ID, "status": "unexpected_success"}],
+            REQUEST_ID,
+        )
+        self.assertTrue(unexpected["replay_unexpected_success"])
+        self.assertFalse(cancel_safe_state_verified({**terminal, **unexpected}))
+
     def test_guarded_pass_without_approval_is_not_independently_verified(self):
         self.assertIn("notepad_open_type", GUARDED_SCENARIO_IDS)
         correlation = validate_correlation(

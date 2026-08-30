@@ -1,0 +1,20 @@
+{
+  "contract": "localcomet.skill/2.0",
+  "id": "notepad-bounded-note",
+  "name": "Bounded Notepad note",
+  "version": "1.0.0",
+  "description": "Открывает только allowlisted Notepad на owned desktop, вводит bounded marker через UIA и закрывает только owned process.",
+  "author": "LocalComet",
+  "entrypoint": "entrypoint.py",
+  "workflow": "workflow.json",
+  "permissions": ["process.spawn", "ui.extension"],
+  "capabilities": [
+    "computer_use.open_app",
+    "computer_use.wait_for_window",
+    "computer_use.observe",
+    "computer_use.type_element",
+    "computer_use.close_owned"
+  ],
+  "trustTier": "builtin_verified",
+  "dependencies": []
+}

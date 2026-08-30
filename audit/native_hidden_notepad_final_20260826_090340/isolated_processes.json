@@ -1,0 +1,34 @@
+{
+  "timestamp_utc": "2026-08-26T04:03:57.871192+00:00",
+  "vite_pid": 16444,
+  "vite_managed_by_tauri": false,
+  "tauri_pid": 9208,
+  "binary": "C:\\Users\\DNS\\AppData\\Local\\LocalComet\\BuildCache\\CargoTarget\\hidden-isolated\\debug\\localcomet-desktop.exe",
+  "binary_preexisting": true,
+  "binary_provenance": {
+    "usable": true,
+    "reason": "verified",
+    "sha256": "de30bfa1f6ec21631cda61447f6ecb694a2934390b686838e7021a2581202c9a",
+    "dev_url": "http://127.0.0.1:1423",
+    "source_fingerprint": "ff6e9a565b654e3fa2bee23dcfc8c7fff6ee162e5a2850b3218e5311da22ba0f"
+  },
+  "expected_dev_url": "http://127.0.0.1:1423",
+  "rust_source_fingerprint": "ff6e9a565b654e3fa2bee23dcfc8c7fff6ee162e5a2850b3218e5311da22ba0f",
+  "launch_mode": "compiled_binary_with_isolated_dev_server",
+  "cdp_port": 9223,
+  "cargo_target_dir": "C:\\Users\\DNS\\AppData\\Local\\LocalComet\\BuildCache\\CargoTarget\\hidden-isolated",
+  "cargo_target_evidence": {
+    "resolved_path": "C:\\Users\\DNS\\AppData\\Local\\LocalComet\\BuildCache\\CargoTarget\\hidden-isolated",
+    "owner": "localcomet-buildcache",
+    "mode": "isolated",
+    "schema_version": "localcomet.cargo-target.v1",
+    "subkey": "hidden-isolated"
+  },
+  "legacy_source_local_target_used": false,
+  "cargo_exe": {
+    "path": "C:\\Users\\DNS\\.cargo\\bin\\cargo.EXE",
+    "version": "cargo 1.97.0 (c980f4866 2026-06-30)"
+  },
+  "webview_user_data_folder": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_final_20260826_090340\\webview2-user-data",
+  "cleanup_job_owner_pid": 8336
+}

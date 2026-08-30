@@ -179,12 +179,140 @@ class ComputerUseReliabilityTests(unittest.TestCase):
         self.assertEqual(len(typed), 1)
         self.assertEqual(typed[0]["text"], "новости спорта")
 
+    def test_browser_launch_intent_is_open_app_not_open_url(self) -> None:
+        from modules.local_model_gateway_ru import _deterministic_computer_use_call
+
+        call = _deterministic_computer_use_call("Открой браузер хром.")
+        self.assertIsNotNone(call)
+        self.assertEqual(call["arguments"], {"action": "open_app", "target": "chrome"})
+        self.assertNotIn("url", call["arguments"])
+
+        plan = build_real_action_plan("Открой браузер хром.", max_steps=8)
+        self.assertEqual(
+            [item["kind"] for item in plan["actions"]],
+            ["open_app", "wait_for_window"],
+        )
+        self.assertEqual(plan["actions"][0]["target"], "chrome")
+
+    def test_explicit_youtube_navigation_remains_open_url(self) -> None:
+        from modules.local_model_gateway_ru import _deterministic_computer_use_call
+
+        call = _deterministic_computer_use_call("Открой YouTube в браузере Chrome.")
+        self.assertIsNotNone(call)
+        self.assertEqual(call["arguments"]["action"], "open_url")
+        self.assertEqual(call["arguments"]["target"], "chrome")
+        self.assertEqual(call["arguments"]["url"], "https://www.youtube.com/")
+
+    def test_browser_aliases_edge_firefox_and_generic(self) -> None:
+        from modules.local_model_gateway_ru import _deterministic_computer_use_call
+
+        # Specific browsers without generic "браузер" word already worked; now also with generic prefix must be exact
+        cases = [
+            ("Открой Edge.", "msedge"),
+            ("Открой Firefox.", "firefox"),
+            ("Открой браузер.", "chrome"),
+            ("Открой браузер Firefox.", "firefox"),
+            ("Открой браузер Edge.", "msedge"),
+            ("Запусти Microsoft Edge", "msedge"),
+            ("Открой браузер хром.", "chrome"),
+        ]
+        for prompt, expected_target in cases:
+            with self.subTest(prompt=prompt):
+                call = _deterministic_computer_use_call(prompt)
+                self.assertIsNotNone(call, prompt)
+                self.assertEqual(call["arguments"]["action"], "open_app", prompt)
+                self.assertEqual(call["arguments"]["target"], expected_target, prompt)
+                self.assertNotIn("url", call["arguments"], prompt)
+
     def test_search_intent_still_blocks_secrets(self) -> None:
         plan = build_real_action_plan("найди мой пароль", max_steps=8)
         self.assertTrue(plan["blocked"])
         self.assertEqual(plan["reason"], "secrets")
         self.assertEqual(plan["actions"], [])
 
+    def test_official_python_search_intent_produces_bounded_open_url(self) -> None:
+        from modules.local_model_gateway_ru import _deterministic_computer_use_call
+
+        prompt = "Открой браузер и найди официальный сайт Python. Ничего не отправляй и не заполняй формы."
+        call = _deterministic_computer_use_call(prompt)
+        self.assertIsNotNone(call, "combined browser+search must not be reduced to None")
+        self.assertEqual(call["name"], "computer_use")
+        self.assertEqual(call["arguments"]["action"], "open_url")
+        self.assertEqual(call["arguments"]["target"], "chrome")
+        self.assertEqual(
+            call["arguments"]["url"],
+            "https://www.python.org/search/?q=%D0%BE%D1%84%D0%B8%D1%86%D0%B8%D0%B0%D0%BB%D1%8C%D0%BD%D1%8B%D0%B9%20%D1%81%D0%B0%D0%B9%D1%82%20Python",
+        )
+        self.assertNotIn("goal", call["arguments"])
+        self.assertNotIn("max_steps", call["arguments"])
+
+    def test_browser_search_plan_is_bounded_without_guard_sentence(self) -> None:
+        prompt = "Открой браузер и найди официальный сайт Python. Ничего не отправляй и не заполняй формы."
+        plan = build_real_action_plan(prompt, max_steps=8)
+        self.assertTrue(plan["ok"])
+        self.assertFalse(plan.get("blocked"))
+        kinds = [a["kind"] for a in plan["actions"]]
+        self.assertEqual(kinds, ["open_app", "wait_for_window", "type_element", "press_key"])
+        self.assertEqual(plan["actions"][0]["target"], "chrome")
+        typed = [a for a in plan["actions"] if a["kind"] == "type_element"][0]
+        self.assertEqual(typed["target"], "Поиск")
+        # Guard sentence must be stripped, query remains bounded and non-secret
+        self.assertEqual(typed["text"], "официальный сайт Python")
+        self.assertNotIn("Ничего", typed["text"])
+        self.assertNotIn("отправляй", typed["text"])
+        self.assertTrue(len(typed["text"]) <= 180)
+        # No arbitrary URL generation for search
+        self.assertNotIn("http", typed["text"].lower())
+        self.assertNotIn("file://", typed["text"].lower())
+
+    def test_browser_open_without_query_remains_open_app(self) -> None:
+        from modules.local_model_gateway_ru import _deterministic_computer_use_call
+
+        call = _deterministic_computer_use_call("Открой браузер")
+        self.assertIsNotNone(call)
+        self.assertEqual(call["arguments"], {"action": "open_app", "target": "chrome"})
+        self.assertNotIn("url", call["arguments"])
+        # Explicit full URL remains host-broker open_url, not search
+        call2 = _deterministic_computer_use_call("Открой YouTube в браузере Chrome.")
+        self.assertEqual(call2["arguments"]["action"], "open_url")
+        self.assertEqual(call2["arguments"]["url"], "https://www.youtube.com/")
+
+    def test_search_negative_blocks_secrets_and_arbitrary_url(self) -> None:
+        # Secrets in query must be blocked, not typed
+        plan = build_real_action_plan("найди мой пароль от почты", max_steps=8)
+        self.assertTrue(plan["blocked"])
+        self.assertEqual(plan["reason"], "secrets")
+        # Arbitrary URL-like query must not be turned into open_url
+        from modules.local_model_gateway_ru import _deterministic_computer_use_call
+
+        call = _deterministic_computer_use_call("Открой браузер и найди https://evil.example")
+        # Must be task (search) not open_url with invented URL
+        if call is not None:
+            self.assertNotEqual(call["arguments"].get("url"), "https://evil.example")
+            self.assertIn(call["arguments"]["action"], ("task", "open_app"))
+
+    def test_safe_relative_file_path_rejects_encoded_and_control(self) -> None:
+        from modules.local_model_gateway_ru import _safe_relative_file_path
+
+        self.assertIsNone(_safe_relative_file_path("%2e%2e/secret.txt"))
+        self.assertIsNone(_safe_relative_file_path("a%2Fb.txt"))
+        self.assertIsNone(_safe_relative_file_path("a\x00b.txt"))
+        self.assertIsNone(_safe_relative_file_path("a\x1fb.txt"))
+        self.assertIsNone(_safe_relative_file_path("../escape.txt"))
+        self.assertIsNone(_safe_relative_file_path("/absolute.txt"))
+        self.assertIsNone(_safe_relative_file_path("C:\\Windows\\file.txt"))
+        self.assertEqual(_safe_relative_file_path("notes/report.txt"), "notes/report.txt")
+        self.assertEqual(_safe_relative_file_path("valid_file-123.txt"), "valid_file-123.txt")
+
+    def test_computer_use_read_only_actions_aligned_with_allowlist(self) -> None:
+        from modules.tool_execution_ru import COMPUTER_USE_READ_ONLY_ACTIONS
+
+        # ALLOWED_ACTIONS is local to _computer_use; verify read_only is exactly the minimal allowed subset
+        expected = frozenset(("screenshot", "wait", "wait_for_window", "observe", "scroll"))
+        self.assertEqual(COMPUTER_USE_READ_ONLY_ACTIONS, expected)
+        self.assertIn("observe", COMPUTER_USE_READ_ONLY_ACTIONS)
+        self.assertNotIn("cursor_position", COMPUTER_USE_READ_ONLY_ACTIONS)
+        self.assertNotIn("mouse_move", COMPUTER_USE_READ_ONLY_ACTIONS)
 
     def test_task_registry_validates_bounded_goal_and_steps(self) -> None:
         from modules.local_model_gateway_ru import GatewayError, validate_tool_call

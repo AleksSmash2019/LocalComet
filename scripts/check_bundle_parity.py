@@ -56,14 +56,6 @@ REQUIRED_SKILL_FILES = frozenset(
         "skills_contract.py",
         "skills_invoker.py",
         "skills_manager.py",
-        "builtin/diagnostics-reader/entrypoint.py",
-        "builtin/diagnostics-reader/skill.json",
-        "builtin/project-inspector/entrypoint.py",
-        "builtin/project-inspector/skill.json",
-        "builtin/runtime-doctor/entrypoint.py",
-        "builtin/runtime-doctor/skill.json",
-        "builtin/workspace-inspector/entrypoint.py",
-        "builtin/workspace-inspector/skill.json",
         "code-runner/entrypoint.py",
         "git-ops/entrypoint.py",
         "hf-model-ctl/entrypoint.py",
@@ -108,6 +100,30 @@ REQUIRED_SIDECAR_MODULES = frozenset(
 )
 
 
+# Builtin skills are trusted, bundled and auto-seeded into every runtime by
+# SkillsManager.ensure_builtins(). Their file set is DISCOVERED from repo source
+# rather than hardcoded: a hardcoded list silently passed while the
+# `computer-use` skill was missing from the shipped bundle entirely, so
+# "открой <приложение>" had no workflow to compile in a packaged install.
+# Discovery makes an omitted builtin skill a gate failure by construction.
+_BUILTIN_MANIFEST_FILES = ("skill.json", "entrypoint.py", "workflow.json")
+
+
+def discover_builtin_skill_files() -> frozenset[str]:
+    """Every builtin skill file that must reach each shipped location."""
+    builtin_root = REPO_MODULES / "skills" / "builtin"
+    discovered: set[str] = set()
+    if not builtin_root.is_dir():
+        return frozenset()
+    for skill_dir in sorted(builtin_root.iterdir(), key=lambda p: p.name.casefold()):
+        if not skill_dir.is_dir() or not (skill_dir / "skill.json").is_file():
+            continue
+        for name in _BUILTIN_MANIFEST_FILES:
+            if (skill_dir / name).is_file():
+                discovered.add(f"builtin/{skill_dir.name}/{name}")
+    return frozenset(discovered)
+
+
 def check_skill_location(label: str, modules_location: pathlib.Path) -> tuple[int, list[str], list[str], list[str]]:
     source_root = REPO_MODULES / "skills"
     shipped_root = modules_location / "skills"
@@ -115,7 +131,8 @@ def check_skill_location(label: str, modules_location: pathlib.Path) -> tuple[in
     missing_in_repo: list[str] = []
     missing_in_shipped: list[str] = []
     matched = 0
-    for relative in sorted(REQUIRED_SKILL_FILES, key=str.casefold):
+    required = REQUIRED_SKILL_FILES | discover_builtin_skill_files()
+    for relative in sorted(required, key=str.casefold):
         source = source_root / pathlib.Path(relative)
         shipped = shipped_root / pathlib.Path(relative)
         if not source.is_file():

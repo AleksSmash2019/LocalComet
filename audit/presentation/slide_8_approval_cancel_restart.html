@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container {
+            width: 1280px;
+            min-height: 720px;
+            background-color: #FFFFFF;
+            color: #0A192F;
+            font-family: 'Courier New', Consolas, monospace;
+            padding: 24px; /* reduced from 40 -> saves vertical space */
+            display: flex;
+            flex-direction: column;
+        }
+        h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+        .header-box {
+            border: 1px solid #0A192F;
+            padding: 20px 30px; /* keep header padding (title upper padding must not be shrunk) */
+            margin-bottom: 20px;
+            background-color: #E3F2FD;
+        }
+        .slide-title {
+            font-size: 32px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            flex-grow: 1;
+            margin-bottom: 8px; /* reduced from 20 -> saves vertical space */
+        }
+        .column-box {
+            border: 1px solid #0A192F;
+            padding: 12px; /* reduced from 20 -> saves vertical space */
+            display: flex;
+            flex-direction: column;
+        }
+        .column-title {
+            font-size: 22px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #0A192F;
+            padding-bottom: 6px;
+        }
+        .status-label {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            border: 1px solid #0A192F;
+        }
+        .status-partial { background-color: #FFF9C4; }
+        .status-open { background-color: rgba(211, 47, 47, 0.1); color: #D32F2F; border-color: #D32F2F; }
+        
+        .body-text {
+            font-size: 16px;
+            line-height: 1.45; /* slightly tighter line-height to save space, font-size unchanged */
+            margin-bottom: 8px; /* reduced from 12 */
+        }
+        .proof-box {
+            border: 1px solid #0A192F;
+            padding: 12px; /* reduced from 20 */
+            background-color: rgba(10, 25, 47, 0.03);
+        }
+        .proof-title {
+            font-size: 20px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            color: #D32F2F;
+        }
+        .flow-container {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px; /* reduced gap */
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .flow-step {
+            border: 1px solid #0A192F;
+            padding: 6px 10px; /* reduced padding */
+            background-color: #FFFFFF;
+        }
+        .flow-arrow {
+            color: #D32F2F;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header-box">
+            <h1 class="slide-title">Approval, cancellation и restart: главный P0 gap</h1>
+        </div>
+
+        <div class="content-grid">
+            <div class="column-box">
+                <h2 class="column-title">Approval</h2>
+                <div><span class="status-label status-partial">Partially Evidenced</span></div>
+                <p class="body-text">Browser №32–33 prove exact native approval correlation (approval_required=true, request/action/input digest).</p>
+                <p class="body-text">Но Notepad/screenshot используют explicit hidden session capability (approval_required=false).</p>
+                <p class="body-text">Negative fake/foreign approval row отсутствует. B2 закрыт лишь частично.</p>
+            </div>
+
+            <div class="column-box">
+                <h2 class="column-title">Cancellation</h2>
+                <div><span class="status-label status-open">Open</span></div>
+                <p class="body-text">cancel_browser_01 нажал production Stop, но verdict PENDING_TERMINAL.</p>
+                <p class="body-text">Отсутствуют Rust/model acknowledgement, checkpoint safe-state, stale continuation rejection и restart proof.</p>
+                <p class="body-text">UI Stop сам по себе не является backend authority.</p>
+            </div>
+
+            <div class="column-box">
+                <h2 class="column-title">Restart</h2>
+                <div><span class="status-label status-open">Open</span></div>
+                <p class="body-text">Current AppShell reset-first поведение отклоняет active approval и сбрасывает frontend stores на mount.</p>
+                <p class="body-text">Rust coding_recover_task read-only и мапит non-terminal state в paused_for_review.</p>
+                <p class="body-text">Production CU broker/continuation registry не показан через application-level process boundary.</p>
+            </div>
+        </div>
+
+        <div class="proof-box">
+            <h3 class="proof-title">Нужный Proof (Application-Level Process Boundary)</h3>
+            <div class="flow-container">
+                <div class="flow-step">WAITING_HOST</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">Exact owned app termination</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">Relaunch</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">Read-only paused_for_review</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">Zero host replay</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">Old grant rejected</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">New attempt ID + new approval</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

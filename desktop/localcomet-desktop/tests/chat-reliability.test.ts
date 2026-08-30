@@ -338,6 +338,18 @@ describe('typed real-model chat lifecycle', () => {
     expect(invokeCalls.find((call) => call.command === 'model_turn_start')?.args?.locale).toBe('en');
   });
 
+  it('uses the latest selected locale for a new turn after the model is ready', async () => {
+    setLocale('ru');
+    await startAccepted('первый язык');
+    expect(invokeCalls.at(-1)?.args?.locale).toBe('ru');
+
+    applyModelGatewayEvent(event('model.turn.completed', 1));
+    setLocale('en');
+    await startAccepted('second language');
+    expect(invokeCalls.at(-1)?.args?.locale).toBe('en');
+    expect(invokeCalls.filter((call) => call.command === 'model_turn_start').map((call) => call.args?.locale)).toEqual(['ru', 'en']);
+  });
+
   it('retries a terminal failed turn with a fresh isolated request', async () => {
     const firstId = await startAccepted('retry this request');
     applyModelGatewayEvent(event('model.turn.started', 0));

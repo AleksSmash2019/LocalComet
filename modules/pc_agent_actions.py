@@ -402,7 +402,7 @@ def open_app(name, dry_run=True):
         payload["result"] = "DRY_RUN: приложение не запущено."
         return _remember(payload)
 
-    if os.name == "nt":
+    if os.name == "nt" and not os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip():
         command_str = command[0] if isinstance(command, (list, tuple)) else str(command)
         shell_result = _shell_execute_open_bounded(command_str)
         if shell_result:
@@ -503,9 +503,14 @@ def open_app(name, dry_run=True):
         payload["result"] = "Не удалось запустить приложение."
         payload["error"] = str(last_error or "launcher failed")
         return _remember(payload)
-    ready = _wait_for_app_readiness(image_name=str(command[0] if isinstance(command, (list, tuple)) else command), pid=process.pid)
+    process_pid = getattr(process, "pid", None)
+    ready = _wait_for_app_readiness(
+        image_name=str(command[0] if isinstance(command, (list, tuple)) else command),
+        pid=process_pid if isinstance(process_pid, int) and process_pid > 0 else None,
+    )
     payload["ok"] = ready
-    payload["pid"] = process.pid
+    if isinstance(process_pid, int) and process_pid > 0:
+        payload["pid"] = process_pid
     payload["status"] = "completed" if ready else "launch_pending"
     payload["launch_mode"] = launch_mode
     payload["verification"] = "verified" if ready else "pending"
@@ -540,7 +545,7 @@ def open_folder(name, dry_run=True):
         return _remember(payload)
 
     try:
-        subprocess.Popen(["explorer.exe", str(path)], shell=False)
+        process = subprocess.Popen(["explorer.exe", str(path)], shell=False)
     except OSError as exc:
         payload["result"] = "Не удалось открыть папку."
         payload["error"] = str(exc)
@@ -549,6 +554,9 @@ def open_folder(name, dry_run=True):
     # readiness: verify a visible folder window within a bounded wait.
     ready = _wait_for_folder_readiness(folder_name=Path(path).name)
     payload["ok"] = ready
+    process_pid = getattr(process, "pid", None)
+    if isinstance(process_pid, int) and process_pid > 0:
+        payload["pid"] = process_pid
     payload["status"] = "completed" if ready else "launch_pending"
     payload["verification"] = "verified" if ready else "pending"
     payload["result"] = "Папка открыта, окно подтверждено." if ready else "Команда открытия передана; окно папки ещё не подтверждено."

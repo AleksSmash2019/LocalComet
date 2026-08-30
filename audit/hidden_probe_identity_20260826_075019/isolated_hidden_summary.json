@@ -1,0 +1,22 @@
+{
+  "requested_cases": 1,
+  "attempted": 0,
+  "submitted": 0,
+  "completed_observations": 0,
+  "blocked": 0,
+  "errors": 0,
+  "model_ready": false,
+  "computer_use_permissions_enabled": false,
+  "verified_success": 0,
+  "verified_blocked": 0,
+  "verified_failed": 0,
+  "pending_terminal": 0,
+  "not_independently_verified": 0,
+  "infrastructure_error": 0,
+  "malformed_result": 0,
+  "cdp_verified_page_url": "http://127.0.0.1:1423/",
+  "binary_provenance_recorded": true,
+  "probe_only": true,
+  "probe_ok": true,
+  "finished_utc": "2026-08-26T02:51:47.996156+00:00"
+}

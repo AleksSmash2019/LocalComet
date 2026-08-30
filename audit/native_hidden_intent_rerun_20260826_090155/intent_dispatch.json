@@ -1,0 +1,11 @@
+{
+  "schema_version": "localcomet.intent-dispatch.v1",
+  "timestamp_utc": "2026-08-26T04:02:37.728965+00:00",
+  "prompt": "Открой https://example.com в браузере",
+  "branch_head": "74f527d5cc97526a791eca81a8d995e2cc5a6aa7",
+  "payload": {
+    "__error": "cdp eval failed: [WinError 10053] Программа на вашем хост-компьютере разорвала установленное подключение"
+  },
+  "outcome": "NO_EVIDENCE",
+  "classification": "NOT_INDEPENDENTLY_VERIFIED"
+}

@@ -1,0 +1,21 @@
+{
+  "contract": "localcomet.skill/2.0",
+  "id": "computer-use",
+  "name": "Computer Use",
+  "version": "1.0.0",
+  "description": "Запускает одно из разрешённых приложений (steam, chrome, msedge, firefox, notepad, calculator, paint, explorer, vscode) и дожидается его окна. Только allowlisted-приложения из реестра брокера; не запускает произвольные команды.",
+  "author": "LocalComet",
+  "entrypoint": "entrypoint.py",
+  "workflow": "workflow.json",
+  "permissions": [
+    "process.spawn",
+    "ui.extension"
+  ],
+  "capabilities": [
+    "computer_use.open_app",
+    "computer_use.wait_for_window",
+    "computer_use.close_owned"
+  ],
+  "trustTier": "builtin_verified",
+  "dependencies": []
+}

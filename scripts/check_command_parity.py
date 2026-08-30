@@ -20,6 +20,19 @@ SRC_DIR = REPO_ROOT / "desktop" / "localcomet-desktop" / "src"
 UTILITY_COMMANDS = {
     "get_model_storage_info",
     "open_model_storage_folder",
+    # Broker-owned continuation authority transports (master prompt Part I).
+    # Rust-internal for now: the orchestrator wiring lands in Phase 4, the
+    # commands are already registered and covered by focused Rust tests.
+    "cu_broker_continuation_consume",
+    "cu_broker_continuation_complete",
+    "cu_broker_continuation_revoke",
+    # Deterministic intent compiler: frontend wiring lands after intent→approval→broker integration tests.
+    "intent_compile",
+    # Checkpoint timeline transports (Phase 3): thin typed wrappers over the
+    # Rust checkpoint authority; the timeline UI consumes them via the store.
+    "checkpoint_list",
+    "checkpoint_compare",
+    "checkpoint_restore_files",
 }
 
 STATIC_DIR = REPO_ROOT / "desktop" / "localcomet-desktop" / "static"

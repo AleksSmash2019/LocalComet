@@ -140,15 +140,18 @@ class LifecycleTests(unittest.TestCase):
         seeded = self.mgr.ensure_builtins()
         self.assertEqual(
             seeded,
-            ["diagnostics-reader", "project-inspector", "runtime-doctor", "workspace-inspector"],
+            ["computer-use", "diagnostics-reader", "notepad-bounded-note", "project-inspector", "runtime-doctor", "workspace-inspector"],
         )
         listed = self.mgr.list_skills()
         self.assertEqual(
             [skill["id"] for skill in listed],
-            ["diagnostics-reader", "project-inspector", "runtime-doctor", "workspace-inspector"],
+            ["computer-use", "diagnostics-reader", "notepad-bounded-note", "project-inspector", "runtime-doctor", "workspace-inspector"],
         )
         self.assertTrue(all(skill["state"] == "ENABLED" for skill in listed))
         self.assertTrue(all(skill["builtin"] for skill in listed))
+        notepad = next(skill for skill in listed if skill["id"] == "notepad-bounded-note")
+        self.assertEqual(notepad["contract"], "localcomet.skill/2.0")
+        self.assertEqual(notepad["workflow"], "workflow.json")
         self.assertEqual(self.mgr.ensure_builtins(), [])
 
     def test_legacy_test_skills_are_hidden_and_disabled(self):
@@ -165,6 +168,68 @@ class LifecycleTests(unittest.TestCase):
         for skill_id in legacy:
             self.assertEqual(self.mgr._registry[skill_id]["state"], "DISABLED")
             self.assertTrue(self.mgr._registry[skill_id]["hidden"])
+
+    def test_builtin_workflow_is_compiled_with_bounds_and_never_entrypoint_executed(self):
+        self.mgr.ensure_builtins()
+        with self.assertRaises(SkillError) as cm:
+            self.mgr.compile_workflow("notepad-bounded-note", {})
+        self.assertEqual(cm.exception.code, SkillErrorCode.WORKFLOW_PARAMETER_INVALID)
+        plan = self.mgr.compile_workflow("notepad-bounded-note", {"text": "LOCALCOMET_TEST_MARKER"})
+        self.assertEqual(plan["schema_version"], "localcomet.skill.plan/1.0")
+        self.assertEqual(plan["skill_id"], "notepad-bounded-note")
+        self.assertEqual([step["action"] for step in plan["steps"]], [
+            "computer_use.open_app",
+            "computer_use.wait_for_window",
+            "computer_use.observe",
+            "computer_use.type_element",
+            "computer_use.close_owned",
+        ])
+        self.assertEqual(plan["steps"][3]["arguments"]["text"], "LOCALCOMET_TEST_MARKER")
+        with self.assertRaises(SkillError) as cm:
+            self.mgr.entrypoint_path("notepad-bounded-note")
+        self.assertEqual(cm.exception.code, SkillErrorCode.SKILL_WORKFLOW_ONLY)
+        with self.assertRaises(SkillError) as cm:
+            self.mgr.compile_workflow("notepad-bounded-note", {"text": "x" * 121})
+        self.assertEqual(cm.exception.code, SkillErrorCode.WORKFLOW_PARAMETER_INVALID)
+
+    def test_untrusted_v2_skill_is_disabled_before_explicit_enable(self):
+        manifest = _manifest(
+            id="community.workflow",
+            contract="localcomet.skill/2.0",
+            workflow="workflow.json",
+            trustTier="community_unreviewed",
+        )
+        workflow = {
+            "schema_version": "localcomet.skill.workflow/1.0",
+            "skill_id": "community.workflow",
+            "parameters": {},
+            "max_runtime_ms": 30_000,
+            "steps": [{
+                "id": "observe",
+                "action": "computer_use.observe",
+                "risk": "read_only",
+                "requires_approval": False,
+                "arguments": {"target": "notepad"},
+                "precondition": {"kind": "window_ready"},
+                "postcondition": {"kind": "fresh_uia_observation"},
+                "timeout_ms": 5000,
+                "max_retries": 0,
+            }],
+        }
+        package = Path(self.td.name) / "community-workflow.zip"
+        _make_zip(package, {
+            "skill.json": json.dumps(manifest).encode(),
+            "workflow.json": json.dumps(workflow).encode(),
+            "main.py": b"print('must never execute')",
+        })
+        result = self.mgr.install(package)
+        self.assertEqual(result["state"], "DISABLED")
+        with self.assertRaises(SkillError) as cm:
+            self.mgr.compile_workflow("community.workflow", {})
+        self.assertEqual(cm.exception.code, SkillErrorCode.SKILL_STATE_CONFLICT)
+        with self.assertRaises(SkillError) as cm:
+            self.mgr.entrypoint_path("community.workflow")
+        self.assertEqual(cm.exception.code, SkillErrorCode.SKILL_WORKFLOW_ONLY)
 
     def test_builtin_invocation_is_bounded_json(self):
         from modules.skills.skills_invoker import invoke_skill

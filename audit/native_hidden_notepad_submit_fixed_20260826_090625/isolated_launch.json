@@ -1,0 +1,19 @@
+{
+  "started_utc": "2026-08-26T04:06:42.476137+00:00",
+  "worker_pid": 26840,
+  "launcher_pid": 7120,
+  "isolated_root": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_submit_fixed_20260826_090625",
+  "desktop_name": "LocalCometHiddenCU_native_submit_20260826_090625",
+  "reader_startup_attachment": {
+    "ok": true,
+    "desktop_name": "LocalCometHiddenCU_native_submit_20260826_090625",
+    "mode": "already_on_named_desktop",
+    "current_desktop_name": "LocalCometHiddenCU_native_submit_20260826_090625",
+    "set_thread_desktop_winerror": 170
+  },
+  "isolated_vite_port": 1423,
+  "expected_dev_url": "http://127.0.0.1:1423",
+  "port_patched": true,
+  "enable_computer_use": true,
+  "scenario": "notepad_open_type"
+}

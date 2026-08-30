@@ -67,3 +67,7 @@ auth.json
 /tests/hidden_llama_runtime_smoke.ps1
 /localcomet_cdp_*.png
 /*_inference_response.png
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md

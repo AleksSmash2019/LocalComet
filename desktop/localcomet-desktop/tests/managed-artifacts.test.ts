@@ -26,7 +26,9 @@ import {
   resetModelGatewayStore,
   setManagedSelectedModel,
   setManagedPreferredRuntime,
-  startSelectedManagedRuntime
+  startSelectedManagedRuntime,
+  stopSelectedManagedRuntime,
+  MANAGED_START_WATCHDOG_MS
 } from '../src/lib/stores/modelGateway';
 import {
   artifactAcquisitionStore,
@@ -672,14 +674,14 @@ describe('managed artifact trust frontend contract', () => {
       ...runtimeStatusFixture(),
       state: 'Failed',
       model_state: 'Failed',
-      last_error: 'managed runtime exited before readiness'
+      last_error: 'managed runtime exited before readiness (exit code 3221225477)'
     };
 
     await refreshManagedRuntimeStatus();
 
     expect(get(managedRuntimeStore).lastError).toEqual({
       code: 'runtime_unavailable',
-      message: 'managed runtime exited before readiness'
+      message: 'managed runtime exited before readiness (exit code 3221225477)'
     });
   });
 
@@ -740,9 +742,9 @@ describe('managed artifact trust frontend contract', () => {
 
     const body = render(ManagedRuntimePanel).body;
     expect(body).toContain('Qwen3 1.7B Q4_K_M');
-    expect(body).toContain('Start Runtime');
-    expect(body).toContain('Stop Runtime');
-    expect(body).toContain('Confirm Binding');
+    expect(body).toMatch(/Запустить среду|Start Runtime/);
+    expect(body).toMatch(/Остановить среду|Stop Runtime/);
+    expect(body).toMatch(/Подтвердить привязку|Confirm Binding/);
     expect(body).not.toMatch(/C:\\|absolute_path|Model path|Executable|Approve artifact|Download model/i);
   });
 
@@ -826,7 +828,9 @@ describe('managed artifact trust frontend contract', () => {
     expect(state.installedArtifacts.find((artifact) => artifact.artifact_id === MODEL_ID)?.installation_status).toBe('not_installed');
     expect(state.readiness).toMatchObject({ model_status: 'not_installed', launchable: false });
     expect(state.binding).toBeNull();
-    expect(render(ManagedRuntimePanel).body).toMatch(/<button[^>]*disabled[^>]*>Start Runtime<\/button>/);
+    const rendered = render(ManagedRuntimePanel).body;
+    expect(rendered).toMatch(/<button[^>]*disabled/);
+    expect(rendered).toMatch(/Запустить среду|Start Runtime/);
   });
 
   it('fails closed when catalog digests or inventory references disagree', async () => {
@@ -932,6 +936,65 @@ describe('managed artifact trust frontend contract', () => {
     expect(invokeCalls.map((call) => call.command)).toEqual(['managed_model_readiness']);
     expect(get(managedRuntimeStore).readiness?.launchable).toBe(false);
     expect(get(managedRuntimeStore).lastError?.code).toBe('model_not_ready');
+  });
+
+  it('keeps a timed-out managed start single-flight and observes its eventual result', async () => {
+    vi.useFakeTimers();
+    try {
+      await refreshManagedRuntimeStatus();
+      await setManagedSelectedModel(MODEL_ID);
+      const start = deferred<unknown>();
+      responses.managed_runtime_start_trusted = () => start.promise;
+      invokeCalls = [];
+
+      const operation = startSelectedManagedRuntime();
+      for (let index = 0; index < 6 && !invokeCalls.some((call) => call.command === 'managed_runtime_start_trusted'); index += 1) {
+        await Promise.resolve();
+      }
+      expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(MANAGED_START_WATCHDOG_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(1);
+      expect(get(managedRuntimeStore).lastError?.code).toBe('start_watchdog_timeout');
+
+      start.resolve(responses.managed_runtime_start);
+      await operation;
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(1);
+      expect(invokeCalls.filter((call) => call.command === 'managed_runtime_status').length).toBeGreaterThanOrEqual(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('invalidates a late start when Stop Runtime is requested mid-flight', async () => {
+    await refreshManagedRuntimeStatus();
+    await setManagedSelectedModel(MODEL_ID);
+    const start = deferred<unknown>();
+    responses.managed_runtime_start_trusted = () => start.promise;
+    responses.managed_runtime_status = runtimeStatusFixture();
+    invokeCalls = [];
+
+    const startOperation = startSelectedManagedRuntime();
+    for (let index = 0; index < 6 && !invokeCalls.some((call) => call.command === 'managed_runtime_start_trusted'); index += 1) {
+      await Promise.resolve();
+    }
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(1);
+
+    const stopOperation = stopSelectedManagedRuntime();
+    await stopOperation;
+    start.resolve(responses.managed_runtime_start);
+    await startOperation;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(1);
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_stop_trusted')).toHaveLength(1);
+    expect(invokeCalls.filter((call) => call.command === 'model_binding_set')).toHaveLength(0);
+    expect(get(managedRuntimeStore).binding).toBeNull();
   });
 
   it('rejects false launchable and inconsistent compatibility claims', async () => {

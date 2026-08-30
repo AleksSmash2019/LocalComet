@@ -186,7 +186,7 @@
   // Close drawer on Escape handled by shellStore
 </script>
 
-<div class="model-setup-drawer" id="model-setup-drawer" role="dialog" aria-modal="true" aria-labelledby="model-setup-title">
+<div class="model-setup-drawer" id="model-setup-drawer" data-testid="model-setup-drawer" data-managed-state={managedState} role="dialog" aria-modal="true" aria-labelledby="model-setup-title">
   <button type="button" class="drawer-backdrop" onclick={onClose} aria-label={$t('setup.close')}></button>
 
   <aside class="drawer-panel">
@@ -324,6 +324,7 @@
                   <button
                     type="button"
                     class="primary-button hero-button run-model-btn"
+                    data-testid="managed-model-primary-action"
                     aria-label={$t('models.setup')}
                     disabled={!canSetupManaged}
                     onclick={onConfirmManagedBinding}
@@ -407,6 +408,7 @@
                   <button
                     type="button"
                     class="primary-button hero-button run-model-btn"
+                    data-testid="managed-model-primary-action"
                     aria-label={$t('setup.btn_run')}
                     disabled={!canBindManaged}
                     onclick={onConfirmManagedBinding}

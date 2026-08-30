@@ -176,10 +176,9 @@ class CdpDriverRecoveryTests(unittest.TestCase):
         self.assertEqual(url_used, "ws://127.0.0.1:9223/devtools/page/1")
         self.assertTrue(kwargs.get("open_timeout"))
 
-    def test_retry_resends_identical_expression_for_idempotency(self) -> None:
-        # Attempt 1 times out AFTER send; attempt 2 must resend the exact same
-        # expression (stable submit token) so the page-side guard prevents a
-        # duplicate prompt click.
+    def test_eval_retry_resends_identical_expression(self) -> None:
+        # The transport retry itself must resend the exact expression. Logical
+        # submit idempotency is tested separately through the page-side token.
         driver = CdpDriver()
         self.addCleanup(driver.close)
         expressions: list[str] = []
@@ -188,14 +187,13 @@ class CdpDriverRecoveryTests(unittest.TestCase):
             expressions.append(expression)
             if len(expressions) == 1:
                 raise TimeoutError("cdp recv timeout")
-            return "submitted"
+            return "ok"
 
         with mock.patch.object(CdpDriver, "_evaluate", evaluate_spy):
             with mock.patch.object(CdpDriver, "_dispose_socket", lambda inner_self: None):
-                driver.submit_prompt("РїСЂРёРІРµС‚")
+                self.assertEqual(driver.eval("stable-expression"), "ok")
         self.assertEqual(len(expressions), CdpDriver.CDP_MAX_ATTEMPTS)
         self.assertEqual(expressions[0], expressions[1])
-        self.assertEqual(len(TOKEN_RE.findall(expressions[0])), 1)
 
     def test_duplicate_submission_token_differs_between_prompts(self) -> None:
         driver = CdpDriver()
@@ -204,22 +202,48 @@ class CdpDriverRecoveryTests(unittest.TestCase):
 
         def fake_eval(inner_self, expression, timeout=10.0, await_promise=False):
             seen.append(expression)
-            return "submitted"
+            return "focused" if len(seen) % 2 == 1 else "submitted"
 
         with mock.patch.object(CdpDriver, "eval", fake_eval):
-            driver.submit_prompt("РїРµСЂРІС‹Р№")
-            driver.submit_prompt("РІС‚РѕСЂРѕР№")
-        tokens = [TOKEN_RE.findall(e)[0] for e in seen]
+            with mock.patch.object(CdpDriver, "insert_text", return_value=True):
+                driver.submit_prompt("РїРµСЂРІС‹Р№")
+                driver.submit_prompt("РІС‚РѕСЂРѕР№")
+        tokens = [token for expression in seen for token in TOKEN_RE.findall(expression)]
         self.assertEqual(len(tokens), 2)
         self.assertNotEqual(tokens[0], tokens[1])
+
+    def test_uncertain_same_prompt_reuses_logical_submit_token(self) -> None:
+        driver = CdpDriver()
+        self.addCleanup(driver.close)
+        seen: list[str] = []
+
+        def fake_eval(inner_self, expression, timeout=10.0, await_promise=False):
+            seen.append(expression)
+            if len(seen) == 1:
+                return "focused"
+            if len(seen) == 2:
+                return {"__error": "cdp eval failed: click result uncertain"}
+            if len(seen) == 3:
+                return "focused"
+            return "already-submitted"
+
+        with mock.patch.object(CdpDriver, "eval", fake_eval):
+            with mock.patch.object(CdpDriver, "insert_text", return_value=True):
+                self.assertFalse(driver.submit_prompt("same logical prompt"))
+                self.assertTrue(driver.submit_prompt("same logical prompt"))
+        tokens = [token for expression in seen for token in TOKEN_RE.findall(expression)]
+        self.assertEqual(len(tokens), 2)
+        self.assertEqual(tokens[0], tokens[1])
 
     def test_submit_prompt_accepts_already_submitted_and_rejects_no_send(self) -> None:
         driver = CdpDriver()
         self.addCleanup(driver.close)
-        with mock.patch.object(driver, "eval", return_value="already-submitted"):
-            self.assertTrue(driver.submit_prompt("С‚РµРєСЃС‚"))
-        with mock.patch.object(driver, "eval", return_value="no-send"):
-            self.assertFalse(driver.submit_prompt("С‚РµРєСЃС‚"))
+        with mock.patch.object(driver, "eval", side_effect=["focused", "already-submitted"]):
+            with mock.patch.object(driver, "insert_text", return_value=True):
+                self.assertTrue(driver.submit_prompt("С‚РµРєСЃС‚"))
+        with mock.patch.object(driver, "eval", side_effect=["focused", "no-send"]):
+            with mock.patch.object(driver, "insert_text", return_value=True):
+                self.assertFalse(driver.submit_prompt("С‚РµРєСЃС‚"))
         with mock.patch.object(driver, "eval", return_value={"__error": "cdp eval failed: x"}):
             self.assertFalse(driver.submit_prompt("С‚РµРєСЃС‚"))
 

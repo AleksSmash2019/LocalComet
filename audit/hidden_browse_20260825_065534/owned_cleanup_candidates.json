@@ -1,0 +1,19 @@
+{
+  "mode": "dry_run",
+  "deleted_count": 0,
+  "note": "worker dry-run; parent executes after worker exit",
+  "candidates": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\isolated_20260825_065534",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\isolated_20260825_065534",
+      "run_id": "031c66b89dae45e0991b8f5c620d7415",
+      "mode": "dry_run",
+      "exists": true,
+      "eligible": false,
+      "reasons": [
+        "owner_process_still_alive"
+      ],
+      "age_hours": 0.031
+    }
+  ]
+}

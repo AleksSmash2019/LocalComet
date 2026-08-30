@@ -28,8 +28,11 @@ describe('bounded chat layout', () => {
 
   it('keeps the truthful knowledge status and composer in one bounded footer grid item', () => {
     const composer = source('../src/lib/components/chat/MessageComposer.svelte');
-    expect(composer).toContain('<div class="composer-region">');
-    expect(composer).toMatch(/<div class="composer-region">\s*<form class="composer-wrap"/s);
+    expect(composer).toContain('class="composer-region"');
+    expect(composer).toContain('data-testid="composer-region"');
+    expect(composer).toContain('data-testid="composer-textarea"');
+    expect(composer).toContain('data-testid="send-button"');
+    expect(composer).toMatch(/<div[^>]*class="composer-region"[^>]*>\s*<form[^>]*class="composer-wrap"/s);
     expect(composer).toContain('<KnowledgeToggle />');
     expect(composer).not.toContain('<KnowledgePreviewPanel />');
     expect(composer).toMatch(/\.composer-region\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*0;/s);

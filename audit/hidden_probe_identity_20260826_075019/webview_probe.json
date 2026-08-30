@@ -1,0 +1,76 @@
+{
+  "timestamp_utc": "2026-08-26T02:51:39.877725+00:00",
+  "cdp_port": 9223,
+  "ok": true,
+  "page_url": "http://127.0.0.1:1423/",
+  "page": {
+    "url": "http://127.0.0.1:1423/",
+    "readyState": "complete",
+    "tauri": true
+  },
+  "cta": [],
+  "uia_click": {
+    "clicked": null
+  },
+  "after_uia": {
+    "clicks": 0,
+    "clickLog": [],
+    "dialogNodes": 0,
+    "hasDrawerText": false,
+    "bodySnippet": "LocalComet\nЧат\nМодели HF\nПодобрать модель\nНовый чат\nЛОКАЛЬНЫЕ ЧАТЫ\nНовый чат\nНастройки\nЛокальная модель недоступна\nМодель не загружена\nМодель не загружена\nЛокальная модель недоступна\n\nLocalComet испол"
+  },
+  "js_click": "cta-not-found",
+  "after_js": {
+    "clicks": 0,
+    "clickLog": [],
+    "dialogNodes": 0,
+    "hasDrawerText": false,
+    "bodySnippet": "LocalComet\nЧат\nМодели HF\nПодобрать модель\nНовый чат\nЛОКАЛЬНЫЕ ЧАТЫ\nНовый чат\nНастройки\nЛокальная модель недоступна\nМодель не загружена\nМодель не загружена\nЛокальная модель недоступна\n\nLocalComet испол"
+  },
+  "console_events": [
+    {
+      "type": "debug",
+      "args": [
+        {
+          "type": "string",
+          "value": "[vite] connecting..."
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1787712684182.74,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "",
+            "scriptId": "31",
+            "url": "http://127.0.0.1:1423/@vite/client",
+            "lineNumber": 850,
+            "columnNumber": 8
+          }
+        ]
+      }
+    },
+    {
+      "type": "debug",
+      "args": [
+        {
+          "type": "string",
+          "value": "[vite] connected."
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1787712684187.572,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "handleMessage",
+            "scriptId": "31",
+            "url": "http://127.0.0.1:1423/@vite/client",
+            "lineNumber": 954,
+            "columnNumber": 11
+          }
+        ]
+      }
+    }
+  ]
+}

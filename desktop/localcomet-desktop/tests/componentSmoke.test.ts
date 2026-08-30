@@ -5,12 +5,14 @@ import ApprovalCard from '../src/lib/components/chat/ApprovalCard.svelte';
 import ChatHeader from '../src/lib/components/shell/ChatHeader.svelte';
 import ConversationSidebar from '../src/lib/components/shell/ConversationSidebar.svelte';
 import MessageComposer from '../src/lib/components/chat/MessageComposer.svelte';
+import MessageList from '../src/lib/components/chat/MessageList.svelte';
 
 import SettingsPanel from '../src/lib/components/shell/SettingsPanel.svelte';
+import CheckpointPanel from '../src/lib/components/shell/CheckpointPanel.svelte';
 import ToolCallCard from '../src/lib/components/chat/ToolCallCard.svelte';
 import { mockToolCall } from '../src/lib/data/mockData';
-import { resetShellStores, setVoiceMode } from '../src/lib/stores/shellStore';
-import { requestApprovalForTool, resetApprovalStore } from '../src/lib/stores/approvalStore';
+import { chatMessages, resetShellStores, setVoiceMode } from '../src/lib/stores/shellStore';
+import { approvalStore, requestApprovalForTool, resetApprovalStore } from '../src/lib/stores/approvalStore';
 
 describe('component smoke tests', () => {
   beforeEach(() => {
@@ -22,6 +24,13 @@ describe('component smoke tests', () => {
     // AppShell component is not imported, so we will skip it here if it's not defined
     expect(() => render(ChatHeader)).not.toThrow();
     expect(() => render(ConversationSidebar)).not.toThrow();
+  });
+
+  it('renders the checkpoint panel with truthful empty state', () => {
+    const html = render(CheckpointPanel).body;
+    expect(html).toContain('checkpoints-title');
+    // No fake rows and no fake RESTORED state before backend truth.
+    expect(html).not.toContain('cp_');
   });
 
   it('keeps the control plane status badge out of the persistent sidebar chrome', () => {
@@ -64,6 +73,37 @@ describe('component smoke tests', () => {
     setVoiceMode(true);
     html = render(MessageComposer).body;
     expect(html).toContain('aria-label="Отключить голосовое озвучивание"');
+  });
+
+  it('renders only a safe error code and never raw path or private provider detail', () => {
+    chatMessages.set([{
+      id: 'failed-safe-cause',
+      role: 'assistant',
+      body: '',
+      conversationId: 'local-chat',
+      state: 'failed',
+      error: 'path_outside_workspace: C:\\Users\\DNS\\Documents\\secret.txt provider=https://private.example/token'
+    }]);
+    const html = render(MessageList).body;
+    expect(html).toContain('path_outside_workspace');
+    expect(html).not.toContain('C:\\Users\\DNS\\Documents\\secret.txt');
+    expect(html).not.toContain('private.example');
+    expect(html).not.toContain('provider=');
+  });
+
+  it('reduces unrecognized provider failures to a safe class label', () => {
+    chatMessages.set([{
+      id: 'failed-provider',
+      role: 'assistant',
+      body: '',
+      conversationId: 'local-chat',
+      state: 'failed',
+      error: 'model_request_failed provider=https://private.example/token'
+    }]);
+    const html = render(MessageList).body;
+    expect(html).toContain('request_blocked_or_unavailable');
+    expect(html).not.toContain('private.example');
+    expect(html).not.toContain('model_request_failed');
   });
 
   it('renders the tool card with sanitized target', () => {
@@ -155,6 +195,31 @@ describe('component smoke tests', () => {
     expect(html).toContain('Контекст проекта пока недоступен');
     expect(html).not.toContain('Инструменты (пока недоступны)');
     expect(html).not.toContain('request-metrics');
+  });
+
+  it('marks legacy approval identity without masquerading as a prompt request id', () => {
+    approvalStore.set({
+      pending: {
+        tool: 'files.delete',
+        input: { path: 'a.txt' },
+        envelope: {
+          token: 'lcap_' + 'a'.repeat(64),
+          approvalId: 'appr_' + 'b'.repeat(32),
+          callId: 'call_' + 'c'.repeat(32),
+          tool: 'files.delete',
+          riskLevel: 'dangerous',
+          commandFamily: 'tool_filesystem_delete',
+          expiresAtUnixMs: Date.now() + 120_000
+        },
+        inputDigest: 'd'.repeat(64)
+      },
+      phase: 'pending',
+      errorCode: null
+    });
+    const html = render(ApprovalCard).body;
+    expect(html).toContain('data-approval-id="appr_' + 'b'.repeat(32) + '"');
+    expect(html).toContain('data-approval-authority="legacy-compatibility"');
+    expect(html).not.toContain('data-approval-request-id=');
   });
 
   it('keeps approval card empty while guarded tool calls run in the background', () => {

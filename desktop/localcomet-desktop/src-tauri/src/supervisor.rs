@@ -1642,6 +1642,7 @@ fn minimal_sidecar_environment(python_exe: Option<&Path>) -> Vec<(OsString, OsSt
         "LC_HIDDEN_ISOLATED_ROOT",
         "LOCALCOMET_TOOLCALL_TRACE",
         "LOCALCOMET_CU_DEBUG_PATH",
+        "LC_HIDDEN_SCREENSHOT_OWNER_CONTEXT",
     ] {
         if let Some(value) = std::env::var_os(key) {
             env.push((OsString::from(key), value));

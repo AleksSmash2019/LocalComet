@@ -1,0 +1,145 @@
+{
+  "timestamp_utc": "2026-08-25T19:24:04.819078+00:00",
+  "worker_pid": 21192,
+  "launcher_pid": 19432,
+  "allowed_pid_count": 22,
+  "window_count": 19,
+  "windows": [
+    {
+      "hwnd": 20054676,
+      "pid": 24332,
+      "title": "Tooltip",
+      "class": "Touch Tooltip Window",
+      "visible": false
+    },
+    {
+      "hwnd": 6948790,
+      "pid": 24332,
+      "title": "",
+      "class": "UAC_InputIndicatorOverlayWnd",
+      "visible": true
+    },
+    {
+      "hwnd": 2556460,
+      "pid": 24332,
+      "title": "",
+      "class": "UAC Input Indicator",
+      "visible": true
+    },
+    {
+      "hwnd": 7668526,
+      "pid": 23744,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 2753354,
+      "pid": 15728,
+      "title": "LocalComet",
+      "class": "Tauri Window",
+      "visible": true
+    },
+    {
+      "hwnd": 8128928,
+      "pid": 24332,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 3146370,
+      "pid": 24332,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 5769596,
+      "pid": 24332,
+      "title": "",
+      "class": "Base_PowerMessageWindow",
+      "visible": false
+    },
+    {
+      "hwnd": 6030828,
+      "pid": 23480,
+      "title": "",
+      "class": "crashpad_SessionEndWatcher",
+      "visible": false
+    },
+    {
+      "hwnd": 7996236,
+      "pid": 15728,
+      "title": "",
+      "class": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "hwnd": 22939010,
+      "pid": 24332,
+      "title": "",
+      "class": "CicLoaderWndClass",
+      "visible": false
+    },
+    {
+      "hwnd": 7014900,
+      "pid": 24332,
+      "title": "CiceroUIWndFrame",
+      "class": "CiceroUIWndFrame",
+      "visible": false
+    },
+    {
+      "hwnd": 10945464,
+      "pid": 24332,
+      "title": "TF_FloatingLangBar_WndTitle",
+      "class": "CiceroUIWndFrame",
+      "visible": false
+    },
+    {
+      "hwnd": 8455108,
+      "pid": 23744,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 2162834,
+      "pid": 24332,
+      "title": "MSCTFIME UI",
+      "class": "MSCTFIME UI",
+      "visible": false
+    },
+    {
+      "hwnd": 2622260,
+      "pid": 24332,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 10291488,
+      "pid": 15728,
+      "title": "MSCTFIME UI",
+      "class": "MSCTFIME UI",
+      "visible": false
+    },
+    {
+      "hwnd": 4064070,
+      "pid": 15728,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 6620754,
+      "pid": 23480,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "violations": [],
+  "benign_invisible_external_windows": [],
+  "isolated": true
+}

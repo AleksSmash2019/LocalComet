@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -12,33 +13,115 @@ BASE_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB guard — fail early on huge payloads
 MAX_LIST_ENTRIES = 500
 
+def _is_symlink_or_reparse(p: Path) -> bool:
+    # Fail closed: any inability to determine reparse status is treated as link.
+    try:
+        if p.is_symlink():
+            return True
+        if hasattr(p, "is_junction"):
+            try:
+                if p.is_junction():  # type: ignore[attr-defined]
+                    return True
+            except OSError:
+                return True
+        if p.exists() and os.name == "nt":
+            import ctypes
+
+            FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+            try:
+                GetFileAttributesW = ctypes.windll.kernel32.GetFileAttributesW
+                GetFileAttributesW.argtypes = [ctypes.c_wchar_p]
+                GetFileAttributesW.restype = ctypes.c_uint32
+                attrs = GetFileAttributesW(str(p))
+                if attrs != 0xFFFFFFFF and (attrs & FILE_ATTRIBUTE_REPARSE_POINT):
+                    return True
+            except Exception as exc:
+                # Fail closed: if reparse attribute cannot be determined for an existing path,
+                # treat as link to avoid bypass via exception.
+                raise ValueError("Символические ссылки запрещены.") from exc
+    except OSError:
+        raise ValueError("Символические ссылки запрещены.")
+    return False
+
+
+def _reject_pre_resolve_links(user_path: str) -> None:
+    # Check every existing component of the raw candidate WITHOUT following links.
+    # This catches a symlink/junction/reparse component that points even inside
+    # BASE_DIR, where the later resolve() would hide the link.
+    base_resolved = BASE_DIR.resolve()
+    p = Path(user_path)
+    if p.is_absolute():
+        cur = Path(p.anchor)
+        # anchor parts already counted; iterate remaining segments lexically
+        anchor_len = len(Path(p.anchor).parts)
+        segments = p.parts[anchor_len:]
+        for seg in segments:
+            if seg in ("", "."):
+                continue
+            if seg == "..":
+                cur = cur.parent
+                continue
+            cur = cur / seg
+            try:
+                if cur.exists() or cur.is_symlink():
+                    if _is_symlink_or_reparse(cur):
+                        raise ValueError("Символические ссылки запрещены.")
+            except ValueError:
+                raise
+            except OSError:
+                raise ValueError("Символические ссылки запрещены.")
+        return
+    cur = base_resolved
+    for seg in p.parts:
+        if seg in ("", "."):
+            continue
+        if seg == "..":
+            # Lexical .. : move up but never below base's parent check — containment will fail later.
+            if cur == base_resolved:
+                cur = cur.parent
+            else:
+                cur = cur.parent
+            continue
+        cur = cur / seg
+        try:
+            if cur.exists() or cur.is_symlink():
+                if _is_symlink_or_reparse(cur):
+                    raise ValueError("Символические ссылки запрещены.")
+        except ValueError:
+            raise
+        except OSError:
+            raise ValueError("Символические ссылки запрещены.")
+
+
 def _reject_symlink(target: Path) -> None:
-    # Defense-in-depth: only check inside Projects/ — don't walk up to C:\.
+    # Post-resolve defense-in-depth: check resolved ancestors up to BASE_DIR.
     base = BASE_DIR.resolve()
     try:
         resolved = target.resolve()
-        # Check target itself + parents down to BASE_DIR only
         cur = resolved
         while True:
-            if cur.is_symlink():
-                raise ValueError("Символические ссылки запрещены.")
+            try:
+                if _is_symlink_or_reparse(cur):
+                    raise ValueError("Символические ссылки запрещены.")
+            except ValueError:
+                raise
             if cur == base or cur.parent == cur:
                 break
             cur = cur.parent
-            # stop once we're outside base's ancestry
             try:
                 cur.relative_to(base)
             except ValueError:
                 if cur != base:
-                    # cur is now outside Projects/ — no need to check higher
-                    # (safe_path already rejected escapes; this just avoids C:\ walk)
                     break
     except ValueError:
         raise
     except OSError:
         raise ValueError("Символические ссылки запрещены.")
 
+
 def safe_path(path: str) -> Path:
+    # Pre-resolve link check must happen before resolve() hides the component.
+    _reject_pre_resolve_links(path)
     target = (BASE_DIR / path).resolve()
     base = BASE_DIR.resolve()
 
@@ -46,6 +129,9 @@ def safe_path(path: str) -> Path:
         target.relative_to(base)
     except ValueError as exc:
         raise ValueError("Запрещенный путь за пределами Projects.") from exc
+
+    # Post-resolve check remains as defense-in-depth for any race.
+    _reject_symlink(target)
 
     return target
 

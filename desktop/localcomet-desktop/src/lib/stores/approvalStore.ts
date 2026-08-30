@@ -16,6 +16,10 @@ export interface PendingApproval {
   tool: string;
   input: unknown;
   envelope: ApprovalEnvelope | null;
+  /** Server-issued approval request identity when a compatibility card is used. */
+  requestId?: string;
+  /** Canonical digest of the exact input approved by Rust. */
+  inputDigest?: string;
   callbacks?: ApprovalExecutionCallbacks;
 }
 
@@ -30,6 +34,8 @@ export interface ActiveApprovalPrompt {
   target_summary: string;
   side_effect_category: string;
   destructive: boolean;
+  /** Canonical SHA-256 digest of the exact input bound by Rust. */
+  input_digest: string;
   expires_at_unix_ms?: number;
 }
 
@@ -56,6 +62,67 @@ export interface ApprovalCorrelation {
 
 let pendingApprovalCorrelation: ApprovalCorrelation | null = null;
 
+const APPROVAL_ID_PATTERN = /^appr_[0-9a-f]{32}$/;
+const MODEL_REQUEST_ID_PATTERN = /^[0-9a-f]{24}$/;
+const INPUT_DIGEST_PATTERN = /^[0-9a-f]{64}$/;
+const MAX_TOOL_NAME_LENGTH = 128;
+const MAX_TARGET_SUMMARY_LENGTH = 16_384;
+const MAX_SIDE_EFFECT_CATEGORY_LENGTH = 128;
+const MAX_MODEL_ACTION_ID_LENGTH = 256;
+
+function boundedString(value: unknown, maxLength: number, allowEmpty = false): value is string {
+  return typeof value === 'string' &&
+    value.length <= maxLength &&
+    (allowEmpty || value.length > 0) &&
+    ![...value].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f);
+}
+
+/**
+ * Normalize the Rust event before it reaches any approval DOM or resolver.
+ * Tauri event typing is compile-time only; runtime payloads still fail closed.
+ */
+export function normalizeApprovalPrompt(value: unknown): ActiveApprovalPrompt | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const requestId = candidate.request_id;
+  const modelRequestId = candidate.model_request_id;
+  const modelActionId = candidate.model_action_id;
+  const tool = candidate.tool;
+  const riskLevel = candidate.risk_level;
+  const targetSummary = candidate.target_summary;
+  const sideEffectCategory = candidate.side_effect_category;
+  const destructive = candidate.destructive;
+  const inputDigest = candidate.input_digest;
+  const expiresAt = candidate.expires_at_unix_ms;
+
+  if (typeof requestId !== 'string' || !APPROVAL_ID_PATTERN.test(requestId)) return null;
+  const hasModelRequestId = modelRequestId !== undefined;
+  const hasModelActionId = modelActionId !== undefined;
+  if (hasModelRequestId !== hasModelActionId) return null;
+  if (modelRequestId !== undefined && (typeof modelRequestId !== 'string' || !MODEL_REQUEST_ID_PATTERN.test(modelRequestId))) return null;
+  if (modelActionId !== undefined && !boundedString(modelActionId, MAX_MODEL_ACTION_ID_LENGTH)) return null;
+  if (!boundedString(tool, MAX_TOOL_NAME_LENGTH)) return null;
+  if (riskLevel !== 'read_only' && riskLevel !== 'guarded' && riskLevel !== 'dangerous') return null;
+  if (!boundedString(targetSummary, MAX_TARGET_SUMMARY_LENGTH, true)) return null;
+  if (!boundedString(sideEffectCategory, MAX_SIDE_EFFECT_CATEGORY_LENGTH)) return null;
+  if (typeof destructive !== 'boolean') return null;
+  if (typeof inputDigest !== 'string' || !INPUT_DIGEST_PATTERN.test(inputDigest)) return null;
+  if (expiresAt !== undefined && (typeof expiresAt !== 'number' || !Number.isSafeInteger(expiresAt) || expiresAt <= 0)) return null;
+
+  return {
+    request_id: requestId,
+    ...(modelRequestId === undefined ? {} : { model_request_id: modelRequestId }),
+    ...(modelActionId === undefined ? {} : { model_action_id: modelActionId }),
+    tool,
+    risk_level: riskLevel,
+    target_summary: targetSummary,
+    side_effect_category: sideEffectCategory,
+    destructive,
+    input_digest: inputDigest,
+    ...(expiresAt === undefined ? {} : { expires_at_unix_ms: expiresAt })
+  };
+}
+
 export function setApprovalCorrelation(correlation: ApprovalCorrelation): void {
   pendingApprovalCorrelation = { ...correlation };
 }
@@ -68,18 +135,46 @@ export function clearApprovalCorrelation(): void {
   pendingApprovalCorrelation = null;
 }
 
-export function setApprovalPrompt(prompt: ActiveApprovalPrompt): void {
+export function setApprovalPrompt(value: unknown): boolean {
+  const prompt = normalizeApprovalPrompt(value);
+  if (!prompt) {
+    const previous = get(approvalPrompt);
+    if (previous) {
+      void resolveToolApproval(previous.request_id, 'reject').catch(() => undefined);
+    }
+    clearApprovalPrompt();
+    console.warn('Rejected malformed request_tool_approval payload');
+    return false;
+  }
   const previous = get(approvalPrompt);
   if (previous && previous.request_id !== prompt.request_id) {
     void resolveToolApproval(previous.request_id, 'reject').catch(() => undefined);
   }
-  const correlation = pendingApprovalCorrelation;
-  approvalPrompt.set(correlation ? {
+  const serverCorrelation = prompt.model_request_id && prompt.model_action_id
+    ? { modelRequestId: prompt.model_request_id, modelActionId: prompt.model_action_id }
+    : null;
+  const pendingCorrelation = pendingApprovalCorrelation;
+  if (
+    serverCorrelation &&
+    pendingCorrelation &&
+    (serverCorrelation.modelRequestId !== pendingCorrelation.modelRequestId ||
+      serverCorrelation.modelActionId !== pendingCorrelation.modelActionId)
+  ) {
+    // The Rust event is authoritative. A mismatch is diagnostic evidence, not
+    // a reason to silently overwrite the server identity with mutable UI state.
+    console.warn('Approval correlation mismatch; using server-authenticated identity');
+  }
+  // A server event without correlation is intentionally uncorrelated. Do not
+  // attach a stale mutable UI pair to it: that would make the DOM claim a
+  // model-turn identity which Rust never authenticated for this prompt.
+  approvalPrompt.set(serverCorrelation ? {
     ...prompt,
-    model_request_id: correlation.modelRequestId,
-    model_action_id: correlation.modelActionId
+    model_request_id: serverCorrelation.modelRequestId,
+    model_action_id: serverCorrelation.modelActionId
   } : prompt);
+  clearApprovalCorrelation();
   approvalPromptActive.set(true);
+  return true;
 }
 
 export function clearApprovalPrompt(): void {
@@ -130,7 +225,10 @@ async function executeApprovalInBackground(
 ): Promise<void> {
   approvalStore.set({ pending: null, phase: 'requesting', errorCode: null });
   try {
-    const envelope = await requestApproval(tool, input);
+    const envelope = await requestApproval(tool, input, {
+      requestId: callbacks?.requestId,
+      actionId: callbacks?.actionId
+    });
     approvalStore.set({ pending: null, phase: 'executing', errorCode: null });
     const result = await runToolCall(
       tool,

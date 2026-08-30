@@ -1,0 +1,202 @@
+{
+  "timestamp_utc": "2026-08-25T05:24:34.536166+00:00",
+  "worker_pid": 4200,
+  "launcher_pid": 18700,
+  "allowed_pid_count": 22,
+  "window_count": 23,
+  "windows": [
+    {
+      "hwnd": 2230674,
+      "pid": 27192,
+      "title": "Tooltip",
+      "class": "Touch Tooltip Window",
+      "visible": false
+    },
+    {
+      "hwnd": 15140850,
+      "pid": 27192,
+      "title": "",
+      "class": "UAC_InputIndicatorOverlayWnd",
+      "visible": true
+    },
+    {
+      "hwnd": 25626744,
+      "pid": 27192,
+      "title": "",
+      "class": "UAC Input Indicator",
+      "visible": true
+    },
+    {
+      "hwnd": 12453546,
+      "pid": 16444,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 5704080,
+      "pid": 21596,
+      "title": "LocalComet",
+      "class": "Tauri Window",
+      "visible": true
+    },
+    {
+      "hwnd": 1640704,
+      "pid": 27192,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 2361860,
+      "pid": 27192,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 2099586,
+      "pid": 27192,
+      "title": "",
+      "class": "Base_PowerMessageWindow",
+      "visible": false
+    },
+    {
+      "hwnd": 2099412,
+      "pid": 28512,
+      "title": "",
+      "class": "crashpad_SessionEndWatcher",
+      "visible": false
+    },
+    {
+      "hwnd": 1443426,
+      "pid": 21596,
+      "title": "",
+      "class": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "hwnd": 3410128,
+      "pid": 20008,
+      "title": "GDI+ Window (VCTIP.EXE)",
+      "class": "GDI+ Hook Window Class",
+      "visible": false
+    },
+    {
+      "hwnd": 2294334,
+      "pid": 20008,
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.28f1359.0",
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.28f1359.0",
+      "visible": false
+    },
+    {
+      "hwnd": 1245756,
+      "pid": 27192,
+      "title": "",
+      "class": "CicLoaderWndClass",
+      "visible": false
+    },
+    {
+      "hwnd": 16320634,
+      "pid": 27192,
+      "title": "CiceroUIWndFrame",
+      "class": "CiceroUIWndFrame",
+      "visible": false
+    },
+    {
+      "hwnd": 917602,
+      "pid": 27192,
+      "title": "TF_FloatingLangBar_WndTitle",
+      "class": "CiceroUIWndFrame",
+      "visible": false
+    },
+    {
+      "hwnd": 10487288,
+      "pid": 16444,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 3082634,
+      "pid": 27192,
+      "title": "MSCTFIME UI",
+      "class": "MSCTFIME UI",
+      "visible": false
+    },
+    {
+      "hwnd": 9570282,
+      "pid": 27192,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 1968500,
+      "pid": 21596,
+      "title": "MSCTFIME UI",
+      "class": "MSCTFIME UI",
+      "visible": false
+    },
+    {
+      "hwnd": 2163284,
+      "pid": 21596,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 2427174,
+      "pid": 28512,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 7800714,
+      "pid": 20008,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 2426410,
+      "pid": 20008,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "violations": [],
+  "benign_invisible_external_windows": [
+    {
+      "hwnd": 3410128,
+      "pid": 20008,
+      "title": "GDI+ Window (VCTIP.EXE)",
+      "class": "GDI+ Hook Window Class",
+      "visible": false
+    },
+    {
+      "hwnd": 2294334,
+      "pid": 20008,
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.28f1359.0",
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.28f1359.0",
+      "visible": false
+    },
+    {
+      "hwnd": 7800714,
+      "pid": 20008,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 2426410,
+      "pid": 20008,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "isolated": true
+}

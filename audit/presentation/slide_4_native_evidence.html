@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container {
+            width: 1280px;
+            min-height: 720px;
+            background-color: #FFFFFF;
+            color: #0A192F;
+            font-family: 'Courier New', Consolas, monospace;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+        }
+        h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+        .header-box {
+            border: 1px solid #0A192F;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            background-color: #E3F2FD;
+        }
+        .slide-title {
+            font-size: 36px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .content-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            flex-grow: 1;
+        }
+        .table-container {
+            border: 1px solid #0A192F;
+            padding: 15px;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #0A192F;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #0A192F;
+            padding: 10px;
+            text-align: left;
+            font-size: 15px;
+            line-height: 1.4;
+        }
+        .data-table th {
+            background-color: #E3F2FD;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .image-container {
+            border: 1px solid #0A192F;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .image-title {
+            font-size: 18px;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            text-align: center;
+            border-bottom: 1px solid #0A192F;
+            padding-bottom: 8px;
+            width: 100%;
+        }
+        .screenshot-img {
+            width: 100%;
+            height: 300px;
+            object-fit: contain;
+            border: 1px solid #0A192F;
+            background-color: #f5f5f5;
+        }
+        .image-caption {
+            font-size: 14px;
+            margin-top: 15px;
+            color: #0A192F;
+            text-align: center;
+            line-height: 1.4;
+        }
+        .verdict-success { font-weight: 600; }
+        .verdict-pending { font-weight: 600; }
+        .verdict-failed { font-weight: 600; color: #D32F2F; }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header-box">
+            <h1 class="slide-title">Что реально доказано native</h1>
+        </div>
+
+        <div class="content-grid">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 22%;">Case</th>
+                            <th style="width: 22%;">Verdict</th>
+                            <th>Независимое evidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Browser read-only search</strong><br>№32–33</td>
+                            <td class="verdict-success">VERIFIED_SUCCESS ×2</td>
+                            <td>HTTPS www.python.org, title Welcome to Python.org, Chrome listener PID = broker PID, exact chrome.exe, debug-port flag, isolated profile, hidden-window PID, exact cleanup, correlated approval/request/action/input digest</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Notepad open/type</strong><br>№11–12</td>
+                            <td class="verdict-success">VERIFIED_SUCCESS ×2</td>
+                            <td>UIA прочитал synthetic marker, marker SHA 1e074c1c…09fd77, owned PID/desktop, exact cleanup</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Screenshot</strong><br>№12–13</td>
+                            <td class="verdict-success">VERIFIED_SUCCESS ×2</td>
+                            <td>window-scoped gdi_bitblt, PNG 4,239 bytes, SHA-256 b993e04bf2c4b4bbdb3dc14d5a4d590f494b31edaee6c97718484baffbb9cbf1, capture_pid == owner PID, rendered card PNG verification, nonblank visual capture</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Browser cancel diagnostic</strong></td>
+                            <td class="verdict-pending">PENDING_TERMINAL</td>
+                            <td>Real Stop: data-composer-action=stop, aria=Остановить; no browser spawn observed</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Recovery</strong></td>
+                            <td class="verdict-failed">VERIFIED_FAILED</td>
+                            <td>Broker boundary reached, but UI path returned No UI candidates found</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="image-container">
+                <div class="image-title">Screenshot Evidence</div>
+                <img src="/mnt/e3f702b7-8ba8-4cd2-a089-efd060a7ed13/LocalComet-build-week-clean/Projects/Reports/computer_use_real_actions/isolated_hidden_desktop/nine_20260827_screenshot_10/captured_window.png" alt="Captured Window" class="screenshot-img">
+                <p class="image-caption">Visual verification of nonblank Notepad capture (gdi_bitblt) from isolated hidden desktop</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

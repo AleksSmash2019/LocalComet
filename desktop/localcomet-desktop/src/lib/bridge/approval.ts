@@ -13,6 +13,11 @@ export interface ApprovalEnvelope {
   expiresAtUnixMs: number;
 }
 
+export interface ApprovalRequestCorrelation {
+  readonly requestId?: string;
+  readonly actionId?: string;
+}
+
 export interface ExecutionGrant {
   grant_id: string;
   tool: string;
@@ -81,8 +86,15 @@ export function validateApprovalEnvelope(raw: unknown, expectedTool: string): Ap
   };
 }
 
-export async function requestApproval(tool: string, input: unknown): Promise<ApprovalEnvelope> {
-  const raw = await invoke<ApprovalEnvelope>('request_approval', { tool, input });
+export async function requestApproval(
+  tool: string,
+  input: unknown,
+  correlation?: ApprovalRequestCorrelation
+): Promise<ApprovalEnvelope> {
+  const args: Record<string, unknown> = { tool, input };
+  if (correlation?.requestId !== undefined) args.requestId = correlation.requestId;
+  if (correlation?.actionId !== undefined) args.actionId = correlation.actionId;
+  const raw = await invoke<ApprovalEnvelope>('request_approval', args);
   return validateApprovalEnvelope(raw, tool);
 }
 

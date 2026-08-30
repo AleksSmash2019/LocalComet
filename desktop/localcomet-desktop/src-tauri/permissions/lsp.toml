@@ -1,0 +1,6 @@
+[[permission]]
+identifier = "allow-lsp-diagnostics"
+description = "Bounded LSP diagnostics for one workspace-relative .rs file. Honest unavailable path: no server binary or failed handshake reports available=false with the exact reason and never fabricates diagnostics."
+commands.allow = [
+  "lsp_diagnostics"
+]

@@ -79,6 +79,23 @@ requires_approval = true
 implementation = "src-tauri::model_binding_set"
 
 [[tools]]
+name = "checkpoint.restore_files"
+# Desktop restore of checkpointed files overwrites workspace bytes with
+# preimage blobs; user edits are protected by the conflict rule, but the
+# mutation itself is guarded and requires a one-time Rust-owned grant.
+risk_level = "guarded"
+requires_approval = true
+implementation = "src-tauri::checkpoint_restore_files"
+
+[[tools]]
+name = "checkpoint.restore_task"
+# Task-level unwind replays several restores newest-first; same guarded
+# contract, with the grant bound to the exact ordered checkpoint id list.
+risk_level = "guarded"
+requires_approval = true
+implementation = "src-tauri::checkpoint_restore_task"
+
+[[tools]]
 name = "files.rollback"
 risk_level = "guarded"
 requires_approval = true

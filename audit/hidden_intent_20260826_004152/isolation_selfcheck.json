@@ -1,0 +1,110 @@
+{
+  "timestamp_utc": "2026-08-25T19:42:09.592297+00:00",
+  "worker_pid": 19792,
+  "launcher_pid": 2140,
+  "allowed_pid_count": 13,
+  "window_count": 14,
+  "windows": [
+    {
+      "hwnd": 2426764,
+      "pid": 7276,
+      "title": "Tooltip",
+      "class": "Touch Tooltip Window",
+      "visible": false
+    },
+    {
+      "hwnd": 7604298,
+      "pid": 7276,
+      "title": "",
+      "class": "UAC_InputIndicatorOverlayWnd",
+      "visible": true
+    },
+    {
+      "hwnd": 18548630,
+      "pid": 7276,
+      "title": "",
+      "class": "UAC Input Indicator",
+      "visible": false
+    },
+    {
+      "hwnd": 4327632,
+      "pid": 7276,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 10815466,
+      "pid": 7276,
+      "title": "",
+      "class": "Base_PowerMessageWindow",
+      "visible": false
+    },
+    {
+      "hwnd": 1377078,
+      "pid": 26684,
+      "title": "",
+      "class": "crashpad_SessionEndWatcher",
+      "visible": false
+    },
+    {
+      "hwnd": 2032384,
+      "pid": 2140,
+      "title": "LocalComet",
+      "class": "Tauri Window",
+      "visible": false
+    },
+    {
+      "hwnd": 7473552,
+      "pid": 2140,
+      "title": "",
+      "class": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "hwnd": 8521876,
+      "pid": 7276,
+      "title": "",
+      "class": "CicLoaderWndClass",
+      "visible": false
+    },
+    {
+      "hwnd": 2492874,
+      "pid": 7276,
+      "title": "CiceroUIWndFrame",
+      "class": "CiceroUIWndFrame",
+      "visible": false
+    },
+    {
+      "hwnd": 7932272,
+      "pid": 7276,
+      "title": "TF_FloatingLangBar_WndTitle",
+      "class": "CiceroUIWndFrame",
+      "visible": false
+    },
+    {
+      "hwnd": 3932812,
+      "pid": 7276,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 3017020,
+      "pid": 26684,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 5769818,
+      "pid": 2140,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "violations": [],
+  "benign_invisible_external_windows": [],
+  "isolated": true
+}

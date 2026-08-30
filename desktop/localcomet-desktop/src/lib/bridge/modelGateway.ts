@@ -263,8 +263,12 @@ export async function startManagedRuntime(
   const approvalInput = {
     ...(customSha256 === null ? { model_id: requestedId } : { model_id: requestedId, custom_sha256: customSha256 }),
     ...(requestedRuntimeId === undefined ? {} : { runtime_id: requestedRuntimeId }),
-    ctx_size_override: ctxSizeOverride,
-    gpu_layers_override: gpuLayersOverride
+    // Override keys are canonicalized only when a concrete value exists. An
+    // unset override is semantically absent and must stay out of the input,
+    // so the issuance digest byte-matches the digest the Rust command rebuilds
+    // during validation (managed_runtime.rs omits None overrides as well).
+    ...(typeof ctxSizeOverride === 'number' ? { ctx_size_override: ctxSizeOverride } : {}),
+    ...(typeof gpuLayersOverride === 'number' ? { gpu_layers_override: gpuLayersOverride } : {})
   };
   const envelope = await requestApproval('runtime.start', approvalInput);
   if (isCurrent && !isCurrent()) {
@@ -278,8 +282,8 @@ export async function startManagedRuntime(
   };
   if (customSha256 !== null) invokeArgs.customSha256 = customSha256;
   if (requestedRuntimeId !== undefined) invokeArgs.runtimeId = requestedRuntimeId;
-  invokeArgs.ctxSizeOverride = ctxSizeOverride;
-  invokeArgs.gpuLayersOverride = gpuLayersOverride;
+  if (typeof ctxSizeOverride === 'number') invokeArgs.ctxSizeOverride = ctxSizeOverride;
+  if (typeof gpuLayersOverride === 'number') invokeArgs.gpuLayersOverride = gpuLayersOverride;
   return validateManagedStart(await invokeExact('managed_runtime_start', invokeArgs));
 }
 

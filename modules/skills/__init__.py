@@ -11,22 +11,30 @@ never run in the host process and never receive secrets. See docs/SECURITY.md.
 
 from modules.skills.skills_contract import (
     SKILL_CONTRACT_VERSION,
+    SKILL_WORKFLOW_CONTRACT_VERSION,
     SkillError,
     SkillErrorCode,
     SkillManifest,
     SkillPermission,
     SkillState,
+    SkillWorkflow,
+    bind_workflow,
     validate_manifest_dict,
+    validate_workflow_dict,
 )
 from modules.skills.skills_manager import SkillsManager
 
 __all__ = [
     "SKILL_CONTRACT_VERSION",
+    "SKILL_WORKFLOW_CONTRACT_VERSION",
     "SkillError",
     "SkillErrorCode",
     "SkillManifest",
     "SkillPermission",
     "SkillState",
+    "SkillWorkflow",
     "SkillsManager",
+    "bind_workflow",
     "validate_manifest_dict",
+    "validate_workflow_dict",
 ]

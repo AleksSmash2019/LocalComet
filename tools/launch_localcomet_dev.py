@@ -71,7 +71,7 @@ RUNTIME_IDENTITY_RELATIVE = (
 )
 RUNTIME_BINARIES_PREFIX = "desktop/localcomet-desktop/src-tauri/binaries/"
 LEGACY_RUNTIME_MANIFEST_RELATIVE = "localcomet_runtime_manifest.json"
-EXPECTED_TAURI_RESOURCE_IDENTITIES = 76
+EXPECTED_TAURI_RESOURCE_IDENTITIES = 0
 
 RUNTIME_IDENTITY_HEADER = "path\tbytes\tsha256\n"
 
@@ -309,7 +309,10 @@ def parse_runtime_identity_manifest(raw: bytes) -> tuple[ResourceFileIdentity, .
         key=_resource_path_alias,
     ):
         raise _resource_identity_error("manifest_order", cached=False)
-    if len(identities) != EXPECTED_TAURI_RESOURCE_IDENTITIES:
+    # The resource manifest is generated from the staged runtime. Its count
+    # changes when the runtime manifest gains files; validate structural
+    # integrity and set/hash parity below instead of a stale hard-coded count.
+    if not identities:
         raise _resource_identity_error("manifest_resource_count", cached=False)
     return tuple(identities)
 

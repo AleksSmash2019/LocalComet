@@ -3,6 +3,7 @@ use crate::approval_commands::ApprovalState;
 use crate::files::SelectedFilesManager;
 use crate::ipc;
 use crate::managed_runtime::ManagedRuntimeSupervisor;
+use crate::project_intelligence::{try_build_context_manifest_bound, ContextManifest};
 use crate::supervisor::{DesktopSidecarSupervisor, SidecarFrameRouter};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -435,22 +436,204 @@ pub const CONTROL_PLANE_METHOD_VOCABULARY: [(&str, ControlPlaneMethod);
     ("tool.call", ControlPlaneMethod::ToolCall),
 ];
 
+/// Versioned wire schema for every Tauri command rejection (INV-ERR-001).
+/// The frontend normalizes arbitrary rejection values into this shape; a
+/// rejection must never degrade into `[object Object]` user-visible text.
+pub const ERROR_ENVELOPE_SCHEMA: &str = "localcomet.error.v1";
+
+/// Monotonic correlation suffix so every typed error carries a diagnostic id
+/// without randomness or wall-clock-only ambiguity.
+static ERROR_CORRELATION_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn next_error_correlation_id() -> String {
+    let seq = ERROR_CORRELATION_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_millis())
+        .unwrap_or(0);
+    format!("err_{millis:012x}_{seq:04x}")
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct BridgeError {
+    /// Boxed so `Result<T, BridgeError>` stays under the clippy
+    /// `result_large_err` budget; `serde(flatten)` keeps the wire shape flat.
+    #[serde(flatten)]
+    inner: Box<ErrorInner>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ErrorInner {
+    pub schema: &'static str,
     pub code: String,
     pub message: String,
+    pub retryable: bool,
+    pub phase: &'static str,
+    pub correlation_id: String,
+    pub details: Value,
+}
+
+impl std::ops::Deref for BridgeError {
+    type Target = ErrorInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 impl BridgeError {
     pub(crate) fn new(code: &str, message: &str) -> Self {
         Self {
-            code: sanitize_text(code, 64),
-            message: sanitize_text(message, 256),
+            inner: Box::new(ErrorInner {
+                schema: ERROR_ENVELOPE_SCHEMA,
+                code: sanitize_text(code, 64),
+                message: sanitize_text(message, 256),
+                retryable: false,
+                phase: "dispatch",
+                correlation_id: next_error_correlation_id(),
+                details: Value::Null,
+            }),
         }
     }
 
     fn unavailable(message: &str) -> Self {
-        Self::new("sidecar_unavailable", message)
+        Self::new("sidecar_unavailable", message).with_retryable(true)
+    }
+
+    /// Marks the failure as transient. Callers own retry policy; this flag is
+    /// informational and never triggers an automatic retry loop.
+    pub(crate) fn with_retryable(mut self, retryable: bool) -> Self {
+        self.inner.retryable = retryable;
+        self
+    }
+
+    /// Binds the envelope to the pipeline stage that produced it
+    /// (e.g. `tool_dispatch`, `intent_dispatch`, `coding_dispatch`).
+    pub(crate) fn with_phase(mut self, phase: &'static str) -> Self {
+        self.inner.phase = phase;
+        self
+    }
+
+    /// Prefers an explicit caller-supplied correlation id (request/action);
+    /// falls back to the generated one when absent or empty.
+    pub(crate) fn with_correlation(mut self, id: Option<&str>) -> Self {
+        if let Some(id) = id {
+            let bounded = sanitize_text(id, 64);
+            if !bounded.is_empty() {
+                self.inner.correlation_id = bounded;
+            }
+        }
+        self
+    }
+
+    /// Attaches ONE bounded, redacted detail entry. Values are serialized and
+    /// passed through `sanitize_text`, so secrets/tracebacks never survive and
+    /// raw payloads cannot exceed the bounded size.
+    pub(crate) fn with_detail(mut self, key: &str, value: &Value) -> Self {
+        const MAX_DETAIL_JSON_CHARS: usize = 256;
+        const MAX_DETAIL_ENTRIES: usize = 8;
+        if !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || key.len() > 32 {
+            return self;
+        }
+        let existing = std::mem::take(&mut self.inner.details);
+        let mut map = match existing {
+            Value::Object(map) => map,
+            _ => serde_json::Map::new(),
+        };
+        if !map.contains_key(key) && map.len() < MAX_DETAIL_ENTRIES {
+            let serialized =
+                serde_json::to_string(value).unwrap_or_else(|_| "<unserializable>".into());
+            map.insert(
+                key.to_owned(),
+                Value::String(sanitize_text(&serialized, MAX_DETAIL_JSON_CHARS)),
+            );
+        }
+        self.inner.details = Value::Object(map);
+        self
+    }
+}
+
+#[cfg(test)]
+mod error_envelope_tests {
+    use super::*;
+
+    #[test]
+    fn envelope_carries_versioned_schema_and_stable_fields() {
+        let error = BridgeError::new("dispatch_failed", "tool dispatch rejected");
+        assert_eq!(error.schema, "localcomet.error.v1");
+        assert_eq!(error.code, "dispatch_failed");
+        assert_eq!(error.message, "tool dispatch rejected");
+        assert!(!error.retryable);
+        assert_eq!(error.phase, "dispatch");
+        assert!(error.correlation_id.starts_with("err_"));
+        assert_eq!(error.details, Value::Null);
+    }
+
+    #[test]
+    fn envelope_preserves_cyrillic_message_through_wire_roundtrip() {
+        let error = BridgeError::new("dispatch_failed", "Открой блокнот: отказано");
+        let wire = serde_json::to_string(&error).expect("envelope must serialize");
+        assert!(
+            wire.contains("Открой блокнот: отказано"),
+            "cyrillic message lost on the wire: {wire}"
+        );
+        assert!(!wire.contains('\u{fffd}'), "replacement char in wire bytes");
+        // serde_json never escapes to ANSI/CP1251 mojibake; non-ASCII stays UTF-8.
+        let parsed: Value = serde_json::from_str(&wire).expect("wire must parse");
+        assert_eq!(parsed["schema"], ERROR_ENVELOPE_SCHEMA);
+        assert_eq!(parsed["message"], "Открой блокнот: отказано");
+    }
+
+    #[test]
+    fn correlation_ids_differ_between_errors() {
+        let first = BridgeError::new("a", "a").correlation_id.clone();
+        let second = BridgeError::new("a", "a").correlation_id.clone();
+        assert_ne!(first, second, "correlation ids must be unique per error");
+    }
+
+    #[test]
+    fn with_correlation_prefers_request_id_and_bounds_input() {
+        let error = BridgeError::new("x", "x")
+            .with_correlation(Some("req_abcdef123456"))
+            .with_phase("tool_dispatch");
+        assert_eq!(error.correlation_id, "req_abcdef123456");
+        assert_eq!(error.phase, "tool_dispatch");
+        let long_id = "r".repeat(500);
+        let bounded = BridgeError::new("x", "x").with_correlation(Some(&long_id));
+        assert!(bounded.correlation_id.len() <= 64);
+        // Empty correlation falls back to the generated id.
+        let fallback = BridgeError::new("x", "x").with_correlation(Some(""));
+        assert!(fallback.correlation_id.starts_with("err_"));
+        // None also keeps the generated id.
+        let none = BridgeError::new("x", "x").with_correlation(None);
+        assert!(none.correlation_id.starts_with("err_"));
+    }
+
+    #[test]
+    fn detail_is_bounded_and_redacts_secret_like_values() {
+        let secret = json!("sk-AbCd1234567890");
+        let huge = json!("П".repeat(4000));
+        let error = BridgeError::new("x", "x")
+            .with_detail("token", &secret)
+            .with_detail("payload", &huge);
+        let serialized = serde_json::to_string(&error.details).expect("details serialize");
+        assert!(!serialized.contains("sk-AbCd1234567890"), "secret leaked");
+        assert!(
+            serialized.len() <= 512,
+            "details not bounded: {}",
+            serialized.len()
+        );
+        // Invalid keys are dropped.
+        let dropped = BridgeError::new("x", "x").with_detail("bad key!", &json!("v"));
+        assert_eq!(dropped.details, Value::Null);
+    }
+
+    #[test]
+    fn sanitize_text_truncates_cyrillic_on_char_boundary() {
+        let text = "Привет".repeat(100);
+        let sanitized = sanitize_text(&text, 7);
+        assert_eq!(sanitized, "При"); // cut at char boundary, never mid-codepoint
+        assert!(!sanitized.contains('\u{fffd}'));
     }
 }
 
@@ -485,6 +668,8 @@ struct AssistantConversationContext {
     locale: String,
     project_context_available: bool,
     selected_files_context_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_context_manifest: Option<ContextManifest>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -521,12 +706,42 @@ pub(crate) struct AssistantContext {
 }
 
 impl AssistantContext {
+    #[allow(dead_code)]
     pub(crate) fn trusted(
         locale: &str,
         selected_files_context_available: bool,
         permissions: Option<&AgentPermissions>,
     ) -> Result<Self, BridgeError> {
-        if !matches!(locale, "ru" | "en") {
+        Self::trusted_with_project_context(
+            locale,
+            selected_files_context_available,
+            permissions,
+            None,
+        )
+    }
+
+    pub(crate) fn trusted_with_project_context(
+        locale: &str,
+        selected_files_context_available: bool,
+        permissions: Option<&AgentPermissions>,
+        project_context_manifest: Option<ContextManifest>,
+    ) -> Result<Self, BridgeError> {
+        if !matches!(
+            locale,
+            "ru" | "en"
+                | "es"
+                | "de"
+                | "fr"
+                | "pt-BR"
+                | "it"
+                | "zh-CN"
+                | "ja"
+                | "ko"
+                | "tr"
+                | "uk"
+                | "pl"
+                | "ar"
+        ) {
             return Err(BridgeError::new(
                 "invalid_payload",
                 "assistant locale is unsupported",
@@ -540,8 +755,9 @@ impl AssistantContext {
             },
             conversation: AssistantConversationContext {
                 locale: locale.to_owned(),
-                project_context_available: false,
+                project_context_available: project_context_manifest.is_some(),
                 selected_files_context_available,
+                project_context_manifest,
             },
             capabilities: AssistantCapabilities {
                 local_chat: true,
@@ -580,6 +796,40 @@ impl AssistantContext {
             },
         })
     }
+}
+
+fn build_project_context_manifest(
+    approval: &ApprovalState,
+    request_id: &str,
+    prompt: &str,
+) -> Result<Option<ContextManifest>, BridgeError> {
+    let Some((canonical_path, workspace_digest)) = approval.workspace_identity() else {
+        return Ok(None);
+    };
+    let task_keywords: Vec<String> = prompt
+        .split_whitespace()
+        .filter(|word| {
+            word.len() <= 128
+                && word.chars().any(|character| character.is_alphanumeric())
+                && !word.chars().any(|character| character.is_control())
+        })
+        .take(32)
+        .map(|word| {
+            word.trim_matches(|character: char| !character.is_alphanumeric())
+                .to_string()
+        })
+        .filter(|word| !word.is_empty())
+        .collect();
+    let manifest = try_build_context_manifest_bound(
+        std::path::Path::new(&canonical_path),
+        &workspace_digest,
+        request_id,
+        None,
+        &task_keywords,
+        crate::project_intelligence::MAX_CONTEXT_BUDGET,
+    )
+    .map_err(|error| BridgeError::new("context_manifest_invalid", &error.to_string()))?;
+    Ok(Some(manifest))
 }
 
 fn application_version_from_package_metadata() -> Result<String, BridgeError> {
@@ -2636,10 +2886,12 @@ pub async fn model_turn_start(
         )
     };
     ensure_model_prompt(&prompt)?;
-    let assistant_context = AssistantContext::trusted(
+    let project_context_manifest = build_project_context_manifest(&approval, &request_id, &prompt)?;
+    let assistant_context = AssistantContext::trusted_with_project_context(
         &locale,
         file_context_report.is_some(),
         Some(&agent_permissions),
+        project_context_manifest,
     )?;
     approval.set_agent_permissions(agent_permissions.clone());
     ensure_fingerprint(&binding_fingerprint)?;
@@ -5926,7 +6178,9 @@ mod tests {
         assert!(!russian.capabilities.computer_use);
         assert!(!russian.capabilities.shell);
         assert!(russian.capabilities.tools.is_empty());
-        assert!(AssistantContext::trusted("fr", false, None).is_err());
+        assert!(AssistantContext::trusted("fr", false, None).is_ok());
+        assert!(AssistantContext::trusted("ar", false, None).is_ok());
+        assert!(AssistantContext::trusted("xx", false, None).is_err());
 
         assert_eq!(
             serde_json::to_value(&russian).unwrap(),

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import time
 import traceback
 from datetime import datetime
@@ -12,8 +13,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-REAL_ACTIONS_VERSION = "v6.54"
+REAL_ACTIONS_VERSION = "v6.55"
 REAL_ACTIONS_NAME = "Computer Use Real Actions Upgrade RU"
+MAX_TASK_STEPS = 6
+HOST_CONTINUATION_TTL_MS = 30_000
+PER_STEP_TIMEOUT_MS = 5_000
+WALL_CLOCK_TIMEOUT_MS = 120_000
 
 try:
     from modules.project_paths import get_project_root
@@ -319,7 +324,7 @@ def _extract_search_query(goal: str) -> str:
             best_len = len(marker)
     if best_index < 0:
         return ""
-    payload = raw[best_index + best_len:].strip(" :,-")
+    payload = raw[best_index + best_len:].strip(" :,-.")
     cut_markers = [
         " после этого ",
         " затем ",
@@ -328,11 +333,19 @@ def _extract_search_query(goal: str) -> str:
         " and press ",
         " and hit ",
         " and ",
+        # Guard / read-only instructions must not become part of the query
+        " ничего не ",
+        " ничего ",
+        " не отправляй",
+        " не заполняй",
+        " не переходи",
+        " без отправки",
+        " не трогай",
     ]
     for marker in cut_markers:
         pos = _norm(payload).find(marker.strip())
         if pos > 0:
-            payload = payload[:pos].strip(" :,-")
+            payload = payload[:pos].strip(" :,-.")
             break
     return _strip_quotes(payload)
 
@@ -456,7 +469,18 @@ def build_real_action_plan(goal: str, max_steps: int = 16) -> Dict[str, Any]:
     actions: List[Dict[str, Any]] = []
     lowered = _norm(goal)
 
+    if any(marker in lowered for marker in ["подожди", "wait before", "wait for browser"]):
+        actions.append({
+            "kind": "wait_for_window",
+            "target": "active_window",
+            "seconds": 1.2,
+            "confidence": 0.9,
+            "reason": "bounded readiness wait before grounded interaction",
+            "real_action": True,
+        })
+
     app_id = _resolve_app(goal)
+
     if app_id:
         actions.append({
             "kind": "open_app",
@@ -1155,12 +1179,29 @@ def type_element(target: str, text: str, simulate: bool = False) -> Dict[str, An
     target = str(target or "").strip() or "active_window"
     if target == "active_window":
         return paste_text(text, simulate=simulate)
+    if simulate:
+        return {"ok": True, "status": "simulated", "mode": "computer_use_real_type_element", "target": target, "text_preview": _safe_preview(text, 120), "verification": "not_applicable"}
     try:
         from modules.computer_use_type_guard_ru import guarded_type
-        result = guarded_type(target, str(text or ""), simulate=simulate)
-        result["mode"] = "computer_use_real_type_element"
-        return result
+        descriptions = [target]
+        if target.casefold() in {"поиск", "search"}:
+            # Chromium exposes this control under localized and version-specific
+            # UIA names. Each alias still goes through the same grounded
+            # candidate, confidence, ambiguity, and input-role checks; no
+            # coordinate or active-window fallback is permitted.
+            descriptions.extend(("Search", "Адресная строка", "Address bar", "Address and search bar"))
+        last_result: Dict[str, Any] = {}
+        for description in descriptions:
+            result = guarded_type(description, str(text or ""), simulate=simulate)
+            result["mode"] = "computer_use_real_type_element"
+            if result.get("ok"):
+                return result
+            last_result = result
+        return last_result
     except Exception as exc:
+
+
+
         return {"ok": False, "status": "error", "reason": str(exc), "target": target, "text_preview": _safe_preview(text, 120)}
 
 
@@ -1313,7 +1354,36 @@ def _configure_capture_apis(user32: Any, gdi32: Any, wintypes: Any) -> None:
     gdi32.BitBlt.restype = wintypes.BOOL
 
 
-def _visible_windows() -> List[Dict[str, Any]]:
+def _hidden_screenshot_owner_context() -> Dict[str, Any]:
+    """Read the hidden-run owner context; missing or malformed data fails closed."""
+    if not os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip():
+        return {}
+    raw_path = os.environ.get("LC_HIDDEN_SCREENSHOT_OWNER_CONTEXT", "").strip()
+    if not raw_path:
+        return {}
+    try:
+        path = Path(raw_path).resolve(strict=True)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    pid = payload.get("pid")
+    if isinstance(pid, bool) or not isinstance(pid, int) or not (1 <= pid <= 0xFFFFFFFF):
+        return {}
+    desktop = str(payload.get("desktop") or "").strip()
+    expected_desktop = os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip()
+    if not desktop or desktop != expected_desktop:
+        return {}
+    return {
+        "pid": pid,
+        "desktop": desktop,
+        "request_id": str(payload.get("request_id") or ""),
+        "action_id": str(payload.get("action_id") or ""),
+    }
+
+
+def _visible_windows(owner_pid: int | None = None) -> List[Dict[str, Any]]:
     """Top-level visible windows with non-empty titles, largest area first.
 
     Used by the hidden-desktop capture backend: on a non-interactive desktop
@@ -1361,10 +1431,22 @@ def _visible_windows() -> List[Dict[str, Any]]:
             _trace_capture_stage("hidden_desktop_open_failed")
             return []
 
+    hidden_capture = bool(hidden_desktop_handle)
+    scoped_owner_pid = owner_pid if isinstance(owner_pid, int) and owner_pid > 0 else None
+
     def _callback(hwnd: Any, _lparam: Any) -> bool:
-        if not hwnd or not user32.IsWindowVisible(hwnd):
+        # The hidden test desktop intentionally has no interactive display
+        # surface. Its owned Tauri/WebView window may therefore be non-visible,
+        # but it is still a bounded per-window capture target on this isolated
+        # desktop. Normal production capture keeps the visible-window rule.
+        if not hwnd or (not hidden_capture and not user32.IsWindowVisible(hwnd)):
+            return True
+        pid = wintypes.DWORD(0)
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if scoped_owner_pid is not None and int(pid.value) != scoped_owner_pid:
             return True
         length = user32.GetWindowTextLengthW(hwnd)
+
         if length <= 0:
             return True
         rect = wintypes.RECT()
@@ -1376,10 +1458,9 @@ def _visible_windows() -> List[Dict[str, Any]]:
             return True
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buf, length + 1)
-        pid = wintypes.DWORD(0)
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         results.append(
             {
+
                 "hwnd": int(hwnd),
                 "title": buf.value,
                 "width": width,
@@ -1504,7 +1585,7 @@ def _bgra_is_nonblank(buffer: bytes, samples: int = 512) -> bool:
     return len(distinct) >= 2
 
 
-def _capture_via_printwindow() -> Dict[str, Any]:
+def _capture_via_printwindow(owner_pid: int | None = None) -> Dict[str, Any]:
     """Window-level GDI capture fallback for non-interactive desktops.
 
     Tries visible top-level windows, largest first; skips blank frames. The
@@ -1514,7 +1595,8 @@ def _capture_via_printwindow() -> Dict[str, Any]:
     if os.name != "nt":
         return {"ok": False, "status": "error", "reason": "window capture requires Windows", "mode": "computer_use_real_screenshot"}
     _trace_capture_stage("before_visible_windows")
-    candidates = _visible_windows()
+    candidates = _visible_windows(owner_pid=owner_pid)
+
     _trace_capture_stage(f"after_visible_windows_count_{len(candidates)}")
     attempted: List[Dict[str, Any]] = []
     for candidate in candidates[:6]:
@@ -1537,7 +1619,10 @@ def _capture_via_printwindow() -> Dict[str, Any]:
             "capture_scope": "window",
             "capture_desktop": os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip() or "current",
             "capture_hwnd": candidate["hwnd"],
+
             "capture_window_title": candidate["title"],
+            "capture_pid": int(candidate["pid"]),
+
         })
     return {
         "ok": False,
@@ -1620,6 +1705,7 @@ def _trace_capture_stage(stage: str) -> None:
 
 
 def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
+
     """Capture desktop screenshot, downscale, return base64 PNG.
 
     Gated by simulate flag: when True no OS capture is performed.
@@ -1638,9 +1724,25 @@ def capture_screenshot(simulate: bool = False) -> Dict[str, Any]:
             "height": 768,
             "scale": 1.0,
         }
-    # --- capture ---
+        # --- capture ---
     _trace_capture_stage("start")
+    owner_context = _hidden_screenshot_owner_context()
+    hidden_desktop = os.environ.get("LC_HIDDEN_DESKTOP_NAME", "").strip()
+    if hidden_desktop:
+        owner_pid = owner_context.get("pid")
+        if not isinstance(owner_pid, int) or owner_pid <= 0:
+            return {
+                "ok": False,
+                "status": "error",
+                "reason": "hidden screenshot owner context missing or invalid",
+                "mode": "computer_use_real_screenshot",
+                "capture_scope": "window",
+                "capture_desktop": hidden_desktop,
+            }
+        _trace_capture_stage("owner_scoped_window_capture")
+        return _capture_via_printwindow(owner_pid=owner_pid)
     image = None
+
     raw_bgra = None
     orig_w = orig_h = 0
     try:
@@ -1815,7 +1917,7 @@ def _task_action_summary(action: Dict[str, Any]) -> Dict[str, Any]:
 def _task_result_summary(result: Dict[str, Any]) -> Dict[str, Any]:
     summary = {
         key: result.get(key)
-        for key in ("ok", "status", "verification", "mode", "reason", "requires_confirmation", "next_decision")
+        for key in ("ok", "status", "verification", "mode", "reason", "requires_confirmation", "next_decision", "simulated", "pid", "url", "cdp_port", "screenshot_sha256", "pid_synthetic", "host_execution_authority", "rust_broker_enforced")
         if key in result
     }
     if isinstance(result.get("screenshot_evidence"), dict):
@@ -1845,14 +1947,126 @@ def _task_observe(label: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         return {"ok": False, "error": str(exc)}, {"ok": False, "error": str(exc)}
 
 
-def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: int = 6) -> Dict[str, Any]:
-    """Execute a bounded sequence of grounded UI interactions.
+def _validate_bounded_search_query(query: str) -> Tuple[bool, str]:
+    q = str(query or "").strip()
+    if not q or len(q) > 180:
+        return False, "query length out of range"
+    if _contains_secret_text(q):
+        return False, "query contains secret markers"
+    lowered = _norm(q)
+    if any(pat in lowered for pat in ["http://", "https://", "file://", "javascript:", "data:", "ftp://"]):
+        return False, "query must not contain arbitrary URL"
+    if any(ch in q for ch in ["@", ":", "/", "\\"]) and re.search(r"[a-z]+://", lowered):
+        return False, "query must not contain URL"
+    if re.search(r":\d{2,5}", q):
+        return False, "query must not contain port"
+    if "[" in q and "]" in q:
+        return False, "query must not contain IPv6 literal"
+    if any(marker in lowered for marker in ["скачай", "download", "установи", "install", "запусти файл", "shell", "cmd", "powershell", "rm " , "del ", "format", "отправь форму", "submit", "checkout", "оплати", "password"]):
+        return False, "query contains disallowed instruction"
+    if re.search(r"[<>\"'`]", q):
+        # keep simple bound; browser search queries are plain text
+        return False, "query contains markup characters"
+    return True, ""
 
-    This is deliberately an interaction-only composite. App/folder/browser
-    launches stay on the host broker path because the confined sidecar cannot
-    safely spawn GUI processes. The caller must issue that broker step first;
-    this function then handles a finite chain of click/type/key/scroll/wait and
-    optional observation primitives with before/after visual evidence.
+
+def _validate_host_target(app_id: str) -> bool:
+    return _canonical_app_id(app_id) in {"chrome", "msedge", "firefox"}
+
+
+def _host_step_digest(goal: str, target: str) -> str:
+    """Canonical host-step digest; identical normalization at issuance and validation."""
+    import hashlib
+
+    return hashlib.sha256(
+        "{}:{}".format(str(goal or "").strip(), str(target or "").strip()).encode("utf-8")
+    ).hexdigest()
+
+
+def _interaction_step_digest(goal: str, action: Dict[str, Any]) -> str:
+    """Canonical interaction-step digest; identical normalization at issuance and validation."""
+    import hashlib
+
+    canonical = "{}:{}:{}:{}:{}".format(
+        str(goal or "").strip(),
+        str(action.get("kind") or "").strip(),
+        str(action.get("target") or "").strip(),
+        str(action.get("text") or ""),
+        str(action.get("key") or ""),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _host_broker_continuation_execute(host_action: Dict[str, Any], simulate: bool, goal: str, parent_digest: str, session: str, request_id: str, action_id: str) -> Tuple[Dict[str, Any], Optional[str]]:
+    # Broker-controlled host execution with one-time continuation issuance.
+    # Returns (host_result, continuation_token_or_None).
+    target = str(host_action.get("target") or "").strip()
+    if not _validate_host_target(target):
+        return {"ok": False, "status": "blocked", "reason": "host target not allowlisted for continuation"}, None
+    if simulate:
+        # In simulation, host is considered verified without OS spawn, but still issues continuation.
+        try:
+            from modules.computer_use_continuation_ru import issue_continuation
+            import hashlib
+            per_step = _host_step_digest(goal, target)
+            cap = issue_continuation(
+                parent_request_id=request_id or "sim_req_000000000000000000000000",
+                parent_action_id=action_id or "sim_act",
+                parent_digest=parent_digest,
+                per_step_digest=per_step,
+                session=session or "sim_session",
+                step_index=0,
+                # Host token must self-describe the completed host step so the
+                # pre-loop capability check can validate it fail-closed.
+                allowed_next_actions={str(host_action.get("kind") or "open_app"), "type_element", "press_key", "wait_for_window", "wait"},
+                target=target,
+                pid=4242,
+                desktop=os.environ.get("LC_HIDDEN_DESKTOP_NAME", "") or None,
+                remaining_steps=MAX_TASK_STEPS - 1,
+            )
+            return (
+                {
+                    "ok": True,
+                    "status": "verified",
+                    "verification": "verified",
+                    "pid": 4242,
+                    "simulated": True,
+                    "pid_synthetic": True,
+                    "host_execution_authority": "simulation_only",
+                    "rust_broker_enforced": False,
+                    "desktop": cap.desktop,
+                },
+                cap.token,
+            )
+        except Exception as exc:
+            return {"ok": False, "status": "failed", "reason": f"continuation issuance failed: {exc}"}, None
+    # Real-mode execution is intentionally refused here. Real host launches are
+    # owned by the Rust cu_broker (approval_commands::execute_approved); the
+    # sidecar must never spawn via ShellExecuteW/os.startfile. This function is
+    # only reachable with simulate=True from the task runner.
+    return (
+        {
+            "ok": False,
+            "status": "blocked",
+            "reason": "real host spawn is refused in the sidecar; use the Rust cu_broker tool call",
+            "host_execution_authority": "rust_cu_broker_required",
+        },
+        None,
+    )
+
+
+def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: int = 6) -> Dict[str, Any]:
+    """Execute a bounded interaction sequence; host launches are broker-only.
+
+    In real (non-simulate) mode a plan containing a launch step
+    (open_app/open_folder/open_url) is refused fail-closed with
+    ``requires_host_broker_step``: the Rust cu_broker owns real spawns via the
+    approval path. Execute the host action as its own broker-owned tool call,
+    then run this task with interaction-only steps. In simulation mode a
+    Python-local one-time capability chain binds parent digest, per-step
+    digest, session, step order, allowed actions, target/pid/window, expiry
+    and remaining budget; it is unit-test evidence only and never OS-real.
+    Wrong target/order/digest, reuse, expiry or budget exhaustion fails closed.
     """
     goal = str(goal or "").strip()
     max_steps = max(1, min(int(max_steps or 6), 8))
@@ -1887,24 +2101,145 @@ def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: i
 
     host_kinds = {"open_app", "open_folder", "open_url"}
     host_step = next((action for action in actions if action.get("kind") in host_kinds), None)
+    # Broker-controlled host continuation: when a plan contains a host launch,
+    # the host must be executed and verified before any UIA interaction.
+    # This path issues a one-time continuation capability binding parent digest,
+    # per-step digest, session, step order, allowed actions, target/pid/window,
+    # expiry and budget. Host launch_pending without verified postcondition fails closed.
+    continuation_token: Optional[str] = None
+    host_execution: Optional[Dict[str, Any]] = None
+    interaction_actions: List[Dict[str, Any]] = []
+    wall_start = time.monotonic()
     if host_step is not None:
-        return {
-            "ok": False,
-            "status": "blocked",
-            "terminal": True,
-            "verification": "failed",
-            "blocked": True,
-            "requires_host_broker_step": True,
-            "mode": "computer_use_real_task",
-            "reason": "task contains a launch/navigation step; execute that allowlisted host-broker step separately before interaction task",
-            "goal": goal,
-            "next_host_action": _task_action_summary(host_step),
-            "steps": [],
-        }
+        # Only browser launch via allowlisted chrome/msedge/firefox is permitted for continuation.
+        # File explorer and other apps remain separate broker steps without task bundling.
+        target_id = _canonical_app_id(host_step.get("target") or "")
+        if target_id not in {"chrome", "msedge", "firefox"}:
+            return {
+                "ok": False,
+                "status": "blocked",
+                "terminal": True,
+                "verification": "failed",
+                "blocked": True,
+                "requires_host_broker_step": True,
+                "mode": "computer_use_real_task",
+                "reason": "task contains a launch/navigation step; execute that allowlisted host-broker step separately before interaction task",
+                "goal": goal,
+                "next_host_action": _task_action_summary(host_step),
+                "steps": [],
+            }
+        # Bounded search query must be present and validated for browser continuation.
+        search_q = _extract_search_query(goal)
+        ok_q, reason_q = _validate_bounded_search_query(search_q) if search_q else (False, "bounded search query missing")
+        if not ok_q:
+            return {
+                "ok": False,
+                "status": "blocked",
+                "terminal": True,
+                "verification": "failed",
+                "blocked": True,
+                "mode": "computer_use_real_task",
+                "reason": f"bounded browser search query invalid: {reason_q}",
+                "goal": goal,
+                "steps": [],
+            }
+        # Enforce max_steps budget: browser search is exactly 4 steps, capped at MAX_TASK_STEPS (6).
+        if len(actions) > MAX_TASK_STEPS:
+            return {
+                "ok": False,
+                "status": "blocked",
+                "terminal": True,
+                "verification": "failed",
+                "blocked": True,
+                "mode": "computer_use_real_task",
+                "reason": f"task exceeds bounded step budget ({MAX_TASK_STEPS})",
+                "goal": goal,
+                "steps": [],
+            }
+        if max_steps > MAX_TASK_STEPS:
+            max_steps = MAX_TASK_STEPS
+        if not simulate:
+            # Phase 1 authority boundary (master prompt section 2.1): the confined
+            # sidecar must never spawn host processes. Real launches belong to the
+            # Rust cu_broker via approval_commands::execute_approved, which already
+            # executes computer_use open_app/open_folder/open_url with grant
+            # re-verification and correlation. Fail closed with a structured
+            # envelope instead of using the sidecar shell-broker fallback.
+            return {
+                "ok": False,
+                "status": "blocked",
+                "terminal": True,
+                "verification": "failed",
+                "blocked": True,
+                "requires_host_broker_step": True,
+                "mode": "computer_use_real_task",
+                "reason": (
+                    "bounded task contains a launch step; execute the host action "
+                    "via the Rust cu_broker tool call first, then run this "
+                    "interaction-only task"
+                ),
+                "next_host_action": _task_action_summary(host_step),
+                "goal": goal,
+                "steps": [],
+            }
+        # Simulation-only capability chain (explicitly marked unit-test evidence;
+        # synthetic PID, no OS spawn). Never used as real acceptance evidence.
+        import hashlib, secrets
+        parent_digest = hashlib.sha256(goal.encode("utf-8")).hexdigest()
+        session = os.environ.get("LOCALCOMET_SESSION_ID", "test_session")
+        request_id = os.environ.get("LOCALCOMET_REQUEST_ID", "0123456789abcdef01234567")
+        action_id = os.environ.get("LOCALCOMET_ACTION_ID", "call_0123456789abcdef0123456789ab")
+        host_execution, continuation_token = _host_broker_continuation_execute(
+            host_step, simulate, goal, parent_digest, session, request_id, action_id
+        )
+        if host_execution is None or not host_execution.get("ok"):
+            status = str((host_execution or {}).get("status") or "blocked")
+            if status == "launch_pending":
+                return {
+                    "ok": False,
+                    "status": "awaiting_observation",
+                    "terminal": False,
+                    "verification": "pending",
+                    "mode": "computer_use_real_task",
+                    "reason": (host_execution or {}).get("reason", "host launch pending; continuation requires verified postcondition"),
+                    "goal": goal,
+                    "host_result": host_execution,
+                    "steps": [],
+                }
+            return {
+                "ok": False,
+                "status": "blocked" if status == "blocked" else "failed",
+                "terminal": True,
+                "verification": "failed",
+                "blocked": True,
+                "mode": "computer_use_real_task",
+                "reason": (host_execution or {}).get("reason", "host broker verification failed"),
+                "goal": goal,
+                "host_result": host_execution,
+                "steps": [],
+            }
+        # Host verified -> remaining interaction steps only.
+        interaction_actions = [a for a in actions if a.get("kind") not in host_kinds]
+        # Wall-clock check: host must not have consumed the entire budget.
+        if time.monotonic() - wall_start > WALL_CLOCK_TIMEOUT_MS / 1000.0:
+            return {
+                "ok": False,
+                "status": "failed",
+                "terminal": True,
+                "verification": "failed",
+                "mode": "computer_use_real_task",
+                "reason": "wall-clock timeout before interaction steps",
+                "goal": goal,
+                "host_result": host_execution,
+                "steps": [],
+            }
+    else:
+        interaction_actions = actions
 
     executable_kinds = {"wait_for_window", "wait", "paste_text", "type_element", "click_element", "double_click_element", "hotkey", "press_key", "scroll", "drag", "screenshot"}
-    unsupported = next((action for action in actions if action.get("kind") not in executable_kinds), None)
-    if not actions or unsupported is not None or any(not action.get("real_action", True) for action in actions):
+    check_actions = interaction_actions if host_step is not None else actions
+    unsupported = next((action for action in check_actions if action.get("kind") not in executable_kinds), None)
+    if not check_actions or unsupported is not None or any(not action.get("real_action", True) for action in check_actions):
         return {
             "ok": False,
             "status": "unavailable",
@@ -1918,8 +2253,138 @@ def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: i
         }
 
     steps: List[Dict[str, Any]] = []
+    # Include host execution as step 0 when present for evidence.
+    if host_step is not None and host_execution is not None:
+        steps.append({
+            "step_index": 0,
+            "action": _task_action_summary(host_step),
+            "result": _task_result_summary(host_execution),
+            "before": {"mode": "host_broker"},
+            "after": {"mode": "host_verified", "continuation_token": continuation_token},
+            "visual_guard": {"decision": "continue", "reason": "host postcondition verified via broker"},
+        })
     replan_count = 0
-    for index, action in enumerate(actions[:max_steps], start=1):
+    # Prepare per-step continuation chain for interaction steps when host was present.
+    interaction_tokens: List[str] = []
+    if host_step is not None and continuation_token:
+        # Chain tokens for each remaining interaction step.
+        try:
+            from modules.computer_use_continuation_ru import issue_continuation, validate_continuation
+            import hashlib
+            # First interaction token already issued for step 1 is the host continuation token; re-bind it to first interaction's digest.
+            # For strict per-step binding, re-issue tokens for each interaction step in order.
+            remaining = check_actions
+            current_token = continuation_token
+            # Validate and consume host token against first interaction's expected digest before loop
+            if remaining:
+                # The host continuation's per_step_digest was host-specific; we now issue a dedicated interaction token.
+                # Consume host token and issue fresh one for first interaction to enforce per-step digest.
+                try:
+                    validate_continuation(
+                        current_token,
+                        expected_parent_digest=parent_digest,
+                        expected_per_step_digest=_host_step_digest(goal, str(host_step.get("target") or "")),
+                        expected_step_index=0,
+                        expected_target=str(host_step.get("target") or "").strip().lower(),
+                        expected_session=session,
+                        expected_action=str(host_step.get("kind") or "open_app"),
+                    )
+                except Exception as exc:
+                    # Fail closed: a failed capability check must never be followed by
+                    # further interaction steps (no swallowed validation errors).
+                    return {
+                        "ok": False,
+                        "status": "blocked",
+                        "terminal": True,
+                        "verification": "failed",
+                        "blocked": True,
+                        "mode": "computer_use_real_task",
+                        "reason": f"host continuation validation failed: {exc}",
+                        "goal": goal,
+                        "steps": steps,
+                    }
+                # Issue tokens for each interaction step
+                for idx, act in enumerate(remaining, start=1):
+                    per_step = _interaction_step_digest(goal, act)
+                    cap = issue_continuation(
+                        parent_request_id=request_id or "0123456789abcdef01234567",
+                        parent_action_id=action_id or "call_0123456789abcdef0123456789ab",
+                        parent_digest=parent_digest,
+                        per_step_digest=per_step,
+                        session=session,
+                        step_index=idx,
+                        allowed_next_actions={act.get("kind")},
+                        target=str(act.get("target") or act.get("key") or ""),
+                        pid=host_execution.get("pid") if isinstance(host_execution, dict) else None,
+                        desktop=host_execution.get("desktop") if isinstance(host_execution, dict) else os.environ.get("LC_HIDDEN_DESKTOP_NAME", ""),
+                        remaining_steps=MAX_TASK_STEPS - idx,
+                    )
+                    interaction_tokens.append(cap.token)
+                # Replace current_token chain with first interaction token for loop validation
+                continuation_token = interaction_tokens[0] if interaction_tokens else None
+        except Exception as exc:
+            # Fail closed: token chain issuance must never degrade into an unvalidated run.
+            return {
+                "ok": False,
+                "status": "blocked",
+                "terminal": True,
+                "verification": "failed",
+                "blocked": True,
+                "mode": "computer_use_real_task",
+                "reason": f"continuation token chain issuance failed: {exc}",
+                "goal": goal,
+                "steps": steps,
+            }
+
+    for index, action in enumerate(check_actions[:max_steps], start=1):
+        # Continuation validation for broker-controlled interaction steps.
+        if host_step is not None:
+            if time.monotonic() - wall_start > WALL_CLOCK_TIMEOUT_MS / 1000.0:
+                return {
+                    "ok": False,
+                    "status": "failed",
+                    "terminal": True,
+                    "verification": "failed",
+                    "mode": "computer_use_real_task",
+                    "reason": "wall-clock timeout exceeded",
+                    "goal": goal,
+                    "steps": steps,
+                    "completed_steps": index - 1,
+                    "total_steps": len(check_actions[:max_steps]),
+                }
+            # Enforce one-time, ordered, per-step digest, session, target and allowed action binding.
+            # Wrong target/order/digest, reuse, expiry, or changed query fails closed.
+            try:
+                from modules.computer_use_continuation_ru import validate_continuation
+                per_step = _interaction_step_digest(goal, action)
+                token_to_validate = interaction_tokens[index - 1] if index - 1 < len(interaction_tokens) else continuation_token
+                if not token_to_validate:
+                    raise ValueError("continuation token missing for interaction step")
+                validate_continuation(
+                    token_to_validate,
+                    expected_parent_digest=parent_digest,
+                    expected_per_step_digest=per_step,
+                    expected_step_index=index,
+                    expected_target=str(action.get("target") or action.get("key") or ""),
+                    expected_session=session,
+                    expected_action=str(action.get("kind") or ""),
+                )
+            except Exception as exc:
+                return {
+                    "ok": False,
+                    "status": "blocked",
+                    "terminal": True,
+                    "verification": "failed",
+                    "blocked": True,
+                    "mode": "computer_use_real_task",
+                    "reason": f"continuation validation failed at step {index}: {exc}",
+                    "goal": goal,
+                    "steps": steps,
+                    "completed_steps": index - 1,
+                    "total_steps": len(check_actions[:max_steps]),
+                }
+            # Per-step timeout: ensure previous host/interaction step did not exceed 5s
+            # (wall-clock already checked; per-step is implicit via before/after observe)
         before_full: Dict[str, Any] = {}
         before_compact: Dict[str, Any] = {"mode": "simulation"}
         if not simulate:
@@ -1969,7 +2434,7 @@ def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: i
                 "goal": goal,
                 "steps": steps,
                 "completed_steps": index - 1,
-                "total_steps": len(actions[:max_steps]),
+                "total_steps": len((interaction_actions if host_step is not None else actions)[:max_steps]),
             }
         if not result.get("ok"):
             return {
@@ -1982,7 +2447,7 @@ def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: i
                 "goal": goal,
                 "steps": steps,
                 "completed_steps": index - 1,
-                "total_steps": len(actions[:max_steps]),
+                "total_steps": len((interaction_actions if host_step is not None else actions)[:max_steps]),
             }
         if str(result.get("status") or "").lower() in {"launch_pending", "pending", "awaiting_observation"}:
             return {
@@ -1995,7 +2460,7 @@ def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: i
                 "goal": goal,
                 "steps": steps,
                 "completed_steps": index,
-                "total_steps": len(actions[:max_steps]),
+                "total_steps": len((interaction_actions if host_step is not None else actions)[:max_steps]),
             }
         decision = str(comparison.get("decision") or "continue")
         if decision == "stop":
@@ -2009,7 +2474,7 @@ def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: i
                 "goal": goal,
                 "steps": steps,
                 "completed_steps": index,
-                "total_steps": len(actions[:max_steps]),
+                "total_steps": len((interaction_actions if host_step is not None else actions)[:max_steps]),
             }
         if decision == "ask_user":
             return {
@@ -2024,24 +2489,68 @@ def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: i
                 "goal": goal,
                 "steps": steps,
                 "completed_steps": index,
-                "total_steps": len(actions[:max_steps]),
+                "total_steps": len((interaction_actions if host_step is not None else actions)[:max_steps]),
             }
         if decision == "replan":
             replan_count += 1
 
+    # Task-level postcondition: derive an honest verdict from captured evidence.
+    # "verified" requires a real (non-simulation) run where every interaction step
+    # produced a successful observation and the host launch was explicitly
+    # broker-verified. Anything less stays explicitly unasserted.
+    interaction_steps = steps[1:] if (host_step is not None and steps) else steps
+    observation_failures = sum(
+        1
+        for s in interaction_steps
+        if isinstance(s.get("after"), dict) and s["after"].get("ok") is False
+    )
+    host_result_summary = steps[0].get("result", {}) if (host_step is not None and steps) else {}
+    host_explicitly_verified = (
+        host_step is None
+        or str(host_result_summary.get("verification") or "").strip().lower() == "verified"
+    )
+    if simulate:
+        task_verification = "not_applicable"
+        postcondition_evidence: Dict[str, Any] = {
+            "asserted": False,
+            "reason": "simulation-only run; no OS-level postcondition applies",
+        }
+    elif observation_failures == 0 and interaction_steps and host_explicitly_verified:
+        task_verification = "verified"
+        postcondition_evidence = {
+            "asserted": True,
+            "host_broker_verified": True,
+            "observed_interaction_steps": len(interaction_steps),
+            "observation_failures": 0,
+        }
+    else:
+        task_verification = "not_applicable"
+        postcondition_evidence = {
+            "asserted": False,
+            "observation_failures": observation_failures,
+            "host_broker_verified": host_explicitly_verified,
+            "reason": "independent task-level postcondition not fully provable from captured evidence",
+        }
+
+    execution = dict(host_result_summary) if isinstance(host_result_summary, dict) else {}
     return {
         "ok": True,
         "status": "completed",
         "terminal": True,
         "succeeded": True,
-        "verification": "not_applicable",
+        "verification": task_verification,
+        "execution": execution,
         "mode": "computer_use_real_task",
+        # Truthful protocol markers: the continuation chain is a Python-local
+        # capability protocol, NOT Rust cu_broker/approval enforcement.
+        "continuation_protocol": "python_local_capability_v1",
+        "rust_broker_enforced": False,
         "goal": goal,
         "steps": steps,
         "completed_steps": len(steps),
-        "total_steps": len(actions[:max_steps]),
+        "total_steps": len(steps),
         "replan_count": replan_count,
-        "note": "all bounded interaction steps completed; no independent task-level postcondition was asserted",
+        "postcondition_evidence": postcondition_evidence,
     }
 
 
@@ -2080,6 +2589,16 @@ def execute_real_action(action: Dict[str, Any], simulate: bool = False, mission_
                 coordinate=coord if isinstance(coord, list) else None,
                 simulate=simulate,
             )
+        if kind == "observe":
+            full, compact = _task_observe(str(action.get("target") or "current"))
+            failed = bool(compact.get("error")) or full.get("ok") is False
+            return {
+                "ok": not failed,
+                "status": "error" if failed else "executed",
+                "verification": "verified" if not failed else "pending",
+                "mode": "computer_use_real_observe",
+                "observation": compact,
+            }
         if kind == "screenshot":
             return capture_screenshot(simulate=simulate)
         if kind in {"task", "multi_step_task"}:
@@ -2115,6 +2634,7 @@ def get_real_action_capabilities() -> Dict[str, Any]:
             "scroll",
             "drag",
             "wait_for_window",
+            "observe",
             "screenshot",
             "task",
             "multi_step_task",

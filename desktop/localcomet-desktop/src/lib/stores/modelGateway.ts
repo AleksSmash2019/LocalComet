@@ -226,7 +226,7 @@ const CONTINUATION_MAX_ATTEMPTS = 320;
 const activeContinuationRequests = new Set<string>();
 // Opaque broker continuation refs keyed by requestId (master prompt Part I).
 // In-memory only: raw refs never reach logs, ledger or evidence.
-const activeContinuationGrants = new Map<string, { grantRef: string }>();
+const activeContinuationGrants = new Map<string, { grantRef: string; consumeArgs?: Record<string, unknown> | null }>();
 const activeTurnPrompts = new Map<string, string>();
 const activeTurnCalls = new Map<string, ModelToolCall>();
 
@@ -265,23 +265,55 @@ function recordContinuationTrace(event: ContinuationTraceEvent): void {
 }
 
 export function cancelComputerUseContinuations(requestId?: string): void {
+  const revokeAndProbe = (id: string, grant: { grantRef: string; consumeArgs?: Record<string, unknown> | null }): void => {
+    recordContinuationTrace({ event: 'continuation_revoke_requested', request_id: id });
+    void invoke('cu_broker_continuation_revoke', {
+      grantRef: grant.grantRef,
+      reason: 'turn cancelled or stopped'
+    }).then((raw) => {
+      const response = raw as { revoked?: unknown };
+      recordContinuationTrace({
+        event: 'continuation_revoke_succeeded',
+        request_id: id,
+        revoked: typeof response.revoked === 'number' ? response.revoked : 0
+      });
+      // B3 replay probe: after an authoritative revoke, replay the identical
+      // consume through the real broker to prove the revoked grant can never
+      // be re-leased. Raw grant material is destroyed right after the probe
+      // settles (both success and rejection paths).
+      if (grant.consumeArgs && typeof grant.consumeArgs === 'object') {
+        void invoke('cu_broker_continuation_consume', grant.consumeArgs)
+          .then((raw) => {
+            if (raw && (raw as { status?: string }).status === 'leased') {
+              recordContinuationTrace({
+                event: 'continuation_replay_unexpected_success',
+                request_id: id,
+                status: 'unexpected_success'
+              });
+            }
+          })
+          .catch((error) => {
+            const code = continuationErrorCode(error);
+            recordContinuationTrace({
+              event: 'continuation_replay_rejected',
+              request_id: id,
+              status: code === 'continuation_replayed' ? 'continuation_replayed' : 'replay_rejected'
+            });
+          })
+          .finally(() => {
+            grant.consumeArgs = null;
+            grant.grantRef = '';
+          });
+      }
+    }).catch((error) => {
+      recordContinuationTrace({ event: 'continuation_revoke_failed', request_id: id, error_code: continuationErrorCode(error) });
+    });
+    activeContinuationGrants.delete(id);
+  };
+
   if (requestId === undefined) {
     for (const [id, grant] of activeContinuationGrants) {
-      recordContinuationTrace({ event: 'continuation_revoke_requested', request_id: id });
-      void invoke('cu_broker_continuation_revoke', {
-        grantRef: grant.grantRef,
-        reason: 'turn cancelled or stopped'
-      }).then((raw) => {
-        const response = raw as { revoked?: unknown };
-        recordContinuationTrace({
-          event: 'continuation_revoke_succeeded',
-          request_id: id,
-          revoked: typeof response.revoked === 'number' ? response.revoked : 0
-        });
-      }).catch((error) => {
-        recordContinuationTrace({ event: 'continuation_revoke_failed', request_id: id, error_code: continuationErrorCode(error) });
-      });
-      activeContinuationGrants.delete(id);
+      revokeAndProbe(id, grant);
     }
     activeContinuationRequests.clear();
     activeTurnPrompts.clear();
@@ -290,21 +322,7 @@ export function cancelComputerUseContinuations(requestId?: string): void {
   }
   const grant = activeContinuationGrants.get(requestId);
   if (grant) {
-    recordContinuationTrace({ event: 'continuation_revoke_requested', request_id: requestId });
-    void invoke('cu_broker_continuation_revoke', {
-      grantRef: grant.grantRef,
-      reason: 'turn cancelled or stopped'
-    }).then((raw) => {
-      const response = raw as { revoked?: unknown };
-      recordContinuationTrace({
-        event: 'continuation_revoke_succeeded',
-        request_id: requestId,
-        revoked: typeof response.revoked === 'number' ? response.revoked : 0
-      });
-    }).catch((error) => {
-      recordContinuationTrace({ event: 'continuation_revoke_failed', request_id: requestId, error_code: continuationErrorCode(error) });
-    });
-    activeContinuationGrants.delete(requestId);
+    revokeAndProbe(requestId, grant);
   }
   activeContinuationRequests.delete(requestId);
 }
@@ -1872,8 +1890,22 @@ function runBoundedLaunchContinuation(
   }
   const actionId = activeTurnCalls.get(requestId)?.id ?? '';
   let leaseId: string | null = null;
+  // The exact consume arguments are kept (in-memory only) so cancellation can
+  // replay the identical consume through the real broker and prove the revoked
+  // grant rejects it (B3). The map wrapper is the single holder of the raw
+  // material; the replay probe clears it right after settling.
+  let consumeArgs: Record<string, unknown> | null = null;
   if (continuation) {
-    activeContinuationGrants.set(requestId, { grantRef: continuation.grantRef });
+    consumeArgs = {
+      grantRef: continuation.grantRef,
+      taskId: `task_${requestId}`,
+      stepId: `step_${actionId}`,
+      requestId,
+      actionKind: 'observe',
+      input: { action: 'observe' },
+      expectedStepIndex: continuation.stepIndex + 1
+    };
+    activeContinuationGrants.set(requestId, { grantRef: continuation.grantRef, consumeArgs });
     recordContinuationTrace({
       event: 'continuation_issued',
       request_id: requestId,
@@ -1884,17 +1916,9 @@ function runBoundedLaunchContinuation(
   // Re-lease the broker grant, or no-op when a lease is already held (the
   // Rust grant is one-time; an in_flight grant must not be re-consumed).
   const consumeGrant = (): Promise<string | null> => {
-    if (!continuation || leaseId) return Promise.resolve(leaseId);
+    if (!continuation || leaseId || !consumeArgs) return Promise.resolve(leaseId);
     recordContinuationTrace({ event: 'continuation_consume_requested', request_id: requestId });
-    return invoke('cu_broker_continuation_consume', {
-      grantRef: continuation.grantRef,
-      taskId: `task_${requestId}`,
-      stepId: `step_${actionId}`,
-      requestId,
-      actionKind: 'observe',
-      input: { action: 'observe' },
-      expectedStepIndex: continuation.stepIndex + 1
-    })
+    return invoke('cu_broker_continuation_consume', consumeArgs)
       .then((raw) => {
         const lease = raw as { status?: string; lease_id?: string };
         if (lease?.status === 'leased' && typeof lease.lease_id === 'string') {

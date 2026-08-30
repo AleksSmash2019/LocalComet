@@ -56,6 +56,16 @@ describe('language store', () => {
     expect(loadUiPreferences().locale).toBe('fr');
   });
 
+  it('invalid stored voice gender falls back to the energetic female default', () => {
+    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({ voiceGender: 'robot' }));
+    expect(loadUiPreferences().voiceGender).toBe('female');
+  });
+
+  it('valid stored voice gender is restored between launches', () => {
+    localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({ voiceGender: 'male' }));
+    expect(loadUiPreferences().voiceGender).toBe('male');
+  });
+
   it('partially translated locales fall back to English, never to raw keys', () => {
     setLocale('ja');
     const tf = get(t);
@@ -84,12 +94,13 @@ describe('language store', () => {
     expect(document.documentElement.dir).toBe('ltr');
   });
 
-  it('assistant locale stays within the backend-supported ru | en', () => {
+  it('assistant locale follows every registered interface language', () => {
     for (const entry of LANGUAGES) {
-      expect(['ru', 'en']).toContain(assistantLocaleFor(entry.code));
+      expect(assistantLocaleFor(entry.code), entry.code).toBe(entry.code);
     }
     expect(assistantLocaleFor('ru')).toBe('ru');
-    expect(assistantLocaleFor('ja')).toBe('en');
+    expect(assistantLocaleFor('ja')).toBe('ja');
+    expect(assistantLocaleFor('ar')).toBe('ar');
   });
 
   it('selecting English changes visible UI text', () => {
@@ -118,6 +129,7 @@ describe('language store', () => {
       locale: 'en',
       diagnosticsPanel: 'closed',
             voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       agentPermissions: {
 

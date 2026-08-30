@@ -1,0 +1,153 @@
+{
+  "schema_version": "localcomet.coding-dispatch.v1",
+  "timestamp_utc": "2026-08-25T19:39:46.442240+00:00",
+  "branch_head": "74f527d5cc97526a791eca81a8d995e2cc5a6aa7",
+  "fixture": {
+    "workspace": "C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_coding_20260826_003859\\coding_fixture",
+    "original_sha256": "65b67fe874f09a7a459d2e994390ea342ce52cc89441b3ab4a94b3508e4e29c1"
+  },
+  "payload": {
+    "taskId": "lcoding_mt92k09m",
+    "result": {
+      "applied_paths": [
+        "src/main.rs"
+      ],
+      "approval_consumed": true,
+      "error_diagnostics": 0,
+      "events_task_id": "lcoding_mt92k09m",
+      "generation_hash": "65f2eaf381cb8d117381c5588ec958c07673d12b0482ffe5b205e99cf708d4e0",
+      "grant_id": "afc086e43ef6c85f40ec64cda8e3cb7e",
+      "reason": "clean diagnostics (no focus harness)",
+      "schema_version": "localcomet.coding-orchestrator.v1",
+      "status": "completed",
+      "task_id": "lcoding_mt92k09m",
+      "test_exit_code": null,
+      "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+    },
+    "events": {
+      "events": [
+        {
+          "event_hash": "304adcd9faa9a314e64d01e2bc3519bf19e7fdcd19ae01ebf6cf646cf7f4c0a4",
+          "event_type": "context_ready_planned",
+          "payload": {
+            "patch_id": "patch_lcoding_mt92k09m",
+            "permission_context_digest": "64929060c13a9eae762f0cc233a7d973e213dd5eae7bbd4cb0d9cb43c67b07ff",
+            "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+          },
+          "seq": 1,
+          "state_after": "IntentCompiled",
+          "state_before": "Created"
+        },
+        {
+          "event_hash": "9edd02f60d7daaa9888787a0843f5df998bd9e915073e5603fcf1c0fbd7568fa",
+          "event_type": "checkpoint_preimage_patch_proposed",
+          "payload": {
+            "permission_context_digest": "64929060c13a9eae762f0cc233a7d973e213dd5eae7bbd4cb0d9cb43c67b07ff",
+            "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+          },
+          "seq": 2,
+          "state_after": "Running",
+          "state_before": "IntentCompiled"
+        },
+        {
+          "event_hash": "9aa2f1f48da2c3b19c8612763e13efb8c89833a0e34e46b91db588eb147ebeff",
+          "event_type": "patch_applied_checkpoint_postimage",
+          "payload": {
+            "paths": [
+              "src/main.rs"
+            ],
+            "permission_context_digest": "64929060c13a9eae762f0cc233a7d973e213dd5eae7bbd4cb0d9cb43c67b07ff",
+            "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+          },
+          "seq": 3,
+          "state_after": "Running",
+          "state_before": "Running"
+        },
+        {
+          "event_hash": "04422e741ef85270bc1b7e6c97f3b62e9703146aeaa5bfcdfe5fd6f27d426739",
+          "event_type": "terminal_running",
+          "payload": {
+            "command_id": "lcoding_mt92k09m_compile",
+            "permission_context_digest": "64929060c13a9eae762f0cc233a7d973e213dd5eae7bbd4cb0d9cb43c67b07ff",
+            "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+          },
+          "seq": 4,
+          "state_after": "Running",
+          "state_before": "Running"
+        },
+        {
+          "event_hash": "363d1a7d642203b7ba09951aac988b31200207ef9a83263af101d19113c12e2a",
+          "event_type": "terminal_completed",
+          "payload": {
+            "exit_code": 0,
+            "fingerprint_hex": "cb231808a8b83c78fc0c8cb8ea5679aed5b13fcf6ca6e7600ac197fe2c518eba",
+            "permission_context_digest": "64929060c13a9eae762f0cc233a7d973e213dd5eae7bbd4cb0d9cb43c67b07ff",
+            "termination_kind": "Exited",
+            "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+          },
+          "seq": 5,
+          "state_after": "Running",
+          "state_before": "Running"
+        },
+        {
+          "event_hash": "f804b15179976bebdbb5888b57e52364c4ddba955bbce4c09ef0ef981d1dfaec",
+          "event_type": "diagnostics_updated",
+          "payload": {
+            "errors": 0,
+            "permission_context_digest": "64929060c13a9eae762f0cc233a7d973e213dd5eae7bbd4cb0d9cb43c67b07ff",
+            "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+          },
+          "seq": 6,
+          "state_after": "Running",
+          "state_before": "Running"
+        },
+        {
+          "event_hash": "40bfe9fa2c0b7cc1850618a8b75ccb1211477953aab6a72d12361a7614aea1cb",
+          "event_type": "test_skipped_no_focus_harness",
+          "payload": {
+            "permission_context_digest": "64929060c13a9eae762f0cc233a7d973e213dd5eae7bbd4cb0d9cb43c67b07ff",
+            "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+          },
+          "seq": 7,
+          "state_after": "Validating",
+          "state_before": "Running"
+        },
+        {
+          "event_hash": "2fabfcf8d8896b9c1da23c62334d659eac03f58081b102b3833f38d83ade6b90",
+          "event_type": "validating_postcondition",
+          "payload": {
+            "generation_hash": "65f2eaf381cb8d117381c5588ec958c07673d12b0482ffe5b205e99cf708d4e0",
+            "permission_context_digest": "64929060c13a9eae762f0cc233a7d973e213dd5eae7bbd4cb0d9cb43c67b07ff",
+            "workspace_digest": "ba5d8b130c8dec141c07d988ab81c6182f489a3ea809ad55c839e68dd5d9ed43"
+          },
+          "seq": 8,
+          "state_after": "Completed",
+          "state_before": "Validating"
+        }
+      ],
+      "task_id": "lcoding_mt92k09m"
+    },
+    "replay": {
+      "rejected": true,
+      "code": "approval_token_consumed"
+    },
+    "tamper": {
+      "rejected": true,
+      "code": "approval_arguments_mismatch"
+    },
+    "compile_failure": {
+      "status": "failed",
+      "reason": "postcondition failed; patch rolled back to preimage",
+      "error_diagnostics": 1
+    }
+  },
+  "disk_postcondition": {
+    "exists": true,
+    "final_sha256": "7d4fddbedb7fb24f6bbf6ef8e3ac94326b19485c580dbba7f409a1ac8540cf8d",
+    "content_matches_new": true,
+    "rollback_restored_original": false,
+    "left_broken": false
+  },
+  "outcome": "ROLLBACK_UNPROVEN",
+  "classification": "NOT_INDEPENDENTLY_VERIFIED"
+}

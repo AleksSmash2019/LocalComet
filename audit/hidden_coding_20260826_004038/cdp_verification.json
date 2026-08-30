@@ -1,0 +1,18 @@
+{
+  "timestamp_utc": "2026-08-25T19:40:55.226673+00:00",
+  "cdp_port": 9223,
+  "vite_port": 1423,
+  "expected_dev_url": "http://127.0.0.1:1423",
+  "ok": true,
+  "page_url": "http://127.0.0.1:1423/",
+  "foreign_urls": [],
+  "endpoint_up": true,
+  "command_line_evidence": {
+    "confirmed": true,
+    "matched_process_count": 2,
+    "flag": "--remote-debugging-port=9223",
+    "user_data_folder": "C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_coding_20260826_004038\\webview2-user-data",
+    "sample_command_line": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=localcomet-desktop.exe --webview-exe-version=6.84.6 --user-data-dir=\"C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_coding_20260826_004038\\webview2-user-data\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-re",
+    "observed_webview_process_count": 18
+  }
+}

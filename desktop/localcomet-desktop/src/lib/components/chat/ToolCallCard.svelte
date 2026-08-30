@@ -29,6 +29,7 @@
     screenshotBackend: string;
     screenshotScope: string;
     screenshotBytes: string;
+    screenshotCapturePid: string;
     status: string;
     verification: string;
   };
@@ -45,6 +46,7 @@
         ? payload.execution as Record<string, unknown>
         : {};
       const screenshotBytes = execution.screenshot_bytes ?? payload.screenshot_bytes;
+      const screenshotCapturePid = execution.capture_pid ?? payload.capture_pid;
       return {
         requestId: evidenceString(payload.request_id),
         actionId: evidenceString(payload.action_id),
@@ -58,6 +60,7 @@
         screenshotBackend: evidenceString(execution.capture_backend ?? payload.capture_backend),
         screenshotScope: evidenceString(execution.capture_scope ?? payload.capture_scope),
         screenshotBytes: typeof screenshotBytes === 'number' ? String(screenshotBytes) : '',
+        screenshotCapturePid: typeof screenshotCapturePid === 'number' ? String(screenshotCapturePid) : '',
         status: evidenceString(execution.status ?? payload.status),
         verification: evidenceString(execution.verification ?? payload.verification)
       };
@@ -152,7 +155,11 @@
 
 <article
   class="tool-card tool-surface"
+  data-testid="tool-card"
+  data-lc="tool-card"
   aria-label={isCU ? $t('tool.computer_use') : isWebTool ? `${$t('tool.web_prefix')} ${tool.status}` : $t('tool.tools_disabled')}
+  data-tool-operation={tool.operation}
+  data-tool-status={tool.status}
   data-cu-request-id={cueEvidence?.requestId ?? ''}
   data-cu-action-id={cueEvidence?.actionId ?? ''}
   data-cu-approval-id={cueEvidence?.approvalId ?? ''}
@@ -165,6 +172,7 @@
   data-cu-screenshot-backend={cueEvidence?.screenshotBackend ?? ''}
   data-cu-screenshot-scope={cueEvidence?.screenshotScope ?? ''}
   data-cu-screenshot-bytes={cueEvidence?.screenshotBytes ?? ''}
+  data-cu-screenshot-capture-pid={cueEvidence?.screenshotCapturePid ?? ''}
   data-cu-status={cueEvidence?.status ?? ''}
   data-cu-verification={cueEvidence?.verification ?? ''}
 >
@@ -173,7 +181,7 @@
       <span class="eyebrow" class:computer-use={isCU}>{isCU ? $t('tool.computer_use_upper') : isWebTool ? (tool.operation === 'web.search' ? $t('tool.web_search_upper') : $t('tool.web_fetch_upper')) : $t('tool.runtime')}</span>
       <h2>{tool.operation}</h2>
     </div>
-    <span class="status-pill" class:computer-use={isCU}><span class="status-dot" class:computer-use={isCU} class:disabled={tool.status === 'SKIPPED'}></span>{tool.status}</span>
+    <span class="status-pill" data-testid="tool-status-pill" data-lc="tool-status" class:computer-use={isCU}><span class="status-dot" class:computer-use={isCU} class:disabled={tool.status === 'SKIPPED'}></span>{tool.status}</span>
   </div>
 
   {#if isCU && src}

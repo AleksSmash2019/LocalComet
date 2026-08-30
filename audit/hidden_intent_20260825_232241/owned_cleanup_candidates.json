@@ -1,0 +1,30 @@
+{
+  "mode": "owned_current_run",
+  "deleted_count": 1,
+  "note": "parent-side cleanup after worker exit; only manifest-listed paths",
+  "candidates": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_20260825_232241",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_20260825_232241",
+      "run_id": "1cb16502d646406f890fef354302a68e",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.037
+    }
+  ],
+  "results": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_20260825_232241",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_20260825_232241",
+      "run_id": "1cb16502d646406f890fef354302a68e",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.037,
+      "action": "deleted"
+    }
+  ]
+}

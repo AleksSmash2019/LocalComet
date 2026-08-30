@@ -12,6 +12,33 @@
     stopSelectedManagedRuntime
   } from '$lib/stores/modelGateway';
   import type { HarnessId } from '$lib/types/modelGateway';
+  import { t } from '$lib/i18n';
+
+  type Translate = (key: string) => string;
+
+  function translateRuntimeState(value: string | undefined, translate: Translate): string {
+    switch (value) {
+      case 'NotInstalled': return translate('model.not_installed');
+      case 'Starting': return translate('model.runtime_starting');
+      case 'Validating': return translate('model.runtime_validating');
+      case 'Ready': return translate('model.ready');
+      case 'Stopping': return translate('model.runtime_stopping');
+      case 'Stopped': return translate('model.runtime_stopped');
+      case 'Failed': return translate('model.runtime_failed');
+      default: return translate('model.status_unknown');
+    }
+  }
+
+  function translateInstalledState(value: string | undefined, translate: Translate): string {
+    if (!value) return translate('model.not_installed');
+    return value === 'Installed' ? translate('model.installed') : translate('model.status_unknown');
+  }
+
+  function translateModelState(value: string | undefined, translate: Translate): string {
+    if (value === 'Ready') return translate('model.ready');
+    if (!value) return translate('model.unavailable');
+    return translate('model.status_unknown');
+  }
 
   $: status = $managedRuntimeStore.status;
   $: state = status?.state ?? 'NotInstalled';
@@ -27,57 +54,58 @@
   }
 </script>
 
-<section class="managed-panel card-surface" aria-label="LocalComet managed runtime">
+  <section class="managed-panel card-surface" aria-label={$t('model.managed_runtime')}>
+
   <header class="managed-header">
     <div>
-      <p class="eyebrow">LocalComet managed runtime</p>
-      <h2>Managed llama.cpp</h2>
+      <p class="eyebrow">{$t('model.managed_runtime')}</p>
+      <h2>{$t('model.managed_runtime_title')}</h2>
     </div>
-    <StatusBadge label={state === 'NotInstalled' ? 'Not installed' : state} tone={tone} />
+    <StatusBadge label={translateRuntimeState(state, $t)} tone={tone} />
   </header>
 
   <div class="managed-grid">
-    <TelemetryRow label="Engine" value="llama.cpp" mono />
-    <TelemetryRow label="Managed Runtime" value={status?.installation ?? 'Not installed'} tone={state === 'NotInstalled' ? 'disabled' : 'ready'} />
-    <TelemetryRow label="Runtime Version" value={status?.runtime_version ?? 'Not validated'} tone="disabled" mono />
-    <TelemetryRow label="Runtime" value={status?.runtime_id ?? 'Not selected'} tone={status?.runtime_id ? 'ready' : 'disabled'} mono />
-    <TelemetryRow label="Model State" value={status?.model_state ?? 'Unavailable'} tone={status?.model_state === 'Ready' ? 'ready' : 'disabled'} />
-    <TelemetryRow label="Inference" value={status?.inference_ready ? 'Ready' : 'Unavailable'} tone={status?.inference_ready ? 'ready' : 'disabled'} />
+    <TelemetryRow label={$t('model.engine')} value="llama.cpp" mono />
+    <TelemetryRow label={$t('model.managed_runtime_label')} value={translateInstalledState(status?.installation, $t)} tone={state === 'NotInstalled' ? 'disabled' : 'ready'} />
+    <TelemetryRow label={$t('model.runtime_version')} value={status?.runtime_version ?? $t('model.not_validated')} tone="disabled" mono />
+    <TelemetryRow label={$t('model.runtime_id')} value={status?.runtime_id ?? $t('model.not_selected')} tone={status?.runtime_id ? 'ready' : 'disabled'} mono />
+    <TelemetryRow label={$t('model.model_state')} value={translateModelState(status?.model_state, $t)} tone={status?.model_state === 'Ready' ? 'ready' : 'disabled'} />
+    <TelemetryRow label={$t('model.inference')} value={$t(status?.inference_ready ? 'model.ready' : 'model.unavailable')} tone={status?.inference_ready ? 'ready' : 'disabled'} />
   </div>
 
   <div class="managed-controls">
-    <button type="button" disabled={$inferenceBusy} onclick={() => void refreshManagedRuntimeStatus()}>Refresh</button>
-    <button type="button" disabled={!canStart} onclick={() => void startSelectedManagedRuntime()}>{state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId ? 'Switch Model' : 'Start Runtime'}</button>
-    <button type="button" disabled={!canStop} onclick={() => void stopSelectedManagedRuntime()}>Stop Runtime</button>
+    <button type="button" aria-label={$t('model.refresh_runtime')} disabled={$inferenceBusy} onclick={() => void refreshManagedRuntimeStatus()}>{$t('model.refresh_runtime')}</button>
+    <button type="button" aria-label={$t(state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId ? 'model.switch_model' : 'model.start_runtime')} disabled={!canStart} onclick={() => void startSelectedManagedRuntime()}>{$t(state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId ? 'model.switch_model' : 'model.start_runtime')}</button>
+    <button type="button" aria-label={$t('model.stop_runtime')} disabled={!canStop} onclick={() => void stopSelectedManagedRuntime()}>{$t('model.stop_runtime')}</button>
   </div>
 
-  <div class="managed-controls" aria-label="Managed model binding controls">
+  <div class="managed-controls" aria-label={$t('model.binding_controls')}>
     <label>
-      <span>Managed Model</span>
+      <span>{$t('model.managed_model')}</span>
       <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(event) => void setManagedSelectedModel((event.currentTarget as HTMLSelectElement).value)}>
-        <option value="">Select managed model</option>
+        <option value="">{$t('model.select_managed')}</option>
         {#each $managedRuntimeStore.catalog as model}
           <option value={model.model_id}>{model.display_name} ({Math.round(model.asset_bytes / 1024 / 1024)} MiB)</option>
         {/each}
       </select>
     </label>
     <label>
-      <span>Harness</span>
+      <span>{$t('model.harness')}</span>
       <select disabled={$inferenceBusy} value={$managedRuntimeStore.harnessId} onchange={onHarnessChange}>
-        <option value="minimal">minimal</option>
-        <option value="native-localcomet">native-localcomet</option>
+        <option value="minimal">{$t('model.harness_minimal')}</option>
+        <option value="native-localcomet">{$t('model.harness_native')}</option>
       </select>
     </label>
-    <button type="button" disabled={!canBind} onclick={() => void confirmManagedBinding()}>Confirm Binding</button>
+    <button type="button" aria-label={$t('model.confirm_binding')} disabled={!canBind} onclick={() => void confirmManagedBinding()}>{$t('model.confirm_binding')}</button>
   </div>
 
-  <div class="fingerprint" aria-label="Managed runtime fingerprint">
-    <span>Runtime Instance</span>
-    <code>{status?.runtime_instance_fingerprint ?? 'Runtime not ready'}</code>
+  <div class="fingerprint" aria-label={$t('model.binding_fingerprint')}>
+    <span>{$t('model.runtime_instance')}</span>
+    <code>{status?.runtime_instance_fingerprint ?? $t('model.runtime_not_ready')}</code>
   </div>
 
   {#if $managedRuntimeStore.logs.stdout_tail.length || $managedRuntimeStore.logs.stderr_tail.length}
-    <pre class="runtime-logs" aria-label="Sanitized managed runtime logs">{[...$managedRuntimeStore.logs.stdout_tail, ...$managedRuntimeStore.logs.stderr_tail].join('\n')}</pre>
+    <pre class="runtime-logs" aria-label={$t('diag.sanitized_runtime_logs')}>{[...$managedRuntimeStore.logs.stdout_tail, ...$managedRuntimeStore.logs.stderr_tail].join('\n')}</pre>
   {/if}
   {#if $managedRuntimeStore.lastError}
     <p class="managed-error" role="status">{$managedRuntimeStore.lastError.message}</p>

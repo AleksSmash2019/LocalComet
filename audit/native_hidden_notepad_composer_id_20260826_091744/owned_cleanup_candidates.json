@@ -1,0 +1,30 @@
+{
+  "mode": "owned_current_run",
+  "deleted_count": 1,
+  "note": "parent-side cleanup after worker exit; only manifest-listed paths",
+  "candidates": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_composer_id_20260826_091744",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_composer_id_20260826_091744",
+      "run_id": "333dc0d7dd16402fb3dbabd5706e605b",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.012
+    }
+  ],
+  "results": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_composer_id_20260826_091744",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_composer_id_20260826_091744",
+      "run_id": "333dc0d7dd16402fb3dbabd5706e605b",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.012,
+      "action": "deleted"
+    }
+  ]
+}

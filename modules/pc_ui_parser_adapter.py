@@ -283,8 +283,9 @@ UIA_INTERACTIVE_CONTROLS = {
 
 
 def _uia_elements_for_desktop(
-    max_windows: int = 6,
-    max_nodes_per_window: int = 120,
+    max_windows: int = 8,
+    max_nodes_per_window: int = 320,
+    priority_hwnd: int = 0,
 ) -> tuple[list[dict], str]:
     """Real UI Automation tree walk across top-level desktop windows.
 
@@ -307,6 +308,10 @@ def _uia_elements_for_desktop(
     def role_of(control_type_name: str) -> str:
         return control_type_name.replace("Control", "").strip().lower() or "custom"
 
+    if priority_hwnd:
+        top_windows.sort(
+            key=lambda window: 0 if int(getattr(window, "NativeWindowHandle", 0) or 0) == priority_hwnd else 1
+        )
     for window in top_windows[:max_windows]:
         try:
             hwnd = int(window.NativeWindowHandle or 0)
@@ -384,7 +389,9 @@ def parse_screen(save=True):
     # Production grounding source: a real UI Automation tree when available.
     # Heuristic title tokens remain only as a marked fallback for windows the
     # UIA pass could not cover.
-    uia_elements, uia_status = _uia_elements_for_desktop()
+    uia_elements, uia_status = _uia_elements_for_desktop(
+        priority_hwnd=_safe_int(active_window.get("hwnd", 0)) if isinstance(active_window, dict) else 0
+    )
     elements.extend(uia_elements)
 
     payload = {

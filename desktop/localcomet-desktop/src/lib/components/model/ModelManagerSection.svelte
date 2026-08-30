@@ -148,7 +148,9 @@
   }
 
   function displayState(state: string): string {
-    return $t(`models.state.${state}`);
+    const key = `models.state.${state}`;
+    const translated = $t(key);
+    return translated === key ? $t('model.status_unknown') : translated;
   }
 
   async function requestSetup(): Promise<void> {

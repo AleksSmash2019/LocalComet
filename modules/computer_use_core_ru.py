@@ -92,7 +92,26 @@ def build_ui_map() -> Dict[str, Any]:
                 elements = [item for item in raw if isinstance(item, dict)]
     except Exception as exc:
         limitations.append(f"ui parser unavailable: {exc}")
-    payload = {"ok": True, "mode": "computer_use_ui_map", "created_at": _now(), "source": source, "elements": elements[:200], "limitations": limitations}
+    # Keep genuine UIA controls before heuristic window/title elements. The
+    # bounded cap is larger than the historical 200 so Chromium’s deep
+    # address/search control is not silently discarded, while the map remains
+    # finite and deterministic.
+    uia_elements = [
+        item for item in elements
+        if item.get("source") == "uia_automation"
+        or (isinstance(item.get("metadata"), dict) and item["metadata"].get("control_type"))
+    ]
+    other_elements = [item for item in elements if item not in uia_elements]
+    ordered_elements = (uia_elements + other_elements)[:400]
+    payload = {
+        "ok": True,
+        "mode": "computer_use_ui_map",
+        "created_at": _now(),
+        "source": source,
+        "elements": ordered_elements,
+        "uia_element_count": len(uia_elements),
+        "limitations": limitations,
+    }
     path = _write_json(UI_MAP_PATH, payload)
     payload["ui_map_path"] = path
     payload["trace_path"] = _trace({"event": "build_ui_map", "ui_map_path": path, "element_count": len(elements)})

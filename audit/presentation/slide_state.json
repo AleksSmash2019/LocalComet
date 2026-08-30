@@ -1,0 +1,113 @@
+{
+  "project_info": {
+    "title": "LocalComet: девятичасовой evidence-based аудит",
+    "created": 1787857617.749,
+    "last_updated": 1787858364.406,
+    "total_slides": 10
+  },
+  "slides": [
+    {
+      "id": "slide_1_overview",
+      "state": "edited",
+      "pageNum": 1
+    },
+    {
+      "id": "slide_2_authority",
+      "state": "edited",
+      "pageNum": 2
+    },
+    {
+      "id": "slide_3_records_summary",
+      "state": "edited",
+      "pageNum": 3
+    },
+    {
+      "id": "slide_4_native_evidence",
+      "state": "edited",
+      "pageNum": 4
+    },
+    {
+      "id": "slide_5_foreign_ownership",
+      "state": "edited",
+      "pageNum": 5
+    },
+    {
+      "id": "slide_6_sec_matrix_1_8",
+      "state": "edited",
+      "pageNum": 6
+    },
+    {
+      "id": "slide_7_sec_matrix_9_16",
+      "state": "edited",
+      "pageNum": 7
+    },
+    {
+      "id": "slide_8_approval_cancel_restart",
+      "state": "edited",
+      "pageNum": 8
+    },
+    {
+      "id": "slide_9_gates_perf_prov",
+      "state": "edited",
+      "pageNum": 9
+    },
+    {
+      "id": "slide_10_conclusion",
+      "state": "edited",
+      "pageNum": 10
+    }
+  ],
+  "outline": [
+    {
+      "id": "slide_1_overview",
+      "title": "LocalComet: девятичасовой evidence-based аудит",
+      "summary": "Титульный слайд с текущим статусом (PENDING_TERMINAL), версией, хешем исходников и главным выводом о незакрытой матрице P0."
+    },
+    {
+      "id": "slide_2_authority",
+      "title": "Как оценивалась доказательность",
+      "summary": "Описание источников авторитета (Rust) и классификации доказательств (A-G), подчеркивающее важность независимых postconditions."
+    },
+    {
+      "id": "slide_3_records_summary",
+      "title": "Сводка 72 isolated-hidden-desktop records",
+      "summary": "Агрегация 72 записей JSONL с разбивкой по вердиктам, выделением успешных и проблемных запусков."
+    },
+    {
+      "id": "slide_4_native_evidence",
+      "title": "Что реально доказано native",
+      "summary": "Таблица с конкретными сценариями (Browser, Notepad, Screenshot, Cancel, Recovery), их вердиктами и независимыми доказательствами.",
+      "image_plan": "/mnt/e3f702b7-8ba8-4cd2-a089-efd060a7ed13/LocalComet-build-week-clean/Projects/Reports/computer_use_real_actions/isolated_hidden_desktop/nine_20260827_screenshot_10/captured_window.png - Captured window screenshot for screenshot success case №12-13"
+    },
+    {
+      "id": "slide_5_foreign_ownership",
+      "title": "Почему foreign ownership заблокировала 9/10",
+      "summary": "Анализ требований MASTERPROMPT к чужим окнам, текущих проверок в Rust и отсутствия native same-title/wrong-PID fixture."
+    },
+    {
+      "id": "slide_6_sec_matrix_1_8",
+      "title": "SEC matrix: SEC-001–SEC-008",
+      "summary": "Первая часть матрицы безопасности с описанием враждебных вводов, ожидаемых результатов и причин статуса NOT_INDEPENDENTLY_VERIFIED."
+    },
+    {
+      "id": "slide_7_sec_matrix_9_16",
+      "title": "SEC matrix: SEC-009–SEC-016",
+      "summary": "Вторая часть матрицы безопасности, аналогично первой, с итоговым выводом о невыполнении 16/16 сценариев."
+    },
+    {
+      "id": "slide_8_approval_cancel_restart",
+      "title": "Approval, cancellation и restart: главный P0 gap",
+      "summary": "Детальный разбор проблем с подтверждением, отменой и перезапуском, включая отсутствие proof для application-level process boundary."
+    },
+    {
+      "id": "slide_9_gates_perf_prov",
+      "title": "Gates, performance и provenance",
+      "summary": "Сводка успешных проверок (gates), неполных метрик производительности и нерешенных вопросов по лицензиям и происхождению."
+    },
+    {
+      "id": "slide_10_conclusion",
+      "title": "Вывод и путь к 9/10",
+      "summary": "Заключительный слайд с перечнем причин, по которым оценка 9/10 недостижима, и критическим путем для закрытия всех P0 blockers."
+    }
+  ]
+}

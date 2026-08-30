@@ -160,9 +160,11 @@ def _handle_and_write(
     runtime,
     message,
     acceptance_gate: _AcceptanceWriteGate,
-    tool_calls: _ToolCallCoordinator,
+    tool_calls: _ToolCallCoordinator | None = None,
 ) -> bool:
     if message.get("method") == TOOL_CALL_METHOD:
+        if tool_calls is None:
+            raise TypeError("tool-call dispatch requires a coordinator")
         return tool_calls.submit(message)
 
     def handle():

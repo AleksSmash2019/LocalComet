@@ -955,3 +955,50 @@ INTENTIONAL_RED=B5LP.
 CLOSED - B5LP_RED_ACCEPTED, NEXT_ALLOWED=B5LP_GREEN.
 RED 10/10 (0b960196). Positive 10/10. Workspace 248/0/6. Регрессия зелёная.
 Production unchanged. Tools disabled, placeholder active, B6 NOT_STARTED, TOCTOU OPEN.
+
+
+---
+
+## Current canonical continuation — 2026-08-28
+
+Этот блок добавлен append-only. Все предыдущие loop sections сохраняются как исторические и не должны использоваться как текущий release verdict.
+
+### Repository identity
+
+- Branch: `feat/up00-wp01-windows-one-click-launch`
+- HEAD: `74f527d5cc97526a791eca81a8d995e2cc5a6aa7`
+- Final source tree digest: `6820f0b3eb2afbf17ec50eaa9751e4f1f64b49086bf0b6152505685f6d2c10c9` (598 source files)
+- Dirty status intentionally preserved: 782 lines from `git status --short -uall`; no commit, branch, reset/rebase, clean or mass deletion.
+
+### Fresh native acceptance
+
+| Area | Current result | Evidence scope |
+|---|---|---|
+| Notepad UIA/type | `VERIFIED_SUCCESS` ×2 | Rust broker PID/image, hidden desktop, UIA marker and SHA, owner cleanup |
+| Browser readonly | `VERIFIED_SUCCESS` ×2 | Correlated approval/request/action/input, HTTPS Python host/title, isolated profile, CDP listener identity |
+| Screenshot | `VERIFIED_SUCCESS` ×2 | Broker owner context, capture PID, GDI/window scope, PNG magic/bytes/SHA, rendered nonblank |
+| Coding E2E | `VERIFIED_SUCCESS` ×2 | Real Tauri IPC; replay/tamper/own-preimage rollback; production result remains compile-only |
+| Fake DOM approval | `VERIFIED_BLOCKED` ×2 | Fake UI click cannot mint token; real Rust dispatch returns approval-token denial; no new host PID |
+| Foreign ownership | `VERIFIED_BLOCKED` ×2 | Same-title foreign Notepad survives random unregistered close request; scoped proof, not registry spoof proof |
+| Application restart | `VERIFIED_SUCCESS` | Fresh phase-2 LocalComet/WebView; paused_for_review, requires_review=true, terminal=false, zero auto-start, duplicate `task_exists`, unchanged SHA |
+| Cancellation | `PENDING_TERMINAL` | Model-turn terminal cancel is proven; post-grant continuation revoke/no-replay remains open |
+
+### Gates
+
+- `npm run check`: exit 0; 0 errors, 0 warnings.
+- `npm test`: exit 0; 555 tests / 39 files.
+- `cargo test`: exit 0; 732 passed, 0 failed, 7 ignored.
+- `cargo fmt --check`: exit 0.
+- `cargo clippy --all-targets --all-features -- -D warnings`: exit 0.
+- Mandatory Python pack: all 18 explicit commands exit 0, including real-sidecar mode with system CPython 3.14.6.
+- Full pytest: exit 0; 1385 passed, 2 skipped, 413 subtests passed in 214.54s.
+- `git diff --check`: exit 0; py_compile modified Python seams: exit 0.
+- `check_evidence_provenance.py`: exit 0; refresh evidence: exit 0 at the digest above.
+
+### Security status and release decision
+
+Superseding SEC matrix: `audit/sec_matrix_current_20260828_final.json`. Current A-level closure is limited to SEC-002, scoped SEC-011 and SEC-016. SEC-001, SEC-003–010 and SEC-012–015 remain `NOT_INDEPENDENTLY_VERIFIED` because their required native protected postconditions were not executed. Contract-only and synthetic fixture evidence is retained but not promoted to A.
+
+**9/10 is not achieved and is not claimed.** Conservative release cap: **8.0/10**. Remaining caps are full B3 cancellation proof, thirteen open SEC rows, missing hostile skills/injection/no-upload/headless connector native fixtures, incomplete performance protocol and unresolved owner/legal provenance decisions.
+
+Primary artifacts: `audit/final_audit_20260828_ru.md`, `audit/final_native_matrix_20260828.json`, `audit/performance_current_20260828_final.json`, `audit/provenance_inventory_current_20260828_final.json`.

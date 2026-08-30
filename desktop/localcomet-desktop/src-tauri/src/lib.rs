@@ -4,24 +4,41 @@ mod approval_commands;
 mod artifact_acquisition;
 mod artifact_trust;
 mod artifact_validation_cache;
+#[allow(dead_code)]
+mod checkpoint;
+mod checkpoint_commands;
+mod coding_commands;
+mod coding_orchestrator;
 mod comctl_delay_load_guard;
 mod control_plane;
 mod cu_broker;
+mod cu_continuation;
+#[allow(dead_code)]
+mod diagnostics;
 mod files;
 mod hardware;
 mod hf_catalog;
+#[allow(dead_code)]
+mod intent_compiler;
 mod ipc;
 mod knowledge;
 mod managed_runtime;
+mod permission_context;
+#[allow(dead_code, unused_imports)]
+mod project_intelligence;
 mod single_instance;
 mod skills;
 mod startup;
 mod supervisor;
+#[allow(dead_code)]
+mod task_ledger;
+mod terminal_runner;
 mod voice;
 mod windows_job;
 mod workspace;
 
 use approval_commands::{
+    cu_broker_continuation_complete, cu_broker_continuation_consume, cu_broker_continuation_revoke,
     cu_broker_observe, execute_approved, request_approval, resolve_tool_approval, run_tool_call,
     set_workspace, ApprovalState,
 };
@@ -35,6 +52,14 @@ use artifact_trust::{
     managed_model_readiness, managed_runtime_catalog, open_model_storage_folder,
     ArtifactTrustService,
 };
+use checkpoint_commands::{
+    checkpoint_compare, checkpoint_list, checkpoint_restore_approval, checkpoint_restore_files,
+    checkpoint_restore_task,
+};
+use coding_commands::{
+    coding_cancel, coding_events, coding_list_tasks, coding_recover_task, coding_start,
+    coding_start_approval,
+};
 use control_plane::{
     control_plane_bootstrap, control_plane_cancel_turn, control_plane_close_session,
     control_plane_create_session, control_plane_create_thread, control_plane_get_turn_status,
@@ -47,8 +72,11 @@ use files::{
     files_capability_status, forget_selected_file, list_selected_files, preview_selected_file,
     select_files, SelectedFilesManager,
 };
+use intent_compiler::intent_compile;
+use lsp::lsp_diagnostics;
 #[cfg(all(test, debug_assertions))]
 mod live_e2e;
+mod lsp;
 use hardware::scan_hardware;
 use hf_catalog::{hf_list_repo_files, hf_search_models};
 use knowledge::{knowledge_turn_decide, knowledge_turn_preview};
@@ -57,7 +85,9 @@ use managed_runtime::{
     managed_runtime_start_trusted, managed_runtime_status, managed_runtime_stop,
     managed_runtime_stop_trusted, ManagedRuntimeSupervisor,
 };
-use skills::{skills_disable, skills_enable, skills_install, skills_list, skills_uninstall};
+use skills::{
+    skills_compile, skills_disable, skills_enable, skills_install, skills_list, skills_uninstall,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use supervisor::{DesktopSidecarSupervisor, LivenessPolicy, SupervisorError};
@@ -198,6 +228,46 @@ pub fn run() {
             app.manage(Arc::new(ManagedRuntimeSupervisor::new(artifact_trust)));
             app.manage(SelectedFilesManager::default());
             app.manage(ApprovalState::new(app.handle().clone()));
+            // F-03: typed permission context (default-deny). Only the exact
+            // isolated-hidden sentinel can arm an expiring, desktop-bound
+            // IsolatedHiddenTest context; normal sessions never receive one
+            // and every dangerous action still consumes its scoped one-time
+            // approval token afterwards.
+            // Session binding uses the real registry session so B1 validation
+            // can verify session/workspace/desktop together after set_workspace
+            // re-binds the workspace digest.
+            if let Some(state) = app.try_state::<ApprovalState>() {
+                // Capability arming MUST happen before the context is issued:
+                // set_agent_permissions rotates the approval registry (and its
+                // session id), so a context captured earlier would be bound to
+                // a dead session and every later dispatch would fail with
+                // permission_context_session_mismatch.
+                state.set_agent_permissions(control_plane::AgentPermissions {
+                    files: true,
+                    shell: true,
+                    tools: true,
+                    computer_use: true,
+                    internet: false,
+                });
+                // Session binding uses the real registry session so B1 validation
+                // can verify session/workspace/desktop together after set_workspace
+                // re-binds the workspace digest.
+                let session = state.session_id();
+                // Workspace digest is pending until set_workspace re-binds it;
+                // use the sentinel that sync_isolated_workspace_digest will
+                // replace with the concrete digest.
+                let pending_ws = state
+                    .workspace_identity()
+                    .map(|(_, digest)| digest)
+                    .unwrap_or_else(|| crate::approval::NON_WORKSPACE_APPROVAL_SCOPE.to_string());
+                if let Some(context) = startup::isolated_permission_context(
+                    &session,
+                    &pending_ws,
+                    std::env::var("LC_HIDDEN_DESKTOP_NAME").ok().as_deref(),
+                ) {
+                    state.set_permission_context(context);
+                }
+            }
             let Some(window) = app.get_webview_window("main") else {
                 let _ = supervisor.shutdown();
                 startup::report_failure(startup::StartupPhase::WindowDisplay, "LC_START_201");
@@ -288,6 +358,9 @@ pub fn run() {
             resolve_tool_approval,
             run_tool_call,
             cu_broker_observe,
+            cu_broker_continuation_consume,
+            cu_broker_continuation_complete,
+            cu_broker_continuation_revoke,
             speak_local_text,
             stop_local_text,
             scan_hardware,
@@ -295,10 +368,24 @@ pub fn run() {
             hf_list_repo_files,
             set_workspace,
             skills_list,
+            skills_compile,
             skills_install,
             skills_enable,
             skills_disable,
-            skills_uninstall
+            skills_uninstall,
+            intent_compile,
+            checkpoint_list,
+            checkpoint_compare,
+            checkpoint_restore_approval,
+            checkpoint_restore_files,
+            checkpoint_restore_task,
+            lsp_diagnostics,
+            coding_start_approval,
+            coding_start,
+            coding_events,
+            coding_list_tasks,
+            coding_recover_task,
+            coding_cancel
         ])
         .run(tauri::generate_context!());
 

@@ -37,10 +37,7 @@ impl std::fmt::Display for WorkspaceError {
 
 impl From<WorkspaceError> for BridgeError {
     fn from(value: WorkspaceError) -> Self {
-        BridgeError {
-            code: "workspace_error".into(),
-            message: value.to_string(),
-        }
+        BridgeError::new("workspace_error", &value.to_string())
     }
 }
 

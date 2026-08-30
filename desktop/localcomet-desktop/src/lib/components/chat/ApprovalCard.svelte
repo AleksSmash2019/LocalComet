@@ -78,7 +78,15 @@
 </script>
 
 {#if state.pending}
-  <article class="approval card-surface" aria-label={$t('approval.section_aria')}>
+  <article
+    class="approval card-surface"
+    aria-label={$t('approval.section_aria')}
+    data-testid="approval-card"
+    data-lc="approval-card"
+    data-approval-id={approval?.approvalId ?? ''}
+    data-approval-authority="legacy-compatibility"
+    data-input-digest={state.pending.inputDigest ?? ''}
+  >
     <div class="approval-summary">
       <span class="status-pill"><span class="status-dot"></span>{$t(phaseKey)}</span>
       <h2>{$t('approval.tool')}: {state.pending.tool}</h2>
@@ -105,10 +113,10 @@
       {/if}
     </div>
     <div class="approval-actions">
-      <button type="button" disabled={busy} onclick={onConfirm} aria-label={$t('approval.confirm')}>
+      <button type="button" data-testid="approval-confirm" data-lc="approval-confirm" disabled={busy} onclick={onConfirm} aria-label={$t('approval.confirm')}>
         {$t('approval.confirm')}
       </button>
-      <button type="button" disabled={busy} onclick={onReject} aria-label={$t('approval.reject')}>
+      <button type="button" data-testid="approval-reject" data-lc="approval-reject" disabled={busy} onclick={onReject} aria-label={$t('approval.reject')}>
         {$t('approval.reject')}
       </button>
     </div>

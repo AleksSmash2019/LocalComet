@@ -67,6 +67,47 @@ pub async fn skills_list(app: AppHandle) -> Result<SkillResponse, String> {
 }
 
 #[command]
+pub async fn skills_compile(
+    app: AppHandle,
+    state: tauri::State<'_, ApprovalState>,
+    skill_id: String,
+    arguments: serde_json::Value,
+    token: String,
+    approval_id: String,
+    call_id: String,
+) -> Result<SkillResponse, String> {
+    if !arguments.is_object() {
+        return Err("workflow arguments must be a JSON object".to_string());
+    }
+    let semantic_payload = serde_json::json!({
+        "action": "compile",
+        "skill_id": skill_id,
+        "arguments": arguments,
+    });
+    validate_approval_token(
+        &state,
+        "skills.invoke",
+        &semantic_payload,
+        &token,
+        &approval_id,
+        &call_id,
+    )
+    .map_err(|err| format!("{}: {}", err.code, err.message))?;
+    let skill_id = semantic_payload["skill_id"]
+        .as_str()
+        .ok_or_else(|| "invalid skill id payload".to_string())?
+        .to_owned();
+    let arguments_json = serde_json::to_string(&semantic_payload["arguments"])
+        .map_err(|err| format!("invalid workflow arguments: {err}"))?;
+    run_skills_cli(
+        &app,
+        "compile",
+        &["--skill-id", &skill_id, "--arguments", &arguments_json],
+    )
+    .await
+}
+
+#[command]
 pub async fn skills_install(
     app: AppHandle,
     state: tauri::State<'_, ApprovalState>,

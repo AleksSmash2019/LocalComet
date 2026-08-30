@@ -1,0 +1,30 @@
+{
+  "mode": "owned_current_run",
+  "deleted_count": 1,
+  "note": "parent-side cleanup after worker exit; only manifest-listed paths",
+  "candidates": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_submit_diag_20260826_090816",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_submit_diag_20260826_090816",
+      "run_id": "8fb305313bb849efa8373095b127df30",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.012
+    }
+  ],
+  "results": [
+    {
+      "path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_submit_diag_20260826_090816",
+      "requested_path": "C:\\Users\\DNS\\AppData\\Local\\LocalCometHiddenCU\\native_notepad_submit_diag_20260826_090816",
+      "run_id": "8fb305313bb849efa8373095b127df30",
+      "mode": "owned_current_run",
+      "exists": true,
+      "eligible": true,
+      "reasons": [],
+      "age_hours": 0.012,
+      "action": "deleted"
+    }
+  ]
+}

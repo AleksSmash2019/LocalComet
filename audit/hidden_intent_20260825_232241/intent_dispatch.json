@@ -1,0 +1,13 @@
+{
+  "schema_version": "localcomet.intent-dispatch.v1",
+  "timestamp_utc": "2026-08-25T18:24:57.353044+00:00",
+  "prompt": "Открой https://example.com в браузере",
+  "branch_head": "74f527d5cc97526a791eca81a8d995e2cc5a6aa7",
+  "payload": {
+    "error": "dispatch_failed",
+    "detail": "[object Object]",
+    "requestId": "996b411df0b3bd0876bdf426"
+  },
+  "outcome": "BLOCKED_INTENT_ERROR",
+  "classification": "VERIFIED_BLOCKED"
+}

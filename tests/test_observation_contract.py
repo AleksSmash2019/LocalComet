@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -100,6 +101,23 @@ class ObservationContractTests(unittest.TestCase):
         self.assertEqual(raw[:8], PNG_BYTES[:8])
         self.assertEqual(payload["screenshot_bytes"], len(raw))
         self.assertEqual(payload["screenshot_sha256"], hashlib.sha256(raw).hexdigest())
+
+    def test_hidden_screenshot_owner_context_requires_exact_desktop_and_pid(self):
+        context = self.screenshots.parent / "screenshot_owner_context.json"
+        context.write_text(json.dumps({"pid": 4242, "desktop": "LocalCometHiddenCU_test"}), encoding="utf-8")
+        with patch.dict(
+            real_actions.os.environ,
+            {
+                "LC_HIDDEN_DESKTOP_NAME": "LocalCometHiddenCU_test",
+                "LC_HIDDEN_SCREENSHOT_OWNER_CONTEXT": str(context),
+            },
+            clear=False,
+        ):
+            self.assertEqual(real_actions._hidden_screenshot_owner_context()["pid"], 4242)
+            context.write_text(json.dumps({"pid": 0, "desktop": "LocalCometHiddenCU_test"}), encoding="utf-8")
+            self.assertEqual(real_actions._hidden_screenshot_owner_context(), {})
+            context.write_text(json.dumps({"pid": 4242, "desktop": "another-desktop"}), encoding="utf-8")
+            self.assertEqual(real_actions._hidden_screenshot_owner_context(), {})
 
     def test_screenshot_metadata_preserves_truthful_state(self):
         fake_backend = SimpleNamespace(

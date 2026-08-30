@@ -190,7 +190,7 @@ class AssistantContextTests(unittest.TestCase):
 
     def test_unsupported_locale_fails_closed(self) -> None:
         with self.assertRaises(GatewayError):
-            trusted_assistant_context_payload("fr")
+            trusted_assistant_context_payload("xx")
 
 
 FILES_CHANGED_FILES = (

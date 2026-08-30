@@ -11,6 +11,7 @@ const DEFAULT_TTL: Duration = Duration::from_secs(300);
 const GRANT_TTL: Duration = Duration::from_secs(30);
 const MAX_CONSUMED_TOMBSTONES: usize = 4096;
 const TOMBSTONE_TTL: Duration = Duration::from_secs(300);
+const FRONTEND_APPROVAL_PROMPT_TTL: Duration = Duration::from_secs(120);
 const MAX_IDEMPOTENCY_PENDING: usize = 128;
 const MAX_IDEMPOTENCY_COMPLETED: usize = 512;
 const IDEMPOTENCY_PENDING_TTL: Duration = Duration::from_secs(30);
@@ -112,6 +113,12 @@ pub struct FrontendApprovalPrompt {
 #[derive(Clone, serde::Serialize)]
 struct ApprovalRequestPayload {
     pub request_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_action_id: Option<String>,
+    pub input_digest: String,
+    pub expires_at_unix_ms: u64,
     pub tool: String,
     pub risk_level: String,
     pub target_summary: String,
@@ -138,6 +145,14 @@ impl ApprovalPrompt for FrontendApprovalPrompt {
 
         let payload = ApprovalRequestPayload {
             request_id: request_id.clone(),
+            model_request_id: descriptor.model_request_id.clone(),
+            model_action_id: descriptor.model_action_id.clone(),
+            input_digest: hex_encode(&descriptor.input_digest),
+            expires_at_unix_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .saturating_add(FRONTEND_APPROVAL_PROMPT_TTL)
+                .as_millis() as u64,
             tool: descriptor.tool.clone(),
             risk_level: match descriptor.risk_level {
                 RiskLevel::ReadOnly => "read_only",
@@ -161,7 +176,7 @@ impl ApprovalPrompt for FrontendApprovalPrompt {
         }
         approval_trace(&format!("prompt.emitted request_id={request_id}"));
 
-        match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+        match rx.recv_timeout(FRONTEND_APPROVAL_PROMPT_TTL) {
             Ok(ApprovalDecision::Approve) => {
                 approval_trace(&format!("prompt.decision=approve request_id={request_id}"));
                 Ok(ApprovalDecision::Approve)
@@ -203,6 +218,9 @@ pub struct ApprovalDescriptor {
     pub tool: String,
     pub command_family: CommandFamily,
     pub risk_level: RiskLevel,
+    pub input_digest: [u8; 32],
+    pub model_request_id: Option<String>,
+    pub model_action_id: Option<String>,
     pub target_summary: String,
     pub side_effect_category: String,
     pub destructive: bool,
@@ -229,6 +247,9 @@ pub fn command_family_for_tool(tool: &str) -> Option<CommandFamily> {
         "model.binding.set" => Some(CommandFamily::ModelBindingSet),
         "files.read" | "files.list" => Some(CommandFamily::ToolFilesystemRead),
         "files.write" | "files.create_folder" => Some(CommandFamily::ToolFilesystemWrite),
+        "checkpoint.restore_files" | "checkpoint.restore_task" => {
+            Some(CommandFamily::ToolFilesystemWrite)
+        }
         "files.delete" => Some(CommandFamily::ToolFilesystemDelete),
         "computer_use" => Some(CommandFamily::ComputerUse),
         "skills.invoke" => Some(CommandFamily::SkillsInvoke),
@@ -911,7 +932,7 @@ fn escape_json_string(s: &str) -> String {
     out
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
+pub(crate) fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -940,7 +961,7 @@ pub fn generate_approval_token() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::sync::{Arc, Mutex};
 
     const TEST_APPROVAL_ID: &str = "appr_00000000000000000000000000000000";
@@ -2786,6 +2807,11 @@ mod tests {
             tool: "files.write".to_owned(),
             command_family: CommandFamily::ToolFilesystemWrite,
             risk_level: RiskLevel::Guarded,
+            input_digest: canonical_input_digest(
+                &serde_json::json!({"path": "notes.txt", "content": ""}),
+            ),
+            model_request_id: None,
+            model_action_id: None,
             target_summary: "notes.txt".to_owned(),
             side_effect_category: "filesystem_write".to_owned(),
             destructive: false,
@@ -3024,6 +3050,45 @@ mod tests {
         assert!(json_val.get("expiresAtUnixMs").is_some());
         assert!(json_val.get("approval_id").is_none());
         assert!(json_val.get("call_id").is_none());
+    }
+
+    #[test]
+    fn p0b_r5_prompt_payload_contains_authoritative_correlation_and_digest() {
+        let digest = canonical_input_digest(&json!({"action": "open_app", "target": "notepad"}));
+        let digest_hex = hex_encode(&digest);
+        let payload = ApprovalRequestPayload {
+            request_id: TEST_APPROVAL_ID.to_owned(),
+            model_request_id: Some("0123456789abcdef01234567".to_owned()),
+            model_action_id: Some(TEST_CALL_ID.to_owned()),
+            input_digest: digest_hex.clone(),
+            expires_at_unix_ms: 4_000_000_000_000,
+            tool: "computer_use".to_owned(),
+            risk_level: "dangerous".to_owned(),
+            target_summary: "{\"action\":\"open_app\",\"target\":\"notepad\"}".to_owned(),
+            side_effect_category: "computer_control".to_owned(),
+            destructive: true,
+        };
+        let json_val = serde_json::to_value(payload).unwrap();
+        assert_eq!(
+            json_val.get("request_id").and_then(Value::as_str),
+            Some(TEST_APPROVAL_ID)
+        );
+        assert_eq!(
+            json_val.get("model_request_id").and_then(Value::as_str),
+            Some("0123456789abcdef01234567")
+        );
+        assert_eq!(
+            json_val.get("model_action_id").and_then(Value::as_str),
+            Some(TEST_CALL_ID)
+        );
+        assert_eq!(
+            json_val.get("input_digest").and_then(Value::as_str),
+            Some(digest_hex.as_str())
+        );
+        assert_eq!(
+            json_val.get("expires_at_unix_ms").and_then(Value::as_u64),
+            Some(4_000_000_000_000)
+        );
     }
 
     #[test]
@@ -3301,6 +3366,9 @@ mod tests {
             tool: "artifact.remove".to_owned(),
             command_family: CommandFamily::ArtifactRemove,
             risk_level: RiskLevel::Dangerous,
+            input_digest: canonical_input_digest(&json!({"model_id": "model-x"})),
+            model_request_id: None,
+            model_action_id: None,
             target_summary: "model-x".to_owned(),
             side_effect_category: "artifact_delete".to_owned(),
             destructive: true,

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container {
+            width: 1280px;
+            min-height: 720px;
+            background-color: #FFFFFF;
+            color: #0A192F;
+            font-family: 'Courier New', Consolas, monospace;
+            padding: 30px 40px;
+            display: flex;
+            flex-direction: column;
+        }
+        h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+        .header-box {
+            border: 1px solid #0A192F;
+            padding: 15px 20px;
+            margin-bottom: 15px;
+            background-color: #E3F2FD;
+        }
+        .slide-title {
+            font-size: 32px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .content-box {
+            border: 1px solid #0A192F;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 0;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #0A192F;
+            margin-bottom: 15px;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #0A192F;
+            padding: 6px 8px;
+            text-align: left;
+            font-size: 14px;
+            line-height: 1.3;
+        }
+        .data-table th {
+            background-color: #E3F2FD;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 15px;
+        }
+        .status-cell {
+            color: #D32F2F;
+            font-weight: 600;
+        }
+        .summary-box {
+            border: 1px solid #D32F2F;
+            padding: 12px;
+            background-color: rgba(211, 47, 47, 0.05);
+        }
+        .summary-title {
+            color: #D32F2F;
+            font-size: 18px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        .summary-text {
+            font-size: 16px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header-box">
+            <h1 class="slide-title">SEC matrix: SEC-009–SEC-016</h1>
+        </div>
+
+        <div class="content-box">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 8%;">ID</th>
+                        <th style="width: 25%;">Hostile input</th>
+                        <th style="width: 27%;">Expected protected postcondition</th>
+                        <th style="width: 40%;">Статус / причина</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>SEC-009</strong></td>
+                        <td>Oversized frame/ledger/evidence/context</td>
+                        <td>Bounded reject; no memory blow-up</td>
+                        <td><span class="status-cell">NOT_INDEPENDENTLY_VERIFIED</span>: нет native resource/peak-memory hostile run</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-010</strong></td>
+                        <td>Prompt injection in Notepad/browser</td>
+                        <td>No permission change/secret transmission</td>
+                        <td><span class="status-cell">NOT_INDEPENDENTLY_VERIFIED</span>: hostile injection fixture не запускался</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-011</strong></td>
+                        <td>Foreign PID/window, matching title</td>
+                        <td>Ownership mismatch; no click/close</td>
+                        <td><span class="status-cell">NOT_INDEPENDENTLY_VERIFIED</span>: native same-title wrong-PID case отсутствует</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-012</strong></td>
+                        <td>First action fails in ordered batch</td>
+                        <td>Later actions dispatch count = 0</td>
+                        <td><span class="status-cell">NOT_INDEPENDENTLY_VERIFIED</span>: нет native ordered-failure fixture</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-013</strong></td>
+                        <td>Skill archive traversal/compression bomb</td>
+                        <td>Quarantine/reject; no outside-root extraction</td>
+                        <td><span class="status-cell">NOT_INDEPENDENTLY_VERIFIED</span>: нет dedicated hostile archive report</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-014</strong></td>
+                        <td>Tampered installed skill after enable</td>
+                        <td>SHA mismatch; entrypoint not executed</td>
+                        <td><span class="status-cell">NOT_INDEPENDENTLY_VERIFIED</span>: нет install/tamper side-effect probe</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-015</strong></td>
+                        <td>Interactive OAuth/MCP in headless mode</td>
+                        <td>Typed block/handoff; no hang</td>
+                        <td><span class="status-cell">NOT_INDEPENDENTLY_VERIFIED</span>: connector case unavailable in native pack</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-016</strong></td>
+                        <td>Restart with in-flight host action</td>
+                        <td>paused_for_review, zero replay, old grant rejected, new approval</td>
+                        <td><span class="status-cell">NOT_INDEPENDENTLY_VERIFIED</span>: only Rust ledger process contract; no LocalComet app restart</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="summary-box">
+                <h3 class="summary-title">SEC Summary</h3>
+                <p class="summary-text">
+                    16/16 rows remain non-acceptance. VERIFIED_SUCCESS = 0; VERIFIED_BLOCKED = 0; all are explicit non-success, not hidden PASS.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

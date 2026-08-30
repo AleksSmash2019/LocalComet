@@ -1,0 +1,33 @@
+{
+  "timestamp_utc": "2026-08-26T03:17:18.024247+00:00",
+  "worker_pid": 15756,
+  "launcher_pid": 15848,
+  "allowed_pid_count": 15,
+  "window_count": 3,
+  "windows": [
+    {
+      "hwnd": 7669140,
+      "pid": 7576,
+      "title": "LocalComet",
+      "class": "Tauri Window",
+      "visible": false
+    },
+    {
+      "hwnd": 15664280,
+      "pid": 7576,
+      "title": "",
+      "class": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "hwnd": 3080848,
+      "pid": 7576,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "violations": [],
+  "benign_invisible_external_windows": [],
+  "isolated": true
+}

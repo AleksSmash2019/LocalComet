@@ -165,6 +165,15 @@ const APP_REGISTRY: &[(&str, AppEntry)] = &[
             allow_reparented_process: false,
         },
     ),
+    (
+        "steam",
+        AppEntry {
+            system32_exe: None,
+            app_paths_exe: Some("steam.exe"),
+            process_names: &["steam.exe"],
+            allow_reparented_process: false,
+        },
+    ),
 ];
 
 fn app_entry(canonical: &str) -> Option<&'static AppEntry> {
@@ -182,13 +191,14 @@ fn normalize_target(raw: &Value) -> Option<String> {
     let canonical = match stripped {
         "notepad" | "блокнот" => "notepad",
         "calc" | "калькулятор" | "calculator" => "calc",
-        "mspaint" | "пейнт" | "рисование" => "mspaint",
+        "mspaint" | "paint" | "пейнт" | "рисование" => "mspaint",
         "explorer" | "проводник" | "файлы" => "explorer",
         "chrome" | "хром" => "chrome",
         "msedge" | "edge" => "msedge",
         "firefox" | "мозилла" => "firefox",
         "browser" | "браузер" => "browser",
         "vscode" | "code" | "вс код" => "vscode",
+        "steam" | "стим" => "steam",
         other => other,
     };
     if app_entry(canonical).is_some() {
@@ -2204,6 +2214,79 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("disabled in hidden/automatic mode"));
+    }
+
+    #[test]
+    fn every_sidecar_open_app_alias_resolves_to_a_registry_entry() {
+        // The Python deterministic fallback in local_model_gateway_ru.py
+        // (_COMPUTER_USE_SAFE_APP_ALIASES) emits these exact target strings for
+        // open_app. Each one must survive normalize_target AND land on a real
+        // APP_REGISTRY key, otherwise the broker rejects a launch the sidecar
+        // considers valid. "paint" regressed exactly this way: Python emitted
+        // "paint" while the registry key was "mspaint" and no alias bridged
+        // them, so "открой пейнт" failed as not-allowlisted. Keep this table in
+        // sync with the Python tuple; a bare mapping is not enough, the
+        // canonical result must exist in the registry.
+        const SIDECAR_OPEN_APP_TARGETS: &[&str] = &[
+            "calculator",
+            "notepad",
+            "paint",
+            "explorer",
+            "firefox",
+            "msedge",
+            "chrome",
+            "steam",
+        ];
+        for target in SIDECAR_OPEN_APP_TARGETS {
+            let canonical = normalize_target(&json!(target)).unwrap_or_else(|| {
+                panic!("sidecar alias {target:?} was rejected by normalize_target")
+            });
+            assert!(
+                app_entry(&canonical).is_some(),
+                "sidecar alias {target:?} normalized to {canonical:?}, which is not an APP_REGISTRY key"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_target_never_yields_an_unregistered_canonical() {
+        // Structural invariant: normalize_target must never return a canonical
+        // name that app_entry cannot resolve. Several call sites .expect() on
+        // that entry, so a violation is a panic, not a graceful rejection.
+        for probe in [
+            "calc",
+            "calculator",
+            "калькулятор",
+            "notepad",
+            "блокнот",
+            "mspaint",
+            "paint",
+            "пейнт",
+            "рисование",
+            "explorer",
+            "проводник",
+            "файлы",
+            "chrome",
+            "хром",
+            "msedge",
+            "edge",
+            "firefox",
+            "мозилла",
+            "vscode",
+            "code",
+            "steam",
+            "стим",
+            "browser",
+            "браузер",
+            "totally-unknown-app",
+        ] {
+            if let Some(canonical) = normalize_target(&json!(probe)) {
+                assert!(
+                    app_entry(&canonical).is_some(),
+                    "normalize_target({probe:?}) returned unregistered canonical {canonical:?}"
+                );
+            }
+        }
     }
 
     #[test]

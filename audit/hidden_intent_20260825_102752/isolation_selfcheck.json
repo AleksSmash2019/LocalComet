@@ -1,0 +1,104 @@
+{
+  "timestamp_utc": "2026-08-25T05:28:57.543548+00:00",
+  "worker_pid": 25548,
+  "launcher_pid": 13096,
+  "allowed_pid_count": 16,
+  "window_count": 9,
+  "windows": [
+    {
+      "hwnd": 1706240,
+      "pid": 25248,
+      "title": "",
+      "class": "crashpad_SessionEndWatcher",
+      "visible": false
+    },
+    {
+      "hwnd": 5899508,
+      "pid": 7684,
+      "title": "LocalComet",
+      "class": "Tauri Window",
+      "visible": false
+    },
+    {
+      "hwnd": 3475664,
+      "pid": 7684,
+      "title": "",
+      "class": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "hwnd": 2359870,
+      "pid": 19720,
+      "title": "GDI+ Window (VCTIP.EXE)",
+      "class": "GDI+ Hook Window Class",
+      "visible": false
+    },
+    {
+      "hwnd": 3082732,
+      "pid": 19720,
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.28f1359.0",
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.28f1359.0",
+      "visible": false
+    },
+    {
+      "hwnd": 9635818,
+      "pid": 25248,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 7866250,
+      "pid": 7684,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 2491946,
+      "pid": 19720,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 2165116,
+      "pid": 19720,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "violations": [],
+  "benign_invisible_external_windows": [
+    {
+      "hwnd": 2359870,
+      "pid": 19720,
+      "title": "GDI+ Window (VCTIP.EXE)",
+      "class": "GDI+ Hook Window Class",
+      "visible": false
+    },
+    {
+      "hwnd": 3082732,
+      "pid": 19720,
+      "title": ".NET-BroadcastEventWindow.4.0.0.0.28f1359.0",
+      "class": ".NET-BroadcastEventWindow.4.0.0.0.28f1359.0",
+      "visible": false
+    },
+    {
+      "hwnd": 2491946,
+      "pid": 19720,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 2165116,
+      "pid": 19720,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "isolated": true
+}

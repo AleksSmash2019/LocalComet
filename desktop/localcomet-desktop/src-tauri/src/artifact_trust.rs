@@ -312,13 +312,9 @@ pub(crate) fn source_controlled_runtime_license_bytes(
 
 impl From<ArtifactTrustError> for BridgeError {
     fn from(value: ArtifactTrustError) -> Self {
-        BridgeError {
-            code: value.code.into(),
-            message: value.message,
-        }
+        BridgeError::new(value.code, &value.message)
     }
 }
-
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactKind {
@@ -583,6 +579,10 @@ pub(crate) struct ValidatedRuntimeModel {
     pub runtime_handles: Vec<File>,
     pub directory_handles: Vec<File>,
     pub artifact_validation_source: ValidationSource,
+    /// Every engine this model declares as compatible. Used to name a concrete
+    /// CPU engine when an accelerated launch finds no device, instead of
+    /// emitting a generic "select the CPU engine" dead-end.
+    pub compatible_runtime_ids: Vec<String>,
 }
 
 /// A validated runtime binary location for capability probing. Carries no
@@ -1624,7 +1624,12 @@ impl ArtifactTrustService {
             let path = resolve_contained(&package_dir, &required.relative_path)?;
             runtime_handles.push(open_runtime_guard(&path)?);
         }
-        let model_recheck = self.validate_managed_model(&model, true);
+        // The recheck runs while exclusive model/runtime guards are already
+        // held, so the file identity cannot change between the validations
+        // earlier in this same launch and this recheck. Re-hashing the whole
+        // GGUF here forced a multi-second (multi-GB) stall on every start;
+        // the cache proves the same bytes that were fully hashed above.
+        let model_recheck = self.validate_managed_model(&model, false);
         validation_source = validation_source.combine(model_recheck.source);
         if model_recheck.outcome.status != InstallationStatus::Valid {
             return Err(ArtifactTrustError::new(
@@ -1654,6 +1659,7 @@ impl ArtifactTrustService {
             runtime_handles,
             directory_handles,
             artifact_validation_source: validation_source,
+            compatible_runtime_ids: model.compatible_runtime_ids().to_vec(),
         })
     }
 
@@ -4610,6 +4616,134 @@ mod tests {
                 "runtime_id": compatible.runtime_id,
             })
         );
+    }
+
+    #[test]
+    fn runtime_start_digest_matches_frontend_approval_input_for_all_compute_modes() {
+        let workspace = TestWorkspace::new();
+        let catalog = custom_test_catalog();
+        let service = service_for(&catalog, &workspace);
+        let model = custom_test_artifact(TEST_MODEL_BYTES);
+        install_custom_model(&workspace, &model, TEST_MODEL_BYTES);
+        service
+            .register_custom_model(model.clone())
+            .expect("register custom model");
+        let supervisor = crate::managed_runtime::ManagedRuntimeSupervisor::new(Arc::new(service));
+        let model_id = model.model_id.clone();
+        let sha = model.asset_sha256.clone();
+
+        // The canonical runtime.start approval input binds override keys only
+        // when a concrete value exists. JSON.stringify drops `undefined` keys,
+        // and a null override is semantically absent, so the frontend omits
+        // both. Compute mode profiles resolve to:
+        //   gpu    -> no override keys
+        //   hybrid -> ctx_size_override=2048, gpu_layers_override=8
+        //   cpu    -> ctx_size_override=2048, gpu_layers_override=0
+        let frontend_forms = [
+            serde_json::json!({
+                "model_id": model_id,
+                "custom_sha256": sha,
+            }),
+            serde_json::json!({
+                "model_id": model_id,
+                "custom_sha256": sha,
+                "ctx_size_override": 2048,
+                "gpu_layers_override": 8,
+            }),
+            serde_json::json!({
+                "model_id": model_id,
+                "custom_sha256": sha,
+                "ctx_size_override": 2048,
+                "gpu_layers_override": 0,
+            }),
+            serde_json::json!({
+                "model_id": model_id,
+                "custom_sha256": sha,
+                "runtime_id": CUSTOM_MODEL_RUNTIME_ID,
+            }),
+            serde_json::json!({
+                "model_id": model_id,
+                "custom_sha256": sha,
+                "runtime_id": VULKAN_MODEL_RUNTIME_ID,
+                "ctx_size_override": 2048,
+                "gpu_layers_override": 8,
+            }),
+            serde_json::json!({
+                "model_id": model_id,
+                "custom_sha256": sha,
+                "runtime_id": VULKAN_MODEL_RUNTIME_ID,
+                "ctx_size_override": 2048,
+                "gpu_layers_override": 0,
+            }),
+        ];
+        let rust_forms = [
+            supervisor
+                .runtime_start_approval_input_with_overrides(
+                    &model_id,
+                    Some(&sha),
+                    None,
+                    None,
+                    None,
+                )
+                .expect("gpu without runtime"),
+            supervisor
+                .runtime_start_approval_input_with_overrides(
+                    &model_id,
+                    Some(&sha),
+                    None,
+                    Some(2048),
+                    Some(8),
+                )
+                .expect("hybrid without runtime"),
+            supervisor
+                .runtime_start_approval_input_with_overrides(
+                    &model_id,
+                    Some(&sha),
+                    None,
+                    Some(2048),
+                    Some(0),
+                )
+                .expect("cpu without runtime"),
+            supervisor
+                .runtime_start_approval_input_with_overrides(
+                    &model_id,
+                    Some(&sha),
+                    Some(CUSTOM_MODEL_RUNTIME_ID),
+                    None,
+                    None,
+                )
+                .expect("gpu with cpu runtime"),
+            supervisor
+                .runtime_start_approval_input_with_overrides(
+                    &model_id,
+                    Some(&sha),
+                    Some(VULKAN_MODEL_RUNTIME_ID),
+                    Some(2048),
+                    Some(8),
+                )
+                .expect("hybrid with vulkan runtime"),
+            supervisor
+                .runtime_start_approval_input_with_overrides(
+                    &model_id,
+                    Some(&sha),
+                    Some(VULKAN_MODEL_RUNTIME_ID),
+                    Some(2048),
+                    Some(0),
+                )
+                .expect("cpu with vulkan runtime"),
+        ];
+
+        for (frontend, rust_form) in frontend_forms.iter().zip(rust_forms.iter()) {
+            assert_eq!(
+                frontend, rust_form,
+                "frontend approval input must byte-match the validated Rust input"
+            );
+            assert_eq!(
+                crate::approval::canonical_input_digest(frontend),
+                crate::approval::canonical_input_digest(rust_form),
+                "issuance digest must equal validation digest"
+            );
+        }
     }
 
     #[test]

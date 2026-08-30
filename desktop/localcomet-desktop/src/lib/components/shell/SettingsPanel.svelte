@@ -4,6 +4,8 @@
   import ModelManagerSection from '$lib/components/model/ModelManagerSection.svelte';
   import SkillsManagerSection from '$lib/components/model/SkillsManagerSection.svelte';
   import PermissionsSection from '$lib/components/shell/PermissionsSection.svelte';
+  import CheckpointPanel from '$lib/components/shell/CheckpointPanel.svelte';
+  import CodingPanel from '$lib/components/shell/CodingPanel.svelte';
   import ObservabilityRoom from '$lib/components/logs/ObservabilityRoom.svelte';
   import { controlPlaneBridgeState } from '$lib/stores/controlPlane';
   import {
@@ -12,10 +14,13 @@
     setDiagnosticsPanelOpen,
     settingsSection,
     setThemeMode,
-    themeMode
+    themeMode,
+    setVoiceGender,
+    voiceGender
   } from '$lib/stores/shellStore';
   import { availableLanguages, isLanguage, locale, setLocale, t } from '$lib/i18n';
   import type { ThemeMode } from '$lib/data/mockData';
+  import type { VoiceGender } from '$lib/stores/uiPreferences';
   import {
     DESKTOP_BUILD_LABEL,
     DESKTOP_BUILD_STATUS,
@@ -23,6 +28,7 @@
   } from '$lib/version';
   import { filesCapabilityAvailable, initializeFilesCapability } from '$lib/stores/files';
   import { chooseWorkspace, restoreWorkspace, workspaceStore } from '$lib/stores/workspace';
+  import { speakLocalText, stopLocalText } from '$lib/bridge/voice';
 
   export let onClose: () => void = () => undefined;
 
@@ -33,6 +39,8 @@
     { id: 'models', labelKey: 'settings.tab_models' },
     { id: 'skills', labelKey: 'skills.title' },
     { id: 'permissions', labelKey: 'settings.tab_permissions' },
+    { id: 'checkpoints', labelKey: 'checkpoints.title' },
+    { id: 'coding', labelKey: 'coding.title' },
     { id: 'observability', labelKey: 'settings.tab_observability' },
     { id: 'about', labelKey: 'settings.tab_about' }
   ] as const;
@@ -43,6 +51,11 @@
     { mode: 'dark', icon: 'moon', labelKey: 'settings.theme_dark' }
   ];
 
+  const ttsVoices: ReadonlyArray<{ gender: VoiceGender; labelKey: string; descriptionKey: string }> = [
+    { gender: 'female', labelKey: 'settings.voice_female', descriptionKey: 'settings.voice_female_description' },
+    { gender: 'male', labelKey: 'settings.voice_male', descriptionKey: 'settings.voice_male_description' }
+  ];
+
   // Languages come from the shared registry, so adding a locale there makes it
   // appear here without touching this component.
   const languages = availableLanguages;
@@ -50,6 +63,17 @@
   function onLanguageChange(event: Event): void {
     const value = (event.currentTarget as HTMLSelectElement).value;
     if (isLanguage(value)) setLocale(value);
+  }
+
+  function selectVoiceGender(gender: VoiceGender): void {
+    if ($voiceGender === gender) return;
+    setVoiceGender(gender);
+    void stopLocalText();
+  }
+
+  function previewVoiceGender(gender: VoiceGender): void {
+    setVoiceGender(gender);
+    void stopLocalText().then(() => speakLocalText($t('settings.voice_preview_text'), gender, $locale));
   }
 
   $: diagnosticsOpen = $inspectorVisible || $inspectorDrawerOpen;
@@ -145,6 +169,40 @@
       </div>
       </section>
 
+      <section aria-labelledby="settings-voice-output">
+        <h3 id="settings-voice-output">{$t('settings.voice_output_title')}</h3>
+        <p class="workspace-description">{$t('settings.voice_output_description')}</p>
+        <p class="workspace-description" role="status">{$t('settings.voice_output_availability')}</p>
+        <div class="choice-grid voice-grid" role="group" aria-label={$t('settings.voice_output_title')}>
+          {#each ttsVoices as item}
+            <div class="voice-option">
+              <button
+                type="button"
+                class:selected={$voiceGender === item.gender}
+                aria-label={$t(item.labelKey)}
+                aria-pressed={$voiceGender === item.gender}
+                title={$t(item.labelKey)}
+                onclick={() => selectVoiceGender(item.gender)}
+              >
+                <Icon name="microphone" size={18} />
+                <span>{$t(item.labelKey)}</span>
+                <small>{$t(item.descriptionKey)}</small>
+              </button>
+              <button
+                type="button"
+                class="voice-preview-button"
+                aria-label={$t('settings.voice_preview')}
+                title={$t('settings.voice_preview')}
+                onclick={() => previewVoiceGender(item.gender)}
+              >
+                <Icon name="play" size={14} />
+                <span>{$t('settings.voice_preview')}</span>
+              </button>
+            </div>
+          {/each}
+        </div>
+      </section>
+
       <section aria-labelledby="settings-workspace">
         <h3 id="settings-workspace">{$t('settings.workspace_title')}</h3>
         <p class="workspace-description">{$t('settings.workspace_description')}</p>
@@ -202,6 +260,12 @@
     <div class:panel-hidden={$settingsSection !== 'permissions'} aria-hidden={$settingsSection !== 'permissions'}>
       <PermissionsSection />
     </div>
+    <div class:panel-hidden={$settingsSection !== 'checkpoints'} aria-hidden={$settingsSection !== 'checkpoints'}>
+      <CheckpointPanel />
+    </div>
+    <div class:panel-hidden={$settingsSection !== 'coding'} aria-hidden={$settingsSection !== 'coding'}>
+      <CodingPanel />
+    </div>
     <div class:panel-hidden={$settingsSection !== 'observability'} aria-hidden={$settingsSection !== 'observability'}>
       <ObservabilityRoom />
     </div>
@@ -241,12 +305,18 @@
           <ul>
             <li>{$t('capability.internet')}</li>
             <li>{$t('capability.email')}</li>
-            <li>{$t('capability.browser')}</li>
             {#if !$filesCapabilityAvailable}<li>{$t('capability.files')}</li>{/if}
             <li>{$t('capability.vault')}</li>
-            <li>{$t('capability.computer_use')}</li>
             <li>{$t('capability.shell')}</li>
             <li>{$t('capability.external_tools')}</li>
+          </ul>
+        </div>
+        <div>
+          <h4>{$t('settings.pending_verification')}</h4>
+          <ul>
+            <li>{$t('capability.browser_pending')}</li>
+            <li>{$t('capability.computer_use_pending')}</li>
+            <li>{$t('capability.restart_recovery_pending')}</li>
           </ul>
         </div>
       </div>
@@ -383,6 +453,28 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .voice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .voice-option {
+    min-width: 0;
+    display: grid;
+    gap: var(--lc-space-1);
+  }
+
+  .voice-option > button:first-child {
+    min-height: 76px;
+  }
+
+  .voice-preview-button {
+    grid-template-columns: auto 1fr;
+    place-items: center start;
+    min-height: 34px !important;
+    padding: var(--lc-space-1) var(--lc-space-2) !important;
+    text-align: left !important;
+  }
+
   .language-field {
     display: grid;
   }
@@ -475,6 +567,18 @@
     gap: var(--lc-space-1);
     padding: var(--lc-space-2);
     text-align: center;
+  }
+
+  .choice-grid button small {
+    color: var(--lc-muted);
+    font-size: 10px;
+    font-weight: 560;
+    line-height: 1.35;
+  }
+
+  .choice-grid button.selected small,
+  .choice-grid button:hover small {
+    color: inherit;
   }
 
   .choice-grid button:hover,
@@ -593,7 +697,8 @@
       width: calc(100vw - var(--sidebar-width));
     }
 
-    .theme-grid {
+    .theme-grid,
+    .voice-grid {
       grid-template-columns: 1fr;
     }
 

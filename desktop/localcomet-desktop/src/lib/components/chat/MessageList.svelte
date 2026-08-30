@@ -65,6 +65,32 @@
     setComposerDraft($composerDraft.trim() ? `${$composerDraft.trim()}\n${text}` : text);
   }
 
+  function requestErrorReason(error: string): string {
+    const bounded = String(error || '').trim().slice(0, 240);
+    if (!bounded) return '';
+    const safeCodes = [
+      'path_outside_workspace',
+      'workspace_digest_mismatch',
+      'policy_denied',
+      'approval_required',
+      'ownership_missing',
+      'model_not_ready',
+      'runtime_unavailable',
+      'gateway_unavailable',
+      'tool_unsupported',
+      'computer_use_blocked',
+      'timeout'
+    ];
+    const tokens = Array.from(bounded.matchAll(/\b[a-z][a-z0-9_]{2,64}\b/gi), (match) => match[0].toLowerCase());
+    const safeCode = safeCodes.find((code) => tokens.includes(code));
+    if (safeCode) return `${$t('chat.request_failed_reason')}: ${safeCode}`;
+
+    const safeClass = /(blocked|policy|allowlist|unsupported|invalid|outside[ _](the[ _])?workspace|approval|ownership|model|runtime|gateway|tool|computer use|not ready|permission|unavailable|timeout)/i.test(bounded)
+      ? 'request_blocked_or_unavailable'
+      : '';
+    return safeClass ? `${$t('chat.request_failed_reason')}: ${safeClass}` : '';
+  }
+
   $: visibleMessages = $chatMessages.filter((message) => message.conversationId === $selectedConversationId);
   $: showEmptyState = visibleMessages.length === 0;
   $: modelLoading = $acquisitionBusy || ['Validating', 'Starting', 'Stopping'].includes($managedRuntimeStore.status?.state ?? '') ||
@@ -101,7 +127,7 @@
   }
 
   import { onDestroy } from 'svelte';
-  import { voiceMode } from '$lib/stores/shellStore';
+  import { voiceGender, voiceMode } from '$lib/stores/shellStore';
 
   onDestroy(() => {
     if (copyTimeout) {
@@ -115,7 +141,7 @@
       const requestId = $inferenceRequestStore.requestId;
       const lastMessage = $chatMessages.find(m => m.requestId === requestId && m.role === 'assistant');
       if (lastMessage && lastMessage.body && $locale === 'ru' && claimSpeechRequest(requestId)) {
-        void speakLocalText(lastMessage.body);
+        void speakLocalText(lastMessage.body, $voiceGender, $locale);
       }
     }
   }
@@ -129,6 +155,7 @@
         busy={modelLoading}
         statusLabel={modelLoading ? $t('chat.model_loading_status') : $managedModelReady ? $t('chat.local_only_status') : undefined}
         actionLabel={!$managedModelReady && !modelLoading ? $t('chat.setup_local_ai') : undefined}
+        actionTestId={!$managedModelReady && !modelLoading ? 'chat-setup-local-ai' : undefined}
         onAction={!$managedModelReady && !modelLoading ? () => openModelSetup('managed') : undefined}
       />
       {#if $managedModelReady}
@@ -212,6 +239,9 @@
                 <span class="request-error-detail">{$t('chat.request_timed_out_detail')}</span>
               {:else if message.error && message.state === 'failed'}
                 <span class="request-error-detail">{$t('chat.request_failed_detail')}</span>
+                {#if requestErrorReason(message.error)}
+                  <span class="request-error-cause">{requestErrorReason(message.error)}</span>
+                {/if}
               {/if}
               {#if ['cancelled', 'timed_out', 'failed'].includes(message.state)}
                 <button
@@ -392,6 +422,17 @@
 
   .user .request-state {
     color: currentColor;
+  }
+
+  .request-error-detail,
+  .request-error-cause {
+    display: block;
+  }
+
+  .request-error-cause {
+    color: var(--lc-text-secondary);
+    margin-top: 4px;
+    overflow-wrap: anywhere;
   }
 
   .request-error-detail {

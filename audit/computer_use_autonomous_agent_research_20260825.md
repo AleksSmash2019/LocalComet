@@ -143,3 +143,46 @@ NIST определяет agent hijacking как indirect prompt injection, пр
 - audit ledger с correlation IDs, action digest, observation hash, policy decision, result и terminal verdict;
 - adaptive red-team suite с indirect prompt injection, data exfiltration, RCE/download-run и phishing-like task variants;
 - отдельные метрики task success, unsafe-action rate, false-PASS rate, recovery rate, cancellation latency и resource budget compliance.
+
+## LocalComet skills inventory
+
+Проверен `modules/skills/registry.json` и активные manifests. `browser-pilot` — enabled skill с capabilities `browser.open`, `browser.fetch`, `browser.summarize`, но его entrypoint лишь проксирует `modules.browser_direct.BrowserHarness` и поддерживает `open/fetch/screenshot`; это не самостоятельный autonomous Computer Use executor и не заменяет host broker. `workspace-guard` — enabled helper с policy/validate capabilities, но его path checks ограничены простыми fragments и не заменяют canonical path, reparse/symlink и workspace confinement logic. `skills_invoker.py` даёт полезную изоляцию: только enabled skill, manifest permission check, `shell=False`, bounded env, 30-second timeout и bounded stdout/stderr.
+
+Решение: **не импортировать внешний skill вслепую и не использовать Browser Pilot как обход broker**. Переиспользовать его только как optional read/fetch helper после проверки network/untrusted-content boundary; browser launch, hidden desktop binding, URL navigation, UIA grounding и postcondition остаются в native host broker/browser harness. Для folder/file operations использовать native workspace-constrained handlers, а Workspace Guard расширять только после отдельного security review.
+
+## Browser defect confirmed in source
+
+Natural phrase `Открой браузер хром` was recognized by `computer_use_real_actions_ru._resolve_app`, but the deterministic model fallback had no Chrome/Edge/Firefox aliases. This allowed a local model to choose malformed `open_url` without a URL, which then hit the host-only rejection path. The fix adds browser aliases and explicit gateway semantics: browser launch uses `open_app`; `open_url` requires a user-provided full HTTP(S) URL.
+
+The broker also previously named its validator `validate_youtube_url` and accepted only `youtube.com`. It now validates general HTTP(S) URLs while rejecting empty/oversized/whitespace/control-character URLs, credentials, explicit ports, IPv6 literals, non-HTTP(S) schemes and missing hosts. Browser target remains allowlisted (`chrome`, `msedge`, `firefox`), hidden mode still requires the configured isolated profile/CDP port, and navigation remains guarded.
+
+
+## Fresh official agentic IDE research — 2026-08-27
+
+### OpenAI Codex Windows sandbox
+
+Source: https://openai.com/index/building-codex-windows-sandbox/
+
+OpenAI describes a coding-agent sandbox as an OS-enforced execution boundary whose restrictions propagate through the process tree. The Windows design separates workspace writes from protected paths, uses restricted tokens/identities and explicit process spawning, and treats network suppression as a separate enforcement problem rather than relying on a UI promise. The direct LocalComet implication is that workspace confinement, process ownership, and network policy must be enforced at the host boundary; a model instruction or environment variable alone is not sufficient for a 9/10 claim.
+
+### OpenAI harness engineering
+
+Source: https://openai.com/index/harness-engineering/
+
+The agent-first engineering pattern emphasizes repository-local maps, executable plans, mechanical invariants, observable logs/metrics, isolated app instances, browser/CDP skills, reviewable changes, and feedback loops that make work legible to agents. It explicitly separates product code from the harness/evaluation infrastructure and treats tests, CI, documentation, observability and recovery as part of the product. LocalComet’s roadmap therefore adds repository-local acceptance plans, structural checks, per-run evidence, and no-success-without-postcondition rules.
+
+### Anthropic Claude Code overview
+
+Source: https://docs.anthropic.com/en/docs/claude-code/overview
+
+Claude Code presents a modern coding-agent baseline: repository exploration, multi-file edits, tests/lint, Git integration, skills, hooks, MCP, custom agents, background/scheduled sessions and handoff across surfaces. The relevant LocalComet quality target is not feature-count parity; it is a reviewable end-to-end loop where the agent can inspect a repository, make bounded changes, run verification, report failures and preserve context/recovery without hiding the state transition.
+
+### GitHub Copilot cloud agent
+
+Source: https://docs.github.com/copilot/concepts/agents/cloud-agent/about-cloud-agent
+
+GitHub’s cloud agent baseline includes repository research, implementation planning, branch-scoped changes, tests/linters, iterative review and optional pull requests in an ephemeral development environment. The documentation also states limits: one repository/branch per task and bounded session execution. LocalComet should similarly make task scope, workspace binding, branch identity, execution budget, reviewable diff and terminal evidence explicit rather than implying unlimited autonomy.
+
+### Consequence for current scorecard
+
+The fresh sources reinforce five score-critical requirements: (1) OS/process-tree enforcement, (2) repository-local plan and mechanical invariants, (3) reviewable diff plus test/evidence loop, (4) bounded task scope and interruption/recovery, and (5) explicit distinction between agent/model output and independent environmental postconditions. They do not prove any LocalComet capability; they update the target criteria only.

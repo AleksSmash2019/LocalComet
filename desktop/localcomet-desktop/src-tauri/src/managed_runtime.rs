@@ -139,10 +139,7 @@ impl ManagedRuntimeError {
 
 impl From<ManagedRuntimeError> for BridgeError {
     fn from(value: ManagedRuntimeError) -> Self {
-        BridgeError {
-            code: value.code.into(),
-            message: value.message,
-        }
+        BridgeError::new(value.code, &value.message)
     }
 }
 
@@ -410,14 +407,17 @@ impl ManagedRuntimeSupervisor {
     ) -> Result<Value, BridgeError> {
         let mut input = self.runtime_start_approval_input(model_id, custom_sha256, runtime_id)?;
         if let Some(object) = input.as_object_mut() {
-            object.insert(
-                "ctx_size_override".into(),
-                serde_json::json!(ctx_size_override),
-            );
-            object.insert(
-                "gpu_layers_override".into(),
-                serde_json::json!(gpu_layers_override),
-            );
+            // Override keys are only canonicalized when a concrete value was
+            // requested. An unset override is semantically absent and must not
+            // appear as null, otherwise the validation digest diverges from
+            // the issuance digest for inputs that omit the keys (JSON.stringify
+            // drops `undefined`, and the canonical frontend form omits null).
+            if let Some(value) = ctx_size_override {
+                object.insert("ctx_size_override".into(), serde_json::json!(value));
+            }
+            if let Some(value) = gpu_layers_override {
+                object.insert("gpu_layers_override".into(), serde_json::json!(value));
+            }
         }
         Ok(input)
     }
@@ -672,6 +672,22 @@ impl ManagedRuntimeSupervisor {
                 || matches!(gpu_layers_override, Some(layers) if (1..99).contains(&layers)))
     }
 
+    /// Host-RAM headroom a CPU launch must clear before spawning llama.cpp.
+    ///
+    /// llama.cpp memory-maps the GGUF, so resident memory tracks the pages
+    /// actually touched rather than the whole file: demanding
+    /// `file_size + 0.5 GB` of FREE RAM rejected models that run fine, which is
+    /// the single biggest gap against LM Studio, where a 7B on a 32 GB machine
+    /// simply loads. The guard is kept, but sized to the working set that must
+    /// really stay resident (KV cache, compute buffers and hot weights) instead
+    /// of the full artifact. It is intentionally still a guard: a model far
+    /// larger than RAM would thrash, and that is reported before spawn.
+    fn cpu_required_ram_gb(model_size_gb: f64) -> f64 {
+        const RESIDENT_FRACTION: f64 = 0.55;
+        const OVERHEAD_GB: f64 = 0.7;
+        model_size_gb * RESIDENT_FRACTION + OVERHEAD_GB
+    }
+
     fn start_inner(
         &self,
         model_id: &str,
@@ -754,15 +770,15 @@ impl ManagedRuntimeSupervisor {
         // RAM; llama.cpp is authoritative for the actual layer allocation and
         // readiness probe. CPU-only and full-host paths retain the conservative
         // guard, while the bounded numeric hybrid profile can proceed.
+        let required_ram_gb = Self::cpu_required_ram_gb(model_size_gb);
         if !Self::is_partial_gpu_offload(accelerated, gpu_layers_override)
-            && available_ram_gb < model_size_gb + 0.5
+            && available_ram_gb < required_ram_gb
         {
             return Err(ManagedRuntimeError::new(
                 "model_does_not_fit",
                 format!(
                     "Not enough memory. Required: ~{:.1} GB, Available: {:.1} GB",
-                    model_size_gb + 0.5,
-                    available_ram_gb
+                    required_ram_gb, available_ram_gb
                 ),
             )
             .into());
@@ -806,14 +822,19 @@ impl ManagedRuntimeSupervisor {
             };
             let mut process = match ContainedManagedRuntimeProcess::spawn(&spec) {
                 Ok(process) => process,
-                Err(_) => {
+                Err(error) => {
                     drop(api_key_handle);
                     let _ = fs::remove_file(&api_key_file);
-                    return Err(ManagedRuntimeError::new(
-                        "launch_failed",
-                        "managed runtime launch failed",
-                    )
-                    .into());
+                    // The OS error is the only host-side evidence separating
+                    // a missing runtime binary, access denial, a job-object
+                    // refusal (WinError 1816) and a portable-executable
+                    // mismatch. Discarding it collapsed every one of those
+                    // into a single opaque "launch_failed" the user could not
+                    // act on. No runtime stderr exists yet at this point -- a
+                    // tail attached here would be stale bytes from a previous
+                    // run, so only authoritative facts about THIS attempt are
+                    // reported.
+                    return Err(launch_failure_error(&error, &spec));
                 }
             };
             let inner = self.inner.lock().expect("managed runtime lock poisoned");
@@ -1622,6 +1643,27 @@ fn probe_capability(
 /// the device probe positively enumerates zero Vulkan devices. If the probe
 /// itself cannot run, absence is not proven and the existing readiness
 /// contract stays authoritative instead of failing closed on a guess.
+/// Pick this model's CPU engine from its own compatible runtime list.
+///
+/// The engine is NOT switched automatically: `runtime_id` is part of the
+/// approval digest, so silently launching a different engine than the one the
+/// user confirmed would bypass approval. Instead the failure names the exact
+/// runtime to select, turning a dead-end ("select the CPU engine") into a
+/// one-click recovery the UI can offer.
+fn cpu_fallback_runtime_id(
+    compatible_runtime_ids: &[String],
+    current_runtime_id: &str,
+) -> Option<String> {
+    compatible_runtime_ids
+        .iter()
+        .find(|candidate| {
+            candidate.as_str() != current_runtime_id
+                && !candidate.contains("vulkan")
+                && !candidate.contains("cuda")
+        })
+        .cloned()
+}
+
 fn ensure_vulkan_device_available(
     launch: &ValidatedRuntimeModel,
 ) -> Result<(), ManagedRuntimeError> {
@@ -1632,10 +1674,22 @@ fn ensure_vulkan_device_available(
         &launch.executable,
     ) {
         DeviceProbeOutcome::VulkanDevice(_) => Ok(()),
-        DeviceProbeOutcome::NoVulkanDevice => Err(ManagedRuntimeError::new(
-            "vulkan_device_unavailable",
-            "no Vulkan device is available; select the CPU engine for this model",
-        )),
+        DeviceProbeOutcome::NoVulkanDevice => {
+            let message = match cpu_fallback_runtime_id(
+                &launch.compatible_runtime_ids,
+                &launch.runtime_id,
+            ) {
+                Some(cpu_runtime) => format!(
+                    "no Vulkan device is available; select the CPU engine '{cpu_runtime}' for this model"
+                ),
+                None => "no Vulkan device is available and no CPU engine is installed for this model"
+                    .to_owned(),
+            };
+            Err(ManagedRuntimeError::new(
+                "vulkan_device_unavailable",
+                message,
+            ))
+        }
         DeviceProbeOutcome::ProbeUnavailable => Ok(()),
     }
 }
@@ -1832,6 +1886,26 @@ fn sanitized_runtime_environment() -> Vec<(OsString, OsString)> {
     env
 }
 
+/// Build the `launch_failed` envelope with the real OS cause attached.
+///
+/// `BridgeError::with_detail` bounds and redacts each entry, so the absolute
+/// paths below cannot carry a secret and cannot exceed the detail budget.
+fn launch_failure_error(error: &std::io::Error, spec: &ManagedRuntimeLaunchSpec) -> BridgeError {
+    let detail = json!({
+        "os_error": error.to_string(),
+        "os_error_code": error.raw_os_error().unwrap_or(0),
+        "executable": spec.executable.to_string_lossy(),
+        "working_dir": spec.current_dir.to_string_lossy(),
+        "arg_count": spec.args.len(),
+    });
+    BridgeError::new(
+        "launch_failed",
+        &format!("managed runtime launch failed: {error}"),
+    )
+    .with_phase("managed_runtime_launch")
+    .with_detail("launch", &detail)
+}
+
 fn wait_ready(
     process: &Arc<Mutex<ContainedManagedRuntimeProcess>>,
     port: u16,
@@ -1848,16 +1922,31 @@ fn wait_ready(
                 "managed runtime start was cancelled",
             ));
         }
-        let (running, process_id) = {
+        let (running, process_id, exit_code) = {
             let process = process
                 .lock()
                 .expect("managed runtime process lock poisoned");
-            (process.is_running(), process.process_id())
+            (
+                process.is_running(),
+                process.process_id(),
+                process.exit_code(),
+            )
         };
         if !running {
+            // The exit code is the only host-side evidence of WHY an early
+            // death happened: rejected launch flag versus missing Vulkan ICD
+            // versus VRAM exhaustion all leave different codes. Reporting it
+            // turns an unactionable failure into a diagnosable one.
             return Err(ManagedRuntimeError::new(
                 "runtime_exited",
-                "managed runtime exited before readiness",
+                match exit_code {
+                    Some(code) => {
+                        format!("managed runtime exited before readiness (exit code {code})")
+                    }
+                    None => {
+                        "managed runtime exited before readiness (exit code unavailable)".to_owned()
+                    }
+                },
             ));
         }
         match loopback_listener_owner(port)? {
@@ -2805,6 +2894,41 @@ mod tests {
     }
 
     #[test]
+    fn cpu_fallback_prefers_a_non_accelerated_sibling_engine() {
+        let compatible = vec![
+            "llama-cpp-windows-x86-64-vulkan-bootstrap".to_owned(),
+            "llama-cpp-windows-x86-64-cpu-bootstrap".to_owned(),
+        ];
+        assert_eq!(
+            cpu_fallback_runtime_id(&compatible, "llama-cpp-windows-x86-64-vulkan-bootstrap"),
+            Some("llama-cpp-windows-x86-64-cpu-bootstrap".to_owned())
+        );
+    }
+
+    #[test]
+    fn cpu_fallback_never_returns_another_accelerated_engine() {
+        // Recommending CUDA after Vulkan failed to find a device would send the
+        // user from one accelerated dead-end into another.
+        let compatible = vec![
+            "llama-cpp-windows-x86-64-vulkan-bootstrap".to_owned(),
+            "llama-cpp-windows-x86-64-cuda-bootstrap".to_owned(),
+        ];
+        assert_eq!(
+            cpu_fallback_runtime_id(&compatible, "llama-cpp-windows-x86-64-vulkan-bootstrap"),
+            None
+        );
+    }
+
+    #[test]
+    fn cpu_fallback_is_absent_when_only_the_current_engine_is_compatible() {
+        let compatible = vec!["llama-cpp-windows-x86-64-vulkan-bootstrap".to_owned()];
+        assert_eq!(
+            cpu_fallback_runtime_id(&compatible, "llama-cpp-windows-x86-64-vulkan-bootstrap"),
+            None
+        );
+    }
+
+    #[test]
     fn capability_report_serializes_reason_and_fallback() {
         let capability = ManagedRuntimeCapability {
             runtime_id: "llama-cpp-windows-x86-64-vulkan-bootstrap".into(),
@@ -2908,6 +3032,47 @@ mod tests {
             Some(0)
         ));
         assert!(ManagedRuntimeSupervisor::is_partial_gpu_offload(true, None));
+    }
+
+    #[test]
+    fn cpu_preflight_admits_an_mmap_backed_model_that_fits_its_working_set() {
+        // A 4.5 GB GGUF on a machine with 4.0 GB free RAM: the old
+        // `file_size + 0.5` rule demanded 5.0 GB and refused to start, even
+        // though llama.cpp mmaps the weights and only the working set stays
+        // resident. This is the LM Studio parity case.
+        let required = ManagedRuntimeSupervisor::cpu_required_ram_gb(4.5);
+        assert!(
+            required < 4.0,
+            "a 4.5 GB model must be admitted with 4.0 GB free, required {required:.2} GB"
+        );
+    }
+
+    #[test]
+    fn cpu_preflight_still_rejects_a_model_far_larger_than_host_ram() {
+        // The guard must not become a rubber stamp: a 27B-class artifact on a
+        // small machine would thrash, and that is still reported before spawn.
+        let required = ManagedRuntimeSupervisor::cpu_required_ram_gb(16.0);
+        assert!(
+            required > 8.0,
+            "a 16 GB model must still be rejected with 8 GB free, required {required:.2} GB"
+        );
+    }
+
+    #[test]
+    fn cpu_preflight_requirement_grows_monotonically_with_model_size() {
+        let mut previous = f64::MIN;
+        for size_gb in [0.5, 1.7, 4.5, 8.0, 16.0, 32.0] {
+            let required = ManagedRuntimeSupervisor::cpu_required_ram_gb(size_gb);
+            assert!(
+                required > previous,
+                "requirement must increase with model size at {size_gb} GB"
+            );
+            assert!(
+                required > 0.0,
+                "requirement must stay positive at {size_gb} GB"
+            );
+            previous = required;
+        }
     }
 
     #[test]

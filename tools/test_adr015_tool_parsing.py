@@ -50,6 +50,40 @@ def _raises(fn, code: str) -> None:
     raise AssertionError(f"expected GatewayError({code}), none raised")
 
 
+def _project_manifest() -> dict[str, Any]:
+    return {
+        "schema_version": "localcomet.context-manifest.v2",
+        "workspace_digest": "b" * 64,
+        "inventory_digest": "c" * 64,
+        "content_digest": "d" * 64,
+        "task_id": "0123456789abcdef01234567",
+        "step_id": None,
+        "generation": 1,
+        "files": [
+            {
+                "rel_path": "src/main.rs",
+                "hash": "a" * 64,
+                "size": 42,
+                "summary": {
+                    "parse_mode": "heuristic",
+                    "symbols": ["main"],
+                    "imports": ["std::io"],
+                    "dependencies": ["std/io"],
+                },
+            }
+        ],
+        "repo_map": "src/main.rs | aaaaaaaa | score 12 | symbols:main | imports:std::io | deps:std/io\\n",
+        "token_budget": 4096,
+        "context_manifest_hash": "e" * 64,
+        "manifest_hash": "e" * 64,
+        "provenance": {
+            "indexer_version": "project-intelligence-v2",
+            "exclusions": [".env", "target"],
+            "tree_digest": "d" * 64,
+        },
+    }
+
+
 class ToolRegistryTests(unittest.TestCase):
     def test_registry_has_exactly_five_files_tools(self) -> None:
         self.assertEqual(
@@ -233,6 +267,60 @@ class AssistantContextToolsTests(unittest.TestCase):
         instruction = build_system_instruction(context)
         self.assertIn("внешние инструменты", instruction)
         self.assertNotIn("files.read", instruction)
+
+    def test_system_instruction_declares_the_selected_response_language(self) -> None:
+        language_names = {
+            "ru": "Текущий язык ответа — русский",
+            "en": "The current response language is English",
+            "es": "The current response language is Spanish",
+            "de": "The current response language is German",
+            "fr": "The current response language is French",
+            "pt-BR": "The current response language is Brazilian Portuguese",
+            "it": "The current response language is Italian",
+            "zh-CN": "The current response language is Simplified Chinese",
+            "ja": "The current response language is Japanese",
+            "ko": "The current response language is Korean",
+            "tr": "The current response language is Turkish",
+            "uk": "The current response language is Ukrainian",
+            "pl": "The current response language is Polish",
+            "ar": "The current response language is Arabic",
+        }
+        for locale, marker in language_names.items():
+            with self.subTest(locale=locale):
+                context = _validate_assistant_context(trusted_assistant_context_payload(locale, False, ()))
+                self.assertIn(marker, build_system_instruction(context))
+
+    def test_unknown_assistant_locale_is_rejected(self) -> None:
+        _raises(
+            lambda: _validate_assistant_context(trusted_assistant_context_payload("xx", False, ())),
+            "invalid_payload",
+        )
+
+    def test_project_manifest_is_typed_and_reaches_instruction_boundary(self) -> None:
+        manifest = _project_manifest()
+        context = _validate_assistant_context(
+            trusted_assistant_context_payload("ru", False, (), manifest)
+        )
+        self.assertTrue(context.project_context_available)
+        self.assertEqual(context.project_context_manifest, manifest)
+        instruction = build_system_instruction(context)
+        self.assertIn("localcomet.context-manifest.v2", instruction)
+        self.assertIn("eeeeeeee", instruction)
+        self.assertNotIn("Контекст проекта не предоставлен", instruction)
+
+    def test_project_manifest_tampering_and_excluded_paths_are_rejected(self) -> None:
+        manifest = _project_manifest()
+        tampered = trusted_assistant_context_payload("ru", False, (), manifest)
+        tampered["conversation"]["project_context_available"] = False
+        _raises(lambda: _validate_assistant_context(tampered), "invalid_payload")
+        excluded = _project_manifest()
+        excluded["files"][0]["rel_path"] = ".env"
+        _raises(
+            lambda: _validate_assistant_context(
+                trusted_assistant_context_payload("ru", False, (), excluded)
+            ),
+            "invalid_payload",
+        )
 
 
 def _error_code_message(fn) -> tuple:

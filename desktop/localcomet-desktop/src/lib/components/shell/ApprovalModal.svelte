@@ -41,8 +41,8 @@
       }
     });
     listen<ActiveApprovalPrompt>('request_tool_approval', (event) => {
-      setApprovalPrompt(event.payload);
       clearDismissTimer();
+      if (!setApprovalPrompt(event.payload)) return;
       dismissTimer = setTimeout(() => {
         void rejectActiveApproval();
       }, PROMPT_TIMEOUT_MS);
@@ -167,9 +167,12 @@
       aria-busy={resolving ? 'true' : 'false'}
       bind:this={modalEl}
       on:keydown={handleModalKeydown}
+      data-testid="approval-dialog"
+      data-lc="approval-dialog"
       data-approval-request-id={currentRequest.request_id}
       data-model-request-id={currentRequest.model_request_id ?? ''}
       data-model-action-id={currentRequest.model_action_id ?? ''}
+      data-input-digest={currentRequest.input_digest ?? ''}
     >
       <h2 id="approval-title">{$t('approval.tool')}: {currentRequest.tool}</h2>
       
@@ -202,10 +205,10 @@
         <div class="approval-error" role="alert" aria-live="assertive">{$t('approval.resolve_error_prefix')} {resolutionError}</div>
       {/if}
       <div class="actions">
-        <button type="button" class="btn-reject" disabled={resolving} on:click={() => resolve('reject')}>
+        <button type="button" class="btn-reject" data-testid="approval-reject" data-lc="approval-reject" disabled={resolving} on:click={() => resolve('reject')}>
           {$t('approval.reject')}
         </button>
-        <button type="button" class="btn-approve" disabled={resolving} on:click={() => resolve('approve')}>
+        <button type="button" class="btn-approve" data-testid="approval-confirm" data-lc="approval-confirm" disabled={resolving} on:click={() => resolve('approve')}>
           {$t('approval.confirm')}
         </button>
       </div>

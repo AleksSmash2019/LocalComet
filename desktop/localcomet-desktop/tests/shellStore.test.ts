@@ -78,6 +78,7 @@ describe('shell stores', () => {
       locale: 'ru',
       diagnosticsPanel: 'closed',
             voiceMode: false,
+      voiceGender: 'female',
       effort: 'off',
       ctxSizeOverride: null,
 

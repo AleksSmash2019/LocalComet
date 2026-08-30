@@ -1,8 +1,8 @@
 import { derived, get, writable } from 'svelte/store';
 import { inspectorSections, modeOptions, modelOptions } from '$lib/data/mockData';
 import type { ChatMessageState, InspectorSection, MockMessage, ModeOption, ModelOption, ThemeMode } from '$lib/data/mockData';
-import type { AgentPermissions, ComputeMode, EffortLevel } from './uiPreferences';
-import { isComputeMode, isEffortLevel, loadUiPreferences, updateUiPreferences } from './uiPreferences';
+import type { AgentPermissions, ComputeMode, EffortLevel, VoiceGender } from './uiPreferences';
+import { isComputeMode, isEffortLevel, isVoiceGender, loadUiPreferences, updateUiPreferences } from './uiPreferences';
 
 import { conversationStore, getActiveConversationId, resetConversationStore, selectConversation as selectConversationInStore } from './conversationStore';
 
@@ -12,7 +12,7 @@ export const MAX_DRAFT_LENGTH = 12000;
 export const MAX_ASSISTANT_MESSAGE_LENGTH = 262_144;
 
 export type WorkspaceMode = 'chat' | 'review' | 'setup' | 'modelfit' | 'hf_browser';
-export type SettingsSection = 'interface' | 'models' | 'skills' | 'permissions' | 'observability' | 'about';
+export type SettingsSection = 'interface' | 'models' | 'skills' | 'permissions' | 'checkpoints' | 'coding' | 'observability' | 'about';
 
 let messageCounter = 0;
 const initialUiPreferences = loadUiPreferences();
@@ -24,6 +24,7 @@ function cloneMessages(): MockMessage[] {
 export const themeMode = writable<ThemeMode>(initialUiPreferences.theme);
 export const agentPermissions = writable<AgentPermissions>(initialUiPreferences.agentPermissions);
 export const voiceMode = writable<boolean>(initialUiPreferences.voiceMode);
+export const voiceGender = writable<VoiceGender>(initialUiPreferences.voiceGender);
 export const effortLevel = writable<EffortLevel>(initialUiPreferences.effort);
 
 export const ctxSizeOverride = writable<number | null>(initialUiPreferences.ctxSizeOverride);
@@ -108,6 +109,12 @@ export function setVoiceMode(enabled: boolean): void {
   if (typeof enabled !== 'boolean') return;
   voiceMode.set(enabled);
   updateUiPreferences({ voiceMode: enabled });
+}
+
+export function setVoiceGender(gender: VoiceGender): void {
+  if (!isVoiceGender(gender)) return;
+  voiceGender.set(gender);
+  updateUiPreferences({ voiceGender: gender });
 }
 
 export function setEffortLevel(level: EffortLevel): void {
@@ -353,6 +360,8 @@ export function resetShellStores(): void {
   const preferences = loadUiPreferences();
   messageCounter = 0;
   themeMode.set(preferences.theme);
+  voiceMode.set(preferences.voiceMode);
+  voiceGender.set(preferences.voiceGender);
   activeWorkspace.set('chat');
   sidebarExpanded.set(true);
   inspectorVisible.set(preferences.diagnosticsPanel === 'open');

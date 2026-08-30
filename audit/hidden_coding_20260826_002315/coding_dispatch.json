@@ -1,0 +1,23 @@
+{
+  "schema_version": "localcomet.coding-dispatch.v1",
+  "timestamp_utc": "2026-08-25T19:24:34.923742+00:00",
+  "branch_head": "74f527d5cc97526a791eca81a8d995e2cc5a6aa7",
+  "fixture": {
+    "workspace": "C:\\Users\\DNS\\AppData\\Local\\Temp\\lc_cu_root_coding_20260826_002315\\coding_fixture",
+    "original_sha256": "65b67fe874f09a7a459d2e994390ea342ce52cc89441b3ab4a94b3508e4e29c1"
+  },
+  "payload": {
+    "error": "approval_denied",
+    "detail": "coding_start_approval not allowed. Command not found",
+    "taskId": "lcoding_mt920h5z"
+  },
+  "disk_postcondition": {
+    "exists": true,
+    "final_sha256": "65b67fe874f09a7a459d2e994390ea342ce52cc89441b3ab4a94b3508e4e29c1",
+    "content_matches_new": false,
+    "rollback_restored_original": true,
+    "left_broken": false
+  },
+  "outcome": "BLOCKED_CODING_ERROR",
+  "classification": "VERIFIED_BLOCKED"
+}

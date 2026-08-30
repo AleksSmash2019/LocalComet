@@ -42,11 +42,30 @@ let listener: ((event: { payload: unknown }) => void) | null = null;
 let runToolCallResponse: unknown = null;
 let observeResponse: unknown = null;
 let runtimeStatusResponse: unknown = null;
+// Mock-scoped: after the first revoke the broker grant must reject a replay.
+let continuationRevoked = false;
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
     invokeCalls.push({ command, args });
     if (command === 'cu_broker_observe') return observeResponse;
+    if (command === 'cu_broker_continuation_consume') {
+      if (continuationRevoked) {
+        throw { code: 'continuation_replayed', message: 'continuation_replayed' };
+      }
+      return { schema_version: 'cu.broker.continuation.grant.v1', status: 'leased', lease_id: `lease_${invokeCalls.length}`, grant_state: 'in_flight' };
+    }
+    if (command === 'cu_broker_continuation_complete') {
+      const status = (args as { status?: string }).status;
+      return { schema_version: 'cu.broker.continuation.grant.v1', status, grant_state: status === 'verified' ? 'completed_verified' : 'issued' };
+    }
+    if (command === 'cu_broker_continuation_revoke') {
+      continuationRevoked = true;
+      return { revoked: 1 };
+    }
+    if (command === 'model_turn_cancel') {
+      return { request_id: args?.requestId, turn_id: args?.requestId, state: 'Cancelled', accepted: true, already_terminal: false, worker_alive: false };
+    }
     if (command === 'request_approval') {
       const tool = (args as { tool: string }).tool;
       const familyMap: Record<string, string> = { 'artifact.download': 'artifact_download', 'artifact.remove': 'artifact_remove', 'runtime.start': 'runtime_start', 'runtime.stop': 'runtime_stop', 'model.binding.set': 'model_binding_set' };
@@ -107,6 +126,8 @@ function installTauriMock(): void {
   listener = null;
   observeResponse = null;
   runtimeStatusResponse = null;
+  continuationRevoked = false;
+  delete (globalThis as { __LOCALCOMET_CONTINUATION_TRACE?: unknown[] }).__LOCALCOMET_CONTINUATION_TRACE;
   // Full verified v1 envelope: the only shape the shared classifier accepts
   // as a PASS; the legacy bare ok=true now stays honestly UNVERIFIED.
   runToolCallResponse = {
@@ -264,8 +285,8 @@ describe('Local Model Gateway frontend', () => {
     expect(get(modelGatewayStore).portText).toBe('1234');
   });
 
-  it('rejects an unsupported assistant locale before invoking Tauri', async () => {
-    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, seed: 42, prompt: 'hello', locale: 'fr' as 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] })).rejects.toMatchObject({ code: 'invalid_payload' });
+  it('rejects an unknown assistant locale before invoking Tauri', async () => {
+    await expect(startModelTurn({ requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, maxTokens: 256, seed: 42, prompt: 'hello', locale: 'xx' as 'ru', bindingFingerprint: FINGERPRINT, agentPermissions: { files: false, shell: false, computerUse: false, tools: false, internet: false }, messages: [] })).rejects.toMatchObject({ code: 'invalid_payload' });
     expect(invokeCalls).toHaveLength(0);
   });
 
@@ -399,7 +420,7 @@ describe('Local Model Gateway frontend', () => {
       tools_executed: 1,
       tool_calls: [{ id: 'call_1', name: 'computer_use', arguments: { action: 'open_app', target: 'Calculator' } }]
     }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(get(inferenceRequestStore).lifecycle).toBe('completed'));
 
     expect(invokeCalls.map((call) => call.command)).toContain('run_tool_call');
     expect(invokeCalls.map((call) => call.command)).toContain('request_approval');
@@ -441,7 +462,7 @@ describe('Local Model Gateway frontend', () => {
       tools_executed: 1,
       tool_calls: [{ id: 'call_1', name: 'computer_use', arguments: { action: 'key', text: 'enter' } }]
     }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(get(inferenceRequestStore).lifecycle).toBe('completed'));
 
     expect(get(inferenceRequestStore).lifecycle).toBe('completed');
     const assistant = get(chatMessages);
@@ -661,8 +682,8 @@ describe('Local Model Gateway frontend', () => {
 
   it('renders managed runtime without URL, port, API-key, executable or path controls', () => {
     const body = render(ManagedRuntimePanel).body;
-    expect(body).toContain('Managed llama.cpp');
-    expect(body).toContain('Not installed');
+    expect(body).toContain(get(t)('model.managed_runtime_title'));
+    expect(body).toContain(get(t)('model.not_installed'));
     expect(body).not.toMatch(/URL|Port|API key|Executable|Model path|Environment|Arguments/i);
   });
 
@@ -737,7 +758,7 @@ describe('Local Model Gateway frontend', () => {
       };
     }
 
-    async function startTurnWithPendingLaunch(): Promise<void> {
+    async function startTurnWithPendingLaunch(withContinuation = false): Promise<void> {
       vi.useFakeTimers();
       setAgentPermissions({ computerUse: true });
       modelGatewayStore.update((state) => ({
@@ -756,7 +777,21 @@ describe('Local Model Gateway frontend', () => {
       }));
       inferenceRequestStore.set({ lifecycle: 'accepted', requestId: TURN_ID, chatSessionId: 'local-chat', modelId: 'local-model', submittedAtUnixMs: 1, acceptedAtUnixMs: 1, firstTokenAtUnixMs: null, terminalAtUnixMs: null, maxTokens: 256, effort: 'off', chunkCount: 0, nextSequence: 0, receivedContent: false, cancellationAccepted: false, terminalMethod: null, rejectedEventCount: 0, lastError: null });
       appendAcceptedChatTurn(TURN_ID, 'Открой калькулятор');
-      runToolCallResponse = launchPendingEnvelope();
+      runToolCallResponse = withContinuation
+        ? {
+            ...launchPendingEnvelope(),
+            execution: {
+              continuation: {
+                schema_version: 'cu.broker.continuation.grant.v1',
+                grant_ref: `cgr_${'d'.repeat(32)}`,
+                grant_state: 'issued',
+                step_index: 0,
+                allowed_next_actions: ['observe', 'wait', 'wait_for_window'],
+                remaining_steps: 2
+              }
+            }
+          }
+        : launchPendingEnvelope();
       applyModelGatewayEvent(modelEvent('model.turn.started', 0));
       applyModelGatewayEvent(modelEvent('model.tool.request', 1, {
         tools_executed: 1,
@@ -814,6 +849,90 @@ describe('Local Model Gateway frontend', () => {
       await vi.advanceTimersByTimeAsync(20_000);
       expect(observeCalls()).toBe(afterCancel);
       expect(get(inferenceRequestStore).lifecycle).toBe('cancelled');
+    });
+
+    it('consumes the broker grant once and completes it verified (integration seam)', async () => {
+      await startTurnWithPendingLaunch(true);
+      observeResponse = {
+        found: true,
+        envelope: {
+          ...launchPendingEnvelope(),
+          status: 'completed',
+          terminal: true,
+          succeeded: true,
+          verification: 'verified'
+        }
+      };
+      await vi.advanceTimersByTimeAsync(4000);
+
+      const consume = invokeCalls.find((call) => call.command === 'cu_broker_continuation_consume');
+      expect(consume?.args).toEqual({
+        grantRef: `cgr_${'d'.repeat(32)}`,
+        taskId: `task_${TURN_ID}`,
+        stepId: 'step_call_1',
+        requestId: TURN_ID,
+        actionKind: 'observe',
+        input: { action: 'observe' },
+        expectedStepIndex: 1
+      });
+      // The one-time capability is consumed exactly once before completion;
+      // the second consume is the B3 replay probe attached to the terminal
+      // cleanup revoke, replaying the identical arguments.
+      const consumes = invokeCalls.filter((call) => call.command === 'cu_broker_continuation_consume');
+      expect(consumes).toHaveLength(2);
+      expect(consumes[0]?.args).toEqual(consumes[1]?.args);
+      const complete = invokeCalls.find((call) => call.command === 'cu_broker_continuation_complete');
+      expect(complete?.args).toMatchObject({ status: 'verified', postconditionVerified: true });
+      expect(get(inferenceRequestStore).lifecycle).toBe('completed');
+    });
+
+    it('re-arms the grant while pending and revokes it on cancellation', async () => {
+      await startTurnWithPendingLaunch(true);
+      observeResponse = { found: true, envelope: launchPendingEnvelope() };
+
+      await vi.advanceTimersByTimeAsync(4000);
+      const pendingComplete = invokeCalls.find((call) => call.command === 'cu_broker_continuation_complete');
+      expect(pendingComplete?.args).toMatchObject({ status: 'pending', postconditionVerified: false });
+
+      await cancelLocalModelTurn();
+      expect(get(inferenceRequestStore).lifecycle).toBe('cancelled');
+      const revoke = invokeCalls.find((call) => call.command === 'cu_broker_continuation_revoke');
+      expect(revoke?.args?.grantRef).toBe(`cgr_${'d'.repeat(32)}`);
+    });
+
+    it('records typed replay rejection after successful revoke', async () => {
+      await startTurnWithPendingLaunch(true);
+      observeResponse = { found: true, envelope: launchPendingEnvelope() };
+
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(invokeCalls.filter((call) => call.command === 'cu_broker_continuation_consume')).toHaveLength(1);
+
+      await cancelLocalModelTurn();
+
+      // Let the revoke acknowledgement and the replay probe settle (microtasks
+      // only; no timers involved in this path).
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+
+      const consumes = invokeCalls.filter((call) => call.command === 'cu_broker_continuation_consume');
+      expect(consumes).toHaveLength(2);
+      expect(consumes[0]?.args).toEqual(consumes[1]?.args);
+      expect(consumes[1]?.args).toMatchObject({
+        grantRef: `cgr_${'d'.repeat(32)}`,
+        taskId: `task_${TURN_ID}`,
+        stepId: 'step_call_1',
+        requestId: TURN_ID,
+        actionKind: 'observe',
+        input: { action: 'observe' },
+        expectedStepIndex: 1
+      });
+
+      const trace = (globalThis as { __LOCALCOMET_CONTINUATION_TRACE?: { event: string; request_id?: string; status?: string }[] }).__LOCALCOMET_CONTINUATION_TRACE ?? [];
+      expect(trace).toContainEqual({ event: 'continuation_replay_rejected', request_id: TURN_ID, status: 'continuation_replayed' });
+      // Raw grant material never leaks into the diagnostic trace.
+      expect(JSON.stringify(trace)).not.toContain('cgr_');
+      expect(JSON.stringify(trace)).not.toContain('lease_');
     });
   });
 });

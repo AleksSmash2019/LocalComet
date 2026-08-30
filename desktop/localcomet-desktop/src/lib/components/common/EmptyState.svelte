@@ -7,6 +7,7 @@
   export let onAction: (() => void) | undefined = undefined;
   export let busy = false;
   export let statusLabel: string | undefined = undefined;
+  export let actionTestId: string | undefined = undefined;
 </script>
 
 <div class="empty-state" aria-busy={busy} aria-live="polite">
@@ -18,7 +19,7 @@
       <span class:busy class="state-label">{statusLabel}</span>
     {/if}
     {#if actionLabel && onAction}
-      <button type="button" class="primary-button" onclick={onAction}>
+      <button type="button" class="primary-button" data-testid={actionTestId} onclick={onAction}>
         {actionLabel}
       </button>
     {/if}

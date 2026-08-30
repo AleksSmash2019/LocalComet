@@ -1,0 +1,75 @@
+{
+  "timestamp_utc": "2026-08-26T04:21:09.536531+00:00",
+  "worker_pid": 23248,
+  "launcher_pid": 8104,
+  "allowed_pid_count": 12,
+  "window_count": 9,
+  "windows": [
+    {
+      "hwnd": 983226,
+      "pid": 20224,
+      "title": "",
+      "class": "Chrome_WidgetWin_0",
+      "visible": false
+    },
+    {
+      "hwnd": 590000,
+      "pid": 20224,
+      "title": "",
+      "class": "Base_PowerMessageWindow",
+      "visible": false
+    },
+    {
+      "hwnd": 7603692,
+      "pid": 15112,
+      "title": "",
+      "class": "crashpad_SessionEndWatcher",
+      "visible": false
+    },
+    {
+      "hwnd": 11208114,
+      "pid": 8104,
+      "title": "LocalComet",
+      "class": "Tauri Window",
+      "visible": false
+    },
+    {
+      "hwnd": 591688,
+      "pid": 8104,
+      "title": "",
+      "class": "Tao Thread Event Target",
+      "visible": true
+    },
+    {
+      "hwnd": 2296132,
+      "pid": 20224,
+      "title": "",
+      "class": "CicLoaderWndClass",
+      "visible": false
+    },
+    {
+      "hwnd": 7340798,
+      "pid": 20224,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 1639662,
+      "pid": 15112,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    },
+    {
+      "hwnd": 14354970,
+      "pid": 8104,
+      "title": "Default IME",
+      "class": "IME",
+      "visible": false
+    }
+  ],
+  "violations": [],
+  "benign_invisible_external_windows": [],
+  "isolated": true
+}

@@ -16,7 +16,9 @@ import {
   requestApprovalForTool,
   rejectActiveApproval,
   resetApprovalStore,
-  setApprovalPrompt
+  setApprovalCorrelation,
+  setApprovalPrompt,
+  normalizeApprovalPrompt
 } from '../src/lib/stores/approvalStore';
 
 const mockedInvoke = vi.mocked(invoke);
@@ -127,6 +129,77 @@ describe('approvalStore', () => {
     expect(get(approvalStore).phase).toBe('idle');
   });
 
+  it('rejects malformed approval events before they reach the prompt store', () => {
+    const valid = {
+      request_id: 'appr_' + 'd'.repeat(32),
+      tool: 'computer_use',
+      risk_level: 'dangerous',
+      target_summary: '{}',
+      side_effect_category: 'computer_control',
+      destructive: true,
+      input_digest: 'd'.repeat(64)
+    };
+    expect(setApprovalPrompt(valid)).toBe(true);
+    expect(setApprovalPrompt({ ...valid, input_digest: '' })).toBe(false);
+    expect(get(approvalPrompt)).toBeNull();
+    expect(get(approvalPromptActive)).toBe(false);
+    expect(normalizeApprovalPrompt({ ...valid, request_id: 'appr_' + 'D'.repeat(32) })).toBeNull();
+    expect(normalizeApprovalPrompt({ ...valid, model_action_id: 'call_\u0000bad' })).toBeNull();
+  });
+
+  it('rejects partial correlation and never inherits stale UI identity', () => {
+    const base = {
+      request_id: 'appr_' + 'f'.repeat(32),
+      tool: 'computer_use',
+      risk_level: 'dangerous',
+      target_summary: '{}',
+      side_effect_category: 'computer_control',
+      destructive: true,
+      input_digest: 'f'.repeat(64)
+    };
+    setApprovalCorrelation({
+      modelRequestId: '0123456789abcdef01234567',
+      modelActionId: 'call_0123456789abcdef0123456789ab'
+    });
+    expect(normalizeApprovalPrompt({ ...base, model_request_id: '0123456789abcdef01234567' })).toBeNull();
+    expect(setApprovalPrompt(base)).toBe(true);
+    expect(get(approvalPrompt)).toEqual(expect.objectContaining(base));
+    expect(get(approvalPrompt)).not.toHaveProperty('model_request_id');
+    expect(get(approvalPrompt)).not.toHaveProperty('model_action_id');
+  });
+
+  it('normalizes only bounded optional correlation metadata', () => {
+    const prompt = normalizeApprovalPrompt({
+      request_id: 'appr_' + 'd'.repeat(32),
+      model_request_id: '0123456789abcdef01234567',
+      model_action_id: 'call_0123456789abcdef0123456789ab',
+      tool: 'computer_use',
+      risk_level: 'dangerous',
+      target_summary: '{"action":"open_app"}',
+      side_effect_category: 'computer_control',
+      destructive: true,
+      input_digest: 'd'.repeat(64),
+      expires_at_unix_ms: Date.now() + 120_000,
+      ignored: 'not rendered'
+    });
+    expect(prompt).toEqual(expect.objectContaining({
+      model_request_id: '0123456789abcdef01234567',
+      model_action_id: 'call_0123456789abcdef0123456789ab',
+      input_digest: 'd'.repeat(64)
+    }));
+    expect(prompt).not.toHaveProperty('ignored');
+    expect(normalizeApprovalPrompt({
+      request_id: 'appr_' + 'd'.repeat(32),
+      model_request_id: 'bad',
+      tool: 'computer_use',
+      risk_level: 'dangerous',
+      target_summary: '{}',
+      side_effect_category: 'computer_control',
+      destructive: true,
+      input_digest: 'd'.repeat(64)
+    })).toBeNull();
+  });
+
   it('rejects an active frontend prompt and clears its shared state', async () => {
     setApprovalPrompt({
       request_id: 'appr_' + 'd'.repeat(32),
@@ -135,6 +208,7 @@ describe('approvalStore', () => {
       target_summary: '{"action":"open_app","target":"calculator"}',
       side_effect_category: 'computer_control',
       destructive: true,
+      input_digest: 'd'.repeat(64),
       expires_at_unix_ms: Date.now() + 120_000
     });
     mockedInvoke.mockResolvedValue(undefined);
@@ -204,6 +278,10 @@ describe('approval correlation boundary', () => {
     requestApprovalForTool('computer_use', input, { onResult, requestId, actionId });
     await flushBackgroundApproval();
 
+    expect(mockedInvoke.mock.calls[0]).toEqual([
+      'request_approval',
+      { tool: 'computer_use', input, requestId, actionId }
+    ]);
     expect(mockedInvoke.mock.calls[1]).toEqual([
       'run_tool_call',
       expect.objectContaining({
@@ -217,5 +295,26 @@ describe('approval correlation boundary', () => {
     expect((mockedInvoke.mock.calls[1][1] as Record<string, unknown>).input).not.toHaveProperty('request_id');
     expect((mockedInvoke.mock.calls[1][1] as Record<string, unknown>).input).not.toHaveProperty('action_id');
     expect(onResult).toHaveBeenCalledWith({ tool: 'computer_use', status: 'completed' });
+  });
+
+  it('uses server correlation over stale pending UI correlation', () => {
+    setApprovalCorrelation({
+      modelRequestId: '0123456789abcdef01234567',
+      modelActionId: 'call_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    });
+    setApprovalPrompt({
+      request_id: 'appr_' + 'e'.repeat(32),
+      model_request_id: '0123456789abcdef01234567',
+      model_action_id: 'call_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      tool: 'computer_use',
+      risk_level: 'dangerous',
+      target_summary: '{"action":"open_app","target":"notepad"}',
+      side_effect_category: 'computer_control',
+      destructive: true,
+      input_digest: 'e'.repeat(64),
+      expires_at_unix_ms: Date.now() + 120_000
+    });
+
+    expect(get(approvalPrompt)?.model_action_id).toBe('call_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
   });
 });

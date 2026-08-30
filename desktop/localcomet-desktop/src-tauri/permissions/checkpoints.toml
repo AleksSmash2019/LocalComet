@@ -1,0 +1,10 @@
+[[permission]]
+identifier = "allow-checkpoints"
+description = "Read-only timeline access plus guarded compare/restore over the checkpoint backend. Restore refuses on any user or foreign modification and consumes a one-time Rust approval grant before mutating."
+commands.allow = [
+  "checkpoint_list",
+  "checkpoint_compare",
+  "checkpoint_restore_approval",
+  "checkpoint_restore_files",
+  "checkpoint_restore_task"
+]

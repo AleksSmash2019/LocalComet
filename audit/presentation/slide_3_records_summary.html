@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container {
+            width: 1280px;
+            min-height: 720px;
+            background-color: #FFFFFF;
+            color: #0A192F;
+            font-family: 'Courier New', Consolas, monospace;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+        }
+        h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+        .header-box {
+            border: 1px solid #0A192F;
+            /* keep top padding 20px, reduce bottom to save height */
+            padding: 20px 20px 10px 30px;
+            margin-bottom: 12px;
+            background-color: #E3F2FD;
+        }
+        .slide-title {
+            font-size: 36px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .content-box {
+            border: 1px solid #0A192F;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 0; /* prevent stretching to fill extra space */
+        }
+        .intro-text {
+            font-size: 20px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #0A192F;
+            margin-bottom: 12px;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #0A192F;
+            padding: 8px 10px; /* reduced padding to save vertical space */
+            text-align: left;
+            font-size: 18px;
+        }
+        .data-table th {
+            background-color: #E3F2FD;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .subset-box {
+            border: 1px solid #0A192F;
+            padding: 10px;
+            background-color: rgba(10, 25, 47, 0.03);
+            margin-bottom: 8px;
+        }
+        .subset-title {
+            font-size: 20px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #0A192F;
+            padding-bottom: 3px;
+        }
+        .subset-text {
+            font-size: 18px;
+            line-height: 1.4;
+        }
+        .ref-text {
+            font-size: 16px;
+            color: #666;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header-box">
+            <h1 class="slide-title">Сводка 72 isolated-hidden-desktop records</h1>
+        </div>
+
+        <div class="content-box">
+            <p class="intro-text">По machine-readable aggregation всех isolated_hidden_desktop/nine_* JSONL reports собрано 72 rows.</p>
+            
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 35%;">Verdict</th>
+                        <th style="width: 15%;">Rows</th>
+                        <th>Интерпретация</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="font-weight: 600;">VERIFIED_SUCCESS</td>
+                        <td>31</td>
+                        <td>Положительные bounded runs; не все являются P0 acceptance</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">VERIFIED_FAILED</td>
+                        <td>12</td>
+                        <td>Честные action/UI/infrastructure failures</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">VERIFIED_BLOCKED</td>
+                        <td>4</td>
+                        <td>Fail-closed blocks</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #D32F2F; font-weight: 600;">NOT_INDEPENDENTLY_VERIFIED</td>
+                        <td>24</td>
+                        <td>Нет достаточной структурной корреляции/postcondition</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">PENDING_TERMINAL</td>
+                        <td>1</td>
+                        <td>Stop click наблюдён, backend safe state не доказан</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="subset-box">
+                <h3 class="subset-title">Acceptance Subset</h3>
+                <p class="subset-text">
+                    <strong>Browser Python №32–33, Notepad №11–12 и screenshot №12–13</strong> — paired current-code-cutoff successes; 
+                    <strong>Recovery notepad_recovery_01</strong> — VERIFIED_FAILED; 
+                    <strong>Cancel browser</strong> — PENDING_TERMINAL.
+                </p>
+            </div>
+
+            <p class="ref-text">Raw aggregation: audit/isolated_evidence_summary_current_20260827.json</p>
+        </div>
+    </div>
+</body>
+</html>

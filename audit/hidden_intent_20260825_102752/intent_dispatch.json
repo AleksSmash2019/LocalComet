@@ -1,0 +1,12 @@
+{
+  "schema_version": "localcomet.intent-dispatch.v1",
+  "timestamp_utc": "2026-08-25T05:30:15.716821+00:00",
+  "prompt": "Открой https://example.com в браузере",
+  "branch_head": "74f527d5cc97526a791eca81a8d995e2cc5a6aa7",
+  "payload": {
+    "error": "approval_denied",
+    "detail": "[object Object]"
+  },
+  "outcome": "BLOCKED_INTENT_ERROR",
+  "classification": "VERIFIED_BLOCKED"
+}

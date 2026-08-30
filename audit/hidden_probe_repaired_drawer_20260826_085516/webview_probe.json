@@ -1,0 +1,90 @@
+{
+  "timestamp_utc": "2026-08-26T03:55:49.280193+00:00",
+  "cdp_port": 9223,
+  "ok": true,
+  "page_url": "http://127.0.0.1:1423/",
+  "page": {
+    "url": "http://127.0.0.1:1423/",
+    "readyState": "complete",
+    "tauri": true
+  },
+  "cta": [
+    {
+      "tag": "BUTTON",
+      "label": "Подобрать модель",
+      "text": "Подобрать модель",
+      "disabled": false
+    }
+  ],
+  "uia_click": {
+    "clicked": "Настроить локальный AI"
+  },
+  "after_uia": {
+    "clicks": 0,
+    "clickLog": [],
+    "dialogNodes": 0,
+    "hasDrawerText": false,
+    "bodySnippet": "LocalComet\nЧат\nМодели HF\nПодобрать модель\nНовый чат\nЛОКАЛЬНЫЕ ЧАТЫ\nНовый чат\nНастройки\nЛокальная модель недоступна\nМодель не загружена\nМодель не загружена\nЛокальная модель недоступна\n\nLocalComet испол"
+  },
+  "js_click": "js-clicked",
+  "after_js": {
+    "clicks": 1,
+    "clickLog": [
+      {
+        "t": 1787716554497,
+        "tag": "BUTTON",
+        "label": "Подобрать модель",
+        "text": "Подобрать модель"
+      }
+    ],
+    "dialogNodes": 0,
+    "hasDrawerText": false,
+    "bodySnippet": "LocalComet\nЧат\nМодели HF\nПодобрать модель\nНовый чат\nЛОКАЛЬНЫЕ ЧАТЫ\nНовый чат\nНастройки"
+  },
+  "console_events": [
+    {
+      "type": "debug",
+      "args": [
+        {
+          "type": "string",
+          "value": "[vite] connecting..."
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1787716534101.934,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "",
+            "scriptId": "26",
+            "url": "http://127.0.0.1:1423/@vite/client",
+            "lineNumber": 850,
+            "columnNumber": 8
+          }
+        ]
+      }
+    },
+    {
+      "type": "debug",
+      "args": [
+        {
+          "type": "string",
+          "value": "[vite] connected."
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1787716534105.91,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "handleMessage",
+            "scriptId": "26",
+            "url": "http://127.0.0.1:1423/@vite/client",
+            "lineNumber": 954,
+            "columnNumber": 11
+          }
+        ]
+      }
+    }
+  ]
+}

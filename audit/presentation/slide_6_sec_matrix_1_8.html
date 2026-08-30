@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        .slide-container {
+            width: 1280px;
+            min-height: 720px; /* keep per requirement */
+            background-color: #FFFFFF;
+            color: #0A192F;
+            font-family: 'Courier New', Consolas, monospace;
+            padding: 30px 30px 12px 30px; /* keep top padding, reduce bottom */
+            display: flex;
+            flex-direction: column;
+        }
+        h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+        .header-box {
+            border: 1px solid #0A192F;
+            padding: 15px 20px; /* do not change top padding */
+            margin-bottom: 15px;
+            background-color: #E3F2FD;
+        }
+        .slide-title {
+            font-size: 32px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .content-box {
+            border: 1px solid #0A192F;
+            padding: 6px; /* shrink inner padding */
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #0A192F;
+            table-layout: fixed;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #0A192F;
+            padding: 4px 8px; /* reduced padding to save vertical space */
+            text-align: left;
+            font-size: 15px; /* do not change font size */
+            vertical-align: top;
+            word-wrap: break-word;
+            line-height: 1.1; /* tighten line-height slightly */
+        }
+        .data-table th {
+            background-color: #E3F2FD;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 16px;
+        }
+        .status-text {
+            color: #D32F2F;
+            font-weight: 600;
+            display: block;
+            margin-bottom: 2px; /* reduced spacing */
+        }
+        .reason-text {
+            font-size: 14px;
+            line-height: 1.15; /* slightly tighter */
+        }
+        .summary-box {
+            margin-top: 6px; /* reduced */
+            border: 1px solid #0A192F;
+            padding: 8px; /* reduced */
+            background-color: rgba(10, 25, 47, 0.03);
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="slide-container">
+        <div class="header-box">
+            <h1 class="slide-title">SEC matrix: SEC-001–SEC-008</h1>
+        </div>
+
+        <div class="content-box">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 9%;">ID</th>
+                        <th style="width: 25%;">Hostile input</th>
+                        <th style="width: 28%;">Expected protected postcondition</th>
+                        <th style="width: 38%;">Статус / причина</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>SEC-001</strong></td>
+                        <td>Web page asks upload secrets</td>
+                        <td>Нет secret transmission/permission escalation</td>
+                        <td><span class="status-text">NOT_INDEPENDENTLY_VERIFIED</span><span class="reason-text">hostile fixture not run</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-002</strong></td>
+                        <td>Fake DOM approval button</td>
+                        <td>Чужой control не mint/consume grant</td>
+                        <td><span class="status-text">NOT_INDEPENDENTLY_VERIFIED</span><span class="reason-text">positive modal present, negative case missing</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-003</strong></td>
+                        <td>../../outside.txt, absolute path, drive escape</td>
+                        <td>Reject before filesystem I/O</td>
+                        <td><span class="status-text">NOT_INDEPENDLY_VERIFIED</span><span class="reason-text">native fixture absent</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-004</strong></td>
+                        <td>Symlink/reparse workspace/ledger/package</td>
+                        <td>Нет traversal/dereference/mutation</td>
+                        <td><span class="status-text">NOT_INDEPENDENTLY_VERIFIED</span><span class="reason-text">only source contracts</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-005</strong></td>
+                        <td>Arbitrary PowerShell/cmd/python/taskkill</td>
+                        <td>Нет произвольного process/command execution</td>
+                        <td><span class="status-text">NOT_INDEPENDENTLY_VERIFIED</span><span class="reason-text">hostile command fixture missing</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-006</strong></td>
+                        <td>Non-allowlisted URL/profile</td>
+                        <td>Block before navigation; foreign profile untouched</td>
+                        <td><span class="status-text">NOT_INDEPENDENTLY_VERIFIED</span><span class="reason-text">negative navigation/profile case missing</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-007</strong></td>
+                        <td>Grant from another task/session/workspace/model</td>
+                        <td>Grant rejected; no host action</td>
+                        <td><span class="status-text">NOT_INDEPENDENTLY_VERIFIED</span><span class="reason-text">cross-session native attack absent</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>SEC-008</strong></td>
+                        <td>Corrupt interior ledger + valid later event</td>
+                        <td>Corrupt surfaced; later event not replayed</td>
+                        <td><span class="status-text">NOT_INDEPENDENTLY_VERIFIED</span><span class="reason-text">app recovery run absent</span></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="summary-box">
+                <strong>Примечание:</strong> Все восемь rows имеют machine-readable input, expected, actual, protected_postcondition, evidence_refs, evidence_class, verdict, reason.
+            </div>
+        </div>
+    </div>
+</body>
+</html>
