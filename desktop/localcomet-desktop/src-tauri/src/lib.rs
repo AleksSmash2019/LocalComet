@@ -274,6 +274,80 @@ pub fn run() {
                 app.handle().exit(1);
                 return Ok(());
             };
+            // Native OS menu bar (Win32, outside the web renderer). The menu is
+            // an enhancement: a failure here must never block app startup, so
+            // errors are reported and the window continues without a menu.
+            let native_menu_setup = (|| -> tauri::Result<()> {
+                let app_version = app.package_info().version.to_string();
+                let file_submenu = tauri::menu::SubmenuBuilder::new(app, "Файл")
+                    .item(&tauri::menu::MenuItem::with_id(
+                        app,
+                        "lc-reload-ui",
+                        "Перезагрузить интерфейс",
+                        true,
+                        Some("CmdOrCtrl+R"),
+                    )?)
+                    .separator()
+                    .item(&tauri::menu::MenuItem::with_id(
+                        app,
+                        "lc-quit",
+                        "Выход",
+                        true,
+                        Some("CmdOrCtrl+Q"),
+                    )?)
+                    .build()?;
+                let view_submenu = tauri::menu::SubmenuBuilder::new(app, "Вид")
+                    .item(&tauri::menu::PredefinedMenuItem::minimize(
+                        app,
+                        None::<&str>,
+                    )?)
+                    .item(&tauri::menu::PredefinedMenuItem::maximize(
+                        app,
+                        None::<&str>,
+                    )?)
+                    .separator()
+                    .item(&tauri::menu::PredefinedMenuItem::close_window(
+                        app,
+                        Some("Закрыть окно"),
+                    )?)
+                    .build()?;
+                let help_submenu = tauri::menu::SubmenuBuilder::new(app, "Справка")
+                    .item(&tauri::menu::PredefinedMenuItem::about(
+                        app,
+                        Some("О программе LocalComet"),
+                        Some(
+                            tauri::menu::AboutMetadataBuilder::new()
+                                .name(Some("LocalComet".to_string()))
+                                .version(Some(app_version))
+                                .build(),
+                        ),
+                    )?)
+                    .build()?;
+                let native_menu = tauri::menu::MenuBuilder::new(app)
+                    .item(&file_submenu)
+                    .item(&view_submenu)
+                    .item(&help_submenu)
+                    .build()?;
+                window.set_menu(native_menu)?;
+                let app_handle = app.handle().clone();
+                app.on_menu_event(move |_app, event| match event.id().as_ref() {
+                    "lc-reload-ui" => {
+                        if let Some(w) = app_handle.get_webview_window("main") {
+                            let _ = w.eval("location.reload()");
+                        }
+                    }
+                    "lc-quit" => {
+                        if let Some(w) = app_handle.get_webview_window("main") {
+                            let _ = w.close();
+                        }
+                    }
+                    _ => {}
+                });
+                Ok(())
+            })();
+            if let Err(menu_error) = native_menu_setup {
+                eprintln!("LC_MENU_001 native menu setup failed: {menu_error}");
+            }
             let invisible = std::env::var("LOCALCOMET_INVISIBLE").ok().as_deref() == Some("1");
             let window_result = if invisible {
                 window.hide()

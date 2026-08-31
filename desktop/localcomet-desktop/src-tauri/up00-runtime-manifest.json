@@ -20,6 +20,9 @@
     ]
   },
   "sourceFiles": [
+    "docs/THIRD-PARTY-NOTICES-npm.md",
+    "docs/THIRD-PARTY-NOTICES-rust.md",
+    "LICENSE",
     "modules/_vendor/comtypes/__init__.py",
     "modules/_vendor/comtypes/_comobject.py",
     "modules/_vendor/comtypes/_memberspec.py",
