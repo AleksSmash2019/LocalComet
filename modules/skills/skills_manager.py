@@ -79,6 +79,18 @@ class SkillsManager:
         (self._root / "installed").mkdir(exist_ok=True)
         self._registry_path = self._root / _REGISTRY_NAME
         self._registry: dict[str, dict[str, Any]] = self._load_registry()
+        # Parsed-workflow cache keyed by (mtime_ns, size) so the hot invocation
+        # path does not re-read + re-validate the same workflow JSON every call.
+        # Execution still happens in the isolated subprocess sandbox (see
+        # skills_invoker.py); this cache only memoizes untrusted-data parsing.
+        self._workflow_cache: dict[str, tuple[int, int, Any]] = {}
+        # Tree-integrity memoization: maps package path -> (signature, sha256).
+        # signature = (file_count, total_bytes, max_mtime_ns). When it is
+        # unchanged we skip re-reading every byte; the recorded sha256 is still
+        # compared with hmac.compare_digest on every verify_integrity call, so a
+        # change that alters size or mtime always triggers a fresh full hash.
+        # This is a same-process memoization only, mirroring _workflow_cache.
+        self._integrity_cache: dict[str, tuple[tuple[int, int, int], str]] = {}
 
     def _load_registry(self) -> dict[str, dict[str, Any]]:
         if not self._registry_path.exists():
@@ -283,6 +295,29 @@ class SkillsManager:
     def get_version(self, skill_id: str) -> str:
         return str(self._entry(skill_id).get("version", ""))
 
+    def _tree_signature(self, package: Path) -> tuple[int, int, int]:
+        """Cheap change signature without reading file bytes."""
+        count = 0
+        total = 0
+        max_mtime_ns = 0
+        for item in package.rglob("*"):
+            if item.is_file():
+                stat = item.stat()
+                count += 1
+                total += stat.st_size
+                if stat.st_mtime_ns > max_mtime_ns:
+                    max_mtime_ns = stat.st_mtime_ns
+        return (count, total, max_mtime_ns)
+
+    def _hash_skill_tree_cached(self, package: Path) -> str:
+        signature = self._tree_signature(package)
+        cached = self._integrity_cache.get(str(package))
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        digest = _hash_skill_tree(package)
+        self._integrity_cache[str(package)] = (signature, digest)
+        return digest
+
     def verify_integrity(self, skill_id: str) -> None:
         """Reject an installed skill if its recorded package tree has changed."""
         entry = self._entry(skill_id)
@@ -295,7 +330,7 @@ class SkillsManager:
             or not package.is_relative_to(self._root)
         ):
             raise SkillError(SkillErrorCode.CHECKSUM_MISMATCH, "skill integrity record is invalid")
-        actual = _hash_skill_tree(package)
+        actual = self._hash_skill_tree_cached(package)
         if not hmac.compare_digest(expected, actual):
             raise SkillError(SkillErrorCode.CHECKSUM_MISMATCH, "skill package changed after installation")
 
@@ -315,9 +350,20 @@ class SkillsManager:
             raise SkillError(SkillErrorCode.WORKFLOW_MISSING, "skill workflow is missing")
         return path
 
+    def _load_workflow_cached(self, path: Path, skill_id: str) -> Any:
+        key = str(path)
+        stat = path.stat()
+        signature = (stat.st_mtime_ns, stat.st_size)
+        cached = self._workflow_cache.get(key)
+        if cached is not None and cached[0] == signature[0] and cached[1] == signature[1]:
+            return cached[2]
+        workflow = _load_workflow(path, skill_id)
+        self._workflow_cache[key] = (signature[0], signature[1], workflow)
+        return workflow
+
     def compile_workflow(self, skill_id: str, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
         path = self.workflow_path(skill_id)
-        workflow = _load_workflow(path, skill_id)
+        workflow = self._load_workflow_cached(path, skill_id)
         return bind_workflow(workflow, arguments)
 
     def entrypoint_path(self, skill_id: str) -> Path:

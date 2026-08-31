@@ -647,11 +647,13 @@ class WaitSchemaTests(unittest.TestCase):
 
 
 class GroundingSafetyTests(unittest.TestCase):
-    """P0-5: fabricated title-token boxes are never execution targets; ties
-    between the best executable candidates require user clarification."""
+    """P0-5: fabricated title-token boxes are never execution targets; only
+    real UIA producer elements are executable; ties between the best
+    executable candidates require user clarification."""
 
     @staticmethod
     def _real_window(text: str, x: int = 10) -> dict:
+        # Coarse GetWindowRect box: search evidence, never an execution target.
         return {
             "element_type": "window",
             "text": text,
@@ -660,6 +662,20 @@ class GroundingSafetyTests(unittest.TestCase):
             "confidence": 0.96,
             "clickable": True,
             "source": "desktop_primitives",
+        }
+
+    @staticmethod
+    def _uia_element(element_id: str, text: str, x: int = 10) -> dict:
+        # Real structured UIA producer readback: the only executable tier.
+        return {
+            "element_type": "button",
+            "text": text,
+            "bbox": {"x": x, "y": 40, "width": 120, "height": 30},
+            "center": {"x": x + 60, "y": 55},
+            "confidence": 0.95,
+            "clickable": True,
+            "source": "uia_automation",
+            "metadata": {"control_type": "ButtonControl", "automation_id": element_id, "hwnd": 4242},
         }
 
     @staticmethod
@@ -688,10 +704,19 @@ class GroundingSafetyTests(unittest.TestCase):
         self.assertTrue(result["needs_user"])
         self.assertIn("structured UI evidence", result["reason"])
 
+    def test_window_level_box_is_never_an_execution_target(self) -> None:
+        # A clear semantic match on a whole-window box must fail closed: the
+        # box has no UIA control identity, so clicking its center is not a
+        # grounded element click.
+        result = self._ground([self._real_window("сохранить документ")])
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["needs_user"])
+        self.assertIn("structured UI evidence", result["reason"])
+
     def test_ambiguous_executable_candidates_require_clarification(self) -> None:
         result = self._ground([
-            self._real_window("сохранить документ", x=10),
-            self._real_window("сохранить как", x=500),
+            self._uia_element("btn_save_a", "сохранить документ", x=10),
+            self._uia_element("btn_save_b", "сохранить как", x=500),
         ])
         self.assertFalse(result["ok"])
         self.assertTrue(result.get("ambiguous"))
@@ -700,11 +725,14 @@ class GroundingSafetyTests(unittest.TestCase):
 
     def test_clear_best_executable_candidate_grounds(self) -> None:
         result = self._ground([
-            self._real_window("сохранить"),
-            self._real_window("калькулятор"),
+            self._uia_element("btn_save", "сохранить"),
+            self._uia_element("btn_calc", "калькулятор"),
         ])
         self.assertTrue(result["ok"])
         self.assertEqual(result["text"], "сохранить")
+        self.assertEqual(result["source"], "uia_automation")
+        self.assertEqual(result["target"]["producer"], "uia_automation")
+        self.assertEqual(result["target"]["automation_id"], "btn_save")
 
     def test_zero_candidates_is_needs_user(self) -> None:
         result = self._ground([])

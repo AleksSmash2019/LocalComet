@@ -10,7 +10,7 @@ import os
 import re
 import uuid
 
-AUTO_ACTION_VERSION = "v6.55b"
+AUTO_ACTION_VERSION = "v6.55c"
 ROOT_PATH = Path(__file__).resolve().parents[1]
 COMPUTER_USE_DIR = ROOT_PATH / "Projects" / "ComputerUse"
 AUTO_ACTION_DIR = COMPUTER_USE_DIR / "auto_actions"
@@ -174,18 +174,31 @@ def classify_action(action: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def is_grounded_action(action: Dict[str, Any]) -> bool:
+    kind = str(action.get("kind", "")).strip().lower()
+    target = action.get("target") or {}
+    if kind in {"click", "double_click"}:
+        # Click/double-click execution is grounded only through a structured
+        # producer element: the grounding module stamps grounding_source, or
+        # the guarded type flow passes an already-grounded element target.
+        # Bare coordinates are never click grounding evidence.
+        if action.get("grounding_source"):
+            return True
+        if bool(action.get("grounded")) and (
+            target.get("element_id") or target.get("element_description")
+        ):
+            return True
+        return False
     if bool(action.get("grounded")):
         return True
-    target = action.get("target") or {}
     if target.get("element_id") or target.get("element_description"):
         return True
     if target.get("x") is not None and target.get("y") is not None:
         return True
-    if action.get("kind") == "type" and bool(action.get("focused_target")):
+    if kind == "type" and bool(action.get("focused_target")):
         return True
-    if action.get("kind") == "hotkey":
+    if kind == "hotkey":
         return True
-    if action.get("kind") == "scroll":
+    if kind == "scroll":
         return True
     return False
 
@@ -238,7 +251,7 @@ def auto_policy_for_action(action: Dict[str, Any]) -> Dict[str, Any]:
             "allowed_to_execute": False,
             "requires_confirmation": False,
             "risk": "medium",
-            "reason": "GUI action needs element grounding or explicit coordinate/focused target before execution.",
+            "reason": "GUI action needs element grounding from a structured UIA producer element before execution.",
             "classification": classification,
             "policy": policy,
         }
@@ -477,8 +490,11 @@ def parse_auto_command(command: str) -> Dict[str, Any]:
         tail = raw[len("pc computer auto click "):].strip()
         parts = re.split(r"[,\s]+", tail)
         if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
-            return {"kind": "click", "target": {"x": int(parts[0]), "y": int(parts[1])}, "grounded": True, "reason": "explicit coordinate auto click"}
-        return {"kind": "click", "target": {"element_description": tail}, "grounded": bool(tail), "reason": "explicit element auto click"}
+            # Coordinates alone are not grounding evidence: the policy gate
+            # refuses this payload until it is grounded on a structured UIA
+            # producer element via the grounded click planner.
+            return {"kind": "click", "target": {"x": int(parts[0]), "y": int(parts[1])}, "grounded": False, "reason": "explicit coordinate auto click (coordinates alone are not grounding evidence)"}
+        return {"kind": "click", "target": {"element_description": tail}, "grounded": False, "reason": "explicit element auto click (requires grounded click planner)"}
 
     if lower.startswith("pc computer auto type "):
         text = raw[len("pc computer auto type "):]

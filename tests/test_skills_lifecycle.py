@@ -273,3 +273,44 @@ class LifecycleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_integrity_cache_reuses_hash_and_detects_tamper(tmp_path, monkeypatch):
+    """Memoization must not mask a real package change."""
+    from modules.skills import skills_manager as sm
+    from modules.skills.skills_contract import SkillError, SkillErrorCode
+
+    root = tmp_path / "skills"
+    mgr = sm.SkillsManager(root)
+
+    # Build a minimal installed package via the manager's own install path is
+    # heavy (archive). Instead seed the registry + package directly.
+    pkg = root / "installed" / "probe"
+    pkg.mkdir(parents=True)
+    (pkg / "entrypoint.py").write_text("print('hi')", encoding="utf-8")
+    (pkg / "skill.json").write_text("{}", encoding="utf-8")
+    digest = sm._hash_skill_tree(pkg)
+    mgr._registry["probe"] = {
+        "name": "probe", "version": "0.1.0", "state": "ENABLED",
+        "permissions": [], "entrypoint": "entrypoint.py",
+        "sha256": digest, "path": "installed/probe",
+    }
+
+    # First call computes the hash; second call hits the cache.
+    mgr.verify_integrity("probe")
+    first = mgr._hash_skill_tree_cached(pkg)
+    second = mgr._hash_skill_tree_cached(pkg)
+    assert first == second == digest
+
+    # Tamper: append a byte. Size changes -> signature changes -> fresh hash.
+    (pkg / "entrypoint.py").write_text("print('hi')\n# changed", encoding="utf-8")
+    new_digest = mgr._hash_skill_tree_cached(pkg)
+    assert new_digest != digest
+
+    # And verify_integrity now rejects because recorded sha256 no longer matches.
+    try:
+        mgr.verify_integrity("probe")
+    except SkillError as exc:
+        assert exc.code is SkillErrorCode.CHECKSUM_MISMATCH
+    else:
+        raise AssertionError("tampered package passed integrity check")

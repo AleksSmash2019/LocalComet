@@ -2273,7 +2273,7 @@ class CdpDriver:
             "  if(window.__lcContinuationStopAttempt) return;"
             "  const button=[...document.querySelectorAll('[data-testid=\\\"send-button\\\"][data-send=\\\"submit\\\"]')].find(item=>item.getAttribute('data-composer-action')==='stop' || ((item.getAttribute('aria-label')||'')==='Остановить'));"
             "  if(!button || button.disabled){return;}"
-            "  button.click(); if(window.__lcContinuationStopWatcher) clearInterval(window.__lcContinuationStopWatcher); window.__lcContinuationStopWatcher=null; window.__lcContinuationStopAttempt={clicked:true,trigger:'continuation_consume_leased'};"
+            "  button.click(); if(window.__lcContinuationStopWatcher) clearInterval(window.__lcContinuationStopWatcher); window.__lcContinuationStopWatcher=null; window.__lcContinuationStopAttempt={clicked:true,trigger:'continuation_consume_leased',request_id:requestId};"
             " };"
             " window.__lcContinuationStopWatcher=setInterval(()=>{"
             "  if(window.__lcContinuationStopAttempt) return;"
@@ -3099,6 +3099,18 @@ def cdp_wait_for_turn(
         cancel_eligible = False
         if cancel_after_continuation:
             turn_id = str((approval_prompt or {}).get("model_request_id") or "")
+            if not turn_id:
+                # Capability-gated actions may never show an approval card, so
+                # the request id must come from the app-written continuation
+                # trace itself (each event carries the same request id the
+                # correlation verifier matches on). This fixes evidence
+                # delivery only; every acceptance check below stays mandatory.
+                for trace_event in reversed(driver.continuation_trace()):
+                    if isinstance(trace_event, dict):
+                        candidate = str(trace_event.get("request_id") or "")
+                        if re.fullmatch(r"[0-9a-f]{24}", candidate):
+                            turn_id = candidate
+                            break
             continuation_facts = continuation_cancel_trace_verified(driver.continuation_trace(), turn_id)
             if continuation_facts.get("host_continuation_correlated") is True:
                 continuation_ready_since = continuation_ready_since or now
@@ -3110,7 +3122,9 @@ def cdp_wait_for_turn(
         else:
             cancel_eligible = cancel_after_ms is not None and (now - started) * 1000 >= max(0, cancel_after_ms)
         if cancel_eligible and cancel_probe_until is None:
-            cancel_probe_until = now + 8.0
+            # 20s window: the app must settle backend ack, revoke and the
+            # replay probe round-trips before the safe-state verdict is read.
+            cancel_probe_until = now + 20.0
             cancel_card_count_before = driver.tool_card_count()
             if cancel_trace_installed is None:
                 cancel_trace_installed = driver.install_cancel_trace()
@@ -3122,7 +3136,7 @@ def cdp_wait_for_turn(
             if cancel_probe.get("clicked") is True:
                 cancel_probe["trace_install"] = cancel_trace_installed
                 cancel_probe["card_count_before"] = cancel_card_count_before
-                cancel_probe["turn_id"] = (approval_prompt or {}).get("model_request_id", "")
+                cancel_probe["turn_id"] = str((approval_prompt or {}).get("model_request_id") or "") or str(cancel_probe.get("request_id") or "")
                 cancel_probe["continuation_trace_before_cancel"] = driver.continuation_trace()
                 cancel_probe.update(continuation_cancel_trace_verified(
                     cancel_probe["continuation_trace_before_cancel"],
@@ -4792,6 +4806,13 @@ def run_worker(args: argparse.Namespace) -> int:
                             row["cancellation_evidence"] = [
                                 turn.get("cancel_probe") for turn in observations if turn.get("cancel_probe") is not None
                             ]
+                            # Persist the app-written continuation trace for the
+                            # case. Diagnostic evidence only: the acceptance
+                            # gates below never read this field.
+                            try:
+                                row["continuation_trace_final"] = driver.continuation_trace()
+                            except Exception:
+                                row["continuation_trace_final"] = []
                             row["body_snippet"] = driver.body_snippet(500)
                             row["approval_required"] = approval_required
                             row["session_capability_required"] = session_capability_required

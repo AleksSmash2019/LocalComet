@@ -471,6 +471,7 @@ fn spawn_running(program: &str, args: &[String], cwd: &Path) -> Result<RunningCh
             args: args.iter().map(std::ffi::OsString::from).collect(),
             current_dir: cwd.to_path_buf(),
             env,
+            memory_limit_bytes: None,
         };
         crate::windows_job::spawn_terminal_contained(&spec)
             .map(RunningChild::Contained)

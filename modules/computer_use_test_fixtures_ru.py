@@ -16,7 +16,7 @@ from modules.project_paths import (
 )
 
 
-TEST_FIXTURES_VERSION = "v6.47i"
+TEST_FIXTURES_VERSION = "v6.47j"
 
 
 def _now() -> str:
@@ -24,6 +24,11 @@ def _now() -> str:
 
 
 def canonical_ui_map() -> Dict[str, Any]:
+    # The synthetic fixture stands in for a REAL structured UIA producer
+    # readback: elements carry source="uia_automation" plus metadata
+    # control_type/automation_id, exactly as
+    # pc_ui_parser_adapter._uia_elements_for_desktop emits them. Grounding
+    # treats only such elements as executable click/type targets.
     return {
         "ok": True,
         "mode": "computer_use_contract_synthetic_ui_map",
@@ -37,7 +42,9 @@ def canonical_ui_map() -> Dict[str, Any]:
                 "text": "Сохранить",
                 "bounds": {"x": 100, "y": 200, "w": 120, "h": 40},
                 "confidence": 0.95,
-                "source": "contract_fixture",
+                "clickable": True,
+                "source": "uia_automation",
+                "metadata": {"control_type": "ButtonControl", "automation_id": "btn_save", "hwnd": 4242},
             },
             {
                 "element_id": "field_search",
@@ -45,7 +52,9 @@ def canonical_ui_map() -> Dict[str, Any]:
                 "text": "Поиск",
                 "bounds": {"x": 20, "y": 50, "w": 300, "h": 30},
                 "confidence": 0.92,
-                "source": "contract_fixture",
+                "clickable": True,
+                "source": "uia_automation",
+                "metadata": {"control_type": "EditControl", "automation_id": "field_search", "hwnd": 4242},
             },
             {
                 "element_id": "field_chat",
@@ -53,7 +62,9 @@ def canonical_ui_map() -> Dict[str, Any]:
                 "text": "Сообщение",
                 "bounds": {"x": 40, "y": 310, "w": 520, "h": 90},
                 "confidence": 0.88,
-                "source": "contract_fixture",
+                "clickable": True,
+                "source": "uia_automation",
+                "metadata": {"control_type": "EditControl", "automation_id": "field_chat", "hwnd": 4242},
             },
         ],
         "limitations": [],

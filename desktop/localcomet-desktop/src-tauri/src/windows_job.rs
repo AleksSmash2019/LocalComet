@@ -69,6 +69,11 @@ pub struct ManagedRuntimeLaunchSpec {
     pub args: Vec<OsString>,
     pub current_dir: PathBuf,
     pub env: Vec<(OsString, OsString)>,
+    /// Optional hard committed-memory ceiling (bytes). When set, the runtime is
+    /// placed in a Job Object with JOB_OBJECT_LIMIT_PROCESS_MEMORY so a runaway
+    /// inference process is killed by the OS at the boundary instead of taking
+    /// down the host application. None preserves the prior containment behavior.
+    pub memory_limit_bytes: Option<u64>,
 }
 
 #[cfg(windows)]
@@ -89,7 +94,7 @@ mod platform {
         JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
         TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
     };
     use windows_sys::Win32::System::Pipes::{CreatePipe, SetNamedPipeHandleState, PIPE_NOWAIT};
     use windows_sys::Win32::System::Threading::{
@@ -443,7 +448,10 @@ mod platform {
     fn spawn_managed_contained(
         spec: &ManagedRuntimeLaunchSpec,
     ) -> io::Result<ContainedManagedRuntimeProcess> {
-        let job = create_single_process_kill_on_close_job()?;
+        let job = match spec.memory_limit_bytes {
+            Some(limit) => create_memory_limited_job(limit)?,
+            None => create_single_process_kill_on_close_job()?,
+        };
         spawn_managed_with_job(spec, job)
     }
 
@@ -562,6 +570,31 @@ mod platform {
         limits.BasicLimitInformation.LimitFlags =
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
         limits.BasicLimitInformation.ActiveProcessLimit = 1;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job.raw(),
+                JobObjectExtendedLimitInformation,
+                &limits as *const _ as *const c_void,
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            ) != 0
+        };
+        if !configured {
+            return Err(last_error());
+        }
+        Ok(job)
+    }
+
+    /// Job Object that additionally enforces a hard per-process committed
+    /// memory ceiling. Crossing the ceiling makes the OS fail further memory
+    /// commits inside the job (the runtime dies without the host crashing).
+    fn create_memory_limited_job(memory_limit_bytes: u64) -> io::Result<OwnedHandle> {
+        let job = OwnedHandle::new(unsafe { CreateJobObjectW(null(), null()) })?;
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+            | JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+        limits.BasicLimitInformation.ActiveProcessLimit = 1;
+        limits.ProcessMemoryLimit = memory_limit_bytes as usize;
         let configured = unsafe {
             SetInformationJobObject(
                 job.raw(),
@@ -713,6 +746,18 @@ mod platform {
             let block =
                 build_environment_block(&[(OsString::from("PYTHONUTF8"), OsString::from("1"))]);
             assert_eq!(&block[block.len() - 2..], &[0, 0]);
+        }
+
+        #[test]
+        fn source_sets_process_memory_limit_flag() {
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+                | JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+            limits.BasicLimitInformation.ActiveProcessLimit = 1;
+            limits.ProcessMemoryLimit = 8 * 1024 * 1024 * 1024;
+            assert!(limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_PROCESS_MEMORY != 0);
+            assert_eq!(limits.ProcessMemoryLimit, 8 * 1024 * 1024 * 1024);
         }
 
         #[test]

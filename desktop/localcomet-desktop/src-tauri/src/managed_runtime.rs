@@ -42,6 +42,11 @@ const MAX_PROBE_BYTES: usize = 64 * 1024;
 const MODEL_LOAD_TIMEOUT: Duration = Duration::from_secs(600);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const PROCESS_DROP_WAIT_RESERVE: Duration = Duration::from_secs(2);
+/// Headroom added on top of the full model file size to derive the Job
+/// Object committed-memory ceiling. 8 GiB comfortably covers KV cache,
+/// compute buffers and page tables for the supported context sizes without
+/// letting a runaway allocation take down the host.
+const PROCESS_MEMORY_HEADROOM_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const REQUIRED_FLAGS: &[&str] = &[
     "--model",
     "--host",
@@ -805,6 +810,11 @@ impl ManagedRuntimeSupervisor {
             }
             let (api_key_file, api_key_handle) =
                 write_private_api_key_file(&roots.state_root, &credential)?;
+            // Hard committed-memory ceiling = full model bytes + a fixed
+            // headroom for KV cache, compute buffers and page tables. mmap keeps
+            // the resident working set well below this; the ceiling only fires on
+            // runaway allocation (the OOM failure mode that used to crash the app).
+            let memory_limit_bytes = model_size_bytes.saturating_add(PROCESS_MEMORY_HEADROOM_BYTES);
             let spec = ManagedRuntimeLaunchSpec {
                 executable: launch.executable.clone(),
                 args: runtime_args(
@@ -819,6 +829,7 @@ impl ManagedRuntimeSupervisor {
                 ),
                 current_dir: launch.package_dir.clone(),
                 env: sanitized_runtime_environment(),
+                memory_limit_bytes: Some(memory_limit_bytes),
             };
             let mut process = match ContainedManagedRuntimeProcess::spawn(&spec) {
                 Ok(process) => process,
@@ -1416,6 +1427,7 @@ fn run_runtime_probe(
         args: vec![OsString::from(flag)],
         current_dir: package_dir.to_path_buf(),
         env: sanitized_runtime_environment(),
+        memory_limit_bytes: None,
     };
     let mut process = ContainedManagedRuntimeProcess::spawn(&spec)
         .map_err(|_| ManagedRuntimeError::new("runtime_incompatible", "runtime probe failed"))?;
@@ -1748,6 +1760,28 @@ fn join_probe_reader(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Compute llama.cpp worker-thread arguments from the host CPU topology.
+///
+/// Token generation benefits from physical cores (hyper-threaded siblings add
+/// cache contention without throughput), while prompt/batch ingestion can use
+/// the full logical core count. This mirrors the thread split LM Studio uses
+/// for GGUF models and keeps a single small machine from being starved.
+fn cpu_thread_arguments(physical_cores: Option<usize>, logical_cores: usize) -> Vec<OsString> {
+    let logical = logical_cores.max(1);
+    let generation = physical_cores
+        .filter(|cores| *cores > 0)
+        .unwrap_or(logical)
+        .clamp(1, 64);
+    let batch = logical.clamp(1, 128);
+    vec![
+        OsString::from("--threads"),
+        OsString::from(generation.to_string()),
+        OsString::from("--threads-batch"),
+        OsString::from(batch.to_string()),
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
 fn runtime_args(
     model: &Path,
     mmproj: Option<&PathBuf>,
@@ -1791,6 +1825,13 @@ fn runtime_args(
     let mut sys = sysinfo::System::new_all();
     sys.refresh_memory();
     let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
+
+    // Hardware-aware thread fit: physical cores for generation, logical for
+    // batch. new_all() populated the CPU inventory; cpus() stays valid here.
+    args.extend(cpu_thread_arguments(
+        sys.physical_core_count(),
+        sys.cpus().len(),
+    ));
 
     let mut ctx_size = 8192;
     if model_size_gb > 3.0 {
@@ -3117,6 +3158,61 @@ mod tests {
         assert!(joined.contains("--fit off"));
         assert!(joined.contains("--gpu-layers 8"));
         assert!(joined.contains("--ctx-size 2048"));
+    }
+
+    #[test]
+    fn cpu_thread_arguments_use_physical_cores_for_generation() {
+        let args = cpu_thread_arguments(Some(8), 16);
+        let joined = args
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--threads 8"));
+        assert!(joined.contains("--threads-batch 16"));
+    }
+
+    #[test]
+    fn cpu_thread_arguments_fall_back_to_logical_and_clamp() {
+        // No physical count -> use logical for generation; clamp batch ceiling.
+        let args = cpu_thread_arguments(None, 200);
+        let joined = args
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--threads 64"));
+        assert!(joined.contains("--threads-batch 128"));
+
+        // Zero / absurd physical counts clamp into [1, 64].
+        let zero = cpu_thread_arguments(Some(0), 4);
+        let zero_joined = zero
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(zero_joined.contains("--threads 4"));
+    }
+
+    #[test]
+    fn runtime_args_emit_cpu_thread_arguments() {
+        let args = runtime_args(
+            Path::new(r"C:\m\model.gguf"),
+            None,
+            12345,
+            Path::new(r"C:\k\key.txt"),
+            "alias",
+            false,
+            None,
+            None,
+        );
+        let joined = args
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--threads "));
+        assert!(joined.contains("--threads-batch "));
     }
 
     #[test]

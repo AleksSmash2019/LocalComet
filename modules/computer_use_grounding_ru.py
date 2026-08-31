@@ -10,7 +10,7 @@ import math
 import re
 import uuid
 
-GROUNDING_VERSION = "v6.47d"
+GROUNDING_VERSION = "v6.48a"
 ROOT_PATH = Path(__file__).resolve().parents[1]
 COMPUTER_USE_DIR = ROOT_PATH / "Projects" / "ComputerUse"
 GROUNDING_DIR = COMPUTER_USE_DIR / "grounding"
@@ -34,6 +34,32 @@ def _is_search_only_candidate(element: Dict[str, Any]) -> bool:
     if isinstance(metadata, dict) and metadata.get("derived") is True:
         return True
     return element.get("clickable") is False
+
+
+# Only the structured UIA producer yields executable click/type targets.
+# The real traversal (pc_ui_parser_adapter._uia_elements_for_desktop) stamps
+# source="uia_automation" together with metadata automation_id/control_type/
+# hwnd. Window-level GetWindowRect boxes (desktop_primitives), derived title
+# tokens (screen_parser_adapter) and any coordinate-only payloads are search
+# evidence only: they must never become execution targets.
+EXECUTABLE_PRODUCER_SOURCES = {"uia_automation"}
+
+
+def _is_executable_producer_element(element: Dict[str, Any]) -> bool:
+    """An element may become a click/type target only when it carries the real
+    structured producer identity: uia_automation source plus a control_type.
+
+    Derived/search-only tokens are excluded by the search-only gate; window
+    boxes and heuristic sources are excluded by the producer-source gate.
+    """
+    if _is_search_only_candidate(element):
+        return False
+    if str(element.get("source", "")) not in EXECUTABLE_PRODUCER_SOURCES:
+        return False
+    metadata = element.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+    return bool(str(metadata.get("control_type", "")).strip())
 
 
 ROLE_SYNONYMS = {
@@ -301,7 +327,10 @@ def find_candidates(description: str, limit: int = 8) -> Dict[str, Any]:
 def ground_element(description: str, min_confidence: float = 0.35) -> Dict[str, Any]:
     found = find_candidates(description, limit=8)
     candidates = found.get("candidates", [])
-    executable = [item for item in candidates if not item.get("search_only")]
+    executable = [
+        item for item in candidates
+        if _is_executable_producer_element(item.get("raw") or {})
+    ]
 
     if not candidates:
         result = {
@@ -314,11 +343,19 @@ def ground_element(description: str, min_confidence: float = 0.35) -> Dict[str, 
             "min_confidence": min_confidence,
         }
     elif not executable:
+        if all(item.get("search_only") for item in candidates):
+            reason = "Only heuristic title-token matches were found; no structured UI evidence is available for an execution target."
+        else:
+            reason = (
+                "No structured UI evidence from the UIA producer is available "
+                "for an execution target; window-level and heuristic elements "
+                "are search candidates only."
+            )
         result = {
             "ok": False,
             "mode": "computer_use_ground_element",
             "description": description,
-            "reason": "Only heuristic title-token matches were found; no structured UI evidence is available for an execution target.",
+            "reason": reason,
             "needs_user": True,
             "candidates": candidates,
             "min_confidence": min_confidence,
@@ -361,6 +398,8 @@ def ground_element(description: str, min_confidence: float = 0.35) -> Dict[str, 
         else:
             bounds = best.get("bounds") or {}
             center = best.get("center") or {}
+            raw = best.get("raw") or {}
+            metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
             result = {
                 "ok": True,
                 "mode": "computer_use_ground_element",
@@ -370,6 +409,8 @@ def ground_element(description: str, min_confidence: float = 0.35) -> Dict[str, 
                 "element_id": best["element_id"],
                 "role": best.get("role", ""),
                 "text": best.get("text", ""),
+                "source": best.get("source", ""),
+                "control_type": str(metadata.get("control_type", "")),
                 "bounds": bounds,
                 "center": center,
                 "target": {
@@ -381,6 +422,12 @@ def ground_element(description: str, min_confidence: float = 0.35) -> Dict[str, 
                     "x_norm": None,
                     "y_norm": None,
                     "bounds": bounds,
+                    # Producer provenance travels with the target so that
+                    # execution-time policies can verify real element grounding
+                    # instead of trusting coordinates or search-only tokens.
+                    "producer": best.get("source", ""),
+                    "control_type": str(metadata.get("control_type", "")),
+                    "automation_id": str(metadata.get("automation_id", "")),
                 },
                 "candidate": best,
                 "candidates": candidates,
@@ -408,6 +455,7 @@ def build_grounded_action(description: str, kind: str = "click", text: str = "",
         "target": grounded["target"],
         "text": text,
         "grounded": True,
+        "grounding_source": grounded.get("source", ""),
         "confidence": grounded["confidence"],
         "element_id": grounded["element_id"],
         "reason": f"Grounded {kind} action for element: {description}",

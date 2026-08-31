@@ -158,9 +158,18 @@ class HostContinuationTests(unittest.TestCase):
 
     def test_max_steps_bounded(self):
         goal = "Открой браузер и найди официальный сайт Python. Ничего не отправляй."
-        res = run_bounded_interaction_task(goal, simulate=True, max_steps=10)
-        # Should be capped at 6
+        # In-contract budget runs and never exceeds it.
+        res = run_bounded_interaction_task(goal, simulate=True, max_steps=8)
         self.assertLessEqual(len(res.get("steps", [])), 6)
+
+    def test_out_of_contract_max_steps_fails_closed(self):
+        goal = "Открой браузер и найди официальный сайт Python. Ничего не отправляй."
+        for bad in (0, 9, 10, True, 2.5, "6"):
+            res = run_bounded_interaction_task(goal, simulate=True, max_steps=bad)
+            self.assertFalse(res["ok"], msg=f"max_steps={bad!r} must fail closed")
+            self.assertEqual(res["status"], "blocked")
+            self.assertTrue(res["terminal"])
+            self.assertEqual(res["steps"], [])
 
     def test_read_only_actions_unchanged(self):
         from modules.tool_execution_ru import COMPUTER_USE_READ_ONLY_ACTIONS

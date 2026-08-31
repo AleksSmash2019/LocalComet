@@ -2069,7 +2069,21 @@ def run_bounded_interaction_task(goal: str, simulate: bool = False, max_steps: i
     Wrong target/order/digest, reuse, expiry or budget exhaustion fails closed.
     """
     goal = str(goal or "").strip()
-    max_steps = max(1, min(int(max_steps or 6), 8))
+    # Contract bound (mirrors Rust model_tool_argument_schema and the gateway
+    # validator): out-of-contract budgets fail closed instead of being
+    # silently clamped, so a caller can never widen the run by accident.
+    if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not (1 <= max_steps <= 8):
+        return {
+            "ok": False,
+            "status": "blocked",
+            "terminal": True,
+            "verification": "failed",
+            "blocked": True,
+            "mode": "computer_use_real_task",
+            "reason": "task max_steps must be an integer within 1..8",
+            "goal": goal,
+            "steps": [],
+        }
     blocked, reason = _blocked_goal(goal)
     if blocked:
         return {
@@ -2602,10 +2616,14 @@ def execute_real_action(action: Dict[str, Any], simulate: bool = False, mission_
         if kind == "screenshot":
             return capture_screenshot(simulate=simulate)
         if kind in {"task", "multi_step_task"}:
+            # Pass the budget through raw: run_bounded_interaction_task
+            # validates the 1..8 integer contract and fails closed on
+            # out-of-contract values instead of silently truncating them.
+            raw_max_steps = action.get("max_steps")
             return run_bounded_interaction_task(
                 str(action.get("goal") or mission_goal),
                 simulate=simulate,
-                max_steps=int(action.get("max_steps") or 6),
+                max_steps=raw_max_steps if raw_max_steps is not None else 6,
             )
         if kind == "delegate_multistep":
             from modules.computer_use_multistep_loop_ru import run_loop
