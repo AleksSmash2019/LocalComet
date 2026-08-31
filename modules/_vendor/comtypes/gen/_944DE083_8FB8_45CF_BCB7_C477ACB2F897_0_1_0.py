@@ -5,9 +5,9 @@ import comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0
 from comtypes import (
     _check_version, BSTR, CoClass, COMMETHOD, dispid, GUID, IUnknown
 )
+from ctypes.wintypes import tagPOINT, tagRECT
 from ctypes import HRESULT
 from comtypes.automation import _midlSAFEARRAY, IDispatch, VARIANT
-from ctypes.wintypes import tagPOINT, tagRECT
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,6 +17,12 @@ if TYPE_CHECKING:
 _lcid = 0  # change this if required
 typelib_path = 'C:\\Windows\\System32\\UIAutomationCore.dll'
 WSTRING = c_wchar_p
+
+# values for enumeration 'SupportedTextSelection'
+SupportedTextSelection_None = 0
+SupportedTextSelection_Single = 1
+SupportedTextSelection_Multiple = 2
+SupportedTextSelection = c_int  # enum
 
 # values for enumeration 'TextPatternRangeEndpoint'
 TextPatternRangeEndpoint_Start = 0
@@ -33,11 +39,6 @@ TextUnit_Page = 5
 TextUnit_Document = 6
 TextUnit = c_int  # enum
 
-# values for enumeration 'CoalesceEventsOptions'
-CoalesceEventsOptions_Disabled = 0
-CoalesceEventsOptions_Enabled = 1
-CoalesceEventsOptions = c_int  # enum
-
 # values for enumeration 'WindowVisualState'
 WindowVisualState_Normal = 0
 WindowVisualState_Maximized = 1
@@ -52,24 +53,6 @@ WindowInteractionState_BlockedByModalWindow = 3
 WindowInteractionState_NotResponding = 4
 WindowInteractionState = c_int  # enum
 
-# values for enumeration 'ConnectionRecoveryBehaviorOptions'
-ConnectionRecoveryBehaviorOptions_Disabled = 0
-ConnectionRecoveryBehaviorOptions_Enabled = 1
-ConnectionRecoveryBehaviorOptions = c_int  # enum
-
-# values for enumeration 'LiveSetting'
-Off = 0
-Polite = 1
-Assertive = 2
-LiveSetting = c_int  # enum
-
-# values for enumeration 'ExpandCollapseState'
-ExpandCollapseState_Collapsed = 0
-ExpandCollapseState_Expanded = 1
-ExpandCollapseState_PartiallyExpanded = 2
-ExpandCollapseState_LeafNode = 3
-ExpandCollapseState = c_int  # enum
-
 # values for enumeration 'NavigateDirection'
 NavigateDirection_Parent = 0
 NavigateDirection_NextSibling = 1
@@ -78,13 +61,124 @@ NavigateDirection_FirstChild = 3
 NavigateDirection_LastChild = 4
 NavigateDirection = c_int  # enum
 
-# values for enumeration 'ScrollAmount'
-ScrollAmount_LargeDecrement = 0
-ScrollAmount_SmallDecrement = 1
-ScrollAmount_NoAmount = 2
-ScrollAmount_LargeIncrement = 3
-ScrollAmount_SmallIncrement = 4
-ScrollAmount = c_int  # enum
+# values for enumeration 'TreeScope'
+TreeScope_None = 0
+TreeScope_Element = 1
+TreeScope_Children = 2
+TreeScope_Descendants = 4
+TreeScope_Parent = 8
+TreeScope_Ancestors = 16
+TreeScope_Subtree = 7
+TreeScope = c_int  # enum
+
+# values for enumeration 'OrientationType'
+OrientationType_None = 0
+OrientationType_Horizontal = 1
+OrientationType_Vertical = 2
+OrientationType = c_int  # enum
+
+# values for enumeration 'TextEditChangeType'
+TextEditChangeType_None = 0
+TextEditChangeType_AutoCorrect = 1
+TextEditChangeType_Composition = 2
+TextEditChangeType_CompositionFinalized = 3
+TextEditChangeType_AutoComplete = 4
+TextEditChangeType = c_int  # enum
+
+# values for enumeration 'LiveSetting'
+Off = 0
+Polite = 1
+Assertive = 2
+LiveSetting = c_int  # enum
+
+# values for enumeration 'ZoomUnit'
+ZoomUnit_NoAmount = 0
+ZoomUnit_LargeDecrement = 1
+ZoomUnit_SmallDecrement = 2
+ZoomUnit_LargeIncrement = 3
+ZoomUnit_SmallIncrement = 4
+ZoomUnit = c_int  # enum
+
+# values for enumeration 'NotificationKind'
+NotificationKind_ItemAdded = 0
+NotificationKind_ItemRemoved = 1
+NotificationKind_ActionCompleted = 2
+NotificationKind_ActionAborted = 3
+NotificationKind_Other = 4
+NotificationKind = c_int  # enum
+
+# values for enumeration 'NotificationProcessing'
+NotificationProcessing_ImportantAll = 0
+NotificationProcessing_ImportantMostRecent = 1
+NotificationProcessing_All = 2
+NotificationProcessing_MostRecent = 3
+NotificationProcessing_CurrentThenMostRecent = 4
+NotificationProcessing_ImportantCurrentThenMostRecent = 5
+NotificationProcessing = c_int  # enum
+
+# values for enumeration 'PropertyConditionFlags'
+PropertyConditionFlags_None = 0
+PropertyConditionFlags_IgnoreCase = 1
+PropertyConditionFlags_MatchSubstring = 2
+PropertyConditionFlags = c_int  # enum
+
+# values for enumeration 'TreeTraversalOptions'
+TreeTraversalOptions_Default = 0
+TreeTraversalOptions_PostOrder = 1
+TreeTraversalOptions_LastToFirstOrder = 2
+TreeTraversalOptions = c_int  # enum
+
+# values for enumeration 'StructureChangeType'
+StructureChangeType_ChildAdded = 0
+StructureChangeType_ChildRemoved = 1
+StructureChangeType_ChildrenInvalidated = 2
+StructureChangeType_ChildrenBulkAdded = 3
+StructureChangeType_ChildrenBulkRemoved = 4
+StructureChangeType_ChildrenReordered = 5
+StructureChangeType = c_int  # enum
+
+# values for enumeration 'AutomationElementMode'
+AutomationElementMode_None = 0
+AutomationElementMode_Full = 1
+AutomationElementMode = c_int  # enum
+
+# values for enumeration 'CoalesceEventsOptions'
+CoalesceEventsOptions_Disabled = 0
+CoalesceEventsOptions_Enabled = 1
+CoalesceEventsOptions = c_int  # enum
+
+# values for enumeration 'ConnectionRecoveryBehaviorOptions'
+ConnectionRecoveryBehaviorOptions_Disabled = 0
+ConnectionRecoveryBehaviorOptions_Enabled = 1
+ConnectionRecoveryBehaviorOptions = c_int  # enum
+
+# values for enumeration 'ProviderOptions'
+ProviderOptions_ClientSideProvider = 1
+ProviderOptions_ServerSideProvider = 2
+ProviderOptions_NonClientAreaProvider = 4
+ProviderOptions_OverrideProvider = 8
+ProviderOptions_ProviderOwnsSetFocus = 16
+ProviderOptions_UseComThreading = 32
+ProviderOptions_RefuseNonClientSupport = 64
+ProviderOptions_HasNativeIAccessible = 128
+ProviderOptions_UseClientCoordinates = 256
+ProviderOptions = c_int  # enum
+
+# values for enumeration 'DockPosition'
+DockPosition_Top = 0
+DockPosition_Left = 1
+DockPosition_Bottom = 2
+DockPosition_Right = 3
+DockPosition_Fill = 4
+DockPosition_None = 5
+DockPosition = c_int  # enum
+
+# values for enumeration 'ExpandCollapseState'
+ExpandCollapseState_Collapsed = 0
+ExpandCollapseState_Expanded = 1
+ExpandCollapseState_PartiallyExpanded = 2
+ExpandCollapseState_LeafNode = 3
+ExpandCollapseState = c_int  # enum
 
 # values for enumeration 'ToggleState'
 ToggleState_Off = 0
@@ -107,121 +201,75 @@ RowOrColumnMajor_ColumnMajor = 1
 RowOrColumnMajor_Indeterminate = 2
 RowOrColumnMajor = c_int  # enum
 
-# values for enumeration 'TextEditChangeType'
-TextEditChangeType_None = 0
-TextEditChangeType_AutoCorrect = 1
-TextEditChangeType_Composition = 2
-TextEditChangeType_CompositionFinalized = 3
-TextEditChangeType_AutoComplete = 4
-TextEditChangeType = c_int  # enum
-
-# values for enumeration 'NotificationKind'
-NotificationKind_ItemAdded = 0
-NotificationKind_ItemRemoved = 1
-NotificationKind_ActionCompleted = 2
-NotificationKind_ActionAborted = 3
-NotificationKind_Other = 4
-NotificationKind = c_int  # enum
-
-# values for enumeration 'DockPosition'
-DockPosition_Top = 0
-DockPosition_Left = 1
-DockPosition_Bottom = 2
-DockPosition_Right = 3
-DockPosition_Fill = 4
-DockPosition_None = 5
-DockPosition = c_int  # enum
-
-# values for enumeration 'NotificationProcessing'
-NotificationProcessing_ImportantAll = 0
-NotificationProcessing_ImportantMostRecent = 1
-NotificationProcessing_All = 2
-NotificationProcessing_MostRecent = 3
-NotificationProcessing_CurrentThenMostRecent = 4
-NotificationProcessing_ImportantCurrentThenMostRecent = 5
-NotificationProcessing = c_int  # enum
-
-# values for enumeration 'StructureChangeType'
-StructureChangeType_ChildAdded = 0
-StructureChangeType_ChildRemoved = 1
-StructureChangeType_ChildrenInvalidated = 2
-StructureChangeType_ChildrenBulkAdded = 3
-StructureChangeType_ChildrenBulkRemoved = 4
-StructureChangeType_ChildrenReordered = 5
-StructureChangeType = c_int  # enum
-
-# values for enumeration 'PropertyConditionFlags'
-PropertyConditionFlags_None = 0
-PropertyConditionFlags_IgnoreCase = 1
-PropertyConditionFlags_MatchSubstring = 2
-PropertyConditionFlags = c_int  # enum
-
-# values for enumeration 'TreeScope'
-TreeScope_None = 0
-TreeScope_Element = 1
-TreeScope_Children = 2
-TreeScope_Descendants = 4
-TreeScope_Parent = 8
-TreeScope_Ancestors = 16
-TreeScope_Subtree = 7
-TreeScope = c_int  # enum
-
-# values for enumeration 'AutomationElementMode'
-AutomationElementMode_None = 0
-AutomationElementMode_Full = 1
-AutomationElementMode = c_int  # enum
-
-# values for enumeration 'OrientationType'
-OrientationType_None = 0
-OrientationType_Horizontal = 1
-OrientationType_Vertical = 2
-OrientationType = c_int  # enum
-
-# values for enumeration 'SupportedTextSelection'
-SupportedTextSelection_None = 0
-SupportedTextSelection_Single = 1
-SupportedTextSelection_Multiple = 2
-SupportedTextSelection = c_int  # enum
-
-# values for enumeration 'ProviderOptions'
-ProviderOptions_ClientSideProvider = 1
-ProviderOptions_ServerSideProvider = 2
-ProviderOptions_NonClientAreaProvider = 4
-ProviderOptions_OverrideProvider = 8
-ProviderOptions_ProviderOwnsSetFocus = 16
-ProviderOptions_UseComThreading = 32
-ProviderOptions_RefuseNonClientSupport = 64
-ProviderOptions_HasNativeIAccessible = 128
-ProviderOptions_UseClientCoordinates = 256
-ProviderOptions = c_int  # enum
-
-# values for enumeration 'ZoomUnit'
-ZoomUnit_NoAmount = 0
-ZoomUnit_LargeDecrement = 1
-ZoomUnit_SmallDecrement = 2
-ZoomUnit_LargeIncrement = 3
-ZoomUnit_SmallIncrement = 4
-ZoomUnit = c_int  # enum
-
-# values for enumeration 'TreeTraversalOptions'
-TreeTraversalOptions_Default = 0
-TreeTraversalOptions_PostOrder = 1
-TreeTraversalOptions_LastToFirstOrder = 2
-TreeTraversalOptions = c_int  # enum
+# values for enumeration 'ScrollAmount'
+ScrollAmount_LargeDecrement = 0
+ScrollAmount_SmallDecrement = 1
+ScrollAmount_NoAmount = 2
+ScrollAmount_LargeIncrement = 3
+ScrollAmount_SmallIncrement = 4
+ScrollAmount = c_int  # enum
 
 
-UIA_ForegroundColorAttributeId = 40008  # Constant c_int
-UIA_AnnotationTypesAttributeId = 40031  # Constant c_int
-UIA_FontWeightAttributeId = 40007  # Constant c_int
-UIA_UnderlineStyleAttributeId = 40030  # Constant c_int
-UIA_FontSizeAttributeId = 40006  # Constant c_int
-UIA_UnderlineColorAttributeId = 40029  # Constant c_int
-UIA_FontNameAttributeId = 40005  # Constant c_int
-UIA_TextFlowDirectionsAttributeId = 40028  # Constant c_int
-UIA_CultureAttributeId = 40004  # Constant c_int
-UIA_TabsAttributeId = 40027  # Constant c_int
-UIA_CapStyleAttributeId = 40003  # Constant c_int
-UIA_StrikethroughStyleAttributeId = 40026  # Constant c_int
+UIA_GridItemColumnPropertyId = 30065  # Constant c_int
+UIA_HyperlinkControlTypeId = 50005  # Constant c_int
+UIA_GridItemRowPropertyId = 30064  # Constant c_int
+UIA_EditControlTypeId = 50004  # Constant c_int
+UIA_GridColumnCountPropertyId = 30063  # Constant c_int
+UIA_ComboBoxControlTypeId = 50003  # Constant c_int
+UIA_GridRowCountPropertyId = 30062  # Constant c_int
+UIA_CheckBoxControlTypeId = 50002  # Constant c_int
+UIA_SelectionIsSelectionRequiredPropertyId = 30061  # Constant c_int
+UIA_CalendarControlTypeId = 50001  # Constant c_int
+UIA_SelectionCanSelectMultiplePropertyId = 30060  # Constant c_int
+UIA_ButtonControlTypeId = 50000  # Constant c_int
+UIA_SelectionSelectionPropertyId = 30059  # Constant c_int
+UIA_SayAsInterpretAsAttributeId = 40043  # Constant c_int
+UIA_ScrollVerticallyScrollablePropertyId = 30058  # Constant c_int
+UIA_AfterParagraphSpacingAttributeId = 40042  # Constant c_int
+StyleId_BulletedList = 70015  # Constant c_int
+UIA_ScrollHorizontallyScrollablePropertyId = 30057  # Constant c_int
+UIA_BeforeParagraphSpacingAttributeId = 40041  # Constant c_int
+UIA_ScrollVerticalViewSizePropertyId = 30056  # Constant c_int
+UIA_LineSpacingAttributeId = 40040  # Constant c_int
+UIA_ScrollVerticalScrollPercentPropertyId = 30055  # Constant c_int
+UIA_CaretBidiModeAttributeId = 40039  # Constant c_int
+UIA_ScrollHorizontalViewSizePropertyId = 30054  # Constant c_int
+UIA_CaretPositionAttributeId = 40038  # Constant c_int
+UIA_ScrollHorizontalScrollPercentPropertyId = 30053  # Constant c_int
+UIA_RangeValueSmallChangePropertyId = 30052  # Constant c_int
+UIA_RangeValueLargeChangePropertyId = 30051  # Constant c_int
+UIA_RangeValueMaximumPropertyId = 30050  # Constant c_int
+UIA_RangeValueMinimumPropertyId = 30049  # Constant c_int
+UIA_RangeValueIsReadOnlyPropertyId = 30048  # Constant c_int
+UIA_RangeValueValuePropertyId = 30047  # Constant c_int
+UIA_ValueIsReadOnlyPropertyId = 30046  # Constant c_int
+UIA_ValueValuePropertyId = 30045  # Constant c_int
+
+
+class IUIAutomationTextPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{32EBA289-3583-42C9-9C59-3B6D9A1E9B6A}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def RangeFromPoint(self, pt: hints.Incomplete) -> 'IUIAutomationTextRange': ...
+        def RangeFromChild(self, child: hints.Incomplete) -> 'IUIAutomationTextRange': ...
+        def GetSelection(self) -> 'IUIAutomationTextRangeArray': ...
+        def GetVisibleRanges(self) -> 'IUIAutomationTextRangeArray': ...
+        def _get_DocumentRange(self) -> 'IUIAutomationTextRange': ...
+        DocumentRange = hints.normal_property(_get_DocumentRange)
+        def _get_SupportedTextSelection(self) -> hints.Incomplete: ...
+        SupportedTextSelection = hints.normal_property(_get_SupportedTextSelection)
+
+
+class IUIAutomationTextPattern2(IUIAutomationTextPattern):
+    _case_insensitive_ = True
+    _iid_ = GUID('{506A921A-FCC9-409F-B23B-37EB74106872}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def RangeFromAnnotation(self, annotation: hints.Incomplete) -> 'IUIAutomationTextRange': ...
+        def GetCaretRange(self) -> tuple[hints.Incomplete, 'IUIAutomationTextRange']: ...
 
 
 class IUIAutomationTextRange(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -402,6 +450,356 @@ class IUIAutomationElement(comtypes.gen._00020430_0000_0000_C000_000000000046_0_
         def _get_CachedProviderDescription(self) -> hints.Incomplete: ...
         CachedProviderDescription = hints.normal_property(_get_CachedProviderDescription)
         def GetClickablePoint(self) -> tuple[hints.Incomplete, hints.Incomplete]: ...
+
+
+class IUIAutomationTextRangeArray(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{CE4AE76A-E717-4C98-81EA-47371D028EB6}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_Length(self) -> hints.Incomplete: ...
+        Length = hints.normal_property(_get_Length)
+        def GetElement(self, index: hints.Incomplete) -> 'IUIAutomationTextRange': ...
+
+
+IUIAutomationTextPattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RangeFromPoint',
+        (['in'], tagPOINT, 'pt'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RangeFromChild',
+        (['in'], POINTER(IUIAutomationElement), 'child'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetSelection',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationTextRangeArray)),
+            'ranges',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetVisibleRanges',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationTextRangeArray)),
+            'ranges',
+        )
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'DocumentRange',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'SupportedTextSelection',
+        (
+            ['out', 'retval'],
+            POINTER(SupportedTextSelection),
+            'SupportedTextSelection',
+        )
+    ),
+]
+
+################################################################
+# code template for IUIAutomationTextPattern implementation
+# class IUIAutomationTextPattern_Impl(object):
+#     def RangeFromPoint(self, pt):
+#         '-no docstring-'
+#         #return range
+#
+#     def RangeFromChild(self, child):
+#         '-no docstring-'
+#         #return range
+#
+#     def GetSelection(self):
+#         '-no docstring-'
+#         #return ranges
+#
+#     def GetVisibleRanges(self):
+#         '-no docstring-'
+#         #return ranges
+#
+#     @property
+#     def DocumentRange(self):
+#         '-no docstring-'
+#         #return range
+#
+#     @property
+#     def SupportedTextSelection(self):
+#         '-no docstring-'
+#         #return SupportedTextSelection
+#
+
+IUIAutomationTextPattern2._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RangeFromAnnotation',
+        (['in'], POINTER(IUIAutomationElement), 'annotation'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCaretRange',
+        (['out'], POINTER(c_int), 'isActive'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationTextPattern2 implementation
+# class IUIAutomationTextPattern2_Impl(object):
+#     def RangeFromAnnotation(self, annotation):
+#         '-no docstring-'
+#         #return range
+#
+#     def GetCaretRange(self):
+#         '-no docstring-'
+#         #return isActive, range
+#
+
+UIA_IsWindowPatternAvailablePropertyId = 30044  # Constant c_int
+UIA_IsValuePatternAvailablePropertyId = 30043  # Constant c_int
+UIA_IsTransformPatternAvailablePropertyId = 30042  # Constant c_int
+UIA_IsTogglePatternAvailablePropertyId = 30041  # Constant c_int
+UIA_IsTextPatternAvailablePropertyId = 30040  # Constant c_int
+UIA_IsTableItemPatternAvailablePropertyId = 30039  # Constant c_int
+StyleId_NumberedList = 70016  # Constant c_int
+UIA_IsTablePatternAvailablePropertyId = 30038  # Constant c_int
+UIA_IsSelectionPatternAvailablePropertyId = 30037  # Constant c_int
+UIA_IsSelectionItemPatternAvailablePropertyId = 30036  # Constant c_int
+UIA_IsScrollItemPatternAvailablePropertyId = 30035  # Constant c_int
+UIA_IsScrollPatternAvailablePropertyId = 30034  # Constant c_int
+UIA_IsRangeValuePatternAvailablePropertyId = 30033  # Constant c_int
+UIA_IsMultipleViewPatternAvailablePropertyId = 30032  # Constant c_int
+
+
+class IUIAutomationTextEditPattern(IUIAutomationTextPattern):
+    _case_insensitive_ = True
+    _iid_ = GUID('{17E21576-996C-4870-99D9-BFF323380C06}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def GetActiveComposition(self) -> 'IUIAutomationTextRange': ...
+        def GetConversionTarget(self) -> 'IUIAutomationTextRange': ...
+
+
+IUIAutomationTextEditPattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetActiveComposition',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetConversionTarget',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationTextEditPattern implementation
+# class IUIAutomationTextEditPattern_Impl(object):
+#     def GetActiveComposition(self):
+#         '-no docstring-'
+#         #return range
+#
+#     def GetConversionTarget(self):
+#         '-no docstring-'
+#         #return range
+#
+
+UIA_IsInvokePatternAvailablePropertyId = 30031  # Constant c_int
+UIA_IsGridPatternAvailablePropertyId = 30030  # Constant c_int
+UIA_IsGridItemPatternAvailablePropertyId = 30029  # Constant c_int
+UIA_IsExpandCollapsePatternAvailablePropertyId = 30028  # Constant c_int
+UIA_IsDockPatternAvailablePropertyId = 30027  # Constant c_int
+UIA_ItemStatusPropertyId = 30026  # Constant c_int
+UIA_IsRequiredForFormPropertyId = 30025  # Constant c_int
+UIA_FrameworkIdPropertyId = 30024  # Constant c_int
+UIA_OrientationPropertyId = 30023  # Constant c_int
+UIA_IsOffscreenPropertyId = 30022  # Constant c_int
+UIA_NativeWindowHandlePropertyId = 30020  # Constant c_int
+UIA_IsPasswordPropertyId = 30019  # Constant c_int
+UIA_LabeledByPropertyId = 30018  # Constant c_int
+UIA_ListControlTypeId = 50008  # Constant c_int
+UIA_IsContentElementPropertyId = 30017  # Constant c_int
+UIA_IsControlElementPropertyId = 30016  # Constant c_int
+UIA_CulturePropertyId = 30015  # Constant c_int
+UIA_ClickablePointPropertyId = 30014  # Constant c_int
+UIA_HelpTextPropertyId = 30013  # Constant c_int
+UIA_SynchronizedInputPatternId = 10021  # Constant c_int
+UIA_ClassNamePropertyId = 30012  # Constant c_int
+UIA_AutomationIdPropertyId = 30011  # Constant c_int
+UIA_VirtualizedItemPatternId = 10020  # Constant c_int
+UIA_IsEnabledPropertyId = 30010  # Constant c_int
+UIA_ItemContainerPatternId = 10019  # Constant c_int
+UIA_IsKeyboardFocusablePropertyId = 30009  # Constant c_int
+UIA_LegacyIAccessiblePatternId = 10018  # Constant c_int
+UIA_ScrollItemPatternId = 10017  # Constant c_int
+UIA_HasKeyboardFocusPropertyId = 30008  # Constant c_int
+UIA_TransformPatternId = 10016  # Constant c_int
+UIA_AccessKeyPropertyId = 30007  # Constant c_int
+UIA_TogglePatternId = 10015  # Constant c_int
+UIA_AcceleratorKeyPropertyId = 30006  # Constant c_int
+UIA_NamePropertyId = 30005  # Constant c_int
+UIA_TextPatternId = 10014  # Constant c_int
+UIA_LocalizedControlTypePropertyId = 30004  # Constant c_int
+UIA_ControlTypePropertyId = 30003  # Constant c_int
+UIA_ProcessIdPropertyId = 30002  # Constant c_int
+UIA_BoundingRectanglePropertyId = 30001  # Constant c_int
+UIA_RuntimeIdPropertyId = 30000  # Constant c_int
+UIA_TableItemPatternId = 10013  # Constant c_int
+UIA_ItemTypePropertyId = 30021  # Constant c_int
+UIA_ActiveTextPositionChangedEventId = 20036  # Constant c_int
+UIA_NotificationEventId = 20035  # Constant c_int
+UIA_ChangesEventId = 20034  # Constant c_int
+UIA_TextEdit_ConversionTargetChangedEventId = 20033  # Constant c_int
+UIA_TextEdit_TextChangedEventId = 20032  # Constant c_int
+UIA_TablePatternId = 10012  # Constant c_int
+UIA_DropTarget_DroppedEventId = 20031  # Constant c_int
+UIA_DropTarget_DragLeaveEventId = 20030  # Constant c_int
+UIA_DropTarget_DragEnterEventId = 20029  # Constant c_int
+UIA_Drag_DragCompleteEventId = 20028  # Constant c_int
+UIA_Drag_DragCancelEventId = 20027  # Constant c_int
+UIA_Drag_DragStartEventId = 20026  # Constant c_int
+UIA_HostedFragmentRootsInvalidatedEventId = 20025  # Constant c_int
+
+IUIAutomationTextRangeArray._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'Length',
+        (['out', 'retval'], POINTER(c_int), 'Length')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetElement',
+        (['in'], c_int, 'index'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'element')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationTextRangeArray implementation
+# class IUIAutomationTextRangeArray_Impl(object):
+#     @property
+#     def Length(self):
+#         '-no docstring-'
+#         #return Length
+#
+#     def GetElement(self, index):
+#         '-no docstring-'
+#         #return element
+#
+
+UIA_LiveRegionChangedEventId = 20024  # Constant c_int
+
+
+class IUIAutomationValuePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{A94CD8B1-0844-4CD6-9D2D-640537AB39E9}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def SetValue(self, val: hints.Incomplete) -> hints.Hresult: ...
+        def _get_CurrentValue(self) -> hints.Incomplete: ...
+        CurrentValue = hints.normal_property(_get_CurrentValue)
+        def _get_CurrentIsReadOnly(self) -> hints.Incomplete: ...
+        CurrentIsReadOnly = hints.normal_property(_get_CurrentIsReadOnly)
+        def _get_CachedValue(self) -> hints.Incomplete: ...
+        CachedValue = hints.normal_property(_get_CachedValue)
+        def _get_CachedIsReadOnly(self) -> hints.Incomplete: ...
+        CachedIsReadOnly = hints.normal_property(_get_CachedIsReadOnly)
+
+
+IUIAutomationValuePattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'SetValue',
+        (['in'], BSTR, 'val')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentValue',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentIsReadOnly',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedValue',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedIsReadOnly',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationValuePattern implementation
+# class IUIAutomationValuePattern_Impl(object):
+#     def SetValue(self, val):
+#         '-no docstring-'
+#         #return 
+#
+#     @property
+#     def CurrentValue(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentIsReadOnly(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedValue(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedIsReadOnly(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_SystemAlertEventId = 20023  # Constant c_int
+UIA_InputDiscardedEventId = 20022  # Constant c_int
+UIA_InputReachedOtherElementEventId = 20021  # Constant c_int
+UIA_DockPatternId = 10011  # Constant c_int
+UIA_InputReachedTargetEventId = 20020  # Constant c_int
+UIA_MenuModeEndEventId = 20019  # Constant c_int
 
 
 class IUIAutomationElementArray(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -618,136 +1016,10 @@ IUIAutomationTextRange._methods_ = [
 #         #return children
 #
 
-UIA_BulletStyleAttributeId = 40002  # Constant c_int
-UIA_StrikethroughColorAttributeId = 40025  # Constant c_int
-UIA_BackgroundColorAttributeId = 40001  # Constant c_int
-UIA_OverlineStyleAttributeId = 40024  # Constant c_int
-StyleId_Heading2 = 70002  # Constant c_int
-UIA_AnimationStyleAttributeId = 40000  # Constant c_int
-UIA_OverlineColorAttributeId = 40023  # Constant c_int
-UIA_IsDialogPropertyId = 30174  # Constant c_int
-UIA_OutlineStylesAttributeId = 40022  # Constant c_int
-UIA_HeadingLevelPropertyId = 30173  # Constant c_int
-UIA_MarginTrailingAttributeId = 40021  # Constant c_int
-UIA_Selection2ItemCountPropertyId = 30172  # Constant c_int
-UIA_MarginTopAttributeId = 40020  # Constant c_int
-UIA_Selection2CurrentSelectedItemPropertyId = 30171  # Constant c_int
-UIA_Selection2LastSelectedItemPropertyId = 30170  # Constant c_int
-UIA_Selection2FirstSelectedItemPropertyId = 30169  # Constant c_int
-UIA_IsSelectionPattern2AvailablePropertyId = 30168  # Constant c_int
-UIA_SizePropertyId = 30167  # Constant c_int
-
-
-class IUIAutomationValuePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{A94CD8B1-0844-4CD6-9D2D-640537AB39E9}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def SetValue(self, val: hints.Incomplete) -> hints.Hresult: ...
-        def _get_CurrentValue(self) -> hints.Incomplete: ...
-        CurrentValue = hints.normal_property(_get_CurrentValue)
-        def _get_CurrentIsReadOnly(self) -> hints.Incomplete: ...
-        CurrentIsReadOnly = hints.normal_property(_get_CurrentIsReadOnly)
-        def _get_CachedValue(self) -> hints.Incomplete: ...
-        CachedValue = hints.normal_property(_get_CachedValue)
-        def _get_CachedIsReadOnly(self) -> hints.Incomplete: ...
-        CachedIsReadOnly = hints.normal_property(_get_CachedIsReadOnly)
-
-
-IUIAutomationValuePattern._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'SetValue',
-        (['in'], BSTR, 'val')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentValue',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentIsReadOnly',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedValue',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedIsReadOnly',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationValuePattern implementation
-# class IUIAutomationValuePattern_Impl(object):
-#     def SetValue(self, val):
-#         '-no docstring-'
-#         #return 
-#
-#     @property
-#     def CurrentValue(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentIsReadOnly(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedValue(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedIsReadOnly(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_RotationPropertyId = 30166  # Constant c_int
-UIA_CenterPointPropertyId = 30165  # Constant c_int
-UIA_OutlineThicknessPropertyId = 30164  # Constant c_int
-UIA_VisualEffectsPropertyId = 30163  # Constant c_int
-UIA_FillTypePropertyId = 30162  # Constant c_int
-UIA_OutlineColorPropertyId = 30161  # Constant c_int
-UIA_FillColorPropertyId = 30160  # Constant c_int
-UIA_FullDescriptionPropertyId = 30159  # Constant c_int
-
-
-class IUIAutomationTextRange2(IUIAutomationTextRange):
-    _case_insensitive_ = True
-    _iid_ = GUID('{BB9B40E0-5E04-46BD-9BE0-4B601B9AFAD4}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def ShowContextMenu(self) -> hints.Hresult: ...
-
-
-IUIAutomationTextRange2._methods_ = [
-    COMMETHOD([], HRESULT, 'ShowContextMenu'),
-]
-
-################################################################
-# code template for IUIAutomationTextRange2 implementation
-# class IUIAutomationTextRange2_Impl(object):
-#     def ShowContextMenu(self):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_LocalizedLandmarkTypePropertyId = 30158  # Constant c_int
+UIA_MenuModeStartEventId = 20018  # Constant c_int
+UIA_SelectionItemPatternId = 10010  # Constant c_int
+UIA_Window_WindowClosedEventId = 20017  # Constant c_int
+UIA_Window_WindowOpenedEventId = 20016  # Constant c_int
 
 
 class IUIAutomationWindowPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -950,78 +1222,97 @@ IUIAutomationWindowPattern._methods_ = [
 #         #return retVal
 #
 
-UIA_LandmarkTypePropertyId = 30157  # Constant c_int
-StyleId_Heading1 = 70001  # Constant c_int
-UIA_AnnotationObjectsPropertyId = 30156  # Constant c_int
-UIA_AnnotationTypesPropertyId = 30155  # Constant c_int
-UIA_LevelPropertyId = 30154  # Constant c_int
-UIA_SizeOfSetPropertyId = 30153  # Constant c_int
-UIA_PositionInSetPropertyId = 30152  # Constant c_int
-UIA_IsCustomNavigationPatternAvailablePropertyId = 30151  # Constant c_int
-UIA_IsPeripheralPropertyId = 30150  # Constant c_int
-UIA_IsTextEditPatternAvailablePropertyId = 30149  # Constant c_int
-UIA_FlowsFromPropertyId = 30148  # Constant c_int
-UIA_Transform2ZoomMaximumPropertyId = 30147  # Constant c_int
-UIA_Transform2ZoomMinimumPropertyId = 30146  # Constant c_int
-UIA_Transform2ZoomLevelPropertyId = 30145  # Constant c_int
-UIA_DragGrabbedItemsPropertyId = 30144  # Constant c_int
-UIA_DropTargetDropTargetEffectsPropertyId = 30143  # Constant c_int
-UIA_DropTargetDropTargetEffectPropertyId = 30142  # Constant c_int
-UIA_IsDropTargetPatternAvailablePropertyId = 30141  # Constant c_int
-UIA_DragDropEffectsPropertyId = 30140  # Constant c_int
-UIA_DragDropEffectPropertyId = 30139  # Constant c_int
-HeadingLevel3 = 80053  # Constant c_int
-UIA_DragIsGrabbedPropertyId = 30138  # Constant c_int
-UIA_IsDragPatternAvailablePropertyId = 30137  # Constant c_int
-UIA_LinkAttributeId = 40035  # Constant c_int
-UIA_IsTextChildPatternAvailablePropertyId = 30136  # Constant c_int
-UIA_StyleIdAttributeId = 40034  # Constant c_int
-HeadingLevel4 = 80054  # Constant c_int
-UIA_LiveSettingPropertyId = 30135  # Constant c_int
-UIA_IsTransformPattern2AvailablePropertyId = 30134  # Constant c_int
-UIA_Transform2CanZoomPropertyId = 30133  # Constant c_int
-UIA_IsSpreadsheetItemPatternAvailablePropertyId = 30132  # Constant c_int
-UIA_LegacyIAccessibleChildIdPropertyId = 30091  # Constant c_int
-UIA_SpreadsheetItemAnnotationTypesPropertyId = 30131  # Constant c_int
-UIA_SpreadsheetItemAnnotationObjectsPropertyId = 30130  # Constant c_int
-UIA_SpreadsheetItemFormulaPropertyId = 30129  # Constant c_int
-UIA_IsLegacyIAccessiblePatternAvailablePropertyId = 30090  # Constant c_int
-UIA_IsSpreadsheetPatternAvailablePropertyId = 30128  # Constant c_int
-UIA_TransformCanRotatePropertyId = 30089  # Constant c_int
-UIA_TransformCanResizePropertyId = 30088  # Constant c_int
-UIA_IsStylesPatternAvailablePropertyId = 30127  # Constant c_int
-UIA_TransformCanMovePropertyId = 30087  # Constant c_int
-UIA_StylesExtendedPropertiesPropertyId = 30126  # Constant c_int
-UIA_ToggleToggleStatePropertyId = 30086  # Constant c_int
-UIA_StylesFillPatternColorPropertyId = 30125  # Constant c_int
-UIA_StylesShapePropertyId = 30124  # Constant c_int
-UIA_StylesFillPatternStylePropertyId = 30123  # Constant c_int
-UIA_TableItemColumnHeaderItemsPropertyId = 30085  # Constant c_int
-UIA_StylesFillColorPropertyId = 30122  # Constant c_int
-UIA_StylesStyleNamePropertyId = 30121  # Constant c_int
-UIA_GridItemRowSpanPropertyId = 30066  # Constant c_int
-UIA_StylesStyleIdPropertyId = 30120  # Constant c_int
-UIA_IsTextPattern2AvailablePropertyId = 30119  # Constant c_int
-UIA_IsAnnotationPatternAvailablePropertyId = 30118  # Constant c_int
-UIA_TableItemRowHeaderItemsPropertyId = 30084  # Constant c_int
-UIA_AnnotationTargetPropertyId = 30117  # Constant c_int
-UIA_AnnotationDateTimePropertyId = 30116  # Constant c_int
-UIA_AnnotationAuthorPropertyId = 30115  # Constant c_int
-UIA_AnnotationAnnotationTypeNamePropertyId = 30114  # Constant c_int
-UIA_AnnotationAnnotationTypeIdPropertyId = 30113  # Constant c_int
-UIA_IsObjectModelPatternAvailablePropertyId = 30112  # Constant c_int
-UIA_TableRowOrColumnMajorPropertyId = 30083  # Constant c_int
-UIA_OptimizeForVisualContentPropertyId = 30111  # Constant c_int
-UIA_IsSynchronizedInputPatternAvailablePropertyId = 30110  # Constant c_int
-UIA_IsVirtualizedItemPatternAvailablePropertyId = 30109  # Constant c_int
-UIA_IsItemContainerPatternAvailablePropertyId = 30108  # Constant c_int
-UIA_ProviderDescriptionPropertyId = 30107  # Constant c_int
-UIA_FlowsToPropertyId = 30106  # Constant c_int
-UIA_DescribedByPropertyId = 30105  # Constant c_int
-UIA_ControllerForPropertyId = 30104  # Constant c_int
-HeadingLevel9 = 80059  # Constant c_int
-UIA_IsDataValidForFormPropertyId = 30103  # Constant c_int
-UIA_AriaPropertiesPropertyId = 30102  # Constant c_int
+UIA_Text_TextChangedEventId = 20015  # Constant c_int
+UIA_Text_TextSelectionChangedEventId = 20014  # Constant c_int
+UIA_Selection_InvalidatedEventId = 20013  # Constant c_int
+UIA_SelectionItem_ElementRemovedFromSelectionEventId = 20011  # Constant c_int
+UIA_SelectionItem_ElementSelectedEventId = 20012  # Constant c_int
+
+
+class IUIAutomationTextRange2(IUIAutomationTextRange):
+    _case_insensitive_ = True
+    _iid_ = GUID('{BB9B40E0-5E04-46BD-9BE0-4B601B9AFAD4}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def ShowContextMenu(self) -> hints.Hresult: ...
+
+
+IUIAutomationTextRange2._methods_ = [
+    COMMETHOD([], HRESULT, 'ShowContextMenu'),
+]
+
+################################################################
+# code template for IUIAutomationTextRange2 implementation
+# class IUIAutomationTextRange2_Impl(object):
+#     def ShowContextMenu(self):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_ListItemControlTypeId = 50007  # Constant c_int
+
+
+class IUIAutomationCustomNavigationPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{01EA217A-1766-47ED-A6CC-ACF492854B1F}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def Navigate(self, direction: hints.Incomplete) -> 'IUIAutomationElement': ...
+
+
+IUIAutomationCustomNavigationPattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'Navigate',
+        (['in'], NavigateDirection, 'direction'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'pRetVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationCustomNavigationPattern implementation
+# class IUIAutomationCustomNavigationPattern_Impl(object):
+#     def Navigate(self, direction):
+#         '-no docstring-'
+#         #return pRetVal
+#
+
+UIA_SelectionActiveEndAttributeId = 40037  # Constant c_int
+
+
+class IUIAutomationActiveTextPositionChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{F97933B0-8DAE-4496-8997-5BA015FE0D82}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def HandleActiveTextPositionChangedEvent(self, sender: hints.Incomplete, range: hints.Incomplete) -> hints.Hresult: ...
+
+
+IUIAutomationActiveTextPositionChangedEventHandler._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'HandleActiveTextPositionChangedEvent',
+        (['in'], POINTER(IUIAutomationElement), 'sender'),
+        (['in'], POINTER(IUIAutomationTextRange), 'range')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationActiveTextPositionChangedEventHandler implementation
+# class IUIAutomationActiveTextPositionChangedEventHandler_Impl(object):
+#     def HandleActiveTextPositionChangedEvent(self, sender, range):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_IsActiveAttributeId = 40036  # Constant c_int
+UIA_ImageControlTypeId = 50006  # Constant c_int
+UIA_WindowPatternId = 10009  # Constant c_int
 
 
 class IUIAutomationTextRange3(IUIAutomationTextRange2):
@@ -1104,210 +1395,26 @@ IUIAutomationTextRange3._methods_ = [
 #         #return attributeValues
 #
 
-UIA_TableColumnHeadersPropertyId = 30082  # Constant c_int
-UIA_AriaRolePropertyId = 30101  # Constant c_int
-UIA_LegacyIAccessibleDefaultActionPropertyId = 30100  # Constant c_int
-UIA_LegacyIAccessibleSelectionPropertyId = 30099  # Constant c_int
-UIA_TableRowHeadersPropertyId = 30081  # Constant c_int
-UIA_LegacyIAccessibleKeyboardShortcutPropertyId = 30098  # Constant c_int
-UIA_LegacyIAccessibleHelpPropertyId = 30097  # Constant c_int
-UIA_LegacyIAccessibleStatePropertyId = 30096  # Constant c_int
-UIA_LegacyIAccessibleRolePropertyId = 30095  # Constant c_int
-UIA_SayAsInterpretAsMetadataId = 100000  # Constant c_int
-UIA_LegacyIAccessibleDescriptionPropertyId = 30094  # Constant c_int
-UIA_LegacyIAccessibleValuePropertyId = 30093  # Constant c_int
-UIA_LegacyIAccessibleNamePropertyId = 30092  # Constant c_int
+UIA_MultipleViewPatternId = 10008  # Constant c_int
+UIA_LinkAttributeId = 40035  # Constant c_int
+UIA_StyleIdAttributeId = 40034  # Constant c_int
+UIA_GridItemPatternId = 10007  # Constant c_int
+UIA_GridPatternId = 10006  # Constant c_int
 UIA_StyleNameAttributeId = 40033  # Constant c_int
-UIA_MarginLeadingAttributeId = 40019  # Constant c_int
-UIA_MarginBottomAttributeId = 40018  # Constant c_int
+UIA_ExpandCollapsePatternId = 10005  # Constant c_int
+UIA_ScrollPatternId = 10004  # Constant c_int
+UIA_RangeValuePatternId = 10003  # Constant c_int
+UIA_ValuePatternId = 10002  # Constant c_int
+UIA_SelectionPatternId = 10001  # Constant c_int
+UIA_InvokePatternId = 10000  # Constant c_int
+
+
+class Library(object):
+    name = 'UIAutomationClient'
+    _reg_typelib_ = ('{944DE083-8FB8-45CF-BCB7-C477ACB2F897}', 1, 0)
+
+
 UIA_AnnotationObjectsAttributeId = 40032  # Constant c_int
-UIA_SummaryChangeId = 90000  # Constant c_int
-HeadingLevel7 = 80057  # Constant c_int
-HeadingLevel6 = 80056  # Constant c_int
-HeadingLevel5 = 80055  # Constant c_int
-HeadingLevel8 = 80058  # Constant c_int
-UIA_SelectionItemSelectionContainerPropertyId = 30080  # Constant c_int
-UIA_SelectionItemIsSelectedPropertyId = 30079  # Constant c_int
-UIA_IsSuperscriptAttributeId = 40017  # Constant c_int
-UIA_IsSubscriptAttributeId = 40016  # Constant c_int
-UIA_WindowIsTopmostPropertyId = 30078  # Constant c_int
-UIA_WindowIsModalPropertyId = 30077  # Constant c_int
-UIA_WindowWindowInteractionStatePropertyId = 30076  # Constant c_int
-UIA_IsReadOnlyAttributeId = 40015  # Constant c_int
-UIA_WindowWindowVisualStatePropertyId = 30075  # Constant c_int
-UIA_WindowCanMinimizePropertyId = 30074  # Constant c_int
-UIA_WindowCanMaximizePropertyId = 30073  # Constant c_int
-UIA_MultipleViewSupportedViewsPropertyId = 30072  # Constant c_int
-UIA_MultipleViewCurrentViewPropertyId = 30071  # Constant c_int
-UIA_ExpandCollapseExpandCollapseStatePropertyId = 30070  # Constant c_int
-UIA_DockDockPositionPropertyId = 30069  # Constant c_int
-UIA_GridItemContainingGridPropertyId = 30068  # Constant c_int
-UIA_GridItemColumnSpanPropertyId = 30067  # Constant c_int
-UIA_GridItemColumnPropertyId = 30065  # Constant c_int
-AnnotationType_Sensitive = 60024  # Constant c_int
-
-
-class IUIAutomationVirtualizedItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{6BA3D7A6-04CF-4F11-8793-A8D1CDE9969F}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def Realize(self) -> hints.Hresult: ...
-
-
-IUIAutomationVirtualizedItemPattern._methods_ = [
-    COMMETHOD([], HRESULT, 'Realize'),
-]
-
-################################################################
-# code template for IUIAutomationVirtualizedItemPattern implementation
-# class IUIAutomationVirtualizedItemPattern_Impl(object):
-#     def Realize(self):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_GridItemRowPropertyId = 30064  # Constant c_int
-StyleId_Custom = 70000  # Constant c_int
-
-
-class IUIAutomation(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{30CBE57D-D9D0-452A-AB13-7AC5AC4825EE}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def CompareElements(self, el1: hints.Incomplete, el2: hints.Incomplete) -> hints.Incomplete: ...
-        def CompareRuntimeIds(self, runtimeId1: hints.Incomplete, runtimeId2: hints.Incomplete) -> hints.Incomplete: ...
-        def GetRootElement(self) -> 'IUIAutomationElement': ...
-        def ElementFromHandle(self, hwnd: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def ElementFromPoint(self, pt: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetFocusedElement(self) -> 'IUIAutomationElement': ...
-        def GetRootElementBuildCache(self, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def ElementFromHandleBuildCache(self, hwnd: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def ElementFromPointBuildCache(self, pt: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetFocusedElementBuildCache(self, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def CreateTreeWalker(self, pCondition: hints.Incomplete) -> 'IUIAutomationTreeWalker': ...
-        def _get_ControlViewWalker(self) -> 'IUIAutomationTreeWalker': ...
-        ControlViewWalker = hints.normal_property(_get_ControlViewWalker)
-        def _get_ContentViewWalker(self) -> 'IUIAutomationTreeWalker': ...
-        ContentViewWalker = hints.normal_property(_get_ContentViewWalker)
-        def _get_RawViewWalker(self) -> 'IUIAutomationTreeWalker': ...
-        RawViewWalker = hints.normal_property(_get_RawViewWalker)
-        def _get_RawViewCondition(self) -> 'IUIAutomationCondition': ...
-        RawViewCondition = hints.normal_property(_get_RawViewCondition)
-        def _get_ControlViewCondition(self) -> 'IUIAutomationCondition': ...
-        ControlViewCondition = hints.normal_property(_get_ControlViewCondition)
-        def _get_ContentViewCondition(self) -> 'IUIAutomationCondition': ...
-        ContentViewCondition = hints.normal_property(_get_ContentViewCondition)
-        def CreateCacheRequest(self) -> 'IUIAutomationCacheRequest': ...
-        def CreateTrueCondition(self) -> 'IUIAutomationCondition': ...
-        def CreateFalseCondition(self) -> 'IUIAutomationCondition': ...
-        def CreatePropertyCondition(self, propertyId: hints.Incomplete, value: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def CreatePropertyConditionEx(self, propertyId: hints.Incomplete, value: hints.Incomplete, flags: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def CreateAndCondition(self, condition1: hints.Incomplete, condition2: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def CreateAndConditionFromArray(self, conditions: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def CreateAndConditionFromNativeArray(self, conditions: hints.Incomplete, conditionCount: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def CreateOrCondition(self, condition1: hints.Incomplete, condition2: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def CreateOrConditionFromArray(self, conditions: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def CreateOrConditionFromNativeArray(self, conditions: hints.Incomplete, conditionCount: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def CreateNotCondition(self, condition: hints.Incomplete) -> 'IUIAutomationCondition': ...
-        def AddAutomationEventHandler(self, eventId: hints.Incomplete, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveAutomationEventHandler(self, eventId: hints.Incomplete, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def AddPropertyChangedEventHandlerNativeArray(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete, propertyArray: hints.Incomplete, propertyCount: hints.Incomplete) -> hints.Hresult: ...
-        def AddPropertyChangedEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete, propertyArray: hints.Incomplete) -> hints.Hresult: ...
-        def RemovePropertyChangedEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def AddStructureChangedEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveStructureChangedEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def AddFocusChangedEventHandler(self, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveFocusChangedEventHandler(self, handler: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveAllEventHandlers(self) -> hints.Hresult: ...
-        def IntNativeArrayToSafeArray(self, array: hints.Incomplete, arrayCount: hints.Incomplete) -> hints.Incomplete: ...
-        def IntSafeArrayToNativeArray(self, intArray: hints.Incomplete) -> tuple[hints.Incomplete, hints.Incomplete]: ...
-        def RectToVariant(self, rc: hints.Incomplete) -> hints.Incomplete: ...
-        def VariantToRect(self, var: hints.Incomplete) -> hints.Incomplete: ...
-        def SafeArrayToRectNativeArray(self, rects: hints.Incomplete) -> tuple[hints.Incomplete, hints.Incomplete]: ...
-        def CreateProxyFactoryEntry(self, factory: hints.Incomplete) -> 'IUIAutomationProxyFactoryEntry': ...
-        def _get_ProxyFactoryMapping(self) -> 'IUIAutomationProxyFactoryMapping': ...
-        ProxyFactoryMapping = hints.normal_property(_get_ProxyFactoryMapping)
-        def GetPropertyProgrammaticName(self, property: hints.Incomplete) -> hints.Incomplete: ...
-        def GetPatternProgrammaticName(self, pattern: hints.Incomplete) -> hints.Incomplete: ...
-        def PollForPotentialSupportedPatterns(self, pElement: hints.Incomplete) -> tuple[hints.Incomplete, hints.Incomplete]: ...
-        def PollForPotentialSupportedProperties(self, pElement: hints.Incomplete) -> tuple[hints.Incomplete, hints.Incomplete]: ...
-        def CheckNotSupported(self, value: hints.Incomplete) -> hints.Incomplete: ...
-        def _get_ReservedNotSupportedValue(self) -> hints.Incomplete: ...
-        ReservedNotSupportedValue = hints.normal_property(_get_ReservedNotSupportedValue)
-        def _get_ReservedMixedAttributeValue(self) -> hints.Incomplete: ...
-        ReservedMixedAttributeValue = hints.normal_property(_get_ReservedMixedAttributeValue)
-        def ElementFromIAccessible(self, accessible: hints.Incomplete, childId: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def ElementFromIAccessibleBuildCache(self, accessible: hints.Incomplete, childId: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-
-
-class IUIAutomation2(IUIAutomation):
-    _case_insensitive_ = True
-    _iid_ = GUID('{34723AFF-0C9D-49D0-9896-7AB52DF8CD8A}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_AutoSetFocus(self) -> hints.Incomplete: ...
-        def _set_AutoSetFocus(self, AutoSetFocus: hints.Incomplete) -> hints.Hresult: ...
-        AutoSetFocus = hints.normal_property(_get_AutoSetFocus, _set_AutoSetFocus)
-        def _get_ConnectionTimeout(self) -> hints.Incomplete: ...
-        def _set_ConnectionTimeout(self, timeout: hints.Incomplete) -> hints.Hresult: ...
-        ConnectionTimeout = hints.normal_property(_get_ConnectionTimeout, _set_ConnectionTimeout)
-        def _get_TransactionTimeout(self) -> hints.Incomplete: ...
-        def _set_TransactionTimeout(self, timeout: hints.Incomplete) -> hints.Hresult: ...
-        TransactionTimeout = hints.normal_property(_get_TransactionTimeout, _set_TransactionTimeout)
-
-
-class IUIAutomation3(IUIAutomation2):
-    _case_insensitive_ = True
-    _iid_ = GUID('{73D768DA-9B51-4B89-936E-C209290973E7}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def AddTextEditTextChangedEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, TextEditChangeType: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveTextEditTextChangedEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-
-
-class IUIAutomation4(IUIAutomation3):
-    _case_insensitive_ = True
-    _iid_ = GUID('{1189C02A-05F8-4319-8E21-E817E3DB2860}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def AddChangesEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, changeTypes: hints.Incomplete, changesCount: hints.Incomplete, pCacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveChangesEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-
-
-class IUIAutomation5(IUIAutomation4):
-    _case_insensitive_ = True
-    _iid_ = GUID('{25F700C8-D816-4057-A9DC-3CBDEE77E256}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def AddNotificationEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveNotificationEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-
-
-class IUIAutomation6(IUIAutomation5):
-    _case_insensitive_ = True
-    _iid_ = GUID('{AAE072DA-29E3-413D-87A7-192DBF81ED10}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def CreateEventHandlerGroup(self) -> 'IUIAutomationEventHandlerGroup': ...
-        def AddEventHandlerGroup(self, element: hints.Incomplete, handlerGroup: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveEventHandlerGroup(self, element: hints.Incomplete, handlerGroup: hints.Incomplete) -> hints.Hresult: ...
-        def _get_ConnectionRecoveryBehavior(self) -> hints.Incomplete: ...
-        def _set_ConnectionRecoveryBehavior(self, ConnectionRecoveryBehaviorOptions: hints.Incomplete) -> hints.Hresult: ...
-        ConnectionRecoveryBehavior = hints.normal_property(_get_ConnectionRecoveryBehavior, _set_ConnectionRecoveryBehavior)
-        def _get_CoalesceEvents(self) -> hints.Incomplete: ...
-        def _set_CoalesceEvents(self, CoalesceEventsOptions: hints.Incomplete) -> hints.Hresult: ...
-        CoalesceEvents = hints.normal_property(_get_CoalesceEvents, _set_CoalesceEvents)
-        def AddActiveTextPositionChangedEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveActiveTextPositionChangedEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
 
 
 class IUIAutomationCondition(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -1315,1213 +1422,6 @@ class IUIAutomationCondition(comtypes.gen._00020430_0000_0000_C000_000000000046_
     _iid_ = GUID('{352FFBA8-0973-437C-A61F-F64CAFD81DF9}')
     _idlflags_ = []
 
-
-class IUIAutomationTreeWalker(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{4042C624-389C-4AFC-A630-9DF854A541FC}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def GetParentElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetFirstChildElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetLastChildElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetNextSiblingElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetPreviousSiblingElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def NormalizeElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetParentElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetFirstChildElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetLastChildElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetNextSiblingElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def GetPreviousSiblingElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def NormalizeElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def _get_condition(self) -> 'IUIAutomationCondition': ...
-        condition = hints.normal_property(_get_condition)
-
-
-class IUIAutomationEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{146C3C17-F12E-4E22-8C27-F894B9B79C69}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def HandleAutomationEvent(self, sender: hints.Incomplete, eventId: hints.Incomplete) -> hints.Hresult: ...
-
-
-class IUIAutomationPropertyChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{40CD37D4-C756-4B0C-8C6F-BDDFEEB13B50}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def HandlePropertyChangedEvent(self, sender: hints.Incomplete, propertyId: hints.Incomplete, newValue: hints.Incomplete) -> hints.Hresult: ...
-
-
-class IUIAutomationStructureChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{E81D1B4E-11C5-42F8-9754-E7036C79F054}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def HandleStructureChangedEvent(self, sender: hints.Incomplete, changeType: hints.Incomplete, runtimeId: hints.Incomplete) -> hints.Hresult: ...
-
-
-class IUIAutomationFocusChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{C270F6B5-5C69-4290-9745-7A7F97169468}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def HandleFocusChangedEvent(self, sender: hints.Incomplete) -> hints.Hresult: ...
-
-
-class IUIAutomationProxyFactory(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{85B94ECD-849D-42B6-B94D-D6DB23FDF5A4}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def CreateProvider(self, hwnd: hints.Incomplete, idObject: hints.Incomplete, idChild: hints.Incomplete) -> 'IRawElementProviderSimple': ...
-        def _get_ProxyFactoryId(self) -> hints.Incomplete: ...
-        ProxyFactoryId = hints.normal_property(_get_ProxyFactoryId)
-
-
-class IUIAutomationProxyFactoryEntry(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{D50E472E-B64B-490C-BCA1-D30696F9F289}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_ProxyFactory(self) -> 'IUIAutomationProxyFactory': ...
-        ProxyFactory = hints.normal_property(_get_ProxyFactory)
-        def _get_ClassName(self) -> hints.Incomplete: ...
-        def _set_ClassName(self, ClassName: hints.Incomplete) -> hints.Hresult: ...
-        ClassName = hints.normal_property(_get_ClassName, _set_ClassName)
-        def _get_ImageName(self) -> hints.Incomplete: ...
-        def _set_ImageName(self, ImageName: hints.Incomplete) -> hints.Hresult: ...
-        ImageName = hints.normal_property(_get_ImageName, _set_ImageName)
-        def _get_AllowSubstringMatch(self) -> hints.Incomplete: ...
-        def _set_AllowSubstringMatch(self, AllowSubstringMatch: hints.Incomplete) -> hints.Hresult: ...
-        AllowSubstringMatch = hints.normal_property(_get_AllowSubstringMatch, _set_AllowSubstringMatch)
-        def _get_CanCheckBaseClass(self) -> hints.Incomplete: ...
-        def _set_CanCheckBaseClass(self, CanCheckBaseClass: hints.Incomplete) -> hints.Hresult: ...
-        CanCheckBaseClass = hints.normal_property(_get_CanCheckBaseClass, _set_CanCheckBaseClass)
-        def _get_NeedsAdviseEvents(self) -> hints.Incomplete: ...
-        def _set_NeedsAdviseEvents(self, adviseEvents: hints.Incomplete) -> hints.Hresult: ...
-        NeedsAdviseEvents = hints.normal_property(_get_NeedsAdviseEvents, _set_NeedsAdviseEvents)
-        def SetWinEventsForAutomationEvent(self, eventId: hints.Incomplete, propertyId: hints.Incomplete, winEvents: hints.Incomplete) -> hints.Hresult: ...
-        def GetWinEventsForAutomationEvent(self, eventId: hints.Incomplete, propertyId: hints.Incomplete) -> hints.Incomplete: ...
-
-
-class IUIAutomationProxyFactoryMapping(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{09E31E18-872D-4873-93D1-1E541EC133FD}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_count(self) -> hints.Incomplete: ...
-        count = hints.normal_property(_get_count)
-        def GetTable(self) -> hints.Incomplete: ...
-        def GetEntry(self, index: hints.Incomplete) -> 'IUIAutomationProxyFactoryEntry': ...
-        def SetTable(self, factoryList: hints.Incomplete) -> hints.Hresult: ...
-        def InsertEntries(self, before: hints.Incomplete, factoryList: hints.Incomplete) -> hints.Hresult: ...
-        def InsertEntry(self, before: hints.Incomplete, factory: hints.Incomplete) -> hints.Hresult: ...
-        def RemoveEntry(self, index: hints.Incomplete) -> hints.Hresult: ...
-        def ClearTable(self) -> hints.Hresult: ...
-        def RestoreDefaultTable(self) -> hints.Hresult: ...
-
-
-class IAccessible(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IDispatch):
-    _case_insensitive_ = True
-    _iid_ = GUID('{618736E0-3C3D-11CF-810C-00AA00389B71}')
-    _idlflags_ = ['hidden', 'dual', 'oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def _get_accParent(self) -> hints.Incomplete: ...
-        accParent = hints.normal_property(_get_accParent)
-        def _get_accChildCount(self) -> hints.Incomplete: ...
-        accChildCount = hints.normal_property(_get_accChildCount)
-        def _get_accChild(self, varChild: hints.Incomplete) -> hints.Incomplete: ...
-        accChild = hints.named_property('accChild', _get_accChild)
-        def _get_accName(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
-        def _set_accName(self, varChild: hints.Incomplete = ..., /, *args: hints.Unpack[tuple[hints.Incomplete]]) -> hints.Hresult: ...
-        accName = hints.named_property('accName', _get_accName, _set_accName)
-        def _get_accValue(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
-        def _set_accValue(self, varChild: hints.Incomplete = ..., /, *args: hints.Unpack[tuple[hints.Incomplete]]) -> hints.Hresult: ...
-        accValue = hints.named_property('accValue', _get_accValue, _set_accValue)
-        def _get_accDescription(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
-        accDescription = hints.named_property('accDescription', _get_accDescription)
-        def _get_accRole(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
-        accRole = hints.named_property('accRole', _get_accRole)
-        def _get_accState(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
-        accState = hints.named_property('accState', _get_accState)
-        def _get_accHelp(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
-        accHelp = hints.named_property('accHelp', _get_accHelp)
-        def _get_accHelpTopic(self, varChild: hints.Incomplete = ...) -> tuple[hints.Incomplete, hints.Incomplete]: ...
-        accHelpTopic = hints.named_property('accHelpTopic', _get_accHelpTopic)
-        def _get_accKeyboardShortcut(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
-        accKeyboardShortcut = hints.named_property('accKeyboardShortcut', _get_accKeyboardShortcut)
-        def _get_accFocus(self) -> hints.Incomplete: ...
-        accFocus = hints.normal_property(_get_accFocus)
-        def _get_accSelection(self) -> hints.Incomplete: ...
-        accSelection = hints.normal_property(_get_accSelection)
-        def _get_accDefaultAction(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
-        accDefaultAction = hints.named_property('accDefaultAction', _get_accDefaultAction)
-        def accSelect(self, flagsSelect: hints.Incomplete, varChild: hints.Incomplete = ...) -> hints.Hresult: ...
-        def accLocation(self, varChild: hints.Incomplete = ...) -> tuple[hints.Incomplete, hints.Incomplete, hints.Incomplete, hints.Incomplete]: ...
-        def accNavigate(self, navDir: hints.Incomplete, varStart: hints.Incomplete = ...) -> hints.Incomplete: ...
-        def accHitTest(self, xLeft: hints.Incomplete, yTop: hints.Incomplete) -> hints.Incomplete: ...
-        def accDoDefaultAction(self, varChild: hints.Incomplete = ...) -> hints.Hresult: ...
-
-
-IUIAutomation._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CompareElements',
-        (['in'], POINTER(IUIAutomationElement), 'el1'),
-        (['in'], POINTER(IUIAutomationElement), 'el2'),
-        (['out', 'retval'], POINTER(c_int), 'areSame')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CompareRuntimeIds',
-        (['in'], _midlSAFEARRAY(c_int), 'runtimeId1'),
-        (['in'], _midlSAFEARRAY(c_int), 'runtimeId2'),
-        (['out', 'retval'], POINTER(c_int), 'areSame')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetRootElement',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'root')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'ElementFromHandle',
-        (['in'], c_void_p, 'hwnd'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'ElementFromPoint',
-        (['in'], tagPOINT, 'pt'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetFocusedElement',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetRootElementBuildCache',
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'root')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'ElementFromHandleBuildCache',
-        (['in'], c_void_p, 'hwnd'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'ElementFromPointBuildCache',
-        (['in'], tagPOINT, 'pt'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetFocusedElementBuildCache',
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateTreeWalker',
-        (['in'], POINTER(IUIAutomationCondition), 'pCondition'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTreeWalker)), 'walker')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ControlViewWalker',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTreeWalker)), 'walker')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ContentViewWalker',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTreeWalker)), 'walker')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'RawViewWalker',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTreeWalker)), 'walker')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'RawViewCondition',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'condition',
-        )
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ControlViewCondition',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'condition',
-        )
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ContentViewCondition',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'condition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateCacheRequest',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCacheRequest)),
-            'cacheRequest',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateTrueCondition',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateFalseCondition',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreatePropertyCondition',
-        (['in'], c_int, 'propertyId'),
-        (['in'], VARIANT, 'value'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreatePropertyConditionEx',
-        (['in'], c_int, 'propertyId'),
-        (['in'], VARIANT, 'value'),
-        (['in'], PropertyConditionFlags, 'flags'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateAndCondition',
-        (['in'], POINTER(IUIAutomationCondition), 'condition1'),
-        (['in'], POINTER(IUIAutomationCondition), 'condition2'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateAndConditionFromArray',
-        (['in'], _midlSAFEARRAY(POINTER(IUIAutomationCondition)), 'conditions'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateAndConditionFromNativeArray',
-        (['in'], POINTER(POINTER(IUIAutomationCondition)), 'conditions'),
-        (['in'], c_int, 'conditionCount'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateOrCondition',
-        (['in'], POINTER(IUIAutomationCondition), 'condition1'),
-        (['in'], POINTER(IUIAutomationCondition), 'condition2'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateOrConditionFromArray',
-        (['in'], _midlSAFEARRAY(POINTER(IUIAutomationCondition)), 'conditions'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateOrConditionFromNativeArray',
-        (['in'], POINTER(POINTER(IUIAutomationCondition)), 'conditions'),
-        (['in'], c_int, 'conditionCount'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateNotCondition',
-        (['in'], POINTER(IUIAutomationCondition), 'condition'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'newCondition',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddAutomationEventHandler',
-        (['in'], c_int, 'eventId'),
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveAutomationEventHandler',
-        (['in'], c_int, 'eventId'),
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddPropertyChangedEventHandlerNativeArray',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationPropertyChangedEventHandler), 'handler'),
-        (['in'], POINTER(c_int), 'propertyArray'),
-        (['in'], c_int, 'propertyCount')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddPropertyChangedEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationPropertyChangedEventHandler), 'handler'),
-        (['in'], _midlSAFEARRAY(c_int), 'propertyArray')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemovePropertyChangedEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationPropertyChangedEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddStructureChangedEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationStructureChangedEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveStructureChangedEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationStructureChangedEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddFocusChangedEventHandler',
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationFocusChangedEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveFocusChangedEventHandler',
-        (['in'], POINTER(IUIAutomationFocusChangedEventHandler), 'handler')
-    ),
-    COMMETHOD([], HRESULT, 'RemoveAllEventHandlers'),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'IntNativeArrayToSafeArray',
-        (['in'], POINTER(c_int), 'array'),
-        (['in'], c_int, 'arrayCount'),
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'safeArray')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'IntSafeArrayToNativeArray',
-        (['in'], _midlSAFEARRAY(c_int), 'intArray'),
-        (['out'], POINTER(POINTER(c_int)), 'array'),
-        (['out', 'retval'], POINTER(c_int), 'arrayCount')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RectToVariant',
-        (['in'], tagRECT, 'rc'),
-        (['out', 'retval'], POINTER(VARIANT), 'var')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'VariantToRect',
-        (['in'], VARIANT, 'var'),
-        (['out', 'retval'], POINTER(tagRECT), 'rc')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'SafeArrayToRectNativeArray',
-        (['in'], _midlSAFEARRAY(c_double), 'rects'),
-        (['out'], POINTER(POINTER(tagRECT)), 'rectArray'),
-        (['out', 'retval'], POINTER(c_int), 'rectArrayCount')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateProxyFactoryEntry',
-        (['in'], POINTER(IUIAutomationProxyFactory), 'factory'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationProxyFactoryEntry)),
-            'factoryEntry',
-        )
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ProxyFactoryMapping',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationProxyFactoryMapping)),
-            'factoryMapping',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetPropertyProgrammaticName',
-        (['in'], c_int, 'property'),
-        (['out', 'retval'], POINTER(BSTR), 'name')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetPatternProgrammaticName',
-        (['in'], c_int, 'pattern'),
-        (['out', 'retval'], POINTER(BSTR), 'name')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'PollForPotentialSupportedPatterns',
-        (['in'], POINTER(IUIAutomationElement), 'pElement'),
-        (['out'], POINTER(_midlSAFEARRAY(c_int)), 'patternIds'),
-        (['out'], POINTER(_midlSAFEARRAY(BSTR)), 'patternNames')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'PollForPotentialSupportedProperties',
-        (['in'], POINTER(IUIAutomationElement), 'pElement'),
-        (['out'], POINTER(_midlSAFEARRAY(c_int)), 'propertyIds'),
-        (['out'], POINTER(_midlSAFEARRAY(BSTR)), 'propertyNames')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CheckNotSupported',
-        (['in'], VARIANT, 'value'),
-        (['out', 'retval'], POINTER(c_int), 'isNotSupported')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ReservedNotSupportedValue',
-        (['out', 'retval'], POINTER(POINTER(IUnknown)), 'notSupportedValue')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ReservedMixedAttributeValue',
-        (['out', 'retval'], POINTER(POINTER(IUnknown)), 'mixedAttributeValue')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'ElementFromIAccessible',
-        (['in'], POINTER(IAccessible), 'accessible'),
-        (['in'], c_int, 'childId'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'ElementFromIAccessibleBuildCache',
-        (['in'], POINTER(IAccessible), 'accessible'),
-        (['in'], c_int, 'childId'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
-    ),
-]
-
-################################################################
-# code template for IUIAutomation implementation
-# class IUIAutomation_Impl(object):
-#     def CompareElements(self, el1, el2):
-#         '-no docstring-'
-#         #return areSame
-#
-#     def CompareRuntimeIds(self, runtimeId1, runtimeId2):
-#         '-no docstring-'
-#         #return areSame
-#
-#     def GetRootElement(self):
-#         '-no docstring-'
-#         #return root
-#
-#     def ElementFromHandle(self, hwnd):
-#         '-no docstring-'
-#         #return element
-#
-#     def ElementFromPoint(self, pt):
-#         '-no docstring-'
-#         #return element
-#
-#     def GetFocusedElement(self):
-#         '-no docstring-'
-#         #return element
-#
-#     def GetRootElementBuildCache(self, cacheRequest):
-#         '-no docstring-'
-#         #return root
-#
-#     def ElementFromHandleBuildCache(self, hwnd, cacheRequest):
-#         '-no docstring-'
-#         #return element
-#
-#     def ElementFromPointBuildCache(self, pt, cacheRequest):
-#         '-no docstring-'
-#         #return element
-#
-#     def GetFocusedElementBuildCache(self, cacheRequest):
-#         '-no docstring-'
-#         #return element
-#
-#     def CreateTreeWalker(self, pCondition):
-#         '-no docstring-'
-#         #return walker
-#
-#     @property
-#     def ControlViewWalker(self):
-#         '-no docstring-'
-#         #return walker
-#
-#     @property
-#     def ContentViewWalker(self):
-#         '-no docstring-'
-#         #return walker
-#
-#     @property
-#     def RawViewWalker(self):
-#         '-no docstring-'
-#         #return walker
-#
-#     @property
-#     def RawViewCondition(self):
-#         '-no docstring-'
-#         #return condition
-#
-#     @property
-#     def ControlViewCondition(self):
-#         '-no docstring-'
-#         #return condition
-#
-#     @property
-#     def ContentViewCondition(self):
-#         '-no docstring-'
-#         #return condition
-#
-#     def CreateCacheRequest(self):
-#         '-no docstring-'
-#         #return cacheRequest
-#
-#     def CreateTrueCondition(self):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreateFalseCondition(self):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreatePropertyCondition(self, propertyId, value):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreatePropertyConditionEx(self, propertyId, value, flags):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreateAndCondition(self, condition1, condition2):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreateAndConditionFromArray(self, conditions):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreateAndConditionFromNativeArray(self, conditions, conditionCount):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreateOrCondition(self, condition1, condition2):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreateOrConditionFromArray(self, conditions):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreateOrConditionFromNativeArray(self, conditions, conditionCount):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def CreateNotCondition(self, condition):
-#         '-no docstring-'
-#         #return newCondition
-#
-#     def AddAutomationEventHandler(self, eventId, element, scope, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveAutomationEventHandler(self, eventId, element, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddPropertyChangedEventHandlerNativeArray(self, element, scope, cacheRequest, handler, propertyArray, propertyCount):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddPropertyChangedEventHandler(self, element, scope, cacheRequest, handler, propertyArray):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemovePropertyChangedEventHandler(self, element, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddStructureChangedEventHandler(self, element, scope, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveStructureChangedEventHandler(self, element, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddFocusChangedEventHandler(self, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveFocusChangedEventHandler(self, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveAllEventHandlers(self):
-#         '-no docstring-'
-#         #return 
-#
-#     def IntNativeArrayToSafeArray(self, array, arrayCount):
-#         '-no docstring-'
-#         #return safeArray
-#
-#     def IntSafeArrayToNativeArray(self, intArray):
-#         '-no docstring-'
-#         #return array, arrayCount
-#
-#     def RectToVariant(self, rc):
-#         '-no docstring-'
-#         #return var
-#
-#     def VariantToRect(self, var):
-#         '-no docstring-'
-#         #return rc
-#
-#     def SafeArrayToRectNativeArray(self, rects):
-#         '-no docstring-'
-#         #return rectArray, rectArrayCount
-#
-#     def CreateProxyFactoryEntry(self, factory):
-#         '-no docstring-'
-#         #return factoryEntry
-#
-#     @property
-#     def ProxyFactoryMapping(self):
-#         '-no docstring-'
-#         #return factoryMapping
-#
-#     def GetPropertyProgrammaticName(self, property):
-#         '-no docstring-'
-#         #return name
-#
-#     def GetPatternProgrammaticName(self, pattern):
-#         '-no docstring-'
-#         #return name
-#
-#     def PollForPotentialSupportedPatterns(self, pElement):
-#         '-no docstring-'
-#         #return patternIds, patternNames
-#
-#     def PollForPotentialSupportedProperties(self, pElement):
-#         '-no docstring-'
-#         #return propertyIds, propertyNames
-#
-#     def CheckNotSupported(self, value):
-#         '-no docstring-'
-#         #return isNotSupported
-#
-#     @property
-#     def ReservedNotSupportedValue(self):
-#         '-no docstring-'
-#         #return notSupportedValue
-#
-#     @property
-#     def ReservedMixedAttributeValue(self):
-#         '-no docstring-'
-#         #return mixedAttributeValue
-#
-#     def ElementFromIAccessible(self, accessible, childId):
-#         '-no docstring-'
-#         #return element
-#
-#     def ElementFromIAccessibleBuildCache(self, accessible, childId, cacheRequest):
-#         '-no docstring-'
-#         #return element
-#
-
-IUIAutomation2._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'AutoSetFocus',
-        (['out', 'retval'], POINTER(c_int), 'AutoSetFocus')
-    ),
-    COMMETHOD(
-        ['propput'],
-        HRESULT,
-        'AutoSetFocus',
-        (['in'], c_int, 'AutoSetFocus')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ConnectionTimeout',
-        (['out', 'retval'], POINTER(c_ulong), 'timeout')
-    ),
-    COMMETHOD(
-        ['propput'],
-        HRESULT,
-        'ConnectionTimeout',
-        (['in'], c_ulong, 'timeout')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'TransactionTimeout',
-        (['out', 'retval'], POINTER(c_ulong), 'timeout')
-    ),
-    COMMETHOD(
-        ['propput'],
-        HRESULT,
-        'TransactionTimeout',
-        (['in'], c_ulong, 'timeout')
-    ),
-]
-
-################################################################
-# code template for IUIAutomation2 implementation
-# class IUIAutomation2_Impl(object):
-#     def _get(self):
-#         '-no docstring-'
-#         #return AutoSetFocus
-#     def _set(self, AutoSetFocus):
-#         '-no docstring-'
-#     AutoSetFocus = property(_get, _set, doc = _set.__doc__)
-#
-#     def _get(self):
-#         '-no docstring-'
-#         #return timeout
-#     def _set(self, timeout):
-#         '-no docstring-'
-#     ConnectionTimeout = property(_get, _set, doc = _set.__doc__)
-#
-#     def _get(self):
-#         '-no docstring-'
-#         #return timeout
-#     def _set(self, timeout):
-#         '-no docstring-'
-#     TransactionTimeout = property(_get, _set, doc = _set.__doc__)
-#
-
-
-class IUIAutomationTextEditTextChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{92FAA680-E704-4156-931A-E32D5BB38F3F}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def HandleTextEditTextChangedEvent(self, sender: hints.Incomplete, TextEditChangeType: hints.Incomplete, eventStrings: hints.Incomplete) -> hints.Hresult: ...
-
-
-IUIAutomation3._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddTextEditTextChangedEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], TextEditChangeType, 'TextEditChangeType'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (
-            ['in'],
-            POINTER(IUIAutomationTextEditTextChangedEventHandler),
-            'handler',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveTextEditTextChangedEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (
-            ['in'],
-            POINTER(IUIAutomationTextEditTextChangedEventHandler),
-            'handler',
-        )
-    ),
-]
-
-################################################################
-# code template for IUIAutomation3 implementation
-# class IUIAutomation3_Impl(object):
-#     def AddTextEditTextChangedEventHandler(self, element, scope, TextEditChangeType, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveTextEditTextChangedEventHandler(self, element, handler):
-#         '-no docstring-'
-#         #return 
-#
-
-
-class IUIAutomationChangesEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{58EDCA55-2C3E-4980-B1B9-56C17F27A2A0}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def HandleChangesEvent(self, sender: hints.Incomplete, uiaChanges: hints.Incomplete, changesCount: hints.Incomplete) -> hints.Hresult: ...
-
-
-IUIAutomation4._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddChangesEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(c_int), 'changeTypes'),
-        (['in'], c_int, 'changesCount'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'pCacheRequest'),
-        (['in'], POINTER(IUIAutomationChangesEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveChangesEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationChangesEventHandler), 'handler')
-    ),
-]
-
-################################################################
-# code template for IUIAutomation4 implementation
-# class IUIAutomation4_Impl(object):
-#     def AddChangesEventHandler(self, element, scope, changeTypes, changesCount, pCacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveChangesEventHandler(self, element, handler):
-#         '-no docstring-'
-#         #return 
-#
-
-
-class IUIAutomationNotificationEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{C7CB2637-E6C2-4D0C-85DE-4948C02175C7}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def HandleNotificationEvent(self, sender: hints.Incomplete, NotificationKind: hints.Incomplete, NotificationProcessing: hints.Incomplete, displayString: hints.Incomplete, activityId: hints.Incomplete) -> hints.Hresult: ...
-
-
-IUIAutomation5._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddNotificationEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationNotificationEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveNotificationEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationNotificationEventHandler), 'handler')
-    ),
-]
-
-################################################################
-# code template for IUIAutomation5 implementation
-# class IUIAutomation5_Impl(object):
-#     def AddNotificationEventHandler(self, element, scope, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveNotificationEventHandler(self, element, handler):
-#         '-no docstring-'
-#         #return 
-#
-
-
-class IUIAutomationEventHandlerGroup(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{C9EE12F2-C13B-4408-997C-639914377F4E}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def AddActiveTextPositionChangedEventHandler(self, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def AddAutomationEventHandler(self, eventId: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def AddChangesEventHandler(self, scope: hints.Incomplete, changeTypes: hints.Incomplete, changesCount: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def AddNotificationEventHandler(self, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def AddPropertyChangedEventHandler(self, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete, propertyArray: hints.Incomplete, propertyCount: hints.Incomplete) -> hints.Hresult: ...
-        def AddStructureChangedEventHandler(self, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-        def AddTextEditTextChangedEventHandler(self, scope: hints.Incomplete, TextEditChangeType: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
-
-
-class IUIAutomationActiveTextPositionChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{F97933B0-8DAE-4496-8997-5BA015FE0D82}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def HandleActiveTextPositionChangedEvent(self, sender: hints.Incomplete, range: hints.Incomplete) -> hints.Hresult: ...
-
-
-IUIAutomation6._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateEventHandlerGroup',
-        (
-            ['out'],
-            POINTER(POINTER(IUIAutomationEventHandlerGroup)),
-            'handlerGroup',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddEventHandlerGroup',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationEventHandlerGroup), 'handlerGroup')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveEventHandlerGroup',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationEventHandlerGroup), 'handlerGroup')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ConnectionRecoveryBehavior',
-        (
-            ['out', 'retval'],
-            POINTER(ConnectionRecoveryBehaviorOptions),
-            'ConnectionRecoveryBehaviorOptions',
-        )
-    ),
-    COMMETHOD(
-        ['propput'],
-        HRESULT,
-        'ConnectionRecoveryBehavior',
-        (
-            ['in'],
-            ConnectionRecoveryBehaviorOptions,
-            'ConnectionRecoveryBehaviorOptions',
-        )
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CoalesceEvents',
-        (
-            ['out', 'retval'],
-            POINTER(CoalesceEventsOptions),
-            'CoalesceEventsOptions',
-        )
-    ),
-    COMMETHOD(
-        ['propput'],
-        HRESULT,
-        'CoalesceEvents',
-        (['in'], CoalesceEventsOptions, 'CoalesceEventsOptions')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddActiveTextPositionChangedEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (
-            ['in'],
-            POINTER(IUIAutomationActiveTextPositionChangedEventHandler),
-            'handler',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveActiveTextPositionChangedEventHandler',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (
-            ['in'],
-            POINTER(IUIAutomationActiveTextPositionChangedEventHandler),
-            'handler',
-        )
-    ),
-]
-
-################################################################
-# code template for IUIAutomation6 implementation
-# class IUIAutomation6_Impl(object):
-#     def CreateEventHandlerGroup(self):
-#         '-no docstring-'
-#         #return handlerGroup
-#
-#     def AddEventHandlerGroup(self, element, handlerGroup):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveEventHandlerGroup(self, element, handlerGroup):
-#         '-no docstring-'
-#         #return 
-#
-#     def _get(self):
-#         '-no docstring-'
-#         #return ConnectionRecoveryBehaviorOptions
-#     def _set(self, ConnectionRecoveryBehaviorOptions):
-#         '-no docstring-'
-#     ConnectionRecoveryBehavior = property(_get, _set, doc = _set.__doc__)
-#
-#     def _get(self):
-#         '-no docstring-'
-#         #return CoalesceEventsOptions
-#     def _set(self, CoalesceEventsOptions):
-#         '-no docstring-'
-#     CoalesceEvents = property(_get, _set, doc = _set.__doc__)
-#
-#     def AddActiveTextPositionChangedEventHandler(self, element, scope, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveActiveTextPositionChangedEventHandler(self, element, handler):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_GridColumnCountPropertyId = 30063  # Constant c_int
 
 IUIAutomationElement._methods_ = [
     COMMETHOD([], HRESULT, 'SetFocus'),
@@ -3481,7 +2381,7 @@ IUIAutomationElement._methods_ = [
 #         #return clickable, gotClickable
 #
 
-UIA_GridRowCountPropertyId = 30062  # Constant c_int
+UIA_AnnotationTypesAttributeId = 40031  # Constant c_int
 
 
 class IUIAutomationBoolCondition(IUIAutomationCondition):
@@ -3519,10 +2419,302 @@ IUIAutomationBoolCondition._methods_ = [
 #         #return boolVal
 #
 
-UIA_SelectionIsSelectionRequiredPropertyId = 30061  # Constant c_int
-UIA_SelectionCanSelectMultiplePropertyId = 30060  # Constant c_int
-AnnotationType_CircularReferenceError = 60022  # Constant c_int
-UIA_SelectionSelectionPropertyId = 30059  # Constant c_int
+UIA_UnderlineStyleAttributeId = 40030  # Constant c_int
+
+
+class IAccessible(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IDispatch):
+    _case_insensitive_ = True
+    _iid_ = GUID('{618736E0-3C3D-11CF-810C-00AA00389B71}')
+    _idlflags_ = ['hidden', 'dual', 'oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def _get_accParent(self) -> hints.Incomplete: ...
+        accParent = hints.normal_property(_get_accParent)
+        def _get_accChildCount(self) -> hints.Incomplete: ...
+        accChildCount = hints.normal_property(_get_accChildCount)
+        def _get_accChild(self, varChild: hints.Incomplete) -> hints.Incomplete: ...
+        accChild = hints.named_property('accChild', _get_accChild)
+        def _get_accName(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
+        def _set_accName(self, varChild: hints.Incomplete = ..., /, *args: hints.Unpack[tuple[hints.Incomplete]]) -> hints.Hresult: ...
+        accName = hints.named_property('accName', _get_accName, _set_accName)
+        def _get_accValue(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
+        def _set_accValue(self, varChild: hints.Incomplete = ..., /, *args: hints.Unpack[tuple[hints.Incomplete]]) -> hints.Hresult: ...
+        accValue = hints.named_property('accValue', _get_accValue, _set_accValue)
+        def _get_accDescription(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
+        accDescription = hints.named_property('accDescription', _get_accDescription)
+        def _get_accRole(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
+        accRole = hints.named_property('accRole', _get_accRole)
+        def _get_accState(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
+        accState = hints.named_property('accState', _get_accState)
+        def _get_accHelp(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
+        accHelp = hints.named_property('accHelp', _get_accHelp)
+        def _get_accHelpTopic(self, varChild: hints.Incomplete = ...) -> tuple[hints.Incomplete, hints.Incomplete]: ...
+        accHelpTopic = hints.named_property('accHelpTopic', _get_accHelpTopic)
+        def _get_accKeyboardShortcut(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
+        accKeyboardShortcut = hints.named_property('accKeyboardShortcut', _get_accKeyboardShortcut)
+        def _get_accFocus(self) -> hints.Incomplete: ...
+        accFocus = hints.normal_property(_get_accFocus)
+        def _get_accSelection(self) -> hints.Incomplete: ...
+        accSelection = hints.normal_property(_get_accSelection)
+        def _get_accDefaultAction(self, varChild: hints.Incomplete = ...) -> hints.Incomplete: ...
+        accDefaultAction = hints.named_property('accDefaultAction', _get_accDefaultAction)
+        def accSelect(self, flagsSelect: hints.Incomplete, varChild: hints.Incomplete = ...) -> hints.Hresult: ...
+        def accLocation(self, varChild: hints.Incomplete = ...) -> tuple[hints.Incomplete, hints.Incomplete, hints.Incomplete, hints.Incomplete]: ...
+        def accNavigate(self, navDir: hints.Incomplete, varStart: hints.Incomplete = ...) -> hints.Incomplete: ...
+        def accHitTest(self, xLeft: hints.Incomplete, yTop: hints.Incomplete) -> hints.Incomplete: ...
+        def accDoDefaultAction(self, varChild: hints.Incomplete = ...) -> hints.Hresult: ...
+
+
+IAccessible._methods_ = [
+    COMMETHOD(
+        [dispid(-5000), 'hidden', 'propget'],
+        HRESULT,
+        'accParent',
+        (['out', 'retval'], POINTER(POINTER(IDispatch)), 'ppdispParent')
+    ),
+    COMMETHOD(
+        [dispid(-5001), 'hidden', 'propget'],
+        HRESULT,
+        'accChildCount',
+        (['out', 'retval'], POINTER(c_int), 'pcountChildren')
+    ),
+    COMMETHOD(
+        [dispid(-5002), 'hidden', 'propget'],
+        HRESULT,
+        'accChild',
+        (['in'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(POINTER(IDispatch)), 'ppdispChild')
+    ),
+    COMMETHOD(
+        [dispid(-5003), 'hidden', 'propget'],
+        HRESULT,
+        'accName',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(BSTR), 'pszName')
+    ),
+    COMMETHOD(
+        [dispid(-5004), 'hidden', 'propget'],
+        HRESULT,
+        'accValue',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(BSTR), 'pszValue')
+    ),
+    COMMETHOD(
+        [dispid(-5005), 'hidden', 'propget'],
+        HRESULT,
+        'accDescription',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(BSTR), 'pszDescription')
+    ),
+    COMMETHOD(
+        [dispid(-5006), 'hidden', 'propget'],
+        HRESULT,
+        'accRole',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(VARIANT), 'pvarRole')
+    ),
+    COMMETHOD(
+        [dispid(-5007), 'hidden', 'propget'],
+        HRESULT,
+        'accState',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(VARIANT), 'pvarState')
+    ),
+    COMMETHOD(
+        [dispid(-5008), 'hidden', 'propget'],
+        HRESULT,
+        'accHelp',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(BSTR), 'pszHelp')
+    ),
+    COMMETHOD(
+        [dispid(-5009), 'hidden', 'propget'],
+        HRESULT,
+        'accHelpTopic',
+        (['out'], POINTER(BSTR), 'pszHelpFile'),
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(c_int), 'pidTopic')
+    ),
+    COMMETHOD(
+        [dispid(-5010), 'hidden', 'propget'],
+        HRESULT,
+        'accKeyboardShortcut',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(BSTR), 'pszKeyboardShortcut')
+    ),
+    COMMETHOD(
+        [dispid(-5011), 'hidden', 'propget'],
+        HRESULT,
+        'accFocus',
+        (['out', 'retval'], POINTER(VARIANT), 'pvarChild')
+    ),
+    COMMETHOD(
+        [dispid(-5012), 'hidden', 'propget'],
+        HRESULT,
+        'accSelection',
+        (['out', 'retval'], POINTER(VARIANT), 'pvarChildren')
+    ),
+    COMMETHOD(
+        [dispid(-5013), 'hidden', 'propget'],
+        HRESULT,
+        'accDefaultAction',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['out', 'retval'], POINTER(BSTR), 'pszDefaultAction')
+    ),
+    COMMETHOD(
+        [dispid(-5014), 'hidden'],
+        HRESULT,
+        'accSelect',
+        (['in'], c_int, 'flagsSelect'),
+        (['in', 'optional'], VARIANT, 'varChild')
+    ),
+    COMMETHOD(
+        [dispid(-5015), 'hidden'],
+        HRESULT,
+        'accLocation',
+        (['out'], POINTER(c_int), 'pxLeft'),
+        (['out'], POINTER(c_int), 'pyTop'),
+        (['out'], POINTER(c_int), 'pcxWidth'),
+        (['out'], POINTER(c_int), 'pcyHeight'),
+        (['in', 'optional'], VARIANT, 'varChild')
+    ),
+    COMMETHOD(
+        [dispid(-5016), 'hidden'],
+        HRESULT,
+        'accNavigate',
+        (['in'], c_int, 'navDir'),
+        (['in', 'optional'], VARIANT, 'varStart'),
+        (['out', 'retval'], POINTER(VARIANT), 'pvarEndUpAt')
+    ),
+    COMMETHOD(
+        [dispid(-5017), 'hidden'],
+        HRESULT,
+        'accHitTest',
+        (['in'], c_int, 'xLeft'),
+        (['in'], c_int, 'yTop'),
+        (['out', 'retval'], POINTER(VARIANT), 'pvarChild')
+    ),
+    COMMETHOD(
+        [dispid(-5018), 'hidden'],
+        HRESULT,
+        'accDoDefaultAction',
+        (['in', 'optional'], VARIANT, 'varChild')
+    ),
+    COMMETHOD(
+        [dispid(-5003), 'hidden', 'propput'],
+        HRESULT,
+        'accName',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['in'], BSTR, 'pszName')
+    ),
+    COMMETHOD(
+        [dispid(-5004), 'hidden', 'propput'],
+        HRESULT,
+        'accValue',
+        (['in', 'optional'], VARIANT, 'varChild'),
+        (['in'], BSTR, 'pszValue')
+    ),
+]
+
+################################################################
+# code template for IAccessible implementation
+# class IAccessible_Impl(object):
+#     @property
+#     def accParent(self):
+#         '-no docstring-'
+#         #return ppdispParent
+#
+#     @property
+#     def accChildCount(self):
+#         '-no docstring-'
+#         #return pcountChildren
+#
+#     @property
+#     def accChild(self, varChild):
+#         '-no docstring-'
+#         #return ppdispChild
+#
+#     def _get(self, varChild):
+#         '-no docstring-'
+#         #return pszName
+#     def _set(self, varChild, pszName):
+#         '-no docstring-'
+#     accName = property(_get, _set, doc = _set.__doc__)
+#
+#     def _get(self, varChild):
+#         '-no docstring-'
+#         #return pszValue
+#     def _set(self, varChild, pszValue):
+#         '-no docstring-'
+#     accValue = property(_get, _set, doc = _set.__doc__)
+#
+#     @property
+#     def accDescription(self, varChild):
+#         '-no docstring-'
+#         #return pszDescription
+#
+#     @property
+#     def accRole(self, varChild):
+#         '-no docstring-'
+#         #return pvarRole
+#
+#     @property
+#     def accState(self, varChild):
+#         '-no docstring-'
+#         #return pvarState
+#
+#     @property
+#     def accHelp(self, varChild):
+#         '-no docstring-'
+#         #return pszHelp
+#
+#     @property
+#     def accHelpTopic(self, varChild):
+#         '-no docstring-'
+#         #return pszHelpFile, pidTopic
+#
+#     @property
+#     def accKeyboardShortcut(self, varChild):
+#         '-no docstring-'
+#         #return pszKeyboardShortcut
+#
+#     @property
+#     def accFocus(self):
+#         '-no docstring-'
+#         #return pvarChild
+#
+#     @property
+#     def accSelection(self):
+#         '-no docstring-'
+#         #return pvarChildren
+#
+#     @property
+#     def accDefaultAction(self, varChild):
+#         '-no docstring-'
+#         #return pszDefaultAction
+#
+#     def accSelect(self, flagsSelect, varChild):
+#         '-no docstring-'
+#         #return 
+#
+#     def accLocation(self, varChild):
+#         '-no docstring-'
+#         #return pxLeft, pyTop, pcxWidth, pcyHeight
+#
+#     def accNavigate(self, navDir, varStart):
+#         '-no docstring-'
+#         #return pvarEndUpAt
+#
+#     def accHitTest(self, xLeft, yTop):
+#         '-no docstring-'
+#         #return pvarChild
+#
+#     def accDoDefaultAction(self, varChild):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_UnderlineColorAttributeId = 40029  # Constant c_int
 
 
 class IUIAutomationAndCondition(IUIAutomationCondition):
@@ -3584,10 +2776,20 @@ IUIAutomationAndCondition._methods_ = [
 #         #return childArray
 #
 
-UIA_ScrollVerticallyScrollablePropertyId = 30058  # Constant c_int
-UIA_ScrollHorizontallyScrollablePropertyId = 30057  # Constant c_int
-UIA_ScrollVerticalViewSizePropertyId = 30056  # Constant c_int
-AnnotationType_DataValidationError = 60021  # Constant c_int
+UIA_TextFlowDirectionsAttributeId = 40028  # Constant c_int
+UIA_TabsAttributeId = 40027  # Constant c_int
+StyleId_Quote = 70014  # Constant c_int
+UIA_StrikethroughStyleAttributeId = 40026  # Constant c_int
+
+
+class IUIAutomationTextEditTextChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{92FAA680-E704-4156-931A-E32D5BB38F3F}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def HandleTextEditTextChangedEvent(self, sender: hints.Incomplete, TextEditChangeType: hints.Incomplete, eventStrings: hints.Incomplete) -> hints.Hresult: ...
+
 
 IUIAutomationTextEditTextChangedEventHandler._methods_ = [
     COMMETHOD(
@@ -3608,8 +2810,30 @@ IUIAutomationTextEditTextChangedEventHandler._methods_ = [
 #         #return 
 #
 
-UIA_ScrollVerticalScrollPercentPropertyId = 30055  # Constant c_int
-AnnotationType_AdvancedProofingIssue = 60020  # Constant c_int
+
+class IUIAutomationVirtualizedItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{6BA3D7A6-04CF-4F11-8793-A8D1CDE9969F}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def Realize(self) -> hints.Hresult: ...
+
+
+IUIAutomationVirtualizedItemPattern._methods_ = [
+    COMMETHOD([], HRESULT, 'Realize'),
+]
+
+################################################################
+# code template for IUIAutomationVirtualizedItemPattern implementation
+# class IUIAutomationVirtualizedItemPattern_Impl(object):
+#     def Realize(self):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_StrikethroughColorAttributeId = 40025  # Constant c_int
+HeadingLevel_None = 80050  # Constant c_int
 
 
 class IUIAutomationOrCondition(IUIAutomationCondition):
@@ -3670,844 +2894,6 @@ IUIAutomationOrCondition._methods_ = [
 #         '-no docstring-'
 #         #return childArray
 #
-
-UIA_ScrollHorizontalViewSizePropertyId = 30054  # Constant c_int
-
-
-class IUIAutomationMultipleViewPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{8D253C91-1DC5-4BB5-B18F-ADE16FA495E8}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def GetViewName(self, view: hints.Incomplete) -> hints.Incomplete: ...
-        def SetCurrentView(self, view: hints.Incomplete) -> hints.Hresult: ...
-        def _get_CurrentCurrentView(self) -> hints.Incomplete: ...
-        CurrentCurrentView = hints.normal_property(_get_CurrentCurrentView)
-        def GetCurrentSupportedViews(self) -> hints.Incomplete: ...
-        def _get_CachedCurrentView(self) -> hints.Incomplete: ...
-        CachedCurrentView = hints.normal_property(_get_CachedCurrentView)
-        def GetCachedSupportedViews(self) -> hints.Incomplete: ...
-
-
-IUIAutomationMultipleViewPattern._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetViewName',
-        (['in'], c_int, 'view'),
-        (['out', 'retval'], POINTER(BSTR), 'name')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'SetCurrentView',
-        (['in'], c_int, 'view')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentCurrentView',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCurrentSupportedViews',
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedCurrentView',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCachedSupportedViews',
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationMultipleViewPattern implementation
-# class IUIAutomationMultipleViewPattern_Impl(object):
-#     def GetViewName(self, view):
-#         '-no docstring-'
-#         #return name
-#
-#     def SetCurrentView(self, view):
-#         '-no docstring-'
-#         #return 
-#
-#     @property
-#     def CurrentCurrentView(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     def GetCurrentSupportedViews(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedCurrentView(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     def GetCachedSupportedViews(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_ScrollHorizontalScrollPercentPropertyId = 30053  # Constant c_int
-UIA_RangeValueSmallChangePropertyId = 30052  # Constant c_int
-UIA_RangeValueLargeChangePropertyId = 30051  # Constant c_int
-
-IUIAutomationNotificationEventHandler._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'HandleNotificationEvent',
-        (['in'], POINTER(IUIAutomationElement), 'sender'),
-        ([], NotificationKind, 'NotificationKind'),
-        ([], NotificationProcessing, 'NotificationProcessing'),
-        (['in'], BSTR, 'displayString'),
-        (['in'], BSTR, 'activityId')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationNotificationEventHandler implementation
-# class IUIAutomationNotificationEventHandler_Impl(object):
-#     def HandleNotificationEvent(self, sender, NotificationKind, NotificationProcessing, displayString, activityId):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_RangeValueMaximumPropertyId = 30050  # Constant c_int
-UIA_RangeValueMinimumPropertyId = 30049  # Constant c_int
-AnnotationType_Author = 60019  # Constant c_int
-
-IUIAutomationEventHandler._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'HandleAutomationEvent',
-        (['in'], POINTER(IUIAutomationElement), 'sender'),
-        (['in'], c_int, 'eventId')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationEventHandler implementation
-# class IUIAutomationEventHandler_Impl(object):
-#     def HandleAutomationEvent(self, sender, eventId):
-#         '-no docstring-'
-#         #return 
-#
-
-
-class IUIAutomationTextPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{32EBA289-3583-42C9-9C59-3B6D9A1E9B6A}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def RangeFromPoint(self, pt: hints.Incomplete) -> 'IUIAutomationTextRange': ...
-        def RangeFromChild(self, child: hints.Incomplete) -> 'IUIAutomationTextRange': ...
-        def GetSelection(self) -> 'IUIAutomationTextRangeArray': ...
-        def GetVisibleRanges(self) -> 'IUIAutomationTextRangeArray': ...
-        def _get_DocumentRange(self) -> 'IUIAutomationTextRange': ...
-        DocumentRange = hints.normal_property(_get_DocumentRange)
-        def _get_SupportedTextSelection(self) -> hints.Incomplete: ...
-        SupportedTextSelection = hints.normal_property(_get_SupportedTextSelection)
-
-
-class IUIAutomationTextEditPattern(IUIAutomationTextPattern):
-    _case_insensitive_ = True
-    _iid_ = GUID('{17E21576-996C-4870-99D9-BFF323380C06}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def GetActiveComposition(self) -> 'IUIAutomationTextRange': ...
-        def GetConversionTarget(self) -> 'IUIAutomationTextRange': ...
-
-
-class IUIAutomationTextRangeArray(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{CE4AE76A-E717-4C98-81EA-47371D028EB6}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_Length(self) -> hints.Incomplete: ...
-        Length = hints.normal_property(_get_Length)
-        def GetElement(self, index: hints.Incomplete) -> 'IUIAutomationTextRange': ...
-
-
-IUIAutomationTextPattern._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RangeFromPoint',
-        (['in'], tagPOINT, 'pt'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RangeFromChild',
-        (['in'], POINTER(IUIAutomationElement), 'child'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetSelection',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationTextRangeArray)),
-            'ranges',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetVisibleRanges',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationTextRangeArray)),
-            'ranges',
-        )
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'DocumentRange',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'SupportedTextSelection',
-        (
-            ['out', 'retval'],
-            POINTER(SupportedTextSelection),
-            'SupportedTextSelection',
-        )
-    ),
-]
-
-################################################################
-# code template for IUIAutomationTextPattern implementation
-# class IUIAutomationTextPattern_Impl(object):
-#     def RangeFromPoint(self, pt):
-#         '-no docstring-'
-#         #return range
-#
-#     def RangeFromChild(self, child):
-#         '-no docstring-'
-#         #return range
-#
-#     def GetSelection(self):
-#         '-no docstring-'
-#         #return ranges
-#
-#     def GetVisibleRanges(self):
-#         '-no docstring-'
-#         #return ranges
-#
-#     @property
-#     def DocumentRange(self):
-#         '-no docstring-'
-#         #return range
-#
-#     @property
-#     def SupportedTextSelection(self):
-#         '-no docstring-'
-#         #return SupportedTextSelection
-#
-
-IUIAutomationTextEditPattern._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetActiveComposition',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetConversionTarget',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationTextEditPattern implementation
-# class IUIAutomationTextEditPattern_Impl(object):
-#     def GetActiveComposition(self):
-#         '-no docstring-'
-#         #return range
-#
-#     def GetConversionTarget(self):
-#         '-no docstring-'
-#         #return range
-#
-
-UIA_RangeValueIsReadOnlyPropertyId = 30048  # Constant c_int
-UIA_RangeValueValuePropertyId = 30047  # Constant c_int
-
-IUIAutomationStructureChangedEventHandler._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'HandleStructureChangedEvent',
-        (['in'], POINTER(IUIAutomationElement), 'sender'),
-        (['in'], StructureChangeType, 'changeType'),
-        (['in'], _midlSAFEARRAY(c_int), 'runtimeId')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationStructureChangedEventHandler implementation
-# class IUIAutomationStructureChangedEventHandler_Impl(object):
-#     def HandleStructureChangedEvent(self, sender, changeType, runtimeId):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_ValueIsReadOnlyPropertyId = 30046  # Constant c_int
-AnnotationType_ConflictingChange = 60018  # Constant c_int
-UIA_ValueValuePropertyId = 30045  # Constant c_int
-
-
-class UiaChangeInfo(Structure):
-    pass
-
-
-IUIAutomationChangesEventHandler._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'HandleChangesEvent',
-        (['in'], POINTER(IUIAutomationElement), 'sender'),
-        (['in'], POINTER(UiaChangeInfo), 'uiaChanges'),
-        (['in'], c_int, 'changesCount')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationChangesEventHandler implementation
-# class IUIAutomationChangesEventHandler_Impl(object):
-#     def HandleChangesEvent(self, sender, uiaChanges, changesCount):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_IsWindowPatternAvailablePropertyId = 30044  # Constant c_int
-
-
-class IUIAutomationPropertyCondition(IUIAutomationCondition):
-    _case_insensitive_ = True
-    _iid_ = GUID('{99EBF2CB-5578-4267-9AD4-AFD6EA77E94B}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_propertyId(self) -> hints.Incomplete: ...
-        propertyId = hints.normal_property(_get_propertyId)
-        def _get_PropertyValue(self) -> hints.Incomplete: ...
-        PropertyValue = hints.normal_property(_get_PropertyValue)
-        def _get_PropertyConditionFlags(self) -> hints.Incomplete: ...
-        PropertyConditionFlags = hints.normal_property(_get_PropertyConditionFlags)
-
-
-IUIAutomationPropertyCondition._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'propertyId',
-        (['out', 'retval'], POINTER(c_int), 'propertyId')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'PropertyValue',
-        (['out', 'retval'], POINTER(VARIANT), 'PropertyValue')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'PropertyConditionFlags',
-        (['out', 'retval'], POINTER(PropertyConditionFlags), 'flags')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationPropertyCondition implementation
-# class IUIAutomationPropertyCondition_Impl(object):
-#     @property
-#     def propertyId(self):
-#         '-no docstring-'
-#         #return propertyId
-#
-#     @property
-#     def PropertyValue(self):
-#         '-no docstring-'
-#         #return PropertyValue
-#
-#     @property
-#     def PropertyConditionFlags(self):
-#         '-no docstring-'
-#         #return flags
-#
-
-UIA_IsValuePatternAvailablePropertyId = 30043  # Constant c_int
-AnnotationType_ExternalChange = 60017  # Constant c_int
-UIA_IsTransformPatternAvailablePropertyId = 30042  # Constant c_int
-UIA_IsTogglePatternAvailablePropertyId = 30041  # Constant c_int
-UIA_IsTextPatternAvailablePropertyId = 30040  # Constant c_int
-AnnotationType_TrackChanges = 60005  # Constant c_int
-
-
-class IUIAutomationInvokePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{FB377FBE-8EA6-46D5-9C73-6499642D3059}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def Invoke(self) -> hints.Hresult: ...
-
-
-IUIAutomationInvokePattern._methods_ = [
-    COMMETHOD([], HRESULT, 'Invoke'),
-]
-
-################################################################
-# code template for IUIAutomationInvokePattern implementation
-# class IUIAutomationInvokePattern_Impl(object):
-#     def Invoke(self):
-#         '-no docstring-'
-#         #return 
-#
-
-
-class IUIAutomationTransformPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{A9B55844-A55D-4EF0-926D-569C16FF89BB}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def Move(self, x: hints.Incomplete, y: hints.Incomplete) -> hints.Hresult: ...
-        def Resize(self, width: hints.Incomplete, height: hints.Incomplete) -> hints.Hresult: ...
-        def Rotate(self, degrees: hints.Incomplete) -> hints.Hresult: ...
-        def _get_CurrentCanMove(self) -> hints.Incomplete: ...
-        CurrentCanMove = hints.normal_property(_get_CurrentCanMove)
-        def _get_CurrentCanResize(self) -> hints.Incomplete: ...
-        CurrentCanResize = hints.normal_property(_get_CurrentCanResize)
-        def _get_CurrentCanRotate(self) -> hints.Incomplete: ...
-        CurrentCanRotate = hints.normal_property(_get_CurrentCanRotate)
-        def _get_CachedCanMove(self) -> hints.Incomplete: ...
-        CachedCanMove = hints.normal_property(_get_CachedCanMove)
-        def _get_CachedCanResize(self) -> hints.Incomplete: ...
-        CachedCanResize = hints.normal_property(_get_CachedCanResize)
-        def _get_CachedCanRotate(self) -> hints.Incomplete: ...
-        CachedCanRotate = hints.normal_property(_get_CachedCanRotate)
-
-
-class IUIAutomationTransformPattern2(IUIAutomationTransformPattern):
-    _case_insensitive_ = True
-    _iid_ = GUID('{6D74D017-6ECB-4381-B38B-3C17A48FF1C2}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def Zoom(self, zoomValue: hints.Incomplete) -> hints.Hresult: ...
-        def ZoomByUnit(self, ZoomUnit: hints.Incomplete) -> hints.Hresult: ...
-        def _get_CurrentCanZoom(self) -> hints.Incomplete: ...
-        CurrentCanZoom = hints.normal_property(_get_CurrentCanZoom)
-        def _get_CachedCanZoom(self) -> hints.Incomplete: ...
-        CachedCanZoom = hints.normal_property(_get_CachedCanZoom)
-        def _get_CurrentZoomLevel(self) -> hints.Incomplete: ...
-        CurrentZoomLevel = hints.normal_property(_get_CurrentZoomLevel)
-        def _get_CachedZoomLevel(self) -> hints.Incomplete: ...
-        CachedZoomLevel = hints.normal_property(_get_CachedZoomLevel)
-        def _get_CurrentZoomMinimum(self) -> hints.Incomplete: ...
-        CurrentZoomMinimum = hints.normal_property(_get_CurrentZoomMinimum)
-        def _get_CachedZoomMinimum(self) -> hints.Incomplete: ...
-        CachedZoomMinimum = hints.normal_property(_get_CachedZoomMinimum)
-        def _get_CurrentZoomMaximum(self) -> hints.Incomplete: ...
-        CurrentZoomMaximum = hints.normal_property(_get_CurrentZoomMaximum)
-        def _get_CachedZoomMaximum(self) -> hints.Incomplete: ...
-        CachedZoomMaximum = hints.normal_property(_get_CachedZoomMaximum)
-
-
-IUIAutomationTransformPattern._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'Move',
-        (['in'], c_double, 'x'),
-        (['in'], c_double, 'y')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'Resize',
-        (['in'], c_double, 'width'),
-        (['in'], c_double, 'height')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'Rotate',
-        (['in'], c_double, 'degrees')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentCanMove',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentCanResize',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentCanRotate',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedCanMove',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedCanResize',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedCanRotate',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationTransformPattern implementation
-# class IUIAutomationTransformPattern_Impl(object):
-#     def Move(self, x, y):
-#         '-no docstring-'
-#         #return 
-#
-#     def Resize(self, width, height):
-#         '-no docstring-'
-#         #return 
-#
-#     def Rotate(self, degrees):
-#         '-no docstring-'
-#         #return 
-#
-#     @property
-#     def CurrentCanMove(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentCanResize(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentCanRotate(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedCanMove(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedCanResize(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedCanRotate(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-IUIAutomationTransformPattern2._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'Zoom',
-        (['in'], c_double, 'zoomValue')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'ZoomByUnit',
-        (['in'], ZoomUnit, 'ZoomUnit')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentCanZoom',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedCanZoom',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentZoomLevel',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedZoomLevel',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentZoomMinimum',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedZoomMinimum',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentZoomMaximum',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedZoomMaximum',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationTransformPattern2 implementation
-# class IUIAutomationTransformPattern2_Impl(object):
-#     def Zoom(self, zoomValue):
-#         '-no docstring-'
-#         #return 
-#
-#     def ZoomByUnit(self, ZoomUnit):
-#         '-no docstring-'
-#         #return 
-#
-#     @property
-#     def CurrentCanZoom(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedCanZoom(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentZoomLevel(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedZoomLevel(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentZoomMinimum(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedZoomMinimum(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentZoomMaximum(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedZoomMaximum(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_IsTableItemPatternAvailablePropertyId = 30039  # Constant c_int
-UIA_IsTablePatternAvailablePropertyId = 30038  # Constant c_int
-AnnotationType_FormulaError = 60004  # Constant c_int
-
-IUIAutomationCacheRequest._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddProperty',
-        (['in'], c_int, 'propertyId')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddPattern',
-        (['in'], c_int, 'patternId')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'Clone',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCacheRequest)),
-            'clonedRequest',
-        )
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'TreeScope',
-        (['out', 'retval'], POINTER(TreeScope), 'scope')
-    ),
-    COMMETHOD(
-        ['propput'],
-        HRESULT,
-        'TreeScope',
-        (['in'], TreeScope, 'scope')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'TreeFilter',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationCondition)), 'filter')
-    ),
-    COMMETHOD(
-        ['propput'],
-        HRESULT,
-        'TreeFilter',
-        (['in'], POINTER(IUIAutomationCondition), 'filter')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'AutomationElementMode',
-        (['out', 'retval'], POINTER(AutomationElementMode), 'mode')
-    ),
-    COMMETHOD(
-        ['propput'],
-        HRESULT,
-        'AutomationElementMode',
-        (['in'], AutomationElementMode, 'mode')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationCacheRequest implementation
-# class IUIAutomationCacheRequest_Impl(object):
-#     def AddProperty(self, propertyId):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddPattern(self, patternId):
-#         '-no docstring-'
-#         #return 
-#
-#     def Clone(self):
-#         '-no docstring-'
-#         #return clonedRequest
-#
-#     def _get(self):
-#         '-no docstring-'
-#         #return scope
-#     def _set(self, scope):
-#         '-no docstring-'
-#     TreeScope = property(_get, _set, doc = _set.__doc__)
-#
-#     def _get(self):
-#         '-no docstring-'
-#         #return filter
-#     def _set(self, filter):
-#         '-no docstring-'
-#     TreeFilter = property(_get, _set, doc = _set.__doc__)
-#
-#     def _get(self):
-#         '-no docstring-'
-#         #return mode
-#     def _set(self, mode):
-#         '-no docstring-'
-#     AutomationElementMode = property(_get, _set, doc = _set.__doc__)
-#
-
-UIA_IsSelectionPatternAvailablePropertyId = 30037  # Constant c_int
-UIA_IsSelectionItemPatternAvailablePropertyId = 30036  # Constant c_int
-AnnotationType_Comment = 60003  # Constant c_int
-
-
-class IUIAutomationTextPattern2(IUIAutomationTextPattern):
-    _case_insensitive_ = True
-    _iid_ = GUID('{506A921A-FCC9-409F-B23B-37EB74106872}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def RangeFromAnnotation(self, annotation: hints.Incomplete) -> 'IUIAutomationTextRange': ...
-        def GetCaretRange(self) -> tuple[hints.Incomplete, 'IUIAutomationTextRange']: ...
-
-
-IUIAutomationTextPattern2._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RangeFromAnnotation',
-        (['in'], POINTER(IUIAutomationElement), 'annotation'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCaretRange',
-        (['out'], POINTER(c_int), 'isActive'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationTextPattern2 implementation
-# class IUIAutomationTextPattern2_Impl(object):
-#     def RangeFromAnnotation(self, annotation):
-#         '-no docstring-'
-#         #return range
-#
-#     def GetCaretRange(self):
-#         '-no docstring-'
-#         #return isActive, range
-#
-
-UIA_IsScrollItemPatternAvailablePropertyId = 30035  # Constant c_int
 
 
 class IUIAutomationElement2(IUIAutomationElement):
@@ -4585,31 +2971,6 @@ class IUIAutomationElement5(IUIAutomationElement4):
         CachedLandmarkType = hints.normal_property(_get_CachedLandmarkType)
         def _get_CachedLocalizedLandmarkType(self) -> hints.Incomplete: ...
         CachedLocalizedLandmarkType = hints.normal_property(_get_CachedLocalizedLandmarkType)
-
-
-class IUIAutomationElement6(IUIAutomationElement5):
-    _case_insensitive_ = True
-    _iid_ = GUID('{4780D450-8BCA-4977-AFA5-A4A517F555E3}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_CurrentFullDescription(self) -> hints.Incomplete: ...
-        CurrentFullDescription = hints.normal_property(_get_CurrentFullDescription)
-        def _get_CachedFullDescription(self) -> hints.Incomplete: ...
-        CachedFullDescription = hints.normal_property(_get_CachedFullDescription)
-
-
-class IUIAutomationElement7(IUIAutomationElement6):
-    _case_insensitive_ = True
-    _iid_ = GUID('{204E8572-CFC3-4C11-B0C8-7DA7420750B7}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def FindFirstWithOptions(self, scope: hints.Incomplete, condition: hints.Incomplete, traversalOptions: hints.Incomplete, root: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def FindAllWithOptions(self, scope: hints.Incomplete, condition: hints.Incomplete, traversalOptions: hints.Incomplete, root: hints.Incomplete) -> 'IUIAutomationElementArray': ...
-        def FindFirstWithOptionsBuildCache(self, scope: hints.Incomplete, condition: hints.Incomplete, cacheRequest: hints.Incomplete, traversalOptions: hints.Incomplete, root: hints.Incomplete) -> 'IUIAutomationElement': ...
-        def FindAllWithOptionsBuildCache(self, scope: hints.Incomplete, condition: hints.Incomplete, cacheRequest: hints.Incomplete, traversalOptions: hints.Incomplete, root: hints.Incomplete) -> 'IUIAutomationElementArray': ...
-        def GetCurrentMetadataValue(self, targetId: hints.Incomplete, metadataId: hints.Incomplete) -> hints.Incomplete: ...
 
 
 IUIAutomationElement2._methods_ = [
@@ -4903,6 +3264,681 @@ IUIAutomationElement5._methods_ = [
 #         #return retVal
 #
 
+UIA_OverlineStyleAttributeId = 40024  # Constant c_int
+UIA_OverlineColorAttributeId = 40023  # Constant c_int
+StyleId_Emphasis = 70013  # Constant c_int
+HeadingLevel8 = 80058  # Constant c_int
+
+
+class IUIAutomationMultipleViewPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{8D253C91-1DC5-4BB5-B18F-ADE16FA495E8}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def GetViewName(self, view: hints.Incomplete) -> hints.Incomplete: ...
+        def SetCurrentView(self, view: hints.Incomplete) -> hints.Hresult: ...
+        def _get_CurrentCurrentView(self) -> hints.Incomplete: ...
+        CurrentCurrentView = hints.normal_property(_get_CurrentCurrentView)
+        def GetCurrentSupportedViews(self) -> hints.Incomplete: ...
+        def _get_CachedCurrentView(self) -> hints.Incomplete: ...
+        CachedCurrentView = hints.normal_property(_get_CachedCurrentView)
+        def GetCachedSupportedViews(self) -> hints.Incomplete: ...
+
+
+IUIAutomationMultipleViewPattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetViewName',
+        (['in'], c_int, 'view'),
+        (['out', 'retval'], POINTER(BSTR), 'name')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'SetCurrentView',
+        (['in'], c_int, 'view')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentCurrentView',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCurrentSupportedViews',
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedCurrentView',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCachedSupportedViews',
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationMultipleViewPattern implementation
+# class IUIAutomationMultipleViewPattern_Impl(object):
+#     def GetViewName(self, view):
+#         '-no docstring-'
+#         #return name
+#
+#     def SetCurrentView(self, view):
+#         '-no docstring-'
+#         #return 
+#
+#     @property
+#     def CurrentCurrentView(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     def GetCurrentSupportedViews(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedCurrentView(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     def GetCachedSupportedViews(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+
+class IUIAutomationProxyFactoryMapping(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{09E31E18-872D-4873-93D1-1E541EC133FD}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_count(self) -> hints.Incomplete: ...
+        count = hints.normal_property(_get_count)
+        def GetTable(self) -> hints.Incomplete: ...
+        def GetEntry(self, index: hints.Incomplete) -> 'IUIAutomationProxyFactoryEntry': ...
+        def SetTable(self, factoryList: hints.Incomplete) -> hints.Hresult: ...
+        def InsertEntries(self, before: hints.Incomplete, factoryList: hints.Incomplete) -> hints.Hresult: ...
+        def InsertEntry(self, before: hints.Incomplete, factory: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveEntry(self, index: hints.Incomplete) -> hints.Hresult: ...
+        def ClearTable(self) -> hints.Hresult: ...
+        def RestoreDefaultTable(self) -> hints.Hresult: ...
+
+
+class IUIAutomationProxyFactoryEntry(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{D50E472E-B64B-490C-BCA1-D30696F9F289}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_ProxyFactory(self) -> 'IUIAutomationProxyFactory': ...
+        ProxyFactory = hints.normal_property(_get_ProxyFactory)
+        def _get_ClassName(self) -> hints.Incomplete: ...
+        def _set_ClassName(self, ClassName: hints.Incomplete) -> hints.Hresult: ...
+        ClassName = hints.normal_property(_get_ClassName, _set_ClassName)
+        def _get_ImageName(self) -> hints.Incomplete: ...
+        def _set_ImageName(self, ImageName: hints.Incomplete) -> hints.Hresult: ...
+        ImageName = hints.normal_property(_get_ImageName, _set_ImageName)
+        def _get_AllowSubstringMatch(self) -> hints.Incomplete: ...
+        def _set_AllowSubstringMatch(self, AllowSubstringMatch: hints.Incomplete) -> hints.Hresult: ...
+        AllowSubstringMatch = hints.normal_property(_get_AllowSubstringMatch, _set_AllowSubstringMatch)
+        def _get_CanCheckBaseClass(self) -> hints.Incomplete: ...
+        def _set_CanCheckBaseClass(self, CanCheckBaseClass: hints.Incomplete) -> hints.Hresult: ...
+        CanCheckBaseClass = hints.normal_property(_get_CanCheckBaseClass, _set_CanCheckBaseClass)
+        def _get_NeedsAdviseEvents(self) -> hints.Incomplete: ...
+        def _set_NeedsAdviseEvents(self, adviseEvents: hints.Incomplete) -> hints.Hresult: ...
+        NeedsAdviseEvents = hints.normal_property(_get_NeedsAdviseEvents, _set_NeedsAdviseEvents)
+        def SetWinEventsForAutomationEvent(self, eventId: hints.Incomplete, propertyId: hints.Incomplete, winEvents: hints.Incomplete) -> hints.Hresult: ...
+        def GetWinEventsForAutomationEvent(self, eventId: hints.Incomplete, propertyId: hints.Incomplete) -> hints.Incomplete: ...
+
+
+IUIAutomationProxyFactoryMapping._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'count',
+        (['out', 'retval'], POINTER(c_uint), 'count')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetTable',
+        (
+            ['out', 'retval'],
+            POINTER(_midlSAFEARRAY(POINTER(IUIAutomationProxyFactoryEntry))),
+            'table',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetEntry',
+        (['in'], c_uint, 'index'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationProxyFactoryEntry)),
+            'entry',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'SetTable',
+        (
+            ['in'],
+            _midlSAFEARRAY(POINTER(IUIAutomationProxyFactoryEntry)),
+            'factoryList',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'InsertEntries',
+        (['in'], c_uint, 'before'),
+        (
+            ['in'],
+            _midlSAFEARRAY(POINTER(IUIAutomationProxyFactoryEntry)),
+            'factoryList',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'InsertEntry',
+        (['in'], c_uint, 'before'),
+        (['in'], POINTER(IUIAutomationProxyFactoryEntry), 'factory')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveEntry',
+        (['in'], c_uint, 'index')
+    ),
+    COMMETHOD([], HRESULT, 'ClearTable'),
+    COMMETHOD([], HRESULT, 'RestoreDefaultTable'),
+]
+
+################################################################
+# code template for IUIAutomationProxyFactoryMapping implementation
+# class IUIAutomationProxyFactoryMapping_Impl(object):
+#     @property
+#     def count(self):
+#         '-no docstring-'
+#         #return count
+#
+#     def GetTable(self):
+#         '-no docstring-'
+#         #return table
+#
+#     def GetEntry(self, index):
+#         '-no docstring-'
+#         #return entry
+#
+#     def SetTable(self, factoryList):
+#         '-no docstring-'
+#         #return 
+#
+#     def InsertEntries(self, before, factoryList):
+#         '-no docstring-'
+#         #return 
+#
+#     def InsertEntry(self, before, factory):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveEntry(self, index):
+#         '-no docstring-'
+#         #return 
+#
+#     def ClearTable(self):
+#         '-no docstring-'
+#         #return 
+#
+#     def RestoreDefaultTable(self):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_OutlineStylesAttributeId = 40022  # Constant c_int
+StyleId_Normal = 70012  # Constant c_int
+
+
+class IUIAutomationTransformPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{A9B55844-A55D-4EF0-926D-569C16FF89BB}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def Move(self, x: hints.Incomplete, y: hints.Incomplete) -> hints.Hresult: ...
+        def Resize(self, width: hints.Incomplete, height: hints.Incomplete) -> hints.Hresult: ...
+        def Rotate(self, degrees: hints.Incomplete) -> hints.Hresult: ...
+        def _get_CurrentCanMove(self) -> hints.Incomplete: ...
+        CurrentCanMove = hints.normal_property(_get_CurrentCanMove)
+        def _get_CurrentCanResize(self) -> hints.Incomplete: ...
+        CurrentCanResize = hints.normal_property(_get_CurrentCanResize)
+        def _get_CurrentCanRotate(self) -> hints.Incomplete: ...
+        CurrentCanRotate = hints.normal_property(_get_CurrentCanRotate)
+        def _get_CachedCanMove(self) -> hints.Incomplete: ...
+        CachedCanMove = hints.normal_property(_get_CachedCanMove)
+        def _get_CachedCanResize(self) -> hints.Incomplete: ...
+        CachedCanResize = hints.normal_property(_get_CachedCanResize)
+        def _get_CachedCanRotate(self) -> hints.Incomplete: ...
+        CachedCanRotate = hints.normal_property(_get_CachedCanRotate)
+
+
+class IUIAutomationTransformPattern2(IUIAutomationTransformPattern):
+    _case_insensitive_ = True
+    _iid_ = GUID('{6D74D017-6ECB-4381-B38B-3C17A48FF1C2}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def Zoom(self, zoomValue: hints.Incomplete) -> hints.Hresult: ...
+        def ZoomByUnit(self, ZoomUnit: hints.Incomplete) -> hints.Hresult: ...
+        def _get_CurrentCanZoom(self) -> hints.Incomplete: ...
+        CurrentCanZoom = hints.normal_property(_get_CurrentCanZoom)
+        def _get_CachedCanZoom(self) -> hints.Incomplete: ...
+        CachedCanZoom = hints.normal_property(_get_CachedCanZoom)
+        def _get_CurrentZoomLevel(self) -> hints.Incomplete: ...
+        CurrentZoomLevel = hints.normal_property(_get_CurrentZoomLevel)
+        def _get_CachedZoomLevel(self) -> hints.Incomplete: ...
+        CachedZoomLevel = hints.normal_property(_get_CachedZoomLevel)
+        def _get_CurrentZoomMinimum(self) -> hints.Incomplete: ...
+        CurrentZoomMinimum = hints.normal_property(_get_CurrentZoomMinimum)
+        def _get_CachedZoomMinimum(self) -> hints.Incomplete: ...
+        CachedZoomMinimum = hints.normal_property(_get_CachedZoomMinimum)
+        def _get_CurrentZoomMaximum(self) -> hints.Incomplete: ...
+        CurrentZoomMaximum = hints.normal_property(_get_CurrentZoomMaximum)
+        def _get_CachedZoomMaximum(self) -> hints.Incomplete: ...
+        CachedZoomMaximum = hints.normal_property(_get_CachedZoomMaximum)
+
+
+IUIAutomationTransformPattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'Move',
+        (['in'], c_double, 'x'),
+        (['in'], c_double, 'y')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'Resize',
+        (['in'], c_double, 'width'),
+        (['in'], c_double, 'height')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'Rotate',
+        (['in'], c_double, 'degrees')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentCanMove',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentCanResize',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentCanRotate',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedCanMove',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedCanResize',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedCanRotate',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationTransformPattern implementation
+# class IUIAutomationTransformPattern_Impl(object):
+#     def Move(self, x, y):
+#         '-no docstring-'
+#         #return 
+#
+#     def Resize(self, width, height):
+#         '-no docstring-'
+#         #return 
+#
+#     def Rotate(self, degrees):
+#         '-no docstring-'
+#         #return 
+#
+#     @property
+#     def CurrentCanMove(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentCanResize(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentCanRotate(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedCanMove(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedCanResize(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedCanRotate(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+IUIAutomationTransformPattern2._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'Zoom',
+        (['in'], c_double, 'zoomValue')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'ZoomByUnit',
+        (['in'], ZoomUnit, 'ZoomUnit')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentCanZoom',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedCanZoom',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentZoomLevel',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedZoomLevel',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentZoomMinimum',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedZoomMinimum',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentZoomMaximum',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedZoomMaximum',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationTransformPattern2 implementation
+# class IUIAutomationTransformPattern2_Impl(object):
+#     def Zoom(self, zoomValue):
+#         '-no docstring-'
+#         #return 
+#
+#     def ZoomByUnit(self, ZoomUnit):
+#         '-no docstring-'
+#         #return 
+#
+#     @property
+#     def CurrentCanZoom(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedCanZoom(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentZoomLevel(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedZoomLevel(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentZoomMinimum(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedZoomMinimum(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentZoomMaximum(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedZoomMaximum(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_MarginTrailingAttributeId = 40021  # Constant c_int
+
+
+class IUIAutomationNotificationEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{C7CB2637-E6C2-4D0C-85DE-4948C02175C7}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def HandleNotificationEvent(self, sender: hints.Incomplete, NotificationKind: hints.Incomplete, NotificationProcessing: hints.Incomplete, displayString: hints.Incomplete, activityId: hints.Incomplete) -> hints.Hresult: ...
+
+
+IUIAutomationNotificationEventHandler._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'HandleNotificationEvent',
+        (['in'], POINTER(IUIAutomationElement), 'sender'),
+        ([], NotificationKind, 'NotificationKind'),
+        ([], NotificationProcessing, 'NotificationProcessing'),
+        (['in'], BSTR, 'displayString'),
+        (['in'], BSTR, 'activityId')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationNotificationEventHandler implementation
+# class IUIAutomationNotificationEventHandler_Impl(object):
+#     def HandleNotificationEvent(self, sender, NotificationKind, NotificationProcessing, displayString, activityId):
+#         '-no docstring-'
+#         #return 
+#
+
+
+class IUIAutomationTextChildPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{6552B038-AE05-40C8-ABFD-AA08352AAB86}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_TextContainer(self) -> 'IUIAutomationElement': ...
+        TextContainer = hints.normal_property(_get_TextContainer)
+        def _get_TextRange(self) -> 'IUIAutomationTextRange': ...
+        TextRange = hints.normal_property(_get_TextRange)
+
+
+IUIAutomationTextChildPattern._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'TextContainer',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'container')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'TextRange',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationTextChildPattern implementation
+# class IUIAutomationTextChildPattern_Impl(object):
+#     @property
+#     def TextContainer(self):
+#         '-no docstring-'
+#         #return container
+#
+#     @property
+#     def TextRange(self):
+#         '-no docstring-'
+#         #return range
+#
+
+UIA_MarginTopAttributeId = 40020  # Constant c_int
+UIA_MarginLeadingAttributeId = 40019  # Constant c_int
+UIA_MarginBottomAttributeId = 40018  # Constant c_int
+
+
+class IUIAutomationEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{146C3C17-F12E-4E22-8C27-F894B9B79C69}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def HandleAutomationEvent(self, sender: hints.Incomplete, eventId: hints.Incomplete) -> hints.Hresult: ...
+
+
+IUIAutomationEventHandler._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'HandleAutomationEvent',
+        (['in'], POINTER(IUIAutomationElement), 'sender'),
+        (['in'], c_int, 'eventId')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationEventHandler implementation
+# class IUIAutomationEventHandler_Impl(object):
+#     def HandleAutomationEvent(self, sender, eventId):
+#         '-no docstring-'
+#         #return 
+#
+
+
+class IUIAutomationElement6(IUIAutomationElement5):
+    _case_insensitive_ = True
+    _iid_ = GUID('{4780D450-8BCA-4977-AFA5-A4A517F555E3}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_CurrentFullDescription(self) -> hints.Incomplete: ...
+        CurrentFullDescription = hints.normal_property(_get_CurrentFullDescription)
+        def _get_CachedFullDescription(self) -> hints.Incomplete: ...
+        CachedFullDescription = hints.normal_property(_get_CachedFullDescription)
+
+
+class IUIAutomationElement7(IUIAutomationElement6):
+    _case_insensitive_ = True
+    _iid_ = GUID('{204E8572-CFC3-4C11-B0C8-7DA7420750B7}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def FindFirstWithOptions(self, scope: hints.Incomplete, condition: hints.Incomplete, traversalOptions: hints.Incomplete, root: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def FindAllWithOptions(self, scope: hints.Incomplete, condition: hints.Incomplete, traversalOptions: hints.Incomplete, root: hints.Incomplete) -> 'IUIAutomationElementArray': ...
+        def FindFirstWithOptionsBuildCache(self, scope: hints.Incomplete, condition: hints.Incomplete, cacheRequest: hints.Incomplete, traversalOptions: hints.Incomplete, root: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def FindAllWithOptionsBuildCache(self, scope: hints.Incomplete, condition: hints.Incomplete, cacheRequest: hints.Incomplete, traversalOptions: hints.Incomplete, root: hints.Incomplete) -> 'IUIAutomationElementArray': ...
+        def GetCurrentMetadataValue(self, targetId: hints.Incomplete, metadataId: hints.Incomplete) -> hints.Incomplete: ...
+
+
+class IUIAutomationElement8(IUIAutomationElement7):
+    _case_insensitive_ = True
+    _iid_ = GUID('{8C60217D-5411-4CDE-BCC0-1CEDA223830C}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_CurrentHeadingLevel(self) -> hints.Incomplete: ...
+        CurrentHeadingLevel = hints.normal_property(_get_CurrentHeadingLevel)
+        def _get_CachedHeadingLevel(self) -> hints.Incomplete: ...
+        CachedHeadingLevel = hints.normal_property(_get_CachedHeadingLevel)
+
+
+class IUIAutomationElement9(IUIAutomationElement8):
+    _case_insensitive_ = True
+    _iid_ = GUID('{39325FAC-039D-440E-A3A3-5EB81A5CECC3}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_CurrentIsDialog(self) -> hints.Incomplete: ...
+        CurrentIsDialog = hints.normal_property(_get_CurrentIsDialog)
+        def _get_CachedIsDialog(self) -> hints.Incomplete: ...
+        CachedIsDialog = hints.normal_property(_get_CachedIsDialog)
+
+
 IUIAutomationElement6._methods_ = [
     COMMETHOD(
         ['propget'],
@@ -5017,80 +4053,427 @@ IUIAutomationElement7._methods_ = [
 #         #return returnVal
 #
 
-UIA_IsScrollPatternAvailablePropertyId = 30034  # Constant c_int
-UIA_IsRangeValuePatternAvailablePropertyId = 30033  # Constant c_int
-
-
-class IRawElementProviderSimple(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{D6DD68D1-86FD-4332-8666-9ABEDEA2D24C}')
-    _idlflags_ = ['oleautomation']
-
-    if TYPE_CHECKING:  # commembers
-        def _get_ProviderOptions(self) -> hints.Incomplete: ...
-        ProviderOptions = hints.normal_property(_get_ProviderOptions)
-        def GetPatternProvider(self, patternId: hints.Incomplete) -> hints.Incomplete: ...
-        def GetPropertyValue(self, propertyId: hints.Incomplete) -> hints.Incomplete: ...
-        def _get_HostRawElementProvider(self) -> 'IRawElementProviderSimple': ...
-        HostRawElementProvider = hints.normal_property(_get_HostRawElementProvider)
-
-
-IRawElementProviderSimple._methods_ = [
+IUIAutomationElement8._methods_ = [
     COMMETHOD(
         ['propget'],
         HRESULT,
-        'ProviderOptions',
-        (['out', 'retval'], POINTER(ProviderOptions), 'pRetVal')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetPatternProvider',
-        (['in'], c_int, 'patternId'),
-        (['out', 'retval'], POINTER(POINTER(IUnknown)), 'pRetVal')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetPropertyValue',
-        (['in'], c_int, 'propertyId'),
-        (['out', 'retval'], POINTER(VARIANT), 'pRetVal')
+        'CurrentHeadingLevel',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
     ),
     COMMETHOD(
         ['propget'],
         HRESULT,
-        'HostRawElementProvider',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IRawElementProviderSimple)),
-            'pRetVal',
-        )
+        'CachedHeadingLevel',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
     ),
 ]
 
 ################################################################
-# code template for IRawElementProviderSimple implementation
-# class IRawElementProviderSimple_Impl(object):
+# code template for IUIAutomationElement8 implementation
+# class IUIAutomationElement8_Impl(object):
 #     @property
-#     def ProviderOptions(self):
+#     def CurrentHeadingLevel(self):
 #         '-no docstring-'
-#         #return pRetVal
-#
-#     def GetPatternProvider(self, patternId):
-#         '-no docstring-'
-#         #return pRetVal
-#
-#     def GetPropertyValue(self, propertyId):
-#         '-no docstring-'
-#         #return pRetVal
+#         #return retVal
 #
 #     @property
-#     def HostRawElementProvider(self):
+#     def CachedHeadingLevel(self):
 #         '-no docstring-'
-#         #return pRetVal
+#         #return retVal
 #
 
-UIA_IsMultipleViewPatternAvailablePropertyId = 30032  # Constant c_int
+IUIAutomationElement9._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentIsDialog',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedIsDialog',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationElement9 implementation
+# class IUIAutomationElement9_Impl(object):
+#     @property
+#     def CurrentIsDialog(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedIsDialog(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_IsSuperscriptAttributeId = 40017  # Constant c_int
+
+
+class IUIAutomationStructureChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{E81D1B4E-11C5-42F8-9754-E7036C79F054}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def HandleStructureChangedEvent(self, sender: hints.Incomplete, changeType: hints.Incomplete, runtimeId: hints.Incomplete) -> hints.Hresult: ...
+
+
+IUIAutomationStructureChangedEventHandler._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'HandleStructureChangedEvent',
+        (['in'], POINTER(IUIAutomationElement), 'sender'),
+        (['in'], StructureChangeType, 'changeType'),
+        (['in'], _midlSAFEARRAY(c_int), 'runtimeId')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationStructureChangedEventHandler implementation
+# class IUIAutomationStructureChangedEventHandler_Impl(object):
+#     def HandleStructureChangedEvent(self, sender, changeType, runtimeId):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_IsSubscriptAttributeId = 40016  # Constant c_int
+StyleId_Subtitle = 70011  # Constant c_int
+HeadingLevel2 = 80052  # Constant c_int
+UIA_IsReadOnlyAttributeId = 40015  # Constant c_int
+UIA_IsItalicAttributeId = 40014  # Constant c_int
+
+
+class IUIAutomationChangesEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{58EDCA55-2C3E-4980-B1B9-56C17F27A2A0}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def HandleChangesEvent(self, sender: hints.Incomplete, uiaChanges: hints.Incomplete, changesCount: hints.Incomplete) -> hints.Hresult: ...
+
+
+class UiaChangeInfo(Structure):
+    pass
+
+
+IUIAutomationChangesEventHandler._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'HandleChangesEvent',
+        (['in'], POINTER(IUIAutomationElement), 'sender'),
+        (['in'], POINTER(UiaChangeInfo), 'uiaChanges'),
+        (['in'], c_int, 'changesCount')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationChangesEventHandler implementation
+# class IUIAutomationChangesEventHandler_Impl(object):
+#     def HandleChangesEvent(self, sender, uiaChanges, changesCount):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_IsHiddenAttributeId = 40013  # Constant c_int
+StyleId_Title = 70010  # Constant c_int
+
+
+class IUIAutomationPropertyCondition(IUIAutomationCondition):
+    _case_insensitive_ = True
+    _iid_ = GUID('{99EBF2CB-5578-4267-9AD4-AFD6EA77E94B}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_propertyId(self) -> hints.Incomplete: ...
+        propertyId = hints.normal_property(_get_propertyId)
+        def _get_PropertyValue(self) -> hints.Incomplete: ...
+        PropertyValue = hints.normal_property(_get_PropertyValue)
+        def _get_PropertyConditionFlags(self) -> hints.Incomplete: ...
+        PropertyConditionFlags = hints.normal_property(_get_PropertyConditionFlags)
+
+
+IUIAutomationPropertyCondition._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'propertyId',
+        (['out', 'retval'], POINTER(c_int), 'propertyId')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'PropertyValue',
+        (['out', 'retval'], POINTER(VARIANT), 'PropertyValue')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'PropertyConditionFlags',
+        (['out', 'retval'], POINTER(PropertyConditionFlags), 'flags')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationPropertyCondition implementation
+# class IUIAutomationPropertyCondition_Impl(object):
+#     @property
+#     def propertyId(self):
+#         '-no docstring-'
+#         #return propertyId
+#
+#     @property
+#     def PropertyValue(self):
+#         '-no docstring-'
+#         #return PropertyValue
+#
+#     @property
+#     def PropertyConditionFlags(self):
+#         '-no docstring-'
+#         #return flags
+#
+
+UIA_IndentationTrailingAttributeId = 40012  # Constant c_int
+UIA_IndentationLeadingAttributeId = 40011  # Constant c_int
+HeadingLevel9 = 80059  # Constant c_int
+UIA_IndentationFirstLineAttributeId = 40010  # Constant c_int
+StyleId_Heading9 = 70009  # Constant c_int
+UIA_HorizontalTextAlignmentAttributeId = 40009  # Constant c_int
+
+
+class IUIAutomationInvokePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{FB377FBE-8EA6-46D5-9C73-6499642D3059}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def Invoke(self) -> hints.Hresult: ...
+
+
+IUIAutomationInvokePattern._methods_ = [
+    COMMETHOD([], HRESULT, 'Invoke'),
+]
+
+################################################################
+# code template for IUIAutomationInvokePattern implementation
+# class IUIAutomationInvokePattern_Impl(object):
+#     def Invoke(self):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_ForegroundColorAttributeId = 40008  # Constant c_int
+
+IUIAutomationCacheRequest._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddProperty',
+        (['in'], c_int, 'propertyId')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddPattern',
+        (['in'], c_int, 'patternId')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'Clone',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCacheRequest)),
+            'clonedRequest',
+        )
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'TreeScope',
+        (['out', 'retval'], POINTER(TreeScope), 'scope')
+    ),
+    COMMETHOD(
+        ['propput'],
+        HRESULT,
+        'TreeScope',
+        (['in'], TreeScope, 'scope')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'TreeFilter',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationCondition)), 'filter')
+    ),
+    COMMETHOD(
+        ['propput'],
+        HRESULT,
+        'TreeFilter',
+        (['in'], POINTER(IUIAutomationCondition), 'filter')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'AutomationElementMode',
+        (['out', 'retval'], POINTER(AutomationElementMode), 'mode')
+    ),
+    COMMETHOD(
+        ['propput'],
+        HRESULT,
+        'AutomationElementMode',
+        (['in'], AutomationElementMode, 'mode')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationCacheRequest implementation
+# class IUIAutomationCacheRequest_Impl(object):
+#     def AddProperty(self, propertyId):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddPattern(self, patternId):
+#         '-no docstring-'
+#         #return 
+#
+#     def Clone(self):
+#         '-no docstring-'
+#         #return clonedRequest
+#
+#     def _get(self):
+#         '-no docstring-'
+#         #return scope
+#     def _set(self, scope):
+#         '-no docstring-'
+#     TreeScope = property(_get, _set, doc = _set.__doc__)
+#
+#     def _get(self):
+#         '-no docstring-'
+#         #return filter
+#     def _set(self, filter):
+#         '-no docstring-'
+#     TreeFilter = property(_get, _set, doc = _set.__doc__)
+#
+#     def _get(self):
+#         '-no docstring-'
+#         #return mode
+#     def _set(self, mode):
+#         '-no docstring-'
+#     AutomationElementMode = property(_get, _set, doc = _set.__doc__)
+#
+
+UIA_FontWeightAttributeId = 40007  # Constant c_int
+AnnotationType_CircularReferenceError = 60022  # Constant c_int
+UIA_FontSizeAttributeId = 40006  # Constant c_int
+UIA_FontNameAttributeId = 40005  # Constant c_int
+AnnotationType_DataValidationError = 60021  # Constant c_int
+UIA_CultureAttributeId = 40004  # Constant c_int
+UIA_CapStyleAttributeId = 40003  # Constant c_int
+AnnotationType_AdvancedProofingIssue = 60020  # Constant c_int
+HeadingLevel1 = 80051  # Constant c_int
+
+
+class IUIAutomationSpreadsheetItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{7D4FB86C-8D34-40E1-8E83-62C15204E335}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_CurrentFormula(self) -> hints.Incomplete: ...
+        CurrentFormula = hints.normal_property(_get_CurrentFormula)
+        def GetCurrentAnnotationObjects(self) -> 'IUIAutomationElementArray': ...
+        def GetCurrentAnnotationTypes(self) -> hints.Incomplete: ...
+        def _get_CachedFormula(self) -> hints.Incomplete: ...
+        CachedFormula = hints.normal_property(_get_CachedFormula)
+        def GetCachedAnnotationObjects(self) -> 'IUIAutomationElementArray': ...
+        def GetCachedAnnotationTypes(self) -> hints.Incomplete: ...
+
+
+IUIAutomationSpreadsheetItemPattern._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentFormula',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCurrentAnnotationObjects',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationElementArray)),
+            'retVal',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCurrentAnnotationTypes',
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedFormula',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCachedAnnotationObjects',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationElementArray)),
+            'retVal',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCachedAnnotationTypes',
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationSpreadsheetItemPattern implementation
+# class IUIAutomationSpreadsheetItemPattern_Impl(object):
+#     @property
+#     def CurrentFormula(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     def GetCurrentAnnotationObjects(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     def GetCurrentAnnotationTypes(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedFormula(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     def GetCachedAnnotationObjects(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     def GetCachedAnnotationTypes(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_BulletStyleAttributeId = 40002  # Constant c_int
+HeadingLevel3 = 80053  # Constant c_int
 
 IUIAutomationElementArray._methods_ = [
     COMMETHOD(
@@ -5121,7 +4504,8 @@ IUIAutomationElementArray._methods_ = [
 #         #return element
 #
 
-UIA_IsInvokePatternAvailablePropertyId = 30031  # Constant c_int
+UIA_BackgroundColorAttributeId = 40001  # Constant c_int
+UIA_AnimationStyleAttributeId = 40000  # Constant c_int
 
 
 class IUIAutomationGridPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -5203,6 +4587,940 @@ IUIAutomationGridPattern._methods_ = [
 #         '-no docstring-'
 #         #return retVal
 #
+
+UIA_IsDialogPropertyId = 30174  # Constant c_int
+UIA_HeadingLevelPropertyId = 30173  # Constant c_int
+
+
+class IUIAutomationFocusChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{C270F6B5-5C69-4290-9745-7A7F97169468}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def HandleFocusChangedEvent(self, sender: hints.Incomplete) -> hints.Hresult: ...
+
+
+IUIAutomationFocusChangedEventHandler._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'HandleFocusChangedEvent',
+        (['in'], POINTER(IUIAutomationElement), 'sender')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationFocusChangedEventHandler implementation
+# class IUIAutomationFocusChangedEventHandler_Impl(object):
+#     def HandleFocusChangedEvent(self, sender):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_Selection2ItemCountPropertyId = 30172  # Constant c_int
+UIA_Selection2CurrentSelectedItemPropertyId = 30171  # Constant c_int
+UIA_Selection2LastSelectedItemPropertyId = 30170  # Constant c_int
+
+
+class IUIAutomation(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{30CBE57D-D9D0-452A-AB13-7AC5AC4825EE}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def CompareElements(self, el1: hints.Incomplete, el2: hints.Incomplete) -> hints.Incomplete: ...
+        def CompareRuntimeIds(self, runtimeId1: hints.Incomplete, runtimeId2: hints.Incomplete) -> hints.Incomplete: ...
+        def GetRootElement(self) -> 'IUIAutomationElement': ...
+        def ElementFromHandle(self, hwnd: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def ElementFromPoint(self, pt: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetFocusedElement(self) -> 'IUIAutomationElement': ...
+        def GetRootElementBuildCache(self, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def ElementFromHandleBuildCache(self, hwnd: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def ElementFromPointBuildCache(self, pt: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetFocusedElementBuildCache(self, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def CreateTreeWalker(self, pCondition: hints.Incomplete) -> 'IUIAutomationTreeWalker': ...
+        def _get_ControlViewWalker(self) -> 'IUIAutomationTreeWalker': ...
+        ControlViewWalker = hints.normal_property(_get_ControlViewWalker)
+        def _get_ContentViewWalker(self) -> 'IUIAutomationTreeWalker': ...
+        ContentViewWalker = hints.normal_property(_get_ContentViewWalker)
+        def _get_RawViewWalker(self) -> 'IUIAutomationTreeWalker': ...
+        RawViewWalker = hints.normal_property(_get_RawViewWalker)
+        def _get_RawViewCondition(self) -> 'IUIAutomationCondition': ...
+        RawViewCondition = hints.normal_property(_get_RawViewCondition)
+        def _get_ControlViewCondition(self) -> 'IUIAutomationCondition': ...
+        ControlViewCondition = hints.normal_property(_get_ControlViewCondition)
+        def _get_ContentViewCondition(self) -> 'IUIAutomationCondition': ...
+        ContentViewCondition = hints.normal_property(_get_ContentViewCondition)
+        def CreateCacheRequest(self) -> 'IUIAutomationCacheRequest': ...
+        def CreateTrueCondition(self) -> 'IUIAutomationCondition': ...
+        def CreateFalseCondition(self) -> 'IUIAutomationCondition': ...
+        def CreatePropertyCondition(self, propertyId: hints.Incomplete, value: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def CreatePropertyConditionEx(self, propertyId: hints.Incomplete, value: hints.Incomplete, flags: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def CreateAndCondition(self, condition1: hints.Incomplete, condition2: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def CreateAndConditionFromArray(self, conditions: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def CreateAndConditionFromNativeArray(self, conditions: hints.Incomplete, conditionCount: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def CreateOrCondition(self, condition1: hints.Incomplete, condition2: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def CreateOrConditionFromArray(self, conditions: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def CreateOrConditionFromNativeArray(self, conditions: hints.Incomplete, conditionCount: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def CreateNotCondition(self, condition: hints.Incomplete) -> 'IUIAutomationCondition': ...
+        def AddAutomationEventHandler(self, eventId: hints.Incomplete, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveAutomationEventHandler(self, eventId: hints.Incomplete, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def AddPropertyChangedEventHandlerNativeArray(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete, propertyArray: hints.Incomplete, propertyCount: hints.Incomplete) -> hints.Hresult: ...
+        def AddPropertyChangedEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete, propertyArray: hints.Incomplete) -> hints.Hresult: ...
+        def RemovePropertyChangedEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def AddStructureChangedEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveStructureChangedEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def AddFocusChangedEventHandler(self, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveFocusChangedEventHandler(self, handler: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveAllEventHandlers(self) -> hints.Hresult: ...
+        def IntNativeArrayToSafeArray(self, array: hints.Incomplete, arrayCount: hints.Incomplete) -> hints.Incomplete: ...
+        def IntSafeArrayToNativeArray(self, intArray: hints.Incomplete) -> tuple[hints.Incomplete, hints.Incomplete]: ...
+        def RectToVariant(self, rc: hints.Incomplete) -> hints.Incomplete: ...
+        def VariantToRect(self, var: hints.Incomplete) -> hints.Incomplete: ...
+        def SafeArrayToRectNativeArray(self, rects: hints.Incomplete) -> tuple[hints.Incomplete, hints.Incomplete]: ...
+        def CreateProxyFactoryEntry(self, factory: hints.Incomplete) -> 'IUIAutomationProxyFactoryEntry': ...
+        def _get_ProxyFactoryMapping(self) -> 'IUIAutomationProxyFactoryMapping': ...
+        ProxyFactoryMapping = hints.normal_property(_get_ProxyFactoryMapping)
+        def GetPropertyProgrammaticName(self, property: hints.Incomplete) -> hints.Incomplete: ...
+        def GetPatternProgrammaticName(self, pattern: hints.Incomplete) -> hints.Incomplete: ...
+        def PollForPotentialSupportedPatterns(self, pElement: hints.Incomplete) -> tuple[hints.Incomplete, hints.Incomplete]: ...
+        def PollForPotentialSupportedProperties(self, pElement: hints.Incomplete) -> tuple[hints.Incomplete, hints.Incomplete]: ...
+        def CheckNotSupported(self, value: hints.Incomplete) -> hints.Incomplete: ...
+        def _get_ReservedNotSupportedValue(self) -> hints.Incomplete: ...
+        ReservedNotSupportedValue = hints.normal_property(_get_ReservedNotSupportedValue)
+        def _get_ReservedMixedAttributeValue(self) -> hints.Incomplete: ...
+        ReservedMixedAttributeValue = hints.normal_property(_get_ReservedMixedAttributeValue)
+        def ElementFromIAccessible(self, accessible: hints.Incomplete, childId: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def ElementFromIAccessibleBuildCache(self, accessible: hints.Incomplete, childId: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+
+
+class IUIAutomation2(IUIAutomation):
+    _case_insensitive_ = True
+    _iid_ = GUID('{34723AFF-0C9D-49D0-9896-7AB52DF8CD8A}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_AutoSetFocus(self) -> hints.Incomplete: ...
+        def _set_AutoSetFocus(self, AutoSetFocus: hints.Incomplete) -> hints.Hresult: ...
+        AutoSetFocus = hints.normal_property(_get_AutoSetFocus, _set_AutoSetFocus)
+        def _get_ConnectionTimeout(self) -> hints.Incomplete: ...
+        def _set_ConnectionTimeout(self, timeout: hints.Incomplete) -> hints.Hresult: ...
+        ConnectionTimeout = hints.normal_property(_get_ConnectionTimeout, _set_ConnectionTimeout)
+        def _get_TransactionTimeout(self) -> hints.Incomplete: ...
+        def _set_TransactionTimeout(self, timeout: hints.Incomplete) -> hints.Hresult: ...
+        TransactionTimeout = hints.normal_property(_get_TransactionTimeout, _set_TransactionTimeout)
+
+
+class IUIAutomationTreeWalker(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{4042C624-389C-4AFC-A630-9DF854A541FC}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def GetParentElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetFirstChildElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetLastChildElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetNextSiblingElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetPreviousSiblingElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def NormalizeElement(self, element: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetParentElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetFirstChildElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetLastChildElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetNextSiblingElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def GetPreviousSiblingElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def NormalizeElementBuildCache(self, element: hints.Incomplete, cacheRequest: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def _get_condition(self) -> 'IUIAutomationCondition': ...
+        condition = hints.normal_property(_get_condition)
+
+
+class IUIAutomationPropertyChangedEventHandler(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{40CD37D4-C756-4B0C-8C6F-BDDFEEB13B50}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def HandlePropertyChangedEvent(self, sender: hints.Incomplete, propertyId: hints.Incomplete, newValue: hints.Incomplete) -> hints.Hresult: ...
+
+
+class IUIAutomationProxyFactory(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{85B94ECD-849D-42B6-B94D-D6DB23FDF5A4}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def CreateProvider(self, hwnd: hints.Incomplete, idObject: hints.Incomplete, idChild: hints.Incomplete) -> 'IRawElementProviderSimple': ...
+        def _get_ProxyFactoryId(self) -> hints.Incomplete: ...
+        ProxyFactoryId = hints.normal_property(_get_ProxyFactoryId)
+
+
+IUIAutomation._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CompareElements',
+        (['in'], POINTER(IUIAutomationElement), 'el1'),
+        (['in'], POINTER(IUIAutomationElement), 'el2'),
+        (['out', 'retval'], POINTER(c_int), 'areSame')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CompareRuntimeIds',
+        (['in'], _midlSAFEARRAY(c_int), 'runtimeId1'),
+        (['in'], _midlSAFEARRAY(c_int), 'runtimeId2'),
+        (['out', 'retval'], POINTER(c_int), 'areSame')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetRootElement',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'root')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'ElementFromHandle',
+        (['in'], c_void_p, 'hwnd'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'ElementFromPoint',
+        (['in'], tagPOINT, 'pt'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetFocusedElement',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetRootElementBuildCache',
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'root')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'ElementFromHandleBuildCache',
+        (['in'], c_void_p, 'hwnd'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'ElementFromPointBuildCache',
+        (['in'], tagPOINT, 'pt'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetFocusedElementBuildCache',
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateTreeWalker',
+        (['in'], POINTER(IUIAutomationCondition), 'pCondition'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTreeWalker)), 'walker')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ControlViewWalker',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTreeWalker)), 'walker')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ContentViewWalker',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTreeWalker)), 'walker')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'RawViewWalker',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationTreeWalker)), 'walker')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'RawViewCondition',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'condition',
+        )
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ControlViewCondition',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'condition',
+        )
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ContentViewCondition',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'condition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateCacheRequest',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCacheRequest)),
+            'cacheRequest',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateTrueCondition',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateFalseCondition',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreatePropertyCondition',
+        (['in'], c_int, 'propertyId'),
+        (['in'], VARIANT, 'value'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreatePropertyConditionEx',
+        (['in'], c_int, 'propertyId'),
+        (['in'], VARIANT, 'value'),
+        (['in'], PropertyConditionFlags, 'flags'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateAndCondition',
+        (['in'], POINTER(IUIAutomationCondition), 'condition1'),
+        (['in'], POINTER(IUIAutomationCondition), 'condition2'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateAndConditionFromArray',
+        (['in'], _midlSAFEARRAY(POINTER(IUIAutomationCondition)), 'conditions'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateAndConditionFromNativeArray',
+        (['in'], POINTER(POINTER(IUIAutomationCondition)), 'conditions'),
+        (['in'], c_int, 'conditionCount'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateOrCondition',
+        (['in'], POINTER(IUIAutomationCondition), 'condition1'),
+        (['in'], POINTER(IUIAutomationCondition), 'condition2'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateOrConditionFromArray',
+        (['in'], _midlSAFEARRAY(POINTER(IUIAutomationCondition)), 'conditions'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateOrConditionFromNativeArray',
+        (['in'], POINTER(POINTER(IUIAutomationCondition)), 'conditions'),
+        (['in'], c_int, 'conditionCount'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateNotCondition',
+        (['in'], POINTER(IUIAutomationCondition), 'condition'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'newCondition',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddAutomationEventHandler',
+        (['in'], c_int, 'eventId'),
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveAutomationEventHandler',
+        (['in'], c_int, 'eventId'),
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddPropertyChangedEventHandlerNativeArray',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationPropertyChangedEventHandler), 'handler'),
+        (['in'], POINTER(c_int), 'propertyArray'),
+        (['in'], c_int, 'propertyCount')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddPropertyChangedEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationPropertyChangedEventHandler), 'handler'),
+        (['in'], _midlSAFEARRAY(c_int), 'propertyArray')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemovePropertyChangedEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationPropertyChangedEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddStructureChangedEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationStructureChangedEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveStructureChangedEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationStructureChangedEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddFocusChangedEventHandler',
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationFocusChangedEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveFocusChangedEventHandler',
+        (['in'], POINTER(IUIAutomationFocusChangedEventHandler), 'handler')
+    ),
+    COMMETHOD([], HRESULT, 'RemoveAllEventHandlers'),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'IntNativeArrayToSafeArray',
+        (['in'], POINTER(c_int), 'array'),
+        (['in'], c_int, 'arrayCount'),
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'safeArray')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'IntSafeArrayToNativeArray',
+        (['in'], _midlSAFEARRAY(c_int), 'intArray'),
+        (['out'], POINTER(POINTER(c_int)), 'array'),
+        (['out', 'retval'], POINTER(c_int), 'arrayCount')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RectToVariant',
+        (['in'], tagRECT, 'rc'),
+        (['out', 'retval'], POINTER(VARIANT), 'var')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'VariantToRect',
+        (['in'], VARIANT, 'var'),
+        (['out', 'retval'], POINTER(tagRECT), 'rc')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'SafeArrayToRectNativeArray',
+        (['in'], _midlSAFEARRAY(c_double), 'rects'),
+        (['out'], POINTER(POINTER(tagRECT)), 'rectArray'),
+        (['out', 'retval'], POINTER(c_int), 'rectArrayCount')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateProxyFactoryEntry',
+        (['in'], POINTER(IUIAutomationProxyFactory), 'factory'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationProxyFactoryEntry)),
+            'factoryEntry',
+        )
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ProxyFactoryMapping',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationProxyFactoryMapping)),
+            'factoryMapping',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetPropertyProgrammaticName',
+        (['in'], c_int, 'property'),
+        (['out', 'retval'], POINTER(BSTR), 'name')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetPatternProgrammaticName',
+        (['in'], c_int, 'pattern'),
+        (['out', 'retval'], POINTER(BSTR), 'name')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'PollForPotentialSupportedPatterns',
+        (['in'], POINTER(IUIAutomationElement), 'pElement'),
+        (['out'], POINTER(_midlSAFEARRAY(c_int)), 'patternIds'),
+        (['out'], POINTER(_midlSAFEARRAY(BSTR)), 'patternNames')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'PollForPotentialSupportedProperties',
+        (['in'], POINTER(IUIAutomationElement), 'pElement'),
+        (['out'], POINTER(_midlSAFEARRAY(c_int)), 'propertyIds'),
+        (['out'], POINTER(_midlSAFEARRAY(BSTR)), 'propertyNames')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CheckNotSupported',
+        (['in'], VARIANT, 'value'),
+        (['out', 'retval'], POINTER(c_int), 'isNotSupported')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ReservedNotSupportedValue',
+        (['out', 'retval'], POINTER(POINTER(IUnknown)), 'notSupportedValue')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ReservedMixedAttributeValue',
+        (['out', 'retval'], POINTER(POINTER(IUnknown)), 'mixedAttributeValue')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'ElementFromIAccessible',
+        (['in'], POINTER(IAccessible), 'accessible'),
+        (['in'], c_int, 'childId'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'ElementFromIAccessibleBuildCache',
+        (['in'], POINTER(IAccessible), 'accessible'),
+        (['in'], c_int, 'childId'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+]
+
+################################################################
+# code template for IUIAutomation implementation
+# class IUIAutomation_Impl(object):
+#     def CompareElements(self, el1, el2):
+#         '-no docstring-'
+#         #return areSame
+#
+#     def CompareRuntimeIds(self, runtimeId1, runtimeId2):
+#         '-no docstring-'
+#         #return areSame
+#
+#     def GetRootElement(self):
+#         '-no docstring-'
+#         #return root
+#
+#     def ElementFromHandle(self, hwnd):
+#         '-no docstring-'
+#         #return element
+#
+#     def ElementFromPoint(self, pt):
+#         '-no docstring-'
+#         #return element
+#
+#     def GetFocusedElement(self):
+#         '-no docstring-'
+#         #return element
+#
+#     def GetRootElementBuildCache(self, cacheRequest):
+#         '-no docstring-'
+#         #return root
+#
+#     def ElementFromHandleBuildCache(self, hwnd, cacheRequest):
+#         '-no docstring-'
+#         #return element
+#
+#     def ElementFromPointBuildCache(self, pt, cacheRequest):
+#         '-no docstring-'
+#         #return element
+#
+#     def GetFocusedElementBuildCache(self, cacheRequest):
+#         '-no docstring-'
+#         #return element
+#
+#     def CreateTreeWalker(self, pCondition):
+#         '-no docstring-'
+#         #return walker
+#
+#     @property
+#     def ControlViewWalker(self):
+#         '-no docstring-'
+#         #return walker
+#
+#     @property
+#     def ContentViewWalker(self):
+#         '-no docstring-'
+#         #return walker
+#
+#     @property
+#     def RawViewWalker(self):
+#         '-no docstring-'
+#         #return walker
+#
+#     @property
+#     def RawViewCondition(self):
+#         '-no docstring-'
+#         #return condition
+#
+#     @property
+#     def ControlViewCondition(self):
+#         '-no docstring-'
+#         #return condition
+#
+#     @property
+#     def ContentViewCondition(self):
+#         '-no docstring-'
+#         #return condition
+#
+#     def CreateCacheRequest(self):
+#         '-no docstring-'
+#         #return cacheRequest
+#
+#     def CreateTrueCondition(self):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreateFalseCondition(self):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreatePropertyCondition(self, propertyId, value):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreatePropertyConditionEx(self, propertyId, value, flags):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreateAndCondition(self, condition1, condition2):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreateAndConditionFromArray(self, conditions):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreateAndConditionFromNativeArray(self, conditions, conditionCount):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreateOrCondition(self, condition1, condition2):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreateOrConditionFromArray(self, conditions):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreateOrConditionFromNativeArray(self, conditions, conditionCount):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def CreateNotCondition(self, condition):
+#         '-no docstring-'
+#         #return newCondition
+#
+#     def AddAutomationEventHandler(self, eventId, element, scope, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveAutomationEventHandler(self, eventId, element, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddPropertyChangedEventHandlerNativeArray(self, element, scope, cacheRequest, handler, propertyArray, propertyCount):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddPropertyChangedEventHandler(self, element, scope, cacheRequest, handler, propertyArray):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemovePropertyChangedEventHandler(self, element, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddStructureChangedEventHandler(self, element, scope, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveStructureChangedEventHandler(self, element, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddFocusChangedEventHandler(self, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveFocusChangedEventHandler(self, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveAllEventHandlers(self):
+#         '-no docstring-'
+#         #return 
+#
+#     def IntNativeArrayToSafeArray(self, array, arrayCount):
+#         '-no docstring-'
+#         #return safeArray
+#
+#     def IntSafeArrayToNativeArray(self, intArray):
+#         '-no docstring-'
+#         #return array, arrayCount
+#
+#     def RectToVariant(self, rc):
+#         '-no docstring-'
+#         #return var
+#
+#     def VariantToRect(self, var):
+#         '-no docstring-'
+#         #return rc
+#
+#     def SafeArrayToRectNativeArray(self, rects):
+#         '-no docstring-'
+#         #return rectArray, rectArrayCount
+#
+#     def CreateProxyFactoryEntry(self, factory):
+#         '-no docstring-'
+#         #return factoryEntry
+#
+#     @property
+#     def ProxyFactoryMapping(self):
+#         '-no docstring-'
+#         #return factoryMapping
+#
+#     def GetPropertyProgrammaticName(self, property):
+#         '-no docstring-'
+#         #return name
+#
+#     def GetPatternProgrammaticName(self, pattern):
+#         '-no docstring-'
+#         #return name
+#
+#     def PollForPotentialSupportedPatterns(self, pElement):
+#         '-no docstring-'
+#         #return patternIds, patternNames
+#
+#     def PollForPotentialSupportedProperties(self, pElement):
+#         '-no docstring-'
+#         #return propertyIds, propertyNames
+#
+#     def CheckNotSupported(self, value):
+#         '-no docstring-'
+#         #return isNotSupported
+#
+#     @property
+#     def ReservedNotSupportedValue(self):
+#         '-no docstring-'
+#         #return notSupportedValue
+#
+#     @property
+#     def ReservedMixedAttributeValue(self):
+#         '-no docstring-'
+#         #return mixedAttributeValue
+#
+#     def ElementFromIAccessible(self, accessible, childId):
+#         '-no docstring-'
+#         #return element
+#
+#     def ElementFromIAccessibleBuildCache(self, accessible, childId, cacheRequest):
+#         '-no docstring-'
+#         #return element
+#
+
+IUIAutomation2._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'AutoSetFocus',
+        (['out', 'retval'], POINTER(c_int), 'AutoSetFocus')
+    ),
+    COMMETHOD(
+        ['propput'],
+        HRESULT,
+        'AutoSetFocus',
+        (['in'], c_int, 'AutoSetFocus')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ConnectionTimeout',
+        (['out', 'retval'], POINTER(c_ulong), 'timeout')
+    ),
+    COMMETHOD(
+        ['propput'],
+        HRESULT,
+        'ConnectionTimeout',
+        (['in'], c_ulong, 'timeout')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'TransactionTimeout',
+        (['out', 'retval'], POINTER(c_ulong), 'timeout')
+    ),
+    COMMETHOD(
+        ['propput'],
+        HRESULT,
+        'TransactionTimeout',
+        (['in'], c_ulong, 'timeout')
+    ),
+]
+
+################################################################
+# code template for IUIAutomation2 implementation
+# class IUIAutomation2_Impl(object):
+#     def _get(self):
+#         '-no docstring-'
+#         #return AutoSetFocus
+#     def _set(self, AutoSetFocus):
+#         '-no docstring-'
+#     AutoSetFocus = property(_get, _set, doc = _set.__doc__)
+#
+#     def _get(self):
+#         '-no docstring-'
+#         #return timeout
+#     def _set(self, timeout):
+#         '-no docstring-'
+#     ConnectionTimeout = property(_get, _set, doc = _set.__doc__)
+#
+#     def _get(self):
+#         '-no docstring-'
+#         #return timeout
+#     def _set(self, timeout):
+#         '-no docstring-'
+#     TransactionTimeout = property(_get, _set, doc = _set.__doc__)
+#
+
+UIA_Selection2FirstSelectedItemPropertyId = 30169  # Constant c_int
+AnnotationType_Author = 60019  # Constant c_int
+UIA_IsSelectionPattern2AvailablePropertyId = 30168  # Constant c_int
 
 IUIAutomationProxyFactoryEntry._methods_ = [
     COMMETHOD(
@@ -5345,96 +5663,9 @@ IUIAutomationProxyFactoryEntry._methods_ = [
 #         #return winEvents
 #
 
-UIA_IsGridPatternAvailablePropertyId = 30030  # Constant c_int
-UIA_IsGridItemPatternAvailablePropertyId = 30029  # Constant c_int
-UIA_IsExpandCollapsePatternAvailablePropertyId = 30028  # Constant c_int
-
-IUIAutomationFocusChangedEventHandler._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'HandleFocusChangedEvent',
-        (['in'], POINTER(IUIAutomationElement), 'sender')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationFocusChangedEventHandler implementation
-# class IUIAutomationFocusChangedEventHandler_Impl(object):
-#     def HandleFocusChangedEvent(self, sender):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_IsDockPatternAvailablePropertyId = 30027  # Constant c_int
-AnnotationType_GrammarError = 60002  # Constant c_int
-
-IUIAutomationActiveTextPositionChangedEventHandler._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'HandleActiveTextPositionChangedEvent',
-        (['in'], POINTER(IUIAutomationElement), 'sender'),
-        (['in'], POINTER(IUIAutomationTextRange), 'range')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationActiveTextPositionChangedEventHandler implementation
-# class IUIAutomationActiveTextPositionChangedEventHandler_Impl(object):
-#     def HandleActiveTextPositionChangedEvent(self, sender, range):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_ItemStatusPropertyId = 30026  # Constant c_int
-UIA_IsRequiredForFormPropertyId = 30025  # Constant c_int
-UIA_FrameworkIdPropertyId = 30024  # Constant c_int
-UIA_OrientationPropertyId = 30023  # Constant c_int
-
-
-class IUIAutomationElement8(IUIAutomationElement7):
-    _case_insensitive_ = True
-    _iid_ = GUID('{8C60217D-5411-4CDE-BCC0-1CEDA223830C}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_CurrentHeadingLevel(self) -> hints.Incomplete: ...
-        CurrentHeadingLevel = hints.normal_property(_get_CurrentHeadingLevel)
-        def _get_CachedHeadingLevel(self) -> hints.Incomplete: ...
-        CachedHeadingLevel = hints.normal_property(_get_CachedHeadingLevel)
-
-
-IUIAutomationElement8._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentHeadingLevel',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedHeadingLevel',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationElement8 implementation
-# class IUIAutomationElement8_Impl(object):
-#     @property
-#     def CurrentHeadingLevel(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedHeadingLevel(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_IsOffscreenPropertyId = 30022  # Constant c_int
+UIA_SizePropertyId = 30167  # Constant c_int
+UIA_LayoutInvalidatedEventId = 20008  # Constant c_int
+UIA_RotationPropertyId = 30166  # Constant c_int
 
 
 class IUIAutomationNotCondition(IUIAutomationCondition):
@@ -5466,872 +5697,6 @@ IUIAutomationNotCondition._methods_ = [
 #         '-no docstring-'
 #         #return condition
 #
-
-
-class IUIAutomationTextChildPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{6552B038-AE05-40C8-ABFD-AA08352AAB86}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_TextContainer(self) -> 'IUIAutomationElement': ...
-        TextContainer = hints.normal_property(_get_TextContainer)
-        def _get_TextRange(self) -> 'IUIAutomationTextRange': ...
-        TextRange = hints.normal_property(_get_TextRange)
-
-
-IUIAutomationTextChildPattern._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'TextContainer',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'container')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'TextRange',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'range')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationTextChildPattern implementation
-# class IUIAutomationTextChildPattern_Impl(object):
-#     @property
-#     def TextContainer(self):
-#         '-no docstring-'
-#         #return container
-#
-#     @property
-#     def TextRange(self):
-#         '-no docstring-'
-#         #return range
-#
-
-UIA_LabeledByPropertyId = 30018  # Constant c_int
-AnnotationType_SpellingError = 60001  # Constant c_int
-UIA_IsContentElementPropertyId = 30017  # Constant c_int
-UIA_IsControlElementPropertyId = 30016  # Constant c_int
-
-IUIAutomationPropertyChangedEventHandler._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'HandlePropertyChangedEvent',
-        (['in'], POINTER(IUIAutomationElement), 'sender'),
-        (['in'], c_int, 'propertyId'),
-        (['in'], VARIANT, 'newValue')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationPropertyChangedEventHandler implementation
-# class IUIAutomationPropertyChangedEventHandler_Impl(object):
-#     def HandlePropertyChangedEvent(self, sender, propertyId, newValue):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_CulturePropertyId = 30015  # Constant c_int
-
-IUIAutomationTreeWalker._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetParentElement',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'parent')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetFirstChildElement',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'first')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetLastChildElement',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'last')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetNextSiblingElement',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'next')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetPreviousSiblingElement',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'previous')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'NormalizeElement',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationElement)),
-            'normalized',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetParentElementBuildCache',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'parent')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetFirstChildElementBuildCache',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'first')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetLastChildElementBuildCache',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'last')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetNextSiblingElementBuildCache',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'next')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetPreviousSiblingElementBuildCache',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'previous')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'NormalizeElementBuildCache',
-        (['in'], POINTER(IUIAutomationElement), 'element'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationElement)),
-            'normalized',
-        )
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'condition',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationCondition)),
-            'condition',
-        )
-    ),
-]
-
-################################################################
-# code template for IUIAutomationTreeWalker implementation
-# class IUIAutomationTreeWalker_Impl(object):
-#     def GetParentElement(self, element):
-#         '-no docstring-'
-#         #return parent
-#
-#     def GetFirstChildElement(self, element):
-#         '-no docstring-'
-#         #return first
-#
-#     def GetLastChildElement(self, element):
-#         '-no docstring-'
-#         #return last
-#
-#     def GetNextSiblingElement(self, element):
-#         '-no docstring-'
-#         #return next
-#
-#     def GetPreviousSiblingElement(self, element):
-#         '-no docstring-'
-#         #return previous
-#
-#     def NormalizeElement(self, element):
-#         '-no docstring-'
-#         #return normalized
-#
-#     def GetParentElementBuildCache(self, element, cacheRequest):
-#         '-no docstring-'
-#         #return parent
-#
-#     def GetFirstChildElementBuildCache(self, element, cacheRequest):
-#         '-no docstring-'
-#         #return first
-#
-#     def GetLastChildElementBuildCache(self, element, cacheRequest):
-#         '-no docstring-'
-#         #return last
-#
-#     def GetNextSiblingElementBuildCache(self, element, cacheRequest):
-#         '-no docstring-'
-#         #return next
-#
-#     def GetPreviousSiblingElementBuildCache(self, element, cacheRequest):
-#         '-no docstring-'
-#         #return previous
-#
-#     def NormalizeElementBuildCache(self, element, cacheRequest):
-#         '-no docstring-'
-#         #return normalized
-#
-#     @property
-#     def condition(self):
-#         '-no docstring-'
-#         #return condition
-#
-
-
-class Library(object):
-    name = 'UIAutomationClient'
-    _reg_typelib_ = ('{944DE083-8FB8-45CF-BCB7-C477ACB2F897}', 1, 0)
-
-
-IUIAutomationTextRangeArray._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'Length',
-        (['out', 'retval'], POINTER(c_int), 'Length')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetElement',
-        (['in'], c_int, 'index'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationTextRange)), 'element')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationTextRangeArray implementation
-# class IUIAutomationTextRangeArray_Impl(object):
-#     @property
-#     def Length(self):
-#         '-no docstring-'
-#         #return Length
-#
-#     def GetElement(self, index):
-#         '-no docstring-'
-#         #return element
-#
-
-UIA_ClickablePointPropertyId = 30014  # Constant c_int
-HeadingLevel1 = 80051  # Constant c_int
-UIA_HelpTextPropertyId = 30013  # Constant c_int
-UIA_ClassNamePropertyId = 30012  # Constant c_int
-UIA_AutomationIdPropertyId = 30011  # Constant c_int
-UIA_IsEnabledPropertyId = 30010  # Constant c_int
-UIA_IsKeyboardFocusablePropertyId = 30009  # Constant c_int
-UIA_HasKeyboardFocusPropertyId = 30008  # Constant c_int
-
-
-class IUIAutomationDockPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{FDE5EF97-1464-48F6-90BF-43D0948E86EC}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def SetDockPosition(self, dockPos: hints.Incomplete) -> hints.Hresult: ...
-        def _get_CurrentDockPosition(self) -> hints.Incomplete: ...
-        CurrentDockPosition = hints.normal_property(_get_CurrentDockPosition)
-        def _get_CachedDockPosition(self) -> hints.Incomplete: ...
-        CachedDockPosition = hints.normal_property(_get_CachedDockPosition)
-
-
-IUIAutomationDockPattern._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'SetDockPosition',
-        (['in'], DockPosition, 'dockPos')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentDockPosition',
-        (['out', 'retval'], POINTER(DockPosition), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedDockPosition',
-        (['out', 'retval'], POINTER(DockPosition), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationDockPattern implementation
-# class IUIAutomationDockPattern_Impl(object):
-#     def SetDockPosition(self, dockPos):
-#         '-no docstring-'
-#         #return 
-#
-#     @property
-#     def CurrentDockPosition(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedDockPosition(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_AccessKeyPropertyId = 30007  # Constant c_int
-UIA_AcceleratorKeyPropertyId = 30006  # Constant c_int
-
-
-class IUIAutomationRangeValuePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{59213F4F-7346-49E5-B120-80555987A148}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def SetValue(self, val: hints.Incomplete) -> hints.Hresult: ...
-        def _get_CurrentValue(self) -> hints.Incomplete: ...
-        CurrentValue = hints.normal_property(_get_CurrentValue)
-        def _get_CurrentIsReadOnly(self) -> hints.Incomplete: ...
-        CurrentIsReadOnly = hints.normal_property(_get_CurrentIsReadOnly)
-        def _get_CurrentMaximum(self) -> hints.Incomplete: ...
-        CurrentMaximum = hints.normal_property(_get_CurrentMaximum)
-        def _get_CurrentMinimum(self) -> hints.Incomplete: ...
-        CurrentMinimum = hints.normal_property(_get_CurrentMinimum)
-        def _get_CurrentLargeChange(self) -> hints.Incomplete: ...
-        CurrentLargeChange = hints.normal_property(_get_CurrentLargeChange)
-        def _get_CurrentSmallChange(self) -> hints.Incomplete: ...
-        CurrentSmallChange = hints.normal_property(_get_CurrentSmallChange)
-        def _get_CachedValue(self) -> hints.Incomplete: ...
-        CachedValue = hints.normal_property(_get_CachedValue)
-        def _get_CachedIsReadOnly(self) -> hints.Incomplete: ...
-        CachedIsReadOnly = hints.normal_property(_get_CachedIsReadOnly)
-        def _get_CachedMaximum(self) -> hints.Incomplete: ...
-        CachedMaximum = hints.normal_property(_get_CachedMaximum)
-        def _get_CachedMinimum(self) -> hints.Incomplete: ...
-        CachedMinimum = hints.normal_property(_get_CachedMinimum)
-        def _get_CachedLargeChange(self) -> hints.Incomplete: ...
-        CachedLargeChange = hints.normal_property(_get_CachedLargeChange)
-        def _get_CachedSmallChange(self) -> hints.Incomplete: ...
-        CachedSmallChange = hints.normal_property(_get_CachedSmallChange)
-
-
-IUIAutomationRangeValuePattern._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'SetValue',
-        (['in'], c_double, 'val')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentValue',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentIsReadOnly',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentMaximum',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentMinimum',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentLargeChange',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentSmallChange',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedValue',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedIsReadOnly',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedMaximum',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedMinimum',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedLargeChange',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedSmallChange',
-        (['out', 'retval'], POINTER(c_double), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationRangeValuePattern implementation
-# class IUIAutomationRangeValuePattern_Impl(object):
-#     def SetValue(self, val):
-#         '-no docstring-'
-#         #return 
-#
-#     @property
-#     def CurrentValue(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentIsReadOnly(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentMaximum(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentMinimum(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentLargeChange(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentSmallChange(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedValue(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedIsReadOnly(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedMaximum(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedMinimum(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedLargeChange(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedSmallChange(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_NamePropertyId = 30005  # Constant c_int
-UIA_IsItalicAttributeId = 40014  # Constant c_int
-UIA_LocalizedControlTypePropertyId = 30004  # Constant c_int
-UIA_ControlTypePropertyId = 30003  # Constant c_int
-UIA_ProcessIdPropertyId = 30002  # Constant c_int
-
-
-class IUIAutomationExpandCollapsePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{619BE086-1F4E-4EE4-BAFA-210128738730}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def Expand(self) -> hints.Hresult: ...
-        def Collapse(self) -> hints.Hresult: ...
-        def _get_CurrentExpandCollapseState(self) -> hints.Incomplete: ...
-        CurrentExpandCollapseState = hints.normal_property(_get_CurrentExpandCollapseState)
-        def _get_CachedExpandCollapseState(self) -> hints.Incomplete: ...
-        CachedExpandCollapseState = hints.normal_property(_get_CachedExpandCollapseState)
-
-
-IUIAutomationExpandCollapsePattern._methods_ = [
-    COMMETHOD([], HRESULT, 'Expand'),
-    COMMETHOD([], HRESULT, 'Collapse'),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentExpandCollapseState',
-        (['out', 'retval'], POINTER(ExpandCollapseState), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedExpandCollapseState',
-        (['out', 'retval'], POINTER(ExpandCollapseState), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationExpandCollapsePattern implementation
-# class IUIAutomationExpandCollapsePattern_Impl(object):
-#     def Expand(self):
-#         '-no docstring-'
-#         #return 
-#
-#     def Collapse(self):
-#         '-no docstring-'
-#         #return 
-#
-#     @property
-#     def CurrentExpandCollapseState(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedExpandCollapseState(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_BoundingRectanglePropertyId = 30001  # Constant c_int
-UIA_RuntimeIdPropertyId = 30000  # Constant c_int
-UIA_ActiveTextPositionChangedEventId = 20036  # Constant c_int
-
-
-class IUIAutomationGridItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{78F8EF57-66C3-4E09-BD7C-E79B2004894D}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_CurrentContainingGrid(self) -> 'IUIAutomationElement': ...
-        CurrentContainingGrid = hints.normal_property(_get_CurrentContainingGrid)
-        def _get_CurrentRow(self) -> hints.Incomplete: ...
-        CurrentRow = hints.normal_property(_get_CurrentRow)
-        def _get_CurrentColumn(self) -> hints.Incomplete: ...
-        CurrentColumn = hints.normal_property(_get_CurrentColumn)
-        def _get_CurrentRowSpan(self) -> hints.Incomplete: ...
-        CurrentRowSpan = hints.normal_property(_get_CurrentRowSpan)
-        def _get_CurrentColumnSpan(self) -> hints.Incomplete: ...
-        CurrentColumnSpan = hints.normal_property(_get_CurrentColumnSpan)
-        def _get_CachedContainingGrid(self) -> 'IUIAutomationElement': ...
-        CachedContainingGrid = hints.normal_property(_get_CachedContainingGrid)
-        def _get_CachedRow(self) -> hints.Incomplete: ...
-        CachedRow = hints.normal_property(_get_CachedRow)
-        def _get_CachedColumn(self) -> hints.Incomplete: ...
-        CachedColumn = hints.normal_property(_get_CachedColumn)
-        def _get_CachedRowSpan(self) -> hints.Incomplete: ...
-        CachedRowSpan = hints.normal_property(_get_CachedRowSpan)
-        def _get_CachedColumnSpan(self) -> hints.Incomplete: ...
-        CachedColumnSpan = hints.normal_property(_get_CachedColumnSpan)
-
-
-IUIAutomationGridItemPattern._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentContainingGrid',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentRow',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentColumn',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentRowSpan',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentColumnSpan',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedContainingGrid',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedRow',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedColumn',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedRowSpan',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedColumnSpan',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationGridItemPattern implementation
-# class IUIAutomationGridItemPattern_Impl(object):
-#     @property
-#     def CurrentContainingGrid(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentRow(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentColumn(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentRowSpan(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentColumnSpan(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedContainingGrid(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedRow(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedColumn(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedRowSpan(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedColumnSpan(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-
-class IUIAutomationCustomNavigationPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{01EA217A-1766-47ED-A6CC-ACF492854B1F}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def Navigate(self, direction: hints.Incomplete) -> 'IUIAutomationElement': ...
-
-
-IUIAutomationCustomNavigationPattern._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'Navigate',
-        (['in'], NavigateDirection, 'direction'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'pRetVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationCustomNavigationPattern implementation
-# class IUIAutomationCustomNavigationPattern_Impl(object):
-#     def Navigate(self, direction):
-#         '-no docstring-'
-#         #return pRetVal
-#
-
-AnnotationType_EditingLockedChange = 60016  # Constant c_int
-UIA_NotificationEventId = 20035  # Constant c_int
-AnnotationType_Unknown = 60000  # Constant c_int
-UIA_ChangesEventId = 20034  # Constant c_int
-UIA_TextEdit_ConversionTargetChangedEventId = 20033  # Constant c_int
-
-
-class IUIAutomationSelectionItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{A8EFA66A-0FDA-421A-9194-38021F3578EA}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def Select(self) -> hints.Hresult: ...
-        def AddToSelection(self) -> hints.Hresult: ...
-        def RemoveFromSelection(self) -> hints.Hresult: ...
-        def _get_CurrentIsSelected(self) -> hints.Incomplete: ...
-        CurrentIsSelected = hints.normal_property(_get_CurrentIsSelected)
-        def _get_CurrentSelectionContainer(self) -> 'IUIAutomationElement': ...
-        CurrentSelectionContainer = hints.normal_property(_get_CurrentSelectionContainer)
-        def _get_CachedIsSelected(self) -> hints.Incomplete: ...
-        CachedIsSelected = hints.normal_property(_get_CachedIsSelected)
-        def _get_CachedSelectionContainer(self) -> 'IUIAutomationElement': ...
-        CachedSelectionContainer = hints.normal_property(_get_CachedSelectionContainer)
-
-
-IUIAutomationSelectionItemPattern._methods_ = [
-    COMMETHOD([], HRESULT, 'Select'),
-    COMMETHOD([], HRESULT, 'AddToSelection'),
-    COMMETHOD([], HRESULT, 'RemoveFromSelection'),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentIsSelected',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentSelectionContainer',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedIsSelected',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedSelectionContainer',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationSelectionItemPattern implementation
-# class IUIAutomationSelectionItemPattern_Impl(object):
-#     def Select(self):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddToSelection(self):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveFromSelection(self):
-#         '-no docstring-'
-#         #return 
-#
-#     @property
-#     def CurrentIsSelected(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentSelectionContainer(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedIsSelected(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedSelectionContainer(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_TextEdit_TextChangedEventId = 20032  # Constant c_int
-UIA_AppBarControlTypeId = 50040  # Constant c_int
-AnnotationType_Mathematics = 60023  # Constant c_int
-
-UiaChangeInfo._fields_ = [
-    ('uiaId', c_int),
-    ('payload', VARIANT),
-    ('extraInfo', VARIANT),
-]
-
-assert sizeof(UiaChangeInfo) == 56, sizeof(UiaChangeInfo)
-assert alignment(UiaChangeInfo) == 8, alignment(UiaChangeInfo)
-UIA_DropTarget_DroppedEventId = 20031  # Constant c_int
-UIA_DropTarget_DragLeaveEventId = 20030  # Constant c_int
-UIA_DropTarget_DragEnterEventId = 20029  # Constant c_int
-UIA_SemanticZoomControlTypeId = 50039  # Constant c_int
 
 
 class IUIAutomationStylesPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -6559,7 +5924,1346 @@ IUIAutomationStylesPattern._methods_ = [
 #         #return propertyArray, propertyCount
 #
 
-UIA_Drag_DragCompleteEventId = 20028  # Constant c_int
+UIA_CenterPointPropertyId = 30165  # Constant c_int
+UIA_OutlineThicknessPropertyId = 30164  # Constant c_int
+
+IUIAutomationPropertyChangedEventHandler._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'HandlePropertyChangedEvent',
+        (['in'], POINTER(IUIAutomationElement), 'sender'),
+        (['in'], c_int, 'propertyId'),
+        (['in'], VARIANT, 'newValue')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationPropertyChangedEventHandler implementation
+# class IUIAutomationPropertyChangedEventHandler_Impl(object):
+#     def HandlePropertyChangedEvent(self, sender, propertyId, newValue):
+#         '-no docstring-'
+#         #return 
+#
+
+
+class IUIAutomation3(IUIAutomation2):
+    _case_insensitive_ = True
+    _iid_ = GUID('{73D768DA-9B51-4B89-936E-C209290973E7}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def AddTextEditTextChangedEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, TextEditChangeType: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveTextEditTextChangedEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+
+
+class IUIAutomation4(IUIAutomation3):
+    _case_insensitive_ = True
+    _iid_ = GUID('{1189C02A-05F8-4319-8E21-E817E3DB2860}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def AddChangesEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, changeTypes: hints.Incomplete, changesCount: hints.Incomplete, pCacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveChangesEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+
+
+class IUIAutomation5(IUIAutomation4):
+    _case_insensitive_ = True
+    _iid_ = GUID('{25F700C8-D816-4057-A9DC-3CBDEE77E256}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def AddNotificationEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveNotificationEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+
+
+class IUIAutomation6(IUIAutomation5):
+    _case_insensitive_ = True
+    _iid_ = GUID('{AAE072DA-29E3-413D-87A7-192DBF81ED10}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def CreateEventHandlerGroup(self) -> 'IUIAutomationEventHandlerGroup': ...
+        def AddEventHandlerGroup(self, element: hints.Incomplete, handlerGroup: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveEventHandlerGroup(self, element: hints.Incomplete, handlerGroup: hints.Incomplete) -> hints.Hresult: ...
+        def _get_ConnectionRecoveryBehavior(self) -> hints.Incomplete: ...
+        def _set_ConnectionRecoveryBehavior(self, ConnectionRecoveryBehaviorOptions: hints.Incomplete) -> hints.Hresult: ...
+        ConnectionRecoveryBehavior = hints.normal_property(_get_ConnectionRecoveryBehavior, _set_ConnectionRecoveryBehavior)
+        def _get_CoalesceEvents(self) -> hints.Incomplete: ...
+        def _set_CoalesceEvents(self, CoalesceEventsOptions: hints.Incomplete) -> hints.Hresult: ...
+        CoalesceEvents = hints.normal_property(_get_CoalesceEvents, _set_CoalesceEvents)
+        def AddActiveTextPositionChangedEventHandler(self, element: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def RemoveActiveTextPositionChangedEventHandler(self, element: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+
+
+IUIAutomation3._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddTextEditTextChangedEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], TextEditChangeType, 'TextEditChangeType'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (
+            ['in'],
+            POINTER(IUIAutomationTextEditTextChangedEventHandler),
+            'handler',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveTextEditTextChangedEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (
+            ['in'],
+            POINTER(IUIAutomationTextEditTextChangedEventHandler),
+            'handler',
+        )
+    ),
+]
+
+################################################################
+# code template for IUIAutomation3 implementation
+# class IUIAutomation3_Impl(object):
+#     def AddTextEditTextChangedEventHandler(self, element, scope, TextEditChangeType, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveTextEditTextChangedEventHandler(self, element, handler):
+#         '-no docstring-'
+#         #return 
+#
+
+IUIAutomation4._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddChangesEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(c_int), 'changeTypes'),
+        (['in'], c_int, 'changesCount'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'pCacheRequest'),
+        (['in'], POINTER(IUIAutomationChangesEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveChangesEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationChangesEventHandler), 'handler')
+    ),
+]
+
+################################################################
+# code template for IUIAutomation4 implementation
+# class IUIAutomation4_Impl(object):
+#     def AddChangesEventHandler(self, element, scope, changeTypes, changesCount, pCacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveChangesEventHandler(self, element, handler):
+#         '-no docstring-'
+#         #return 
+#
+
+IUIAutomation5._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddNotificationEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationNotificationEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveNotificationEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationNotificationEventHandler), 'handler')
+    ),
+]
+
+################################################################
+# code template for IUIAutomation5 implementation
+# class IUIAutomation5_Impl(object):
+#     def AddNotificationEventHandler(self, element, scope, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveNotificationEventHandler(self, element, handler):
+#         '-no docstring-'
+#         #return 
+#
+
+
+class IUIAutomationEventHandlerGroup(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{C9EE12F2-C13B-4408-997C-639914377F4E}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def AddActiveTextPositionChangedEventHandler(self, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def AddAutomationEventHandler(self, eventId: hints.Incomplete, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def AddChangesEventHandler(self, scope: hints.Incomplete, changeTypes: hints.Incomplete, changesCount: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def AddNotificationEventHandler(self, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def AddPropertyChangedEventHandler(self, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete, propertyArray: hints.Incomplete, propertyCount: hints.Incomplete) -> hints.Hresult: ...
+        def AddStructureChangedEventHandler(self, scope: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+        def AddTextEditTextChangedEventHandler(self, scope: hints.Incomplete, TextEditChangeType: hints.Incomplete, cacheRequest: hints.Incomplete, handler: hints.Incomplete) -> hints.Hresult: ...
+
+
+IUIAutomation6._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateEventHandlerGroup',
+        (
+            ['out'],
+            POINTER(POINTER(IUIAutomationEventHandlerGroup)),
+            'handlerGroup',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddEventHandlerGroup',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationEventHandlerGroup), 'handlerGroup')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveEventHandlerGroup',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationEventHandlerGroup), 'handlerGroup')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ConnectionRecoveryBehavior',
+        (
+            ['out', 'retval'],
+            POINTER(ConnectionRecoveryBehaviorOptions),
+            'ConnectionRecoveryBehaviorOptions',
+        )
+    ),
+    COMMETHOD(
+        ['propput'],
+        HRESULT,
+        'ConnectionRecoveryBehavior',
+        (
+            ['in'],
+            ConnectionRecoveryBehaviorOptions,
+            'ConnectionRecoveryBehaviorOptions',
+        )
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CoalesceEvents',
+        (
+            ['out', 'retval'],
+            POINTER(CoalesceEventsOptions),
+            'CoalesceEventsOptions',
+        )
+    ),
+    COMMETHOD(
+        ['propput'],
+        HRESULT,
+        'CoalesceEvents',
+        (['in'], CoalesceEventsOptions, 'CoalesceEventsOptions')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddActiveTextPositionChangedEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (
+            ['in'],
+            POINTER(IUIAutomationActiveTextPositionChangedEventHandler),
+            'handler',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'RemoveActiveTextPositionChangedEventHandler',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (
+            ['in'],
+            POINTER(IUIAutomationActiveTextPositionChangedEventHandler),
+            'handler',
+        )
+    ),
+]
+
+################################################################
+# code template for IUIAutomation6 implementation
+# class IUIAutomation6_Impl(object):
+#     def CreateEventHandlerGroup(self):
+#         '-no docstring-'
+#         #return handlerGroup
+#
+#     def AddEventHandlerGroup(self, element, handlerGroup):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveEventHandlerGroup(self, element, handlerGroup):
+#         '-no docstring-'
+#         #return 
+#
+#     def _get(self):
+#         '-no docstring-'
+#         #return ConnectionRecoveryBehaviorOptions
+#     def _set(self, ConnectionRecoveryBehaviorOptions):
+#         '-no docstring-'
+#     ConnectionRecoveryBehavior = property(_get, _set, doc = _set.__doc__)
+#
+#     def _get(self):
+#         '-no docstring-'
+#         #return CoalesceEventsOptions
+#     def _set(self, CoalesceEventsOptions):
+#         '-no docstring-'
+#     CoalesceEvents = property(_get, _set, doc = _set.__doc__)
+#
+#     def AddActiveTextPositionChangedEventHandler(self, element, scope, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveActiveTextPositionChangedEventHandler(self, element, handler):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_VisualEffectsPropertyId = 30163  # Constant c_int
+AnnotationType_ConflictingChange = 60018  # Constant c_int
+UIA_FillTypePropertyId = 30162  # Constant c_int
+
+IUIAutomationTreeWalker._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetParentElement',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'parent')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetFirstChildElement',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'first')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetLastChildElement',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'last')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetNextSiblingElement',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'next')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetPreviousSiblingElement',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'previous')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'NormalizeElement',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationElement)),
+            'normalized',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetParentElementBuildCache',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'parent')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetFirstChildElementBuildCache',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'first')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetLastChildElementBuildCache',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'last')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetNextSiblingElementBuildCache',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'next')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetPreviousSiblingElementBuildCache',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'previous')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'NormalizeElementBuildCache',
+        (['in'], POINTER(IUIAutomationElement), 'element'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationElement)),
+            'normalized',
+        )
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'condition',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationCondition)),
+            'condition',
+        )
+    ),
+]
+
+################################################################
+# code template for IUIAutomationTreeWalker implementation
+# class IUIAutomationTreeWalker_Impl(object):
+#     def GetParentElement(self, element):
+#         '-no docstring-'
+#         #return parent
+#
+#     def GetFirstChildElement(self, element):
+#         '-no docstring-'
+#         #return first
+#
+#     def GetLastChildElement(self, element):
+#         '-no docstring-'
+#         #return last
+#
+#     def GetNextSiblingElement(self, element):
+#         '-no docstring-'
+#         #return next
+#
+#     def GetPreviousSiblingElement(self, element):
+#         '-no docstring-'
+#         #return previous
+#
+#     def NormalizeElement(self, element):
+#         '-no docstring-'
+#         #return normalized
+#
+#     def GetParentElementBuildCache(self, element, cacheRequest):
+#         '-no docstring-'
+#         #return parent
+#
+#     def GetFirstChildElementBuildCache(self, element, cacheRequest):
+#         '-no docstring-'
+#         #return first
+#
+#     def GetLastChildElementBuildCache(self, element, cacheRequest):
+#         '-no docstring-'
+#         #return last
+#
+#     def GetNextSiblingElementBuildCache(self, element, cacheRequest):
+#         '-no docstring-'
+#         #return next
+#
+#     def GetPreviousSiblingElementBuildCache(self, element, cacheRequest):
+#         '-no docstring-'
+#         #return previous
+#
+#     def NormalizeElementBuildCache(self, element, cacheRequest):
+#         '-no docstring-'
+#         #return normalized
+#
+#     @property
+#     def condition(self):
+#         '-no docstring-'
+#         #return condition
+#
+
+UIA_OutlineColorPropertyId = 30161  # Constant c_int
+UIA_MenuClosedEventId = 20007  # Constant c_int
+UIA_FillColorPropertyId = 30160  # Constant c_int
+UIA_FullDescriptionPropertyId = 30159  # Constant c_int
+UIA_LocalizedLandmarkTypePropertyId = 30158  # Constant c_int
+UIA_LandmarkTypePropertyId = 30157  # Constant c_int
+UIA_AnnotationObjectsPropertyId = 30156  # Constant c_int
+UIA_AnnotationTypesPropertyId = 30155  # Constant c_int
+
+
+class IUIAutomationDockPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{FDE5EF97-1464-48F6-90BF-43D0948E86EC}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def SetDockPosition(self, dockPos: hints.Incomplete) -> hints.Hresult: ...
+        def _get_CurrentDockPosition(self) -> hints.Incomplete: ...
+        CurrentDockPosition = hints.normal_property(_get_CurrentDockPosition)
+        def _get_CachedDockPosition(self) -> hints.Incomplete: ...
+        CachedDockPosition = hints.normal_property(_get_CachedDockPosition)
+
+
+IUIAutomationDockPattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'SetDockPosition',
+        (['in'], DockPosition, 'dockPos')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentDockPosition',
+        (['out', 'retval'], POINTER(DockPosition), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedDockPosition',
+        (['out', 'retval'], POINTER(DockPosition), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationDockPattern implementation
+# class IUIAutomationDockPattern_Impl(object):
+#     def SetDockPosition(self, dockPos):
+#         '-no docstring-'
+#         #return 
+#
+#     @property
+#     def CurrentDockPosition(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedDockPosition(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_LevelPropertyId = 30154  # Constant c_int
+UIA_SizeOfSetPropertyId = 30153  # Constant c_int
+UIA_PositionInSetPropertyId = 30152  # Constant c_int
+
+
+class IUIAutomationRangeValuePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{59213F4F-7346-49E5-B120-80555987A148}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def SetValue(self, val: hints.Incomplete) -> hints.Hresult: ...
+        def _get_CurrentValue(self) -> hints.Incomplete: ...
+        CurrentValue = hints.normal_property(_get_CurrentValue)
+        def _get_CurrentIsReadOnly(self) -> hints.Incomplete: ...
+        CurrentIsReadOnly = hints.normal_property(_get_CurrentIsReadOnly)
+        def _get_CurrentMaximum(self) -> hints.Incomplete: ...
+        CurrentMaximum = hints.normal_property(_get_CurrentMaximum)
+        def _get_CurrentMinimum(self) -> hints.Incomplete: ...
+        CurrentMinimum = hints.normal_property(_get_CurrentMinimum)
+        def _get_CurrentLargeChange(self) -> hints.Incomplete: ...
+        CurrentLargeChange = hints.normal_property(_get_CurrentLargeChange)
+        def _get_CurrentSmallChange(self) -> hints.Incomplete: ...
+        CurrentSmallChange = hints.normal_property(_get_CurrentSmallChange)
+        def _get_CachedValue(self) -> hints.Incomplete: ...
+        CachedValue = hints.normal_property(_get_CachedValue)
+        def _get_CachedIsReadOnly(self) -> hints.Incomplete: ...
+        CachedIsReadOnly = hints.normal_property(_get_CachedIsReadOnly)
+        def _get_CachedMaximum(self) -> hints.Incomplete: ...
+        CachedMaximum = hints.normal_property(_get_CachedMaximum)
+        def _get_CachedMinimum(self) -> hints.Incomplete: ...
+        CachedMinimum = hints.normal_property(_get_CachedMinimum)
+        def _get_CachedLargeChange(self) -> hints.Incomplete: ...
+        CachedLargeChange = hints.normal_property(_get_CachedLargeChange)
+        def _get_CachedSmallChange(self) -> hints.Incomplete: ...
+        CachedSmallChange = hints.normal_property(_get_CachedSmallChange)
+
+
+IUIAutomationRangeValuePattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'SetValue',
+        (['in'], c_double, 'val')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentValue',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentIsReadOnly',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentMaximum',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentMinimum',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentLargeChange',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentSmallChange',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedValue',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedIsReadOnly',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedMaximum',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedMinimum',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedLargeChange',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedSmallChange',
+        (['out', 'retval'], POINTER(c_double), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationRangeValuePattern implementation
+# class IUIAutomationRangeValuePattern_Impl(object):
+#     def SetValue(self, val):
+#         '-no docstring-'
+#         #return 
+#
+#     @property
+#     def CurrentValue(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentIsReadOnly(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentMaximum(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentMinimum(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentLargeChange(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentSmallChange(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedValue(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedIsReadOnly(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedMaximum(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedMinimum(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedLargeChange(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedSmallChange(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_IsCustomNavigationPatternAvailablePropertyId = 30151  # Constant c_int
+UIA_IsPeripheralPropertyId = 30150  # Constant c_int
+UIA_IsTextEditPatternAvailablePropertyId = 30149  # Constant c_int
+UIA_MultipleViewCurrentViewPropertyId = 30071  # Constant c_int
+UIA_FlowsFromPropertyId = 30148  # Constant c_int
+
+
+class IUIAutomationExpandCollapsePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{619BE086-1F4E-4EE4-BAFA-210128738730}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def Expand(self) -> hints.Hresult: ...
+        def Collapse(self) -> hints.Hresult: ...
+        def _get_CurrentExpandCollapseState(self) -> hints.Incomplete: ...
+        CurrentExpandCollapseState = hints.normal_property(_get_CurrentExpandCollapseState)
+        def _get_CachedExpandCollapseState(self) -> hints.Incomplete: ...
+        CachedExpandCollapseState = hints.normal_property(_get_CachedExpandCollapseState)
+
+
+IUIAutomationExpandCollapsePattern._methods_ = [
+    COMMETHOD([], HRESULT, 'Expand'),
+    COMMETHOD([], HRESULT, 'Collapse'),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentExpandCollapseState',
+        (['out', 'retval'], POINTER(ExpandCollapseState), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedExpandCollapseState',
+        (['out', 'retval'], POINTER(ExpandCollapseState), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationExpandCollapsePattern implementation
+# class IUIAutomationExpandCollapsePattern_Impl(object):
+#     def Expand(self):
+#         '-no docstring-'
+#         #return 
+#
+#     def Collapse(self):
+#         '-no docstring-'
+#         #return 
+#
+#     @property
+#     def CurrentExpandCollapseState(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedExpandCollapseState(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_Transform2ZoomMaximumPropertyId = 30147  # Constant c_int
+UIA_Transform2ZoomMinimumPropertyId = 30146  # Constant c_int
+
+
+class IUIAutomationGridItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{78F8EF57-66C3-4E09-BD7C-E79B2004894D}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_CurrentContainingGrid(self) -> 'IUIAutomationElement': ...
+        CurrentContainingGrid = hints.normal_property(_get_CurrentContainingGrid)
+        def _get_CurrentRow(self) -> hints.Incomplete: ...
+        CurrentRow = hints.normal_property(_get_CurrentRow)
+        def _get_CurrentColumn(self) -> hints.Incomplete: ...
+        CurrentColumn = hints.normal_property(_get_CurrentColumn)
+        def _get_CurrentRowSpan(self) -> hints.Incomplete: ...
+        CurrentRowSpan = hints.normal_property(_get_CurrentRowSpan)
+        def _get_CurrentColumnSpan(self) -> hints.Incomplete: ...
+        CurrentColumnSpan = hints.normal_property(_get_CurrentColumnSpan)
+        def _get_CachedContainingGrid(self) -> 'IUIAutomationElement': ...
+        CachedContainingGrid = hints.normal_property(_get_CachedContainingGrid)
+        def _get_CachedRow(self) -> hints.Incomplete: ...
+        CachedRow = hints.normal_property(_get_CachedRow)
+        def _get_CachedColumn(self) -> hints.Incomplete: ...
+        CachedColumn = hints.normal_property(_get_CachedColumn)
+        def _get_CachedRowSpan(self) -> hints.Incomplete: ...
+        CachedRowSpan = hints.normal_property(_get_CachedRowSpan)
+        def _get_CachedColumnSpan(self) -> hints.Incomplete: ...
+        CachedColumnSpan = hints.normal_property(_get_CachedColumnSpan)
+
+
+IUIAutomationGridItemPattern._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentContainingGrid',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentRow',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentColumn',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentRowSpan',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentColumnSpan',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedContainingGrid',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedRow',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedColumn',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedRowSpan',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedColumnSpan',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationGridItemPattern implementation
+# class IUIAutomationGridItemPattern_Impl(object):
+#     @property
+#     def CurrentContainingGrid(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentRow(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentColumn(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentRowSpan(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentColumnSpan(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedContainingGrid(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedRow(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedColumn(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedRowSpan(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedColumnSpan(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_Transform2ZoomLevelPropertyId = 30145  # Constant c_int
+UIA_DragGrabbedItemsPropertyId = 30144  # Constant c_int
+UIA_DropTargetDropTargetEffectsPropertyId = 30143  # Constant c_int
+
+
+class IRawElementProviderSimple(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{D6DD68D1-86FD-4332-8666-9ABEDEA2D24C}')
+    _idlflags_ = ['oleautomation']
+
+    if TYPE_CHECKING:  # commembers
+        def _get_ProviderOptions(self) -> hints.Incomplete: ...
+        ProviderOptions = hints.normal_property(_get_ProviderOptions)
+        def GetPatternProvider(self, patternId: hints.Incomplete) -> hints.Incomplete: ...
+        def GetPropertyValue(self, propertyId: hints.Incomplete) -> hints.Incomplete: ...
+        def _get_HostRawElementProvider(self) -> 'IRawElementProviderSimple': ...
+        HostRawElementProvider = hints.normal_property(_get_HostRawElementProvider)
+
+
+IUIAutomationProxyFactory._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'CreateProvider',
+        (['in'], c_void_p, 'hwnd'),
+        (['in'], c_int, 'idObject'),
+        (['in'], c_int, 'idChild'),
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IRawElementProviderSimple)),
+            'provider',
+        )
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'ProxyFactoryId',
+        (['out', 'retval'], POINTER(BSTR), 'factoryId')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationProxyFactory implementation
+# class IUIAutomationProxyFactory_Impl(object):
+#     def CreateProvider(self, hwnd, idObject, idChild):
+#         '-no docstring-'
+#         #return provider
+#
+#     @property
+#     def ProxyFactoryId(self):
+#         '-no docstring-'
+#         #return factoryId
+#
+
+UIA_DropTargetDropTargetEffectPropertyId = 30142  # Constant c_int
+StyleId_Heading8 = 70008  # Constant c_int
+
+
+class IUIAutomationSelectionItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{A8EFA66A-0FDA-421A-9194-38021F3578EA}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def Select(self) -> hints.Hresult: ...
+        def AddToSelection(self) -> hints.Hresult: ...
+        def RemoveFromSelection(self) -> hints.Hresult: ...
+        def _get_CurrentIsSelected(self) -> hints.Incomplete: ...
+        CurrentIsSelected = hints.normal_property(_get_CurrentIsSelected)
+        def _get_CurrentSelectionContainer(self) -> 'IUIAutomationElement': ...
+        CurrentSelectionContainer = hints.normal_property(_get_CurrentSelectionContainer)
+        def _get_CachedIsSelected(self) -> hints.Incomplete: ...
+        CachedIsSelected = hints.normal_property(_get_CachedIsSelected)
+        def _get_CachedSelectionContainer(self) -> 'IUIAutomationElement': ...
+        CachedSelectionContainer = hints.normal_property(_get_CachedSelectionContainer)
+
+
+IUIAutomationSelectionItemPattern._methods_ = [
+    COMMETHOD([], HRESULT, 'Select'),
+    COMMETHOD([], HRESULT, 'AddToSelection'),
+    COMMETHOD([], HRESULT, 'RemoveFromSelection'),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentIsSelected',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentSelectionContainer',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedIsSelected',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedSelectionContainer',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationSelectionItemPattern implementation
+# class IUIAutomationSelectionItemPattern_Impl(object):
+#     def Select(self):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddToSelection(self):
+#         '-no docstring-'
+#         #return 
+#
+#     def RemoveFromSelection(self):
+#         '-no docstring-'
+#         #return 
+#
+#     @property
+#     def CurrentIsSelected(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentSelectionContainer(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedIsSelected(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedSelectionContainer(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_IsDropTargetPatternAvailablePropertyId = 30141  # Constant c_int
+AnnotationType_ExternalChange = 60017  # Constant c_int
+
+UiaChangeInfo._fields_ = [
+    ('uiaId', c_int),
+    ('payload', VARIANT),
+    ('extraInfo', VARIANT),
+]
+
+assert sizeof(UiaChangeInfo) == 56, sizeof(UiaChangeInfo)
+assert alignment(UiaChangeInfo) == 8, alignment(UiaChangeInfo)
+UIA_DragDropEffectsPropertyId = 30140  # Constant c_int
+
+
+class IUIAutomationDragPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{1DC7B570-1F54-4BAD-BCDA-D36A722FB7BD}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def _get_CurrentIsGrabbed(self) -> hints.Incomplete: ...
+        CurrentIsGrabbed = hints.normal_property(_get_CurrentIsGrabbed)
+        def _get_CachedIsGrabbed(self) -> hints.Incomplete: ...
+        CachedIsGrabbed = hints.normal_property(_get_CachedIsGrabbed)
+        def _get_CurrentDropEffect(self) -> hints.Incomplete: ...
+        CurrentDropEffect = hints.normal_property(_get_CurrentDropEffect)
+        def _get_CachedDropEffect(self) -> hints.Incomplete: ...
+        CachedDropEffect = hints.normal_property(_get_CachedDropEffect)
+        def _get_CurrentDropEffects(self) -> hints.Incomplete: ...
+        CurrentDropEffects = hints.normal_property(_get_CurrentDropEffects)
+        def _get_CachedDropEffects(self) -> hints.Incomplete: ...
+        CachedDropEffects = hints.normal_property(_get_CachedDropEffects)
+        def GetCurrentGrabbedItems(self) -> 'IUIAutomationElementArray': ...
+        def GetCachedGrabbedItems(self) -> 'IUIAutomationElementArray': ...
+
+
+IUIAutomationDragPattern._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentIsGrabbed',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedIsGrabbed',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentDropEffect',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedDropEffect',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentDropEffects',
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(BSTR)), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedDropEffects',
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(BSTR)), 'retVal')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCurrentGrabbedItems',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationElementArray)),
+            'retVal',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetCachedGrabbedItems',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IUIAutomationElementArray)),
+            'retVal',
+        )
+    ),
+]
+
+################################################################
+# code template for IUIAutomationDragPattern implementation
+# class IUIAutomationDragPattern_Impl(object):
+#     @property
+#     def CurrentIsGrabbed(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedIsGrabbed(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentDropEffect(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedDropEffect(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentDropEffects(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedDropEffects(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     def GetCurrentGrabbedItems(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     def GetCachedGrabbedItems(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_DragDropEffectPropertyId = 30139  # Constant c_int
+UIA_DragIsGrabbedPropertyId = 30138  # Constant c_int
+AnnotationType_EditingLockedChange = 60016  # Constant c_int
+
+IUIAutomationEventHandlerGroup._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddActiveTextPositionChangedEventHandler',
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (
+            ['in'],
+            POINTER(IUIAutomationActiveTextPositionChangedEventHandler),
+            'handler',
+        )
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddAutomationEventHandler',
+        (['in'], c_int, 'eventId'),
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddChangesEventHandler',
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(c_int), 'changeTypes'),
+        (['in'], c_int, 'changesCount'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationChangesEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddNotificationEventHandler',
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationNotificationEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddPropertyChangedEventHandler',
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationPropertyChangedEventHandler), 'handler'),
+        (['in'], POINTER(c_int), 'propertyArray'),
+        (['in'], c_int, 'propertyCount')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddStructureChangedEventHandler',
+        (['in'], TreeScope, 'scope'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (['in'], POINTER(IUIAutomationStructureChangedEventHandler), 'handler')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'AddTextEditTextChangedEventHandler',
+        (['in'], TreeScope, 'scope'),
+        (['in'], TextEditChangeType, 'TextEditChangeType'),
+        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
+        (
+            ['in'],
+            POINTER(IUIAutomationTextEditTextChangedEventHandler),
+            'handler',
+        )
+    ),
+]
+
+################################################################
+# code template for IUIAutomationEventHandlerGroup implementation
+# class IUIAutomationEventHandlerGroup_Impl(object):
+#     def AddActiveTextPositionChangedEventHandler(self, scope, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddAutomationEventHandler(self, eventId, scope, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddChangesEventHandler(self, scope, changeTypes, changesCount, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddNotificationEventHandler(self, scope, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddPropertyChangedEventHandler(self, scope, cacheRequest, handler, propertyArray, propertyCount):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddStructureChangedEventHandler(self, scope, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+#     def AddTextEditTextChangedEventHandler(self, scope, TextEditChangeType, cacheRequest, handler):
+#         '-no docstring-'
+#         #return 
+#
+
+UIA_IsDragPatternAvailablePropertyId = 30137  # Constant c_int
+UIA_IsTextChildPatternAvailablePropertyId = 30136  # Constant c_int
+UIA_LiveSettingPropertyId = 30135  # Constant c_int
+AnnotationType_UnsyncedChange = 60015  # Constant c_int
 
 
 class IUIAutomationSelectionPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -6659,11 +7363,12 @@ IUIAutomationSelectionPattern._methods_ = [
 #         #return retVal
 #
 
-UIA_Drag_DragCancelEventId = 20027  # Constant c_int
-UIA_Drag_DragStartEventId = 20026  # Constant c_int
-UIA_HostedFragmentRootsInvalidatedEventId = 20025  # Constant c_int
-UIA_LiveRegionChangedEventId = 20024  # Constant c_int
-UIA_SystemAlertEventId = 20023  # Constant c_int
+UIA_IsTransformPattern2AvailablePropertyId = 30134  # Constant c_int
+UIA_Transform2CanZoomPropertyId = 30133  # Constant c_int
+UIA_IsSpreadsheetItemPatternAvailablePropertyId = 30132  # Constant c_int
+UIA_SpreadsheetItemAnnotationTypesPropertyId = 30131  # Constant c_int
+UIA_SpreadsheetItemAnnotationObjectsPropertyId = 30130  # Constant c_int
+UIA_CustomLandmarkTypeId = 80000  # Constant c_int
 
 
 class IUIAutomationScrollItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -6687,9 +7392,7 @@ IUIAutomationScrollItemPattern._methods_ = [
 #         #return 
 #
 
-UIA_InputDiscardedEventId = 20022  # Constant c_int
-UIA_InputReachedOtherElementEventId = 20021  # Constant c_int
-UIA_IsHiddenAttributeId = 40013  # Constant c_int
+UIA_SpreadsheetItemFormulaPropertyId = 30129  # Constant c_int
 
 
 class IUIAutomationTableItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -6767,8 +7470,10 @@ IUIAutomationTableItemPattern._methods_ = [
 #         #return retVal
 #
 
-UIA_InputReachedTargetEventId = 20020  # Constant c_int
-UIA_MenuModeEndEventId = 20019  # Constant c_int
+UIA_IsSpreadsheetPatternAvailablePropertyId = 30128  # Constant c_int
+UIA_IsStylesPatternAvailablePropertyId = 30127  # Constant c_int
+UIA_ExpandCollapseExpandCollapseStatePropertyId = 30070  # Constant c_int
+UIA_StylesExtendedPropertiesPropertyId = 30126  # Constant c_int
 
 
 class IUIAutomationScrollPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -6966,10 +7671,8 @@ IUIAutomationScrollPattern._methods_ = [
 #         #return retVal
 #
 
-UIA_MenuModeStartEventId = 20018  # Constant c_int
-UIA_Window_WindowClosedEventId = 20017  # Constant c_int
-UIA_SeparatorControlTypeId = 50038  # Constant c_int
-UIA_Window_WindowOpenedEventId = 20016  # Constant c_int
+UIA_StylesFillPatternColorPropertyId = 30125  # Constant c_int
+UIA_StylesShapePropertyId = 30124  # Constant c_int
 
 
 class IUIAutomationObjectModelPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -6998,22 +7701,81 @@ IUIAutomationObjectModelPattern._methods_ = [
 #         #return retVal
 #
 
-UIA_Text_TextSelectionChangedEventId = 20014  # Constant c_int
-UIA_Text_TextChangedEventId = 20015  # Constant c_int
-UIA_Selection_InvalidatedEventId = 20013  # Constant c_int
+UIA_StylesFillPatternStylePropertyId = 30123  # Constant c_int
+UIA_StylesFillColorPropertyId = 30122  # Constant c_int
+AnnotationType_FormatChange = 60014  # Constant c_int
+UIA_StylesStyleNamePropertyId = 30121  # Constant c_int
+UIA_StylesStyleIdPropertyId = 30120  # Constant c_int
 
 
-class CUIAutomation(CoClass):
-    """The Central Class for UIAutomation"""
-    _reg_clsid_ = GUID('{FF48DBA4-60EF-4201-AA87-54103EEF594E}')
+class IUIAutomationDropTargetPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{69A095F7-EEE4-430E-A46B-FB73B1AE39A5}')
     _idlflags_ = []
-    _typelib_path_ = typelib_path
-    _reg_typelib_ = ('{944DE083-8FB8-45CF-BCB7-C477ACB2F897}', 1, 0)
+
+    if TYPE_CHECKING:  # commembers
+        def _get_CurrentDropTargetEffect(self) -> hints.Incomplete: ...
+        CurrentDropTargetEffect = hints.normal_property(_get_CurrentDropTargetEffect)
+        def _get_CachedDropTargetEffect(self) -> hints.Incomplete: ...
+        CachedDropTargetEffect = hints.normal_property(_get_CachedDropTargetEffect)
+        def _get_CurrentDropTargetEffects(self) -> hints.Incomplete: ...
+        CurrentDropTargetEffects = hints.normal_property(_get_CurrentDropTargetEffects)
+        def _get_CachedDropTargetEffects(self) -> hints.Incomplete: ...
+        CachedDropTargetEffects = hints.normal_property(_get_CachedDropTargetEffects)
 
 
-CUIAutomation._com_interfaces_ = [IUIAutomation]
+IUIAutomationDropTargetPattern._methods_ = [
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentDropTargetEffect',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedDropTargetEffect',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentDropTargetEffects',
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(BSTR)), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedDropTargetEffects',
+        (['out', 'retval'], POINTER(_midlSAFEARRAY(BSTR)), 'retVal')
+    ),
+]
 
-UIA_SelectionItem_ElementSelectedEventId = 20012  # Constant c_int
+################################################################
+# code template for IUIAutomationDropTargetPattern implementation
+# class IUIAutomationDropTargetPattern_Impl(object):
+#     @property
+#     def CurrentDropTargetEffect(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedDropTargetEffect(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentDropTargetEffects(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedDropTargetEffects(self):
+#         '-no docstring-'
+#         #return retVal
+#
+
+UIA_IsTextPattern2AvailablePropertyId = 30119  # Constant c_int
 
 
 class IUIAutomationTablePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -7117,8 +7879,9 @@ IUIAutomationTablePattern._methods_ = [
 #         #return retVal
 #
 
-UIA_SelectionItem_ElementRemovedFromSelectionEventId = 20011  # Constant c_int
-UIA_SelectionItem_ElementAddedToSelectionEventId = 20010  # Constant c_int
+UIA_IsAnnotationPatternAvailablePropertyId = 30118  # Constant c_int
+UIA_AnnotationTargetPropertyId = 30117  # Constant c_int
+UIA_AnnotationDateTimePropertyId = 30116  # Constant c_int
 
 
 class IUIAutomationSynchronizedInputPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -7153,48 +7916,11 @@ IUIAutomationSynchronizedInputPattern._methods_ = [
 #         #return 
 #
 
-UIA_IsPasswordPropertyId = 30019  # Constant c_int
-UIA_Invoke_InvokedEventId = 20009  # Constant c_int
-UIA_IndentationTrailingAttributeId = 40012  # Constant c_int
-UIA_LayoutInvalidatedEventId = 20008  # Constant c_int
-
-IUIAutomationProxyFactory._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'CreateProvider',
-        (['in'], c_void_p, 'hwnd'),
-        (['in'], c_int, 'idObject'),
-        (['in'], c_int, 'idChild'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IRawElementProviderSimple)),
-            'provider',
-        )
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'ProxyFactoryId',
-        (['out', 'retval'], POINTER(BSTR), 'factoryId')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationProxyFactory implementation
-# class IUIAutomationProxyFactory_Impl(object):
-#     def CreateProvider(self, hwnd, idObject, idChild):
-#         '-no docstring-'
-#         #return provider
-#
-#     @property
-#     def ProxyFactoryId(self):
-#         '-no docstring-'
-#         #return factoryId
-#
-
-UIA_MenuClosedEventId = 20007  # Constant c_int
-UIA_IndentationLeadingAttributeId = 40011  # Constant c_int
+UIA_AnnotationAuthorPropertyId = 30115  # Constant c_int
+UIA_AnnotationAnnotationTypeNamePropertyId = 30114  # Constant c_int
+UIA_AnnotationAnnotationTypeIdPropertyId = 30113  # Constant c_int
+UIA_DockDockPositionPropertyId = 30069  # Constant c_int
+UIA_IsObjectModelPatternAvailablePropertyId = 30112  # Constant c_int
 
 
 class IUIAutomationTogglePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -7244,243 +7970,10 @@ IUIAutomationTogglePattern._methods_ = [
 #         #return retVal
 #
 
-UIA_AsyncContentLoadedEventId = 20006  # Constant c_int
-UIA_AutomationFocusChangedEventId = 20005  # Constant c_int
-
-
-class IUIAutomationDragPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{1DC7B570-1F54-4BAD-BCDA-D36A722FB7BD}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_CurrentIsGrabbed(self) -> hints.Incomplete: ...
-        CurrentIsGrabbed = hints.normal_property(_get_CurrentIsGrabbed)
-        def _get_CachedIsGrabbed(self) -> hints.Incomplete: ...
-        CachedIsGrabbed = hints.normal_property(_get_CachedIsGrabbed)
-        def _get_CurrentDropEffect(self) -> hints.Incomplete: ...
-        CurrentDropEffect = hints.normal_property(_get_CurrentDropEffect)
-        def _get_CachedDropEffect(self) -> hints.Incomplete: ...
-        CachedDropEffect = hints.normal_property(_get_CachedDropEffect)
-        def _get_CurrentDropEffects(self) -> hints.Incomplete: ...
-        CurrentDropEffects = hints.normal_property(_get_CurrentDropEffects)
-        def _get_CachedDropEffects(self) -> hints.Incomplete: ...
-        CachedDropEffects = hints.normal_property(_get_CachedDropEffects)
-        def GetCurrentGrabbedItems(self) -> 'IUIAutomationElementArray': ...
-        def GetCachedGrabbedItems(self) -> 'IUIAutomationElementArray': ...
-
-
-IUIAutomationDragPattern._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentIsGrabbed',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedIsGrabbed',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentDropEffect',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedDropEffect',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentDropEffects',
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(BSTR)), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedDropEffects',
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(BSTR)), 'retVal')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCurrentGrabbedItems',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationElementArray)),
-            'retVal',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCachedGrabbedItems',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationElementArray)),
-            'retVal',
-        )
-    ),
-]
-
-################################################################
-# code template for IUIAutomationDragPattern implementation
-# class IUIAutomationDragPattern_Impl(object):
-#     @property
-#     def CurrentIsGrabbed(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedIsGrabbed(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentDropEffect(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedDropEffect(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentDropEffects(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedDropEffects(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     def GetCurrentGrabbedItems(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     def GetCachedGrabbedItems(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_AutomationPropertyChangedEventId = 20004  # Constant c_int
-UIA_TitleBarControlTypeId = 50037  # Constant c_int
-
-IUIAutomationEventHandlerGroup._methods_ = [
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddActiveTextPositionChangedEventHandler',
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (
-            ['in'],
-            POINTER(IUIAutomationActiveTextPositionChangedEventHandler),
-            'handler',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddAutomationEventHandler',
-        (['in'], c_int, 'eventId'),
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddChangesEventHandler',
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(c_int), 'changeTypes'),
-        (['in'], c_int, 'changesCount'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationChangesEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddNotificationEventHandler',
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationNotificationEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddPropertyChangedEventHandler',
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationPropertyChangedEventHandler), 'handler'),
-        (['in'], POINTER(c_int), 'propertyArray'),
-        (['in'], c_int, 'propertyCount')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddStructureChangedEventHandler',
-        (['in'], TreeScope, 'scope'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (['in'], POINTER(IUIAutomationStructureChangedEventHandler), 'handler')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'AddTextEditTextChangedEventHandler',
-        (['in'], TreeScope, 'scope'),
-        (['in'], TextEditChangeType, 'TextEditChangeType'),
-        (['in'], POINTER(IUIAutomationCacheRequest), 'cacheRequest'),
-        (
-            ['in'],
-            POINTER(IUIAutomationTextEditTextChangedEventHandler),
-            'handler',
-        )
-    ),
-]
-
-################################################################
-# code template for IUIAutomationEventHandlerGroup implementation
-# class IUIAutomationEventHandlerGroup_Impl(object):
-#     def AddActiveTextPositionChangedEventHandler(self, scope, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddAutomationEventHandler(self, eventId, scope, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddChangesEventHandler(self, scope, changeTypes, changesCount, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddNotificationEventHandler(self, scope, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddPropertyChangedEventHandler(self, scope, cacheRequest, handler, propertyArray, propertyCount):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddStructureChangedEventHandler(self, scope, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-#     def AddTextEditTextChangedEventHandler(self, scope, TextEditChangeType, cacheRequest, handler):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_MenuOpenedEventId = 20003  # Constant c_int
-UIA_DocumentControlTypeId = 50030  # Constant c_int
+UIA_OptimizeForVisualContentPropertyId = 30111  # Constant c_int
+UIA_IsSynchronizedInputPatternAvailablePropertyId = 30110  # Constant c_int
+UIA_MainLandmarkTypeId = 80002  # Constant c_int
+UIA_IsVirtualizedItemPatternAvailablePropertyId = 30109  # Constant c_int
 
 
 class IUIAutomationSelectionPattern2(IUIAutomationSelectionPattern):
@@ -7602,731 +8095,18 @@ IUIAutomationSelectionPattern2._methods_ = [
 #         #return retVal
 #
 
-UIA_StructureChangedEventId = 20002  # Constant c_int
-
-ExtendedProperty._fields_ = [
-    ('PropertyName', BSTR),
-    ('PropertyValue', BSTR),
-]
-
-assert sizeof(ExtendedProperty) == 16, sizeof(ExtendedProperty)
-assert alignment(ExtendedProperty) == 8, alignment(ExtendedProperty)
-UIA_ToolTipClosedEventId = 20001  # Constant c_int
-UIA_DataItemControlTypeId = 50029  # Constant c_int
-
-
-class CUIAutomation8(CoClass):
-    """The Central Class for UIAutomation8"""
-    _reg_clsid_ = GUID('{E22AD333-B25F-460C-83D0-0581107395C9}')
-    _idlflags_ = []
-    _typelib_path_ = typelib_path
-    _reg_typelib_ = ('{944DE083-8FB8-45CF-BCB7-C477ACB2F897}', 1, 0)
-
-
-CUIAutomation8._com_interfaces_ = [IUIAutomation2, IUIAutomation3, IUIAutomation4, IUIAutomation5, IUIAutomation6]
-
-UIA_ToolTipOpenedEventId = 20000  # Constant c_int
-UIA_DataGridControlTypeId = 50028  # Constant c_int
-UIA_TableControlTypeId = 50036  # Constant c_int
-
-
-class IUIAutomationDropTargetPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{69A095F7-EEE4-430E-A46B-FB73B1AE39A5}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_CurrentDropTargetEffect(self) -> hints.Incomplete: ...
-        CurrentDropTargetEffect = hints.normal_property(_get_CurrentDropTargetEffect)
-        def _get_CachedDropTargetEffect(self) -> hints.Incomplete: ...
-        CachedDropTargetEffect = hints.normal_property(_get_CachedDropTargetEffect)
-        def _get_CurrentDropTargetEffects(self) -> hints.Incomplete: ...
-        CurrentDropTargetEffects = hints.normal_property(_get_CurrentDropTargetEffects)
-        def _get_CachedDropTargetEffects(self) -> hints.Incomplete: ...
-        CachedDropTargetEffects = hints.normal_property(_get_CachedDropTargetEffects)
-
-
-IUIAutomationDropTargetPattern._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentDropTargetEffect',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedDropTargetEffect',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentDropTargetEffects',
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(BSTR)), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedDropTargetEffects',
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(BSTR)), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationDropTargetPattern implementation
-# class IUIAutomationDropTargetPattern_Impl(object):
-#     @property
-#     def CurrentDropTargetEffect(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedDropTargetEffect(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentDropTargetEffects(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedDropTargetEffects(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_SelectionPattern2Id = 10034  # Constant c_int
-UIA_ThumbControlTypeId = 50027  # Constant c_int
-UIA_CustomNavigationPatternId = 10033  # Constant c_int
-UIA_GroupControlTypeId = 50026  # Constant c_int
-UIA_HeaderItemControlTypeId = 50035  # Constant c_int
-UIA_TextEditPatternId = 10032  # Constant c_int
-UIA_CustomControlTypeId = 50025  # Constant c_int
-UIA_DropTargetPatternId = 10031  # Constant c_int
-UIA_TreeItemControlTypeId = 50024  # Constant c_int
-UIA_DragPatternId = 10030  # Constant c_int
-UIA_TreeControlTypeId = 50023  # Constant c_int
-UIA_TextChildPatternId = 10029  # Constant c_int
-UIA_ToolTipControlTypeId = 50022  # Constant c_int
-
-
-class IUIAutomationAnnotationPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{9A175B21-339E-41B1-8E8B-623F6B681098}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_CurrentAnnotationTypeId(self) -> hints.Incomplete: ...
-        CurrentAnnotationTypeId = hints.normal_property(_get_CurrentAnnotationTypeId)
-        def _get_CurrentAnnotationTypeName(self) -> hints.Incomplete: ...
-        CurrentAnnotationTypeName = hints.normal_property(_get_CurrentAnnotationTypeName)
-        def _get_CurrentAuthor(self) -> hints.Incomplete: ...
-        CurrentAuthor = hints.normal_property(_get_CurrentAuthor)
-        def _get_CurrentDateTime(self) -> hints.Incomplete: ...
-        CurrentDateTime = hints.normal_property(_get_CurrentDateTime)
-        def _get_CurrentTarget(self) -> 'IUIAutomationElement': ...
-        CurrentTarget = hints.normal_property(_get_CurrentTarget)
-        def _get_CachedAnnotationTypeId(self) -> hints.Incomplete: ...
-        CachedAnnotationTypeId = hints.normal_property(_get_CachedAnnotationTypeId)
-        def _get_CachedAnnotationTypeName(self) -> hints.Incomplete: ...
-        CachedAnnotationTypeName = hints.normal_property(_get_CachedAnnotationTypeName)
-        def _get_CachedAuthor(self) -> hints.Incomplete: ...
-        CachedAuthor = hints.normal_property(_get_CachedAuthor)
-        def _get_CachedDateTime(self) -> hints.Incomplete: ...
-        CachedDateTime = hints.normal_property(_get_CachedDateTime)
-        def _get_CachedTarget(self) -> 'IUIAutomationElement': ...
-        CachedTarget = hints.normal_property(_get_CachedTarget)
-
-
-IUIAutomationAnnotationPattern._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentAnnotationTypeId',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentAnnotationTypeName',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentAuthor',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentDateTime',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentTarget',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedAnnotationTypeId',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedAnnotationTypeName',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedAuthor',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedDateTime',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedTarget',
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationAnnotationPattern implementation
-# class IUIAutomationAnnotationPattern_Impl(object):
-#     @property
-#     def CurrentAnnotationTypeId(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentAnnotationTypeName(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentAuthor(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentDateTime(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CurrentTarget(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedAnnotationTypeId(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedAnnotationTypeName(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedAuthor(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedDateTime(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedTarget(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_TransformPattern2Id = 10028  # Constant c_int
-
-IAccessible._methods_ = [
-    COMMETHOD(
-        [dispid(-5000), 'hidden', 'propget'],
-        HRESULT,
-        'accParent',
-        (['out', 'retval'], POINTER(POINTER(IDispatch)), 'ppdispParent')
-    ),
-    COMMETHOD(
-        [dispid(-5001), 'hidden', 'propget'],
-        HRESULT,
-        'accChildCount',
-        (['out', 'retval'], POINTER(c_int), 'pcountChildren')
-    ),
-    COMMETHOD(
-        [dispid(-5002), 'hidden', 'propget'],
-        HRESULT,
-        'accChild',
-        (['in'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(POINTER(IDispatch)), 'ppdispChild')
-    ),
-    COMMETHOD(
-        [dispid(-5003), 'hidden', 'propget'],
-        HRESULT,
-        'accName',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(BSTR), 'pszName')
-    ),
-    COMMETHOD(
-        [dispid(-5004), 'hidden', 'propget'],
-        HRESULT,
-        'accValue',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(BSTR), 'pszValue')
-    ),
-    COMMETHOD(
-        [dispid(-5005), 'hidden', 'propget'],
-        HRESULT,
-        'accDescription',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(BSTR), 'pszDescription')
-    ),
-    COMMETHOD(
-        [dispid(-5006), 'hidden', 'propget'],
-        HRESULT,
-        'accRole',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(VARIANT), 'pvarRole')
-    ),
-    COMMETHOD(
-        [dispid(-5007), 'hidden', 'propget'],
-        HRESULT,
-        'accState',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(VARIANT), 'pvarState')
-    ),
-    COMMETHOD(
-        [dispid(-5008), 'hidden', 'propget'],
-        HRESULT,
-        'accHelp',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(BSTR), 'pszHelp')
-    ),
-    COMMETHOD(
-        [dispid(-5009), 'hidden', 'propget'],
-        HRESULT,
-        'accHelpTopic',
-        (['out'], POINTER(BSTR), 'pszHelpFile'),
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(c_int), 'pidTopic')
-    ),
-    COMMETHOD(
-        [dispid(-5010), 'hidden', 'propget'],
-        HRESULT,
-        'accKeyboardShortcut',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(BSTR), 'pszKeyboardShortcut')
-    ),
-    COMMETHOD(
-        [dispid(-5011), 'hidden', 'propget'],
-        HRESULT,
-        'accFocus',
-        (['out', 'retval'], POINTER(VARIANT), 'pvarChild')
-    ),
-    COMMETHOD(
-        [dispid(-5012), 'hidden', 'propget'],
-        HRESULT,
-        'accSelection',
-        (['out', 'retval'], POINTER(VARIANT), 'pvarChildren')
-    ),
-    COMMETHOD(
-        [dispid(-5013), 'hidden', 'propget'],
-        HRESULT,
-        'accDefaultAction',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['out', 'retval'], POINTER(BSTR), 'pszDefaultAction')
-    ),
-    COMMETHOD(
-        [dispid(-5014), 'hidden'],
-        HRESULT,
-        'accSelect',
-        (['in'], c_int, 'flagsSelect'),
-        (['in', 'optional'], VARIANT, 'varChild')
-    ),
-    COMMETHOD(
-        [dispid(-5015), 'hidden'],
-        HRESULT,
-        'accLocation',
-        (['out'], POINTER(c_int), 'pxLeft'),
-        (['out'], POINTER(c_int), 'pyTop'),
-        (['out'], POINTER(c_int), 'pcxWidth'),
-        (['out'], POINTER(c_int), 'pcyHeight'),
-        (['in', 'optional'], VARIANT, 'varChild')
-    ),
-    COMMETHOD(
-        [dispid(-5016), 'hidden'],
-        HRESULT,
-        'accNavigate',
-        (['in'], c_int, 'navDir'),
-        (['in', 'optional'], VARIANT, 'varStart'),
-        (['out', 'retval'], POINTER(VARIANT), 'pvarEndUpAt')
-    ),
-    COMMETHOD(
-        [dispid(-5017), 'hidden'],
-        HRESULT,
-        'accHitTest',
-        (['in'], c_int, 'xLeft'),
-        (['in'], c_int, 'yTop'),
-        (['out', 'retval'], POINTER(VARIANT), 'pvarChild')
-    ),
-    COMMETHOD(
-        [dispid(-5018), 'hidden'],
-        HRESULT,
-        'accDoDefaultAction',
-        (['in', 'optional'], VARIANT, 'varChild')
-    ),
-    COMMETHOD(
-        [dispid(-5003), 'hidden', 'propput'],
-        HRESULT,
-        'accName',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['in'], BSTR, 'pszName')
-    ),
-    COMMETHOD(
-        [dispid(-5004), 'hidden', 'propput'],
-        HRESULT,
-        'accValue',
-        (['in', 'optional'], VARIANT, 'varChild'),
-        (['in'], BSTR, 'pszValue')
-    ),
-]
-
-################################################################
-# code template for IAccessible implementation
-# class IAccessible_Impl(object):
-#     @property
-#     def accParent(self):
-#         '-no docstring-'
-#         #return ppdispParent
-#
-#     @property
-#     def accChildCount(self):
-#         '-no docstring-'
-#         #return pcountChildren
-#
-#     @property
-#     def accChild(self, varChild):
-#         '-no docstring-'
-#         #return ppdispChild
-#
-#     def _get(self, varChild):
-#         '-no docstring-'
-#         #return pszName
-#     def _set(self, varChild, pszName):
-#         '-no docstring-'
-#     accName = property(_get, _set, doc = _set.__doc__)
-#
-#     def _get(self, varChild):
-#         '-no docstring-'
-#         #return pszValue
-#     def _set(self, varChild, pszValue):
-#         '-no docstring-'
-#     accValue = property(_get, _set, doc = _set.__doc__)
-#
-#     @property
-#     def accDescription(self, varChild):
-#         '-no docstring-'
-#         #return pszDescription
-#
-#     @property
-#     def accRole(self, varChild):
-#         '-no docstring-'
-#         #return pvarRole
-#
-#     @property
-#     def accState(self, varChild):
-#         '-no docstring-'
-#         #return pvarState
-#
-#     @property
-#     def accHelp(self, varChild):
-#         '-no docstring-'
-#         #return pszHelp
-#
-#     @property
-#     def accHelpTopic(self, varChild):
-#         '-no docstring-'
-#         #return pszHelpFile, pidTopic
-#
-#     @property
-#     def accKeyboardShortcut(self, varChild):
-#         '-no docstring-'
-#         #return pszKeyboardShortcut
-#
-#     @property
-#     def accFocus(self):
-#         '-no docstring-'
-#         #return pvarChild
-#
-#     @property
-#     def accSelection(self):
-#         '-no docstring-'
-#         #return pvarChildren
-#
-#     @property
-#     def accDefaultAction(self, varChild):
-#         '-no docstring-'
-#         #return pszDefaultAction
-#
-#     def accSelect(self, flagsSelect, varChild):
-#         '-no docstring-'
-#         #return 
-#
-#     def accLocation(self, varChild):
-#         '-no docstring-'
-#         #return pxLeft, pyTop, pcxWidth, pcyHeight
-#
-#     def accNavigate(self, navDir, varStart):
-#         '-no docstring-'
-#         #return pvarEndUpAt
-#
-#     def accHitTest(self, xLeft, yTop):
-#         '-no docstring-'
-#         #return pvarChild
-#
-#     def accDoDefaultAction(self, varChild):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_SpreadsheetItemPatternId = 10027  # Constant c_int
-UIA_SpreadsheetPatternId = 10026  # Constant c_int
-UIA_ToolBarControlTypeId = 50021  # Constant c_int
-
-IUIAutomationProxyFactoryMapping._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'count',
-        (['out', 'retval'], POINTER(c_uint), 'count')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetTable',
-        (
-            ['out', 'retval'],
-            POINTER(_midlSAFEARRAY(POINTER(IUIAutomationProxyFactoryEntry))),
-            'table',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetEntry',
-        (['in'], c_uint, 'index'),
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationProxyFactoryEntry)),
-            'entry',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'SetTable',
-        (
-            ['in'],
-            _midlSAFEARRAY(POINTER(IUIAutomationProxyFactoryEntry)),
-            'factoryList',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'InsertEntries',
-        (['in'], c_uint, 'before'),
-        (
-            ['in'],
-            _midlSAFEARRAY(POINTER(IUIAutomationProxyFactoryEntry)),
-            'factoryList',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'InsertEntry',
-        (['in'], c_uint, 'before'),
-        (['in'], POINTER(IUIAutomationProxyFactoryEntry), 'factory')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'RemoveEntry',
-        (['in'], c_uint, 'index')
-    ),
-    COMMETHOD([], HRESULT, 'ClearTable'),
-    COMMETHOD([], HRESULT, 'RestoreDefaultTable'),
-]
-
-################################################################
-# code template for IUIAutomationProxyFactoryMapping implementation
-# class IUIAutomationProxyFactoryMapping_Impl(object):
-#     @property
-#     def count(self):
-#         '-no docstring-'
-#         #return count
-#
-#     def GetTable(self):
-#         '-no docstring-'
-#         #return table
-#
-#     def GetEntry(self, index):
-#         '-no docstring-'
-#         #return entry
-#
-#     def SetTable(self, factoryList):
-#         '-no docstring-'
-#         #return 
-#
-#     def InsertEntries(self, before, factoryList):
-#         '-no docstring-'
-#         #return 
-#
-#     def InsertEntry(self, before, factory):
-#         '-no docstring-'
-#         #return 
-#
-#     def RemoveEntry(self, index):
-#         '-no docstring-'
-#         #return 
-#
-#     def ClearTable(self):
-#         '-no docstring-'
-#         #return 
-#
-#     def RestoreDefaultTable(self):
-#         '-no docstring-'
-#         #return 
-#
-
-UIA_StylesPatternId = 10025  # Constant c_int
-UIA_TextPattern2Id = 10024  # Constant c_int
-UIA_HeaderControlTypeId = 50034  # Constant c_int
-
-
-class IUIAutomationSpreadsheetItemPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
-    _case_insensitive_ = True
-    _iid_ = GUID('{7D4FB86C-8D34-40E1-8E83-62C15204E335}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_CurrentFormula(self) -> hints.Incomplete: ...
-        CurrentFormula = hints.normal_property(_get_CurrentFormula)
-        def GetCurrentAnnotationObjects(self) -> 'IUIAutomationElementArray': ...
-        def GetCurrentAnnotationTypes(self) -> hints.Incomplete: ...
-        def _get_CachedFormula(self) -> hints.Incomplete: ...
-        CachedFormula = hints.normal_property(_get_CachedFormula)
-        def GetCachedAnnotationObjects(self) -> 'IUIAutomationElementArray': ...
-        def GetCachedAnnotationTypes(self) -> hints.Incomplete: ...
-
-
-IUIAutomationSpreadsheetItemPattern._methods_ = [
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CurrentFormula',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCurrentAnnotationObjects',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationElementArray)),
-            'retVal',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCurrentAnnotationTypes',
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'retVal')
-    ),
-    COMMETHOD(
-        ['propget'],
-        HRESULT,
-        'CachedFormula',
-        (['out', 'retval'], POINTER(BSTR), 'retVal')
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCachedAnnotationObjects',
-        (
-            ['out', 'retval'],
-            POINTER(POINTER(IUIAutomationElementArray)),
-            'retVal',
-        )
-    ),
-    COMMETHOD(
-        [],
-        HRESULT,
-        'GetCachedAnnotationTypes',
-        (['out', 'retval'], POINTER(_midlSAFEARRAY(c_int)), 'retVal')
-    ),
-]
-
-################################################################
-# code template for IUIAutomationSpreadsheetItemPattern implementation
-# class IUIAutomationSpreadsheetItemPattern_Impl(object):
-#     @property
-#     def CurrentFormula(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     def GetCurrentAnnotationObjects(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     def GetCurrentAnnotationTypes(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     @property
-#     def CachedFormula(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     def GetCachedAnnotationObjects(self):
-#         '-no docstring-'
-#         #return retVal
-#
-#     def GetCachedAnnotationTypes(self):
-#         '-no docstring-'
-#         #return retVal
-#
-
-UIA_AnnotationPatternId = 10023  # Constant c_int
-UIA_TextControlTypeId = 50020  # Constant c_int
-AnnotationType_UnsyncedChange = 60015  # Constant c_int
-UIA_ObjectModelPatternId = 10022  # Constant c_int
-UIA_TabItemControlTypeId = 50019  # Constant c_int
-UIA_SynchronizedInputPatternId = 10021  # Constant c_int
-UIA_TabControlTypeId = 50018  # Constant c_int
-UIA_VirtualizedItemPatternId = 10020  # Constant c_int
-UIA_StatusBarControlTypeId = 50017  # Constant c_int
-UIA_PaneControlTypeId = 50033  # Constant c_int
+UIA_IsItemContainerPatternAvailablePropertyId = 30108  # Constant c_int
+AnnotationType_MoveChange = 60013  # Constant c_int
+UIA_ProviderDescriptionPropertyId = 30107  # Constant c_int
+AnnotationType_Header = 60006  # Constant c_int
+AnnotationType_TrackChanges = 60005  # Constant c_int
+AnnotationType_FormulaError = 60004  # Constant c_int
+UIA_FlowsToPropertyId = 30106  # Constant c_int
+AnnotationType_Comment = 60003  # Constant c_int
+AnnotationType_DeletionChange = 60012  # Constant c_int
+UIA_DescribedByPropertyId = 30105  # Constant c_int
+AnnotationType_GrammarError = 60002  # Constant c_int
+AnnotationType_InsertionChange = 60011  # Constant c_int
 
 
 class IUIAutomationItemContainerPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -8358,120 +8138,184 @@ IUIAutomationItemContainerPattern._methods_ = [
 #         #return pFound
 #
 
-UIA_ItemContainerPatternId = 10019  # Constant c_int
-UIA_SpinnerControlTypeId = 50016  # Constant c_int
-AnnotationType_FormatChange = 60014  # Constant c_int
-UIA_LegacyIAccessiblePatternId = 10018  # Constant c_int
-UIA_SliderControlTypeId = 50015  # Constant c_int
-HeadingLevel_None = 80050  # Constant c_int
-UIA_ScrollItemPatternId = 10017  # Constant c_int
-UIA_ScrollBarControlTypeId = 50014  # Constant c_int
-UIA_SearchLandmarkTypeId = 80004  # Constant c_int
-UIA_TransformPatternId = 10016  # Constant c_int
-UIA_RadioButtonControlTypeId = 50013  # Constant c_int
-UIA_NavigationLandmarkTypeId = 80003  # Constant c_int
-UIA_TogglePatternId = 10015  # Constant c_int
-UIA_ProgressBarControlTypeId = 50012  # Constant c_int
-AnnotationType_MoveChange = 60013  # Constant c_int
-UIA_MainLandmarkTypeId = 80002  # Constant c_int
-UIA_TextPatternId = 10014  # Constant c_int
-UIA_MenuItemControlTypeId = 50011  # Constant c_int
-AnnotationType_DeletionChange = 60012  # Constant c_int
-UIA_FormLandmarkTypeId = 80001  # Constant c_int
-UIA_TableItemPatternId = 10013  # Constant c_int
-UIA_MenuBarControlTypeId = 50010  # Constant c_int
-UIA_CustomLandmarkTypeId = 80000  # Constant c_int
-UIA_TablePatternId = 10012  # Constant c_int
-UIA_MenuControlTypeId = 50009  # Constant c_int
-AnnotationType_InsertionChange = 60011  # Constant c_int
-StyleId_NumberedList = 70016  # Constant c_int
-UIA_DockPatternId = 10011  # Constant c_int
-UIA_ListControlTypeId = 50008  # Constant c_int
-StyleId_BulletedList = 70015  # Constant c_int
+UIA_ControllerForPropertyId = 30104  # Constant c_int
+AnnotationType_SpellingError = 60001  # Constant c_int
+HeadingLevel6 = 80056  # Constant c_int
+UIA_IsDataValidForFormPropertyId = 30103  # Constant c_int
+AnnotationType_Unknown = 60000  # Constant c_int
+UIA_AriaPropertiesPropertyId = 30102  # Constant c_int
+UIA_AppBarControlTypeId = 50040  # Constant c_int
+UIA_AriaRolePropertyId = 30101  # Constant c_int
+UIA_SemanticZoomControlTypeId = 50039  # Constant c_int
+UIA_LegacyIAccessibleDefaultActionPropertyId = 30100  # Constant c_int
+UIA_LegacyIAccessibleSelectionPropertyId = 30099  # Constant c_int
+UIA_LegacyIAccessibleKeyboardShortcutPropertyId = 30098  # Constant c_int
+UIA_SeparatorControlTypeId = 50038  # Constant c_int
+UIA_LegacyIAccessibleHelpPropertyId = 30097  # Constant c_int
+AnnotationType_Footnote = 60010  # Constant c_int
 
-
-class IUIAutomationElement9(IUIAutomationElement8):
-    _case_insensitive_ = True
-    _iid_ = GUID('{39325FAC-039D-440E-A3A3-5EB81A5CECC3}')
-    _idlflags_ = []
-
-    if TYPE_CHECKING:  # commembers
-        def _get_CurrentIsDialog(self) -> hints.Incomplete: ...
-        CurrentIsDialog = hints.normal_property(_get_CurrentIsDialog)
-        def _get_CachedIsDialog(self) -> hints.Incomplete: ...
-        CachedIsDialog = hints.normal_property(_get_CachedIsDialog)
-
-
-IUIAutomationElement9._methods_ = [
+IRawElementProviderSimple._methods_ = [
     COMMETHOD(
         ['propget'],
         HRESULT,
-        'CurrentIsDialog',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
+        'ProviderOptions',
+        (['out', 'retval'], POINTER(ProviderOptions), 'pRetVal')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetPatternProvider',
+        (['in'], c_int, 'patternId'),
+        (['out', 'retval'], POINTER(POINTER(IUnknown)), 'pRetVal')
+    ),
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetPropertyValue',
+        (['in'], c_int, 'propertyId'),
+        (['out', 'retval'], POINTER(VARIANT), 'pRetVal')
     ),
     COMMETHOD(
         ['propget'],
         HRESULT,
-        'CachedIsDialog',
-        (['out', 'retval'], POINTER(c_int), 'retVal')
+        'HostRawElementProvider',
+        (
+            ['out', 'retval'],
+            POINTER(POINTER(IRawElementProviderSimple)),
+            'pRetVal',
+        )
     ),
 ]
 
 ################################################################
-# code template for IUIAutomationElement9 implementation
-# class IUIAutomationElement9_Impl(object):
+# code template for IRawElementProviderSimple implementation
+# class IRawElementProviderSimple_Impl(object):
 #     @property
-#     def CurrentIsDialog(self):
+#     def ProviderOptions(self):
 #         '-no docstring-'
-#         #return retVal
+#         #return pRetVal
+#
+#     def GetPatternProvider(self, patternId):
+#         '-no docstring-'
+#         #return pRetVal
+#
+#     def GetPropertyValue(self, propertyId):
+#         '-no docstring-'
+#         #return pRetVal
 #
 #     @property
-#     def CachedIsDialog(self):
+#     def HostRawElementProvider(self):
 #         '-no docstring-'
-#         #return retVal
+#         #return pRetVal
 #
 
-UIA_SelectionItemPatternId = 10010  # Constant c_int
-UIA_ListItemControlTypeId = 50007  # Constant c_int
-StyleId_Quote = 70014  # Constant c_int
-UIA_WindowPatternId = 10009  # Constant c_int
-UIA_ImageControlTypeId = 50006  # Constant c_int
-UIA_WindowControlTypeId = 50032  # Constant c_int
-AnnotationType_Footnote = 60010  # Constant c_int
-StyleId_Emphasis = 70013  # Constant c_int
-UIA_MultipleViewPatternId = 10008  # Constant c_int
-UIA_HyperlinkControlTypeId = 50005  # Constant c_int
-StyleId_Normal = 70012  # Constant c_int
-UIA_EditControlTypeId = 50004  # Constant c_int
-StyleId_Subtitle = 70011  # Constant c_int
-UIA_GridItemPatternId = 10007  # Constant c_int
-UIA_ComboBoxControlTypeId = 50003  # Constant c_int
-StyleId_Title = 70010  # Constant c_int
-UIA_GridPatternId = 10006  # Constant c_int
-UIA_CheckBoxControlTypeId = 50002  # Constant c_int
-AnnotationType_Endnote = 60009  # Constant c_int
-StyleId_Heading9 = 70009  # Constant c_int
-UIA_ExpandCollapsePatternId = 10005  # Constant c_int
-UIA_CalendarControlTypeId = 50001  # Constant c_int
-AnnotationType_Highlighted = 60008  # Constant c_int
-StyleId_Heading8 = 70008  # Constant c_int
-UIA_NativeWindowHandlePropertyId = 30020  # Constant c_int
-UIA_ButtonControlTypeId = 50000  # Constant c_int
-UIA_SplitButtonControlTypeId = 50031  # Constant c_int
-UIA_ScrollPatternId = 10004  # Constant c_int
-UIA_SayAsInterpretAsAttributeId = 40043  # Constant c_int
-HeadingLevel2 = 80052  # Constant c_int
-UIA_RangeValuePatternId = 10003  # Constant c_int
-UIA_AfterParagraphSpacingAttributeId = 40042  # Constant c_int
-AnnotationType_Footer = 60007  # Constant c_int
-StyleId_Heading3 = 70003  # Constant c_int
-UIA_ValuePatternId = 10002  # Constant c_int
-UIA_BeforeParagraphSpacingAttributeId = 40041  # Constant c_int
+UIA_TitleBarControlTypeId = 50037  # Constant c_int
 StyleId_Heading7 = 70007  # Constant c_int
-UIA_InvokePatternId = 10000  # Constant c_int
-UIA_IndentationFirstLineAttributeId = 40010  # Constant c_int
-UIA_LineSpacingAttributeId = 40040  # Constant c_int
+HeadingLevel5 = 80055  # Constant c_int
+UIA_LegacyIAccessibleStatePropertyId = 30096  # Constant c_int
+UIA_TableControlTypeId = 50036  # Constant c_int
+UIA_LegacyIAccessibleRolePropertyId = 30095  # Constant c_int
+UIA_HeaderItemControlTypeId = 50035  # Constant c_int
+UIA_LegacyIAccessibleDescriptionPropertyId = 30094  # Constant c_int
+UIA_HeaderControlTypeId = 50034  # Constant c_int
+AnnotationType_Endnote = 60009  # Constant c_int
+UIA_LegacyIAccessibleValuePropertyId = 30093  # Constant c_int
+UIA_PaneControlTypeId = 50033  # Constant c_int
+StyleId_Heading6 = 70006  # Constant c_int
+
+ExtendedProperty._fields_ = [
+    ('PropertyName', BSTR),
+    ('PropertyValue', BSTR),
+]
+
+assert sizeof(ExtendedProperty) == 16, sizeof(ExtendedProperty)
+assert alignment(ExtendedProperty) == 8, alignment(ExtendedProperty)
+UIA_AsyncContentLoadedEventId = 20006  # Constant c_int
+UIA_LegacyIAccessibleNamePropertyId = 30092  # Constant c_int
+UIA_WindowControlTypeId = 50032  # Constant c_int
+UIA_SearchLandmarkTypeId = 80004  # Constant c_int
+UIA_AutomationFocusChangedEventId = 20005  # Constant c_int
+UIA_LegacyIAccessibleChildIdPropertyId = 30091  # Constant c_int
+UIA_SplitButtonControlTypeId = 50031  # Constant c_int
+UIA_SayAsInterpretAsMetadataId = 100000  # Constant c_int
+UIA_AutomationPropertyChangedEventId = 20004  # Constant c_int
+UIA_IsLegacyIAccessiblePatternAvailablePropertyId = 30090  # Constant c_int
+UIA_DocumentControlTypeId = 50030  # Constant c_int
+
+
+class IUIAutomationSpreadsheetPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+    _case_insensitive_ = True
+    _iid_ = GUID('{7517A7C8-FAAE-4DE9-9F08-29B91E8595C1}')
+    _idlflags_ = []
+
+    if TYPE_CHECKING:  # commembers
+        def GetItemByName(self, name: hints.Incomplete) -> 'IUIAutomationElement': ...
+
+
+IUIAutomationSpreadsheetPattern._methods_ = [
+    COMMETHOD(
+        [],
+        HRESULT,
+        'GetItemByName',
+        (['in'], BSTR, 'name'),
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+    ),
+]
+
+################################################################
+# code template for IUIAutomationSpreadsheetPattern implementation
+# class IUIAutomationSpreadsheetPattern_Impl(object):
+#     def GetItemByName(self, name):
+#         '-no docstring-'
+#         #return element
+#
+
+UIA_TextPattern2Id = 10024  # Constant c_int
+UIA_TransformCanRotatePropertyId = 30089  # Constant c_int
+UIA_DataItemControlTypeId = 50029  # Constant c_int
+StyleId_Heading5 = 70005  # Constant c_int
+UIA_MenuOpenedEventId = 20003  # Constant c_int
+UIA_TransformCanResizePropertyId = 30088  # Constant c_int
+UIA_DataGridControlTypeId = 50028  # Constant c_int
 StyleId_Heading4 = 70004  # Constant c_int
+UIA_StructureChangedEventId = 20002  # Constant c_int
+UIA_GridItemContainingGridPropertyId = 30068  # Constant c_int
+UIA_ThumbControlTypeId = 50027  # Constant c_int
+UIA_ToolTipClosedEventId = 20001  # Constant c_int
+UIA_TransformCanMovePropertyId = 30087  # Constant c_int
+UIA_GroupControlTypeId = 50026  # Constant c_int
+StyleId_Heading3 = 70003  # Constant c_int
+UIA_ToolTipOpenedEventId = 20000  # Constant c_int
+UIA_ToggleToggleStatePropertyId = 30086  # Constant c_int
+UIA_CustomControlTypeId = 50025  # Constant c_int
+HeadingLevel7 = 80057  # Constant c_int
+UIA_SelectionPattern2Id = 10034  # Constant c_int
+UIA_TableItemColumnHeaderItemsPropertyId = 30085  # Constant c_int
+UIA_TreeItemControlTypeId = 50024  # Constant c_int
+UIA_CustomNavigationPatternId = 10033  # Constant c_int
+UIA_TreeControlTypeId = 50023  # Constant c_int
+AnnotationType_Highlighted = 60008  # Constant c_int
+StyleId_Heading2 = 70002  # Constant c_int
+UIA_TextEditPatternId = 10032  # Constant c_int
+UIA_TableItemRowHeaderItemsPropertyId = 30084  # Constant c_int
+UIA_ToolTipControlTypeId = 50022  # Constant c_int
+HeadingLevel4 = 80054  # Constant c_int
+UIA_DropTargetPatternId = 10031  # Constant c_int
+UIA_TableRowOrColumnMajorPropertyId = 30083  # Constant c_int
+UIA_ToolBarControlTypeId = 50021  # Constant c_int
+UIA_DragPatternId = 10030  # Constant c_int
+UIA_TableColumnHeadersPropertyId = 30082  # Constant c_int
+UIA_TextControlTypeId = 50020  # Constant c_int
+UIA_FormLandmarkTypeId = 80001  # Constant c_int
+UIA_TextChildPatternId = 10029  # Constant c_int
+UIA_TableRowHeadersPropertyId = 30081  # Constant c_int
+UIA_TabItemControlTypeId = 50019  # Constant c_int
+StyleId_Heading1 = 70001  # Constant c_int
+UIA_TransformPattern2Id = 10028  # Constant c_int
+UIA_GridItemColumnSpanPropertyId = 30067  # Constant c_int
+UIA_SelectionItemSelectionContainerPropertyId = 30080  # Constant c_int
+UIA_TabControlTypeId = 50018  # Constant c_int
+StyleId_Custom = 70000  # Constant c_int
 
 
 class IUIAutomationLegacyIAccessiblePattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
@@ -8792,423 +8636,594 @@ IUIAutomationLegacyIAccessiblePattern._methods_ = [
 #         #return ppAccessible
 #
 
-UIA_ItemTypePropertyId = 30021  # Constant c_int
-UIA_CaretBidiModeAttributeId = 40039  # Constant c_int
-StyleId_Heading6 = 70006  # Constant c_int
-UIA_SelectionPatternId = 10001  # Constant c_int
-UIA_CaretPositionAttributeId = 40038  # Constant c_int
-AnnotationType_Header = 60006  # Constant c_int
-StyleId_Heading5 = 70005  # Constant c_int
-UIA_SelectionActiveEndAttributeId = 40037  # Constant c_int
-UIA_HorizontalTextAlignmentAttributeId = 40009  # Constant c_int
-UIA_IsActiveAttributeId = 40036  # Constant c_int
+UIA_SelectionItemIsSelectedPropertyId = 30079  # Constant c_int
+UIA_StatusBarControlTypeId = 50017  # Constant c_int
+AnnotationType_Footer = 60007  # Constant c_int
+UIA_SpreadsheetItemPatternId = 10027  # Constant c_int
+UIA_WindowIsTopmostPropertyId = 30078  # Constant c_int
+UIA_SpinnerControlTypeId = 50016  # Constant c_int
+UIA_SpreadsheetPatternId = 10026  # Constant c_int
+UIA_WindowIsModalPropertyId = 30077  # Constant c_int
+UIA_SliderControlTypeId = 50015  # Constant c_int
+AnnotationType_Sensitive = 60024  # Constant c_int
 
 
-class IUIAutomationSpreadsheetPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
+class IUIAutomationAnnotationPattern(comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0.IUnknown):
     _case_insensitive_ = True
-    _iid_ = GUID('{7517A7C8-FAAE-4DE9-9F08-29B91E8595C1}')
+    _iid_ = GUID('{9A175B21-339E-41B1-8E8B-623F6B681098}')
     _idlflags_ = []
 
     if TYPE_CHECKING:  # commembers
-        def GetItemByName(self, name: hints.Incomplete) -> 'IUIAutomationElement': ...
+        def _get_CurrentAnnotationTypeId(self) -> hints.Incomplete: ...
+        CurrentAnnotationTypeId = hints.normal_property(_get_CurrentAnnotationTypeId)
+        def _get_CurrentAnnotationTypeName(self) -> hints.Incomplete: ...
+        CurrentAnnotationTypeName = hints.normal_property(_get_CurrentAnnotationTypeName)
+        def _get_CurrentAuthor(self) -> hints.Incomplete: ...
+        CurrentAuthor = hints.normal_property(_get_CurrentAuthor)
+        def _get_CurrentDateTime(self) -> hints.Incomplete: ...
+        CurrentDateTime = hints.normal_property(_get_CurrentDateTime)
+        def _get_CurrentTarget(self) -> 'IUIAutomationElement': ...
+        CurrentTarget = hints.normal_property(_get_CurrentTarget)
+        def _get_CachedAnnotationTypeId(self) -> hints.Incomplete: ...
+        CachedAnnotationTypeId = hints.normal_property(_get_CachedAnnotationTypeId)
+        def _get_CachedAnnotationTypeName(self) -> hints.Incomplete: ...
+        CachedAnnotationTypeName = hints.normal_property(_get_CachedAnnotationTypeName)
+        def _get_CachedAuthor(self) -> hints.Incomplete: ...
+        CachedAuthor = hints.normal_property(_get_CachedAuthor)
+        def _get_CachedDateTime(self) -> hints.Incomplete: ...
+        CachedDateTime = hints.normal_property(_get_CachedDateTime)
+        def _get_CachedTarget(self) -> 'IUIAutomationElement': ...
+        CachedTarget = hints.normal_property(_get_CachedTarget)
 
 
-IUIAutomationSpreadsheetPattern._methods_ = [
+IUIAutomationAnnotationPattern._methods_ = [
     COMMETHOD(
-        [],
+        ['propget'],
         HRESULT,
-        'GetItemByName',
-        (['in'], BSTR, 'name'),
-        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'element')
+        'CurrentAnnotationTypeId',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentAnnotationTypeName',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentAuthor',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentDateTime',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CurrentTarget',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedAnnotationTypeId',
+        (['out', 'retval'], POINTER(c_int), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedAnnotationTypeName',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedAuthor',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedDateTime',
+        (['out', 'retval'], POINTER(BSTR), 'retVal')
+    ),
+    COMMETHOD(
+        ['propget'],
+        HRESULT,
+        'CachedTarget',
+        (['out', 'retval'], POINTER(POINTER(IUIAutomationElement)), 'retVal')
     ),
 ]
 
 ################################################################
-# code template for IUIAutomationSpreadsheetPattern implementation
-# class IUIAutomationSpreadsheetPattern_Impl(object):
-#     def GetItemByName(self, name):
+# code template for IUIAutomationAnnotationPattern implementation
+# class IUIAutomationAnnotationPattern_Impl(object):
+#     @property
+#     def CurrentAnnotationTypeId(self):
 #         '-no docstring-'
-#         #return element
+#         #return retVal
+#
+#     @property
+#     def CurrentAnnotationTypeName(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentAuthor(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentDateTime(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CurrentTarget(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedAnnotationTypeId(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedAnnotationTypeName(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedAuthor(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedDateTime(self):
+#         '-no docstring-'
+#         #return retVal
+#
+#     @property
+#     def CachedTarget(self):
+#         '-no docstring-'
+#         #return retVal
 #
 
+UIA_Invoke_InvokedEventId = 20009  # Constant c_int
+UIA_WindowWindowInteractionStatePropertyId = 30076  # Constant c_int
+UIA_ScrollBarControlTypeId = 50014  # Constant c_int
+UIA_SelectionItem_ElementAddedToSelectionEventId = 20010  # Constant c_int
+UIA_WindowWindowVisualStatePropertyId = 30075  # Constant c_int
+UIA_RadioButtonControlTypeId = 50013  # Constant c_int
+UIA_StylesPatternId = 10025  # Constant c_int
+UIA_WindowCanMinimizePropertyId = 30074  # Constant c_int
+UIA_ProgressBarControlTypeId = 50012  # Constant c_int
+UIA_AnnotationPatternId = 10023  # Constant c_int
+UIA_WindowCanMaximizePropertyId = 30073  # Constant c_int
+UIA_MenuItemControlTypeId = 50011  # Constant c_int
+AnnotationType_Mathematics = 60023  # Constant c_int
+
+
+class CUIAutomation(CoClass):
+    """The Central Class for UIAutomation"""
+    _reg_clsid_ = GUID('{FF48DBA4-60EF-4201-AA87-54103EEF594E}')
+    _idlflags_ = []
+    _typelib_path_ = typelib_path
+    _reg_typelib_ = ('{944DE083-8FB8-45CF-BCB7-C477ACB2F897}', 1, 0)
+
+
+CUIAutomation._com_interfaces_ = [IUIAutomation]
+
+UIA_ObjectModelPatternId = 10022  # Constant c_int
+UIA_MenuBarControlTypeId = 50010  # Constant c_int
+UIA_SummaryChangeId = 90000  # Constant c_int
+UIA_GridItemRowSpanPropertyId = 30066  # Constant c_int
+UIA_MultipleViewSupportedViewsPropertyId = 30072  # Constant c_int
+UIA_MenuControlTypeId = 50009  # Constant c_int
+UIA_NavigationLandmarkTypeId = 80003  # Constant c_int
+
+
+class CUIAutomation8(CoClass):
+    """The Central Class for UIAutomation8"""
+    _reg_clsid_ = GUID('{E22AD333-B25F-460C-83D0-0581107395C9}')
+    _idlflags_ = []
+    _typelib_path_ = typelib_path
+    _reg_typelib_ = ('{944DE083-8FB8-45CF-BCB7-C477ACB2F897}', 1, 0)
+
+
+CUIAutomation8._com_interfaces_ = [IUIAutomation2, IUIAutomation3, IUIAutomation4, IUIAutomation5, IUIAutomation6]
+
 __all__ = [
-    'IUIAutomationTextRangeArray',
-    'UIA_IsLegacyIAccessiblePatternAvailablePropertyId',
-    'StructureChangeType', 'SynchronizedInputType_KeyUp',
-    'UIA_ProviderDescriptionPropertyId', 'UIA_FlowsFromPropertyId',
-    'ProviderOptions_UseClientCoordinates',
-    'UIA_IsTransformPattern2AvailablePropertyId',
-    'IUIAutomationTableItemPattern',
-    'UIA_AnnotationAnnotationTypeNamePropertyId',
-    'ProviderOptions_ClientSideProvider',
-    'UIA_DropTarget_DroppedEventId', 'UIA_OutlineColorPropertyId',
-    'UIA_MultipleViewCurrentViewPropertyId',
-    'IUIAutomationDropTargetPattern', 'IUIAutomation4',
-    'IUIAutomationCondition', 'IUIAutomation',
-    'UIA_SelectionIsSelectionRequiredPropertyId',
-    'UIA_GridColumnCountPropertyId', 'UIA_PaneControlTypeId',
-    'ExpandCollapseState', 'HeadingLevel_None', 'StyleId_Normal',
-    'UIA_ChangesEventId', 'ExtendedProperty',
-    'AnnotationType_Endnote',
-    'StructureChangeType_ChildrenBulkRemoved',
-    'RowOrColumnMajor_Indeterminate', 'SynchronizedInputType_KeyDown',
-    'UIA_FlowsToPropertyId', 'UIA_NamePropertyId',
-    'UIA_Selection_InvalidatedEventId', 'ToggleState',
-    'IUIAutomationTextChildPattern', 'UIA_LegacyIAccessiblePatternId',
-    'UIA_Drag_DragStartEventId', 'IUIAutomationElementArray',
-    'UIA_ExpandCollapsePatternId', 'UIA_TransformCanMovePropertyId',
-    'UIA_CaretPositionAttributeId', 'AnnotationType_Unknown',
-    'IUIAutomationElement9', 'StructureChangeType_ChildRemoved',
-    'UIA_GridItemColumnPropertyId', 'IUIAutomationElement',
-    'IUIAutomationChangesEventHandler',
-    'UIA_DropTargetDropTargetEffectPropertyId',
-    'UIA_IsAnnotationPatternAvailablePropertyId',
-    'ScrollAmount_LargeDecrement', 'UIA_TabItemControlTypeId',
-    'AnnotationType_Mathematics',
-    'UIA_IsTablePatternAvailablePropertyId',
-    'UIA_DropTarget_DragEnterEventId', 'UIA_DropTargetPatternId',
-    'UIA_FontWeightAttributeId', 'AnnotationType_Sensitive',
+    'UIA_AnnotationTypesAttributeId', 'UIA_NotificationEventId',
     'IUIAutomationVirtualizedItemPattern',
-    'TextEditChangeType_Composition',
-    'UIA_BoundingRectanglePropertyId',
-    'IUIAutomationSelectionPattern2', 'HeadingLevel4',
-    'TextUnit_Document', 'UIA_SpreadsheetPatternId',
-    'UIA_NativeWindowHandlePropertyId',
-    'UIA_MultipleViewSupportedViewsPropertyId', 'LiveSetting',
-    'UIA_ScrollHorizontalScrollPercentPropertyId',
-    'UIA_TogglePatternId', 'UIA_IsTextEditPatternAvailablePropertyId',
-    'IRawElementProviderSimple', 'UIA_IsHiddenAttributeId',
-    'UIA_IsWindowPatternAvailablePropertyId',
-    'NotificationProcessing_ImportantCurrentThenMostRecent',
-    'UIA_InputDiscardedEventId', 'UIA_OverlineColorAttributeId',
-    'DockPosition_Top', 'UIA_InputReachedOtherElementEventId',
-    'UIA_IsMultipleViewPatternAvailablePropertyId', 'TreeScope',
-    'ConnectionRecoveryBehaviorOptions_Disabled',
-    'UIA_FillTypePropertyId', 'UIA_LegacyIAccessibleHelpPropertyId',
-    'RowOrColumnMajor_ColumnMajor', 'ZoomUnit_SmallIncrement',
-    'TreeTraversalOptions_LastToFirstOrder',
-    'ZoomUnit_LargeDecrement', 'UIA_StylesStyleNamePropertyId',
-    'UIA_GridItemColumnSpanPropertyId',
-    'PropertyConditionFlags_IgnoreCase', 'ScrollAmount_NoAmount',
-    'UIA_RadioButtonControlTypeId', 'UIA_IsPasswordPropertyId',
-    'StyleId_BulletedList', 'IUIAutomationExpandCollapsePattern',
-    'IUIAutomationGridPattern', 'UIA_AutomationFocusChangedEventId',
-    'UIA_BeforeParagraphSpacingAttributeId',
+    'UIA_FontWeightAttributeId', 'UIA_FlowsFromPropertyId',
     'UIA_Selection2CurrentSelectedItemPropertyId',
-    'UIA_StylesFillColorPropertyId', 'UIA_AnnotationTypesAttributeId',
-    'UIA_TitleBarControlTypeId', 'NotificationKind',
-    'IUIAutomationTransformPattern2',
-    'UIA_AnnotationDateTimePropertyId', 'UIA_HyperlinkControlTypeId',
-    'UIA_IsReadOnlyAttributeId', 'HeadingLevel9',
-    'UIA_AsyncContentLoadedEventId', 'UIA_CapStyleAttributeId',
-    'TextUnit_Line', 'UIA_HasKeyboardFocusPropertyId',
-    'UIA_CultureAttributeId', 'UIA_LegacyIAccessibleNamePropertyId',
-    'UIA_GridRowCountPropertyId', 'UIA_ToolTipOpenedEventId',
-    'UIA_FillColorPropertyId', 'UIA_CustomNavigationPatternId',
-    'AutomationElementMode_Full', 'IUIAutomationPropertyCondition',
-    'UIA_SelectionItemPatternId',
-    'UIA_IsExpandCollapsePatternAvailablePropertyId',
-    'UIA_ForegroundColorAttributeId', 'UIA_HeadingLevelPropertyId',
-    'AnnotationType_CircularReferenceError',
-    'AnnotationType_FormulaError', 'UIA_TreeItemControlTypeId',
-    'UIA_CenterPointPropertyId', 'UIA_StrikethroughColorAttributeId',
-    'UIA_IsRequiredForFormPropertyId',
-    'ProviderOptions_ServerSideProvider',
-    'UIA_AnnotationAnnotationTypeIdPropertyId',
-    'UIA_AutomationPropertyChangedEventId', 'UIA_TransformPatternId',
-    'DockPosition_Bottom', 'UIA_StatusBarControlTypeId',
-    'UIA_TextPatternId', 'HeadingLevel8', 'UIA_StylesShapePropertyId',
-    'IUIAutomationStylesPattern', 'UIA_WindowPatternId',
-    'UIA_DataGridControlTypeId',
-    'IUIAutomationTextEditTextChangedEventHandler',
-    'UIA_TextEdit_TextChangedEventId', 'UIA_LandmarkTypePropertyId',
-    'UIA_NavigationLandmarkTypeId', 'StyleId_Heading9',
-    'UIA_LegacyIAccessibleChildIdPropertyId', 'UIA_TextControlTypeId',
-    'UIA_DragPatternId', 'TreeScope_Element',
-    'ExpandCollapseState_Collapsed', 'TreeScope_Descendants',
-    'UIA_RangeValueMaximumPropertyId',
-    'UIA_UnderlineStyleAttributeId',
-    'UIA_IndentationLeadingAttributeId', 'UIA_Drag_DragCancelEventId',
-    'UIA_LegacyIAccessibleSelectionPropertyId', 'TextUnit_Word',
-    'UIA_AnnotationTargetPropertyId', 'TextPatternRangeEndpoint_End',
-    'SynchronizedInputType', 'IUIAutomationNotCondition',
-    'UIA_AnnotationObjectsAttributeId',
-    'IUIAutomationProxyFactoryEntry', 'IUIAutomationEventHandler',
-    'UIA_TableItemRowHeaderItemsPropertyId',
-    'UIA_StylesFillPatternStylePropertyId',
-    'IUIAutomationStructureChangedEventHandler', 'StyleId_Custom',
-    'StyleId_Emphasis', 'IUIAutomationItemContainerPattern',
-    'UIA_IsGridPatternAvailablePropertyId', 'UIA_WindowControlTypeId',
-    'TreeTraversalOptions', 'DockPosition_Right',
-    'ScrollAmount_LargeIncrement', 'UIA_TableColumnHeadersPropertyId',
-    'UIA_IsValuePatternAvailablePropertyId',
-    'UIA_ToolBarControlTypeId',
-    'UIA_SpreadsheetItemFormulaPropertyId',
-    'UIA_MenuItemControlTypeId', 'IUIAutomationTreeWalker',
-    'UIA_DragIsGrabbedPropertyId',
-    'SynchronizedInputType_RightMouseUp',
+    'IUIAutomationMultipleViewPattern', 'DockPosition',
     'UIA_IsStylesPatternAvailablePropertyId',
-    'UIA_IsContentElementPropertyId', 'SupportedTextSelection',
-    'IUIAutomationTransformPattern',
-    'UIA_IsSynchronizedInputPatternAvailablePropertyId',
-    'UIA_IsSelectionPatternAvailablePropertyId',
-    'IUIAutomationCustomNavigationPattern', 'UIA_MenuOpenedEventId',
-    'UIA_RuntimeIdPropertyId', 'UIA_LineSpacingAttributeId',
-    'UIA_IsPeripheralPropertyId', 'UIA_SpinnerControlTypeId',
-    'UIA_IsInvokePatternAvailablePropertyId', 'StyleId_Heading8',
-    'UIA_LocalizedControlTypePropertyId',
-    'AnnotationType_InsertionChange', 'UIA_TableItemPatternId',
-    'UIA_IsKeyboardFocusablePropertyId', 'UIA_TabsAttributeId',
-    'UIA_IsDataValidForFormPropertyId',
-    'UIA_IsScrollItemPatternAvailablePropertyId',
-    'UIA_ValueValuePropertyId',
-    'ProviderOptions_NonClientAreaProvider',
-    'UIA_AriaPropertiesPropertyId',
-    'UIA_ScrollHorizontalViewSizePropertyId',
-    'UIA_Selection2LastSelectedItemPropertyId',
-    'AnnotationType_SpellingError', 'StructureChangeType_ChildAdded',
-    'UIA_IsTogglePatternAvailablePropertyId',
-    'UIA_SeparatorControlTypeId',
-    'SynchronizedInputType_RightMouseDown',
-    'UIA_Text_TextSelectionChangedEventId', 'StyleId_Heading1',
-    'UIA_SpreadsheetItemAnnotationTypesPropertyId',
-    'UIA_ClickablePointPropertyId', 'HeadingLevel3',
-    'IUIAutomationAndCondition', 'UIA_BackgroundColorAttributeId',
-    'UIA_ActiveTextPositionChangedEventId',
-    'UIA_CaretBidiModeAttributeId',
-    'UIA_Transform2ZoomMinimumPropertyId', 'IUIAutomationElement5',
-    'UIA_DataItemControlTypeId', 'Assertive',
-    'UIA_AnnotationPatternId',
-    'IUIAutomationFocusChangedEventHandler', 'TextEditChangeType',
-    'NavigateDirection_LastChild', 'IUIAutomationProxyFactoryMapping',
-    'UIA_MenuControlTypeId', 'UIA_LegacyIAccessibleStatePropertyId',
-    'UIA_IsObjectModelPatternAvailablePropertyId',
-    'UIA_Invoke_InvokedEventId', 'WindowVisualState',
-    'IUIAutomationElement7',
-    'IUIAutomationPropertyChangedEventHandler',
-    'UIA_TableControlTypeId', 'ExpandCollapseState_Expanded',
-    'UIA_EditControlTypeId', 'UIA_ObjectModelPatternId',
-    'UIA_PositionInSetPropertyId', 'UIA_DropTarget_DragLeaveEventId',
-    'UIA_TableRowOrColumnMajorPropertyId',
-    'UIA_IsDropTargetPatternAvailablePropertyId',
-    'TextEditChangeType_CompositionFinalized',
-    'AnnotationType_Comment', 'UIA_ProcessIdPropertyId',
-    'UIA_Text_TextChangedEventId',
-    'UIA_SelectionItem_ElementAddedToSelectionEventId',
-    'UIA_RangeValuePatternId', 'HeadingLevel2',
-    'UIA_SystemAlertEventId', 'IUIAutomationValuePattern',
-    'UIA_LegacyIAccessibleKeyboardShortcutPropertyId',
-    'UIA_ClassNamePropertyId', 'UIA_ItemStatusPropertyId',
-    'IAccessible', 'AnnotationType_Footer',
-    'UIA_MarginLeadingAttributeId', 'IUIAutomationTextRange3',
-    'UIA_Transform2ZoomMaximumPropertyId', 'UIA_DockPatternId',
-    'UIA_SizeOfSetPropertyId', 'NotificationProcessing_MostRecent',
-    'UIA_ComboBoxControlTypeId', 'SynchronizedInputType_LeftMouseUp',
-    'UIA_InputReachedTargetEventId', 'UIA_FontNameAttributeId',
-    'WindowInteractionState_ReadyForUserInteraction', 'typelib_path',
-    'UIA_RangeValueMinimumPropertyId', 'UIA_SizePropertyId',
-    'UIA_LegacyIAccessibleDefaultActionPropertyId',
-    'PropertyConditionFlags_None', 'AnnotationType_FormatChange',
-    'UIA_CustomControlTypeId', 'IUIAutomationElement6',
-    'TreeTraversalOptions_Default', 'RowOrColumnMajor_RowMajor',
-    'UIA_TablePatternId', 'UIA_CalendarControlTypeId',
-    'IUIAutomationRangeValuePattern', 'NavigateDirection_Parent',
-    'OrientationType_Vertical', 'StyleId_Quote',
-    'AnnotationType_GrammarError', 'TextPatternRangeEndpoint_Start',
-    'DockPosition_None', 'UIA_SynchronizedInputPatternId',
-    'NavigateDirection_NextSibling', 'CUIAutomation8',
-    'UIA_IsSelectionItemPatternAvailablePropertyId',
-    'ExpandCollapseState_LeafNode', 'IUIAutomationSelectionPattern',
-    'UIA_SelectionSelectionPropertyId',
-    'UIA_AnnotationAuthorPropertyId',
-    'UIA_Selection2ItemCountPropertyId', 'IUIAutomationDockPattern',
-    'UIA_GridItemRowPropertyId', 'SupportedTextSelection_Multiple',
-    'AnnotationType_ConflictingChange', 'UIA_AppBarControlTypeId',
-    'WindowInteractionState_BlockedByModalWindow',
-    'UIA_GridItemRowSpanPropertyId', 'UIA_StyleNameAttributeId',
-    'UIA_ToolTipControlTypeId', 'UIA_CheckBoxControlTypeId',
-    'UIA_SelectionPatternId', 'UIA_SliderControlTypeId',
-    'UIA_HeaderItemControlTypeId', 'UIA_ProgressBarControlTypeId',
-    'UIA_MenuBarControlTypeId', 'UIA_ImageControlTypeId',
-    'UIA_ControlTypePropertyId', 'UIA_TableRowHeadersPropertyId',
-    'IUIAutomation5', 'UIA_LegacyIAccessibleValuePropertyId',
-    'UIA_SelectionCanSelectMultiplePropertyId',
-    'ProviderOptions_HasNativeIAccessible', 'UIA_GridPatternId',
-    'UIA_WindowWindowInteractionStatePropertyId', 'IUIAutomation3',
-    'UIA_MarginTrailingAttributeId', 'ZoomUnit_LargeIncrement',
-    'UIA_Drag_DragCompleteEventId', 'UIA_ListControlTypeId',
-    'IUIAutomation2', 'UIA_IsSelectionPattern2AvailablePropertyId',
-    'UIA_LegacyIAccessibleDescriptionPropertyId',
-    'UIA_IsEnabledPropertyId', 'StyleId_NumberedList',
-    'IUIAutomationSpreadsheetPattern',
-    'UIA_IsTableItemPatternAvailablePropertyId',
-    'PropertyConditionFlags',
-    'UIA_TextEdit_ConversionTargetChangedEventId',
-    'ConnectionRecoveryBehaviorOptions', 'UIA_ToolTipClosedEventId',
-    'UIA_SelectionItemSelectionContainerPropertyId',
-    'UIA_AcceleratorKeyPropertyId', 'ZoomUnit_NoAmount',
-    'UIA_ControllerForPropertyId',
-    'UIA_OptimizeForVisualContentPropertyId',
-    'AnnotationType_TrackChanges', 'TextEditChangeType_AutoCorrect',
-    'UIA_HorizontalTextAlignmentAttributeId',
-    'UIA_SelectionItem_ElementRemovedFromSelectionEventId',
-    'UIA_MenuModeEndEventId', 'UIA_IsItalicAttributeId',
-    'UIA_IsSpreadsheetItemPatternAvailablePropertyId',
-    'UIA_IsRangeValuePatternAvailablePropertyId',
-    'IUIAutomationSynchronizedInputPattern',
-    'ScrollAmount_SmallIncrement',
-    'UIA_IsItemContainerPatternAvailablePropertyId',
-    'UIA_DescribedByPropertyId',
-    'UIA_IsTextPattern2AvailablePropertyId',
-    'NotificationProcessing_ImportantAll', 'IUIAutomationTextPattern',
-    'CUIAutomation', 'HeadingLevel6', 'UIA_RangeValueValuePropertyId',
-    'UIA_SummaryChangeId', 'AnnotationType_UnsyncedChange',
-    'UIA_MainLandmarkTypeId', 'CoalesceEventsOptions_Disabled',
-    'IUIAutomationDragPattern',
-    'ProviderOptions_RefuseNonClientSupport',
-    'UIA_FullDescriptionPropertyId', 'UIA_Window_WindowClosedEventId',
-    'UIA_IndentationTrailingAttributeId', 'IUIAutomationProxyFactory',
-    'UIA_MultipleViewPatternId', 'StyleId_Heading5',
-    'ConnectionRecoveryBehaviorOptions_Enabled',
-    'NotificationKind_ActionAborted', 'UIA_LiveRegionChangedEventId',
-    'UIA_OrientationPropertyId', 'UIA_ScrollPatternId',
-    'UIA_SearchLandmarkTypeId',
-    'UIA_ScrollVerticalScrollPercentPropertyId',
-    'UIA_HeaderControlTypeId', 'IUIAutomationObjectModelPattern',
-    'WindowVisualState_Normal', 'UIA_DocumentControlTypeId',
-    'PropertyConditionFlags_MatchSubstring',
-    'UIA_AnnotationObjectsPropertyId', 'IUIAutomationInvokePattern',
-    'AnnotationType_MoveChange', 'NotificationProcessing',
-    'UIA_Window_WindowOpenedEventId', 'WindowInteractionState',
-    'IUIAutomationActiveTextPositionChangedEventHandler',
-    'UIA_TransformPattern2Id', 'UIA_TransformCanResizePropertyId',
-    'IUIAutomationSelectionItemPattern',
-    'UIA_SelectionItem_ElementSelectedEventId',
-    'UIA_IsVirtualizedItemPatternAvailablePropertyId',
-    'IUIAutomationEventHandlerGroup', 'TextUnit',
-    'WindowVisualState_Maximized', 'ProviderOptions_UseComThreading',
-    'UIA_ScrollBarControlTypeId', 'UIA_ButtonControlTypeId',
-    'UIA_TextEditPatternId', 'UIA_FormLandmarkTypeId',
-    'UIA_SpreadsheetItemAnnotationObjectsPropertyId',
-    'UIA_RangeValueIsReadOnlyPropertyId', 'UIA_TextChildPatternId',
+    'TextPatternRangeEndpoint_Start', 'UIA_GridItemPatternId',
+    'UIA_WindowPatternId', 'UIA_Text_TextSelectionChangedEventId',
+    'TextEditChangeType_None', 'UIA_IndentationTrailingAttributeId',
+    'ToggleState_Indeterminate', 'StyleId_Title', 'ToggleState_Off',
+    'IUIAutomationGridPattern', 'UIA_Drag_DragCancelEventId',
+    'UIA_TableItemPatternId',
+    'WindowInteractionState_ReadyForUserInteraction',
+    'ConnectionRecoveryBehaviorOptions_Disabled',
+    'UIA_IsActiveAttributeId', 'UIA_AccessKeyPropertyId',
+    'UIA_TabsAttributeId', 'TextEditChangeType_AutoCorrect',
+    'StructureChangeType_ChildRemoved',
+    'TreeTraversalOptions_LastToFirstOrder', 'CUIAutomation',
+    'IUIAutomation', 'NotificationProcessing_ImportantAll',
     'StructureChangeType_ChildrenInvalidated',
-    'UIA_Transform2ZoomLevelPropertyId', 'TextUnit_Page',
-    'IUIAutomationSpreadsheetItemPattern',
-    'NotificationProcessing_All', 'WindowVisualState_Minimized',
-    'UIA_SayAsInterpretAsAttributeId',
-    'UIA_ScrollHorizontallyScrollablePropertyId',
-    'UIA_StylesExtendedPropertiesPropertyId',
-    'UIA_DragDropEffectPropertyId', 'UIA_WindowCanMinimizePropertyId',
-    'NavigateDirection_FirstChild', 'IUIAutomationElement8',
-    'UIA_HelpTextPropertyId', 'ScrollAmount',
-    'UIA_VirtualizedItemPatternId',
-    'UIA_RangeValueLargeChangePropertyId',
-    'IUIAutomationScrollItemPattern', 'UIA_StylesPatternId',
-    'UIA_SplitButtonControlTypeId', 'UIA_IsSuperscriptAttributeId',
-    'UIA_SemanticZoomControlTypeId', 'OrientationType_Horizontal',
-    'UIA_IndentationFirstLineAttributeId',
-    'WindowInteractionState_Running', 'UIA_LevelPropertyId',
-    'WindowInteractionState_Closing', 'IUIAutomationOrCondition',
-    'IUIAutomationBoolCondition', 'UIA_Transform2CanZoomPropertyId',
-    'NotificationKind_Other', 'AnnotationType_AdvancedProofingIssue',
-    'SupportedTextSelection_None', 'UIA_AutomationIdPropertyId',
-    'AutomationElementMode', 'UIA_RangeValueSmallChangePropertyId',
-    'UIA_IsSubscriptAttributeId', 'UIA_VisualEffectsPropertyId',
-    'TextPatternRangeEndpoint', 'OrientationType',
-    'UIA_IsOffscreenPropertyId', 'ZoomUnit_SmallDecrement',
-    'IUIAutomationCacheRequest', 'IUIAutomationAnnotationPattern',
-    'IUIAutomationElement3', 'UIA_DockDockPositionPropertyId',
-    'UIA_MenuModeStartEventId', 'IUIAutomation6', 'UiaChangeInfo',
-    'IUIAutomationTextRange', 'StyleId_Heading2', 'Library',
-    'UIA_TabControlTypeId', 'StyleId_Heading4',
-    'AnnotationType_EditingLockedChange',
-    'UIA_IsDockPatternAvailablePropertyId',
-    'UIA_ToggleToggleStatePropertyId', 'UIA_RotationPropertyId',
-    'UIA_StyleIdAttributeId', 'StructureChangeType_ChildrenBulkAdded',
-    'IUIAutomationElement4', 'UIA_TextFlowDirectionsAttributeId',
-    'UIA_CustomLandmarkTypeId', 'StyleId_Title',
-    'StructureChangeType_ChildrenReordered',
-    'UIA_FontSizeAttributeId', 'NavigateDirection',
-    'TextEditChangeType_None',
-    'UIA_Selection2FirstSelectedItemPropertyId',
-    'NotificationKind_ItemRemoved',
-    'UIA_TableItemColumnHeaderItemsPropertyId', 'StyleId_Heading3',
-    'UIA_FrameworkIdPropertyId', 'UIA_LayoutInvalidatedEventId',
-    'UIA_ItemTypePropertyId', 'UIA_WindowWindowVisualStatePropertyId',
-    'Polite', 'UIA_ValueIsReadOnlyPropertyId',
-    'NotificationKind_ActionCompleted',
-    'WindowInteractionState_NotResponding', 'CoalesceEventsOptions',
-    'UIA_GridItemPatternId', 'TreeScope_Subtree',
-    'CoalesceEventsOptions_Enabled',
-    'UIA_IsScrollPatternAvailablePropertyId',
-    'IUIAutomationLegacyIAccessiblePattern',
-    'IUIAutomationMultipleViewPattern', 'UIA_NotificationEventId',
-    'UIA_ScrollItemPatternId', 'UIA_OutlineThicknessPropertyId',
-    'AnnotationType_Highlighted', 'NotificationKind_ItemAdded',
-    'UIA_CulturePropertyId', 'SynchronizedInputType_LeftMouseDown',
-    'IUIAutomationWindowPattern', 'TextEditChangeType_AutoComplete',
-    'UIA_ExpandCollapseExpandCollapseStatePropertyId',
-    'UIA_SelectionActiveEndAttributeId', 'DockPosition',
-    'TreeTraversalOptions_PostOrder', 'UIA_AccessKeyPropertyId',
-    'IUIAutomationTextEditPattern', 'UIA_OverlineStyleAttributeId',
-    'HeadingLevel7', 'UIA_SelectionItemIsSelectedPropertyId',
-    'TreeScope_Ancestors', 'ProviderOptions_ProviderOwnsSetFocus',
-    'ScrollAmount_SmallDecrement', 'UIA_LabeledByPropertyId',
-    'UIA_GroupControlTypeId', 'NavigateDirection_PreviousSibling',
-    'UIA_IsDragPatternAvailablePropertyId',
-    'UIA_WindowIsModalPropertyId', 'AnnotationType_Author',
-    'UIA_MarginBottomAttributeId', 'UIA_SelectionPattern2Id',
-    'UIA_LiveSettingPropertyId', 'ProviderOptions_OverrideProvider',
+    'UIA_IsReadOnlyAttributeId', 'UIA_AutomationFocusChangedEventId',
+    'UIA_HasKeyboardFocusPropertyId', 'UIA_ThumbControlTypeId',
+    'UIA_ExpandCollapsePatternId',
     'UIA_IsGridItemPatternAvailablePropertyId',
-    'UIA_AnimationStyleAttributeId', 'UIA_BulletStyleAttributeId',
-    'UIA_AnnotationTypesPropertyId', 'AnnotationType_Header',
-    'StyleId_Heading6', 'Off', 'UIA_UnderlineColorAttributeId',
-    'UIA_IsDialogPropertyId', 'ToggleState_Off',
-    'UIA_IsSpreadsheetPatternAvailablePropertyId', 'StyleId_Subtitle',
-    'ProviderOptions', 'AnnotationType_DeletionChange',
-    'StyleId_Heading7', 'AutomationElementMode_None',
-    'UIA_DragDropEffectsPropertyId',
-    'NotificationProcessing_CurrentThenMostRecent',
-    'UIA_TransformCanRotatePropertyId', 'UIA_MarginTopAttributeId',
-    'UIA_DragGrabbedItemsPropertyId', 'UIA_InvokePatternId',
-    'UIA_IsTransformPatternAvailablePropertyId', 'ToggleState_On',
-    'DockPosition_Fill', 'DockPosition_Left',
-    'IUIAutomationTogglePattern', 'UIA_WindowCanMaximizePropertyId',
-    'UIA_ThumbControlTypeId', 'UIA_SpreadsheetItemPatternId',
-    'IUIAutomationNotificationEventHandler',
-    'IUIAutomationTextRange2', 'TextUnit_Paragraph',
-    'ToggleState_Indeterminate',
-    'UIA_StylesFillPatternColorPropertyId',
-    'UIA_IsTextChildPatternAvailablePropertyId',
-    'UIA_IsTextPatternAvailablePropertyId', 'HeadingLevel1',
-    'UIA_LinkAttributeId', 'UIA_SayAsInterpretAsMetadataId',
-    'TreeScope_Parent', 'IUIAutomationGridItemPattern',
-    'UIA_LegacyIAccessibleRolePropertyId',
-    'SupportedTextSelection_Single', 'TreeScope_Children',
-    'HeadingLevel5', 'ExpandCollapseState_PartiallyExpanded',
-    'UIA_GridItemContainingGridPropertyId',
-    'UIA_IsCustomNavigationPatternAvailablePropertyId',
-    'AnnotationType_DataValidationError',
-    'UIA_ScrollVerticalViewSizePropertyId', 'UIA_TextPattern2Id',
-    'UIA_StrikethroughStyleAttributeId', 'UIA_MenuClosedEventId',
-    'RowOrColumnMajor', 'TreeScope_None', 'UIA_IsActiveAttributeId',
-    'UIA_OutlineStylesAttributeId', 'UIA_StructureChangedEventId',
-    'IUIAutomationTextPattern2', 'IUIAutomationTablePattern',
-    'UIA_AriaRolePropertyId', 'UIA_ValuePatternId',
-    'IUIAutomationScrollPattern',
-    'UIA_DropTargetDropTargetEffectsPropertyId',
-    'UIA_HostedFragmentRootsInvalidatedEventId', 'TextUnit_Format',
-    'UIA_TreeControlTypeId',
+    'UIA_DropTarget_DroppedEventId', 'AnnotationType_Highlighted',
+    'UIA_WindowWindowInteractionStatePropertyId',
+    'AnnotationType_EditingLockedChange',
+    'WindowVisualState_Maximized', 'UIA_SelectionPatternId',
+    'SupportedTextSelection_None', 'UIA_InputReachedTargetEventId',
+    'UIA_WindowIsModalPropertyId',
+    'UIA_IsKeyboardFocusablePropertyId', 'UIA_CapStyleAttributeId',
+    'UIA_TableItemRowHeaderItemsPropertyId', 'LiveSetting',
+    'UIA_CultureAttributeId', 'AnnotationType_Header',
+    'StructureChangeType_ChildrenBulkRemoved', 'StyleId_Heading1',
+    'RowOrColumnMajor_ColumnMajor', 'StyleId_Custom', 'IAccessible',
+    'UIA_NativeWindowHandlePropertyId',
     'UIA_ScrollVerticallyScrollablePropertyId',
-    'UIA_AfterParagraphSpacingAttributeId',
-    'UIA_StylesStyleIdPropertyId', 'ZoomUnit',
-    'UIA_ItemContainerPatternId', 'OrientationType_None',
-    'UIA_WindowIsTopmostPropertyId', 'UIA_ListItemControlTypeId',
+    'IUIAutomationElement3',
+    'UIA_IsSelectionPattern2AvailablePropertyId', 'HeadingLevel4',
+    'TreeScope', 'UIA_GridItemContainingGridPropertyId',
+    'UIA_Selection2LastSelectedItemPropertyId',
+    'UIA_Window_WindowClosedEventId', 'IUIAutomation2',
+    'IUIAutomationProxyFactoryMapping',
+    'CoalesceEventsOptions_Disabled',
+    'UIA_SayAsInterpretAsAttributeId', 'ExpandCollapseState',
+    'IUIAutomationProxyFactory', 'UIA_SystemAlertEventId',
+    'SynchronizedInputType_KeyDown', 'StyleId_Heading8',
+    'OrientationType_Horizontal', 'IUIAutomationTransformPattern',
+    'IUIAutomationSelectionItemPattern', 'UIA_HyperlinkControlTypeId',
+    'UIA_BoundingRectanglePropertyId',
+    'ProviderOptions_UseComThreading', 'AnnotationType_TrackChanges',
+    'UIA_ImageControlTypeId', 'IUIAutomationEventHandler',
+    'UIA_IsContentElementPropertyId',
+    'IUIAutomationStructureChangedEventHandler',
+    'ConnectionRecoveryBehaviorOptions_Enabled', 'StyleId_Subtitle',
+    'ZoomUnit_NoAmount', 'UIA_RotationPropertyId',
+    'UIA_VirtualizedItemPatternId', 'AnnotationType_FormatChange',
+    'UIA_NavigationLandmarkTypeId', 'NotificationKind_ActionAborted',
+    'AnnotationType_MoveChange', 'IUIAutomationDockPattern',
+    'typelib_path', 'IUIAutomationInvokePattern',
+    'NotificationKind_ActionCompleted',
+    'UIA_HorizontalTextAlignmentAttributeId', 'UIA_TextPatternId',
+    'WindowInteractionState_Closing', 'HeadingLevel7',
+    'UIA_StyleNameAttributeId', 'UIA_UnderlineColorAttributeId',
+    'TextEditChangeType_Composition', 'TextPatternRangeEndpoint',
+    'UIA_ProgressBarControlTypeId',
+    'UIA_OptimizeForVisualContentPropertyId', 'DockPosition_Left',
+    'UIA_AriaRolePropertyId', 'UIA_ItemStatusPropertyId',
+    'UIA_CustomNavigationPatternId', 'IUIAutomationTablePattern',
+    'UIA_IsTransformPattern2AvailablePropertyId',
+    'UIA_StylesFillPatternStylePropertyId',
+    'UIA_IsItemContainerPatternAvailablePropertyId',
+    'UIA_IsHiddenAttributeId',
+    'TextEditChangeType_CompositionFinalized',
+    'IUIAutomationWindowPattern', 'UIA_Text_TextChangedEventId',
+    'UIA_AnnotationTypesPropertyId',
+    'UIA_BeforeParagraphSpacingAttributeId',
+    'IUIAutomationTextChildPattern', 'StyleId_Normal',
+    'UIA_SpreadsheetItemFormulaPropertyId', 'UIA_GridPatternId',
+    'UIA_TextPattern2Id', 'IRawElementProviderSimple',
+    'UIA_IsWindowPatternAvailablePropertyId',
+    'IUIAutomationTextEditTextChangedEventHandler',
+    'UIA_TableControlTypeId', 'UIA_IsTextPattern2AvailablePropertyId',
+    'ZoomUnit', 'CoalesceEventsOptions_Enabled',
+    'IUIAutomationElement', 'StyleId_Heading3',
+    'UIA_GroupControlTypeId', 'ExpandCollapseState_LeafNode',
     'TextUnit_Character',
+    'NotificationProcessing_ImportantCurrentThenMostRecent',
+    'UIA_IsDataValidForFormPropertyId', 'UIA_TabItemControlTypeId',
+    'AnnotationType_Comment', 'IUIAutomationTextRange',
+    'IUIAutomationElement6', 'IUIAutomationCustomNavigationPattern',
+    'UIA_SelectionItem_ElementRemovedFromSelectionEventId',
+    'UIA_Drag_DragCompleteEventId', 'UIA_AppBarControlTypeId',
+    'ProviderOptions_HasNativeIAccessible', 'UIA_MenuControlTypeId',
+    'UIA_TransformCanRotatePropertyId',
+    'UIA_IsSynchronizedInputPatternAvailablePropertyId',
+    'ZoomUnit_LargeIncrement', 'UIA_LiveSettingPropertyId',
+    'UIA_VisualEffectsPropertyId', 'UIA_AsyncContentLoadedEventId',
+    'UIA_FontSizeAttributeId', 'UIA_DockDockPositionPropertyId',
+    'UIA_IsOffscreenPropertyId', 'UIA_RangeValueIsReadOnlyPropertyId',
+    'SynchronizedInputType', 'UIA_FullDescriptionPropertyId',
+    'IUIAutomationProxyFactoryEntry', 'UIA_LiveRegionChangedEventId',
+    'UIA_OutlineStylesAttributeId', 'AnnotationType_SpellingError',
+    'UIA_InputDiscardedEventId', 'UIA_DragDropEffectPropertyId',
+    'TextUnit_Document', 'ExtendedProperty',
+    'UIA_AnnotationPatternId', 'IUIAutomationTableItemPattern',
+    'AnnotationType_GrammarError', 'UIA_RadioButtonControlTypeId',
+    'ProviderOptions_ClientSideProvider',
+    'IUIAutomationTransformPattern2', 'NotificationProcessing',
+    'UIA_RuntimeIdPropertyId', 'UIA_ToggleToggleStatePropertyId',
+    'IUIAutomationNotificationEventHandler',
+    'UIA_Drag_DragStartEventId',
+    'UIA_StylesFillPatternColorPropertyId',
+    'AnnotationType_DataValidationError',
+    'UIA_ScrollVerticalScrollPercentPropertyId',
+    'UIA_LandmarkTypePropertyId',
+    'ProviderOptions_RefuseNonClientSupport',
+    'UIA_SelectionItemSelectionContainerPropertyId',
+    'UIA_IndentationLeadingAttributeId', 'ZoomUnit_LargeDecrement',
+    'UIA_FillColorPropertyId', 'UIA_StylesStyleNamePropertyId',
+    'TextUnit_Page', 'UIA_SpinnerControlTypeId',
+    'UIA_DragIsGrabbedPropertyId', 'UIA_SplitButtonControlTypeId',
+    'AnnotationType_Footnote',
+    'UIA_IsTextEditPatternAvailablePropertyId',
+    'ScrollAmount_SmallIncrement', 'UIA_IsItalicAttributeId',
+    'UIA_NamePropertyId', 'UIA_IsTextChildPatternAvailablePropertyId',
+    'UIA_Transform2ZoomLevelPropertyId',
+    'UIA_Transform2ZoomMinimumPropertyId', 'UIA_DockPatternId',
+    'HeadingLevel2', 'TextUnit_Format',
+    'UIA_WindowIsTopmostPropertyId',
+    'UIA_IsMultipleViewPatternAvailablePropertyId',
+    'UIA_OrientationPropertyId', 'UIA_ListItemControlTypeId',
+    'UIA_ScrollBarControlTypeId', 'NotificationKind_ItemAdded',
+    'IUIAutomationTextPattern2', 'UIA_Invoke_InvokedEventId',
+    'IUIAutomationSpreadsheetItemPattern',
+    'UIA_Selection2FirstSelectedItemPropertyId',
+    'UIA_SearchLandmarkTypeId',
+    'UIA_IsTablePatternAvailablePropertyId',
+    'SynchronizedInputType_RightMouseDown', 'UIA_IsEnabledPropertyId',
+    'DockPosition_None', 'DockPosition_Top', 'TreeScope_Children',
+    'UIA_IsTogglePatternAvailablePropertyId',
+    'TreeTraversalOptions_PostOrder',
+    'ProviderOptions_NonClientAreaProvider',
+    'UIA_SpreadsheetItemPatternId', 'UIA_FontNameAttributeId',
+    'TreeScope_Ancestors', 'UIA_TextChildPatternId',
+    'UIA_ChangesEventId', 'StyleId_Emphasis',
+    'UIA_Selection2ItemCountPropertyId', 'UIA_IsDialogPropertyId',
+    'UIA_TreeControlTypeId', 'UIA_IsPeripheralPropertyId',
+    'UIA_FormLandmarkTypeId', 'UIA_TextControlTypeId',
+    'UIA_OverlineColorAttributeId',
+    'UIA_IsObjectModelPatternAvailablePropertyId',
+    'UIA_IsSubscriptAttributeId', 'IUIAutomationItemContainerPattern',
+    'IUIAutomationObjectModelPattern', 'NotificationKind',
+    'IUIAutomationSynchronizedInputPattern', 'NavigateDirection',
+    'UIA_LegacyIAccessibleValuePropertyId',
+    'UIA_IsScrollItemPatternAvailablePropertyId', 'RowOrColumnMajor',
+    'UIA_PositionInSetPropertyId', 'UIA_HeadingLevelPropertyId',
+    'UIA_TableItemColumnHeaderItemsPropertyId',
+    'IUIAutomationScrollItemPattern',
+    'ProviderOptions_OverrideProvider', 'StyleId_Quote',
+    'IUIAutomationTreeWalker', 'UIA_HeaderControlTypeId',
+    'NavigateDirection_LastChild',
+    'UIA_LegacyIAccessibleRolePropertyId', 'UIA_MenuOpenedEventId',
+    'IUIAutomationFocusChangedEventHandler',
+    'UIA_WindowWindowVisualStatePropertyId',
+    'UIA_MarginTrailingAttributeId', 'CoalesceEventsOptions',
+    'UIA_MainLandmarkTypeId', 'IUIAutomationSpreadsheetPattern',
+    'UIA_IsGridPatternAvailablePropertyId',
+    'IUIAutomationTextEditPattern', 'UIA_MenuModeStartEventId',
+    'Assertive', 'UIA_IndentationFirstLineAttributeId',
+    'SynchronizedInputType_LeftMouseDown', 'UIA_DragPatternId',
+    'ProviderOptions_ProviderOwnsSetFocus',
+    'UIA_StylesExtendedPropertiesPropertyId',
+    'UIA_IsControlElementPropertyId', 'UIA_SummaryChangeId',
+    'UiaChangeInfo', 'IUIAutomationCacheRequest',
+    'IUIAutomationElementArray', 'UIA_SayAsInterpretAsMetadataId',
+    'NavigateDirection_NextSibling', 'UIA_SliderControlTypeId',
+    'UIA_EditControlTypeId', 'WindowInteractionState_NotResponding',
+    'UIA_IsRequiredForFormPropertyId',
+    'UIA_LegacyIAccessiblePatternId', 'UIA_LevelPropertyId',
+    'UIA_LegacyIAccessibleKeyboardShortcutPropertyId',
+    'UIA_WindowCanMaximizePropertyId',
+    'AnnotationType_ExternalChange', 'UIA_SizeOfSetPropertyId',
+    'AnnotationType_FormulaError', 'UIA_OverlineStyleAttributeId',
+    'TextEditChangeType', 'NotificationProcessing_All',
+    'UIA_TransformCanResizePropertyId', 'UIA_SeparatorControlTypeId',
+    'UIA_WindowControlTypeId',
+    'UIA_IsSelectionPatternAvailablePropertyId',
+    'SynchronizedInputType_KeyUp', 'UIA_IsSuperscriptAttributeId',
+    'UIA_ButtonControlTypeId', 'IUIAutomationTogglePattern',
+    'UIA_OutlineThicknessPropertyId', 'TextUnit_Paragraph', 'Off',
+    'HeadingLevel3', 'UIA_ToolTipOpenedEventId',
+    'UIA_IsVirtualizedItemPatternAvailablePropertyId',
+    'UIA_ToolBarControlTypeId', 'UIA_ControlTypePropertyId',
+    'IUIAutomationDragPattern', 'UIA_LineSpacingAttributeId',
+    'UIA_BulletStyleAttributeId', 'IUIAutomationSelectionPattern2',
+    'UIA_TextEdit_ConversionTargetChangedEventId',
+    'WindowVisualState_Normal', 'NotificationProcessing_MostRecent',
+    'UIA_RangeValueValuePropertyId', 'UIA_SemanticZoomControlTypeId',
+    'UIA_StatusBarControlTypeId', 'IUIAutomationValuePattern',
+    'UIA_CalendarControlTypeId', 'UIA_Window_WindowOpenedEventId',
+    'UIA_MultipleViewSupportedViewsPropertyId', 'StyleId_Heading5',
+    'UIA_DragGrabbedItemsPropertyId', 'UIA_LinkAttributeId',
+    'TreeScope_None', 'UIA_DropTarget_DragLeaveEventId',
+    'ToggleState_On', 'UIA_IsSelectionItemPatternAvailablePropertyId',
+    'ScrollAmount_LargeDecrement', 'UIA_AutomationIdPropertyId',
+    'SynchronizedInputType_RightMouseUp', 'SupportedTextSelection',
+    'NotificationKind_ItemRemoved', 'IUIAutomationGridItemPattern',
+    'UIA_TransformPattern2Id', 'UIA_DragDropEffectsPropertyId',
+    'UIA_MarginBottomAttributeId', 'AnnotationType_DeletionChange',
+    'UIA_RangeValueMaximumPropertyId',
+    'UIA_ProviderDescriptionPropertyId', 'UIA_LabeledByPropertyId',
+    'AutomationElementMode_None', 'UIA_SizePropertyId',
+    'StyleId_NumberedList', 'UIA_StylesStyleIdPropertyId',
+    'AnnotationType_Sensitive', 'UIA_DataGridControlTypeId',
+    'UIA_SpreadsheetPatternId', 'UIA_CaretPositionAttributeId',
+    'UIA_SelectionItem_ElementAddedToSelectionEventId',
+    'UIA_ComboBoxControlTypeId', 'WindowInteractionState',
+    'ConnectionRecoveryBehaviorOptions',
+    'UIA_BackgroundColorAttributeId', 'IUIAutomationTextRangeArray',
+    'UIA_SpreadsheetItemAnnotationTypesPropertyId',
+    'UIA_StylesFillColorPropertyId',
+    'UIA_AnnotationObjectsPropertyId', 'IUIAutomationElement9',
+    'UIA_Transform2CanZoomPropertyId', 'UIA_ItemContainerPatternId',
+    'UIA_LegacyIAccessibleHelpPropertyId',
+    'UIA_LegacyIAccessibleSelectionPropertyId',
+    'RowOrColumnMajor_RowMajor',
+    'IUIAutomationLegacyIAccessiblePattern', 'UIA_TogglePatternId',
+    'Polite', 'UIA_AnnotationAnnotationTypeIdPropertyId',
+    'IUIAutomationAnnotationPattern', 'CUIAutomation8',
+    'ExpandCollapseState_PartiallyExpanded', 'UIA_TablePatternId',
+    'NotificationKind_Other',
+    'UIA_AnnotationAnnotationTypeNamePropertyId',
+    'UIA_SelectionItem_ElementSelectedEventId',
+    'UIA_IsTransformPatternAvailablePropertyId',
+    'UIA_MultipleViewCurrentViewPropertyId',
+    'UIA_StylesShapePropertyId',
+    'AnnotationType_AdvancedProofingIssue',
+    'UIA_AfterParagraphSpacingAttributeId', 'UIA_FlowsToPropertyId',
+    'UIA_SelectionItemPatternId', 'UIA_AriaPropertiesPropertyId',
+    'ZoomUnit_SmallDecrement', 'UIA_SelectionPattern2Id',
+    'TextUnit_Word', 'UIA_TextEdit_TextChangedEventId',
+    'IUIAutomationStylesPattern', 'TextUnit',
+    'RowOrColumnMajor_Indeterminate',
+    'IUIAutomationDropTargetPattern',
+    'UIA_SelectionIsSelectionRequiredPropertyId',
+    'UIA_SelectionItemIsSelectedPropertyId',
+    'UIA_RangeValueMinimumPropertyId',
+    'WindowInteractionState_Running', 'UIA_MultipleViewPatternId',
+    'UIA_HeaderItemControlTypeId', 'TreeTraversalOptions',
+    'UIA_ValueValuePropertyId', 'UIA_ListControlTypeId',
+    'UIA_ScrollHorizontalViewSizePropertyId',
+    'UIA_DropTargetDropTargetEffectsPropertyId',
+    'UIA_TabControlTypeId', 'UIA_IsPasswordPropertyId',
+    'UIA_IsExpandCollapsePatternAvailablePropertyId',
+    'ZoomUnit_SmallIncrement', 'UIA_DropTargetPatternId',
+    'UIA_InputReachedOtherElementEventId',
+    'UIA_RangeValueLargeChangePropertyId',
+    'WindowVisualState_Minimized',
+    'UIA_IsDropTargetPatternAvailablePropertyId',
+    'UIA_DescribedByPropertyId', 'UIA_ProcessIdPropertyId',
+    'ScrollAmount_NoAmount', 'PropertyConditionFlags_MatchSubstring',
+    'IUIAutomation5', 'StructureChangeType_ChildrenBulkAdded',
+    'UIA_FillTypePropertyId', 'UIA_SynchronizedInputPatternId',
+    'UIA_ScrollHorizontalScrollPercentPropertyId',
+    'UIA_IsSpreadsheetItemPatternAvailablePropertyId',
+    'AnnotationType_InsertionChange', 'UIA_FrameworkIdPropertyId',
+    'UIA_IsLegacyIAccessiblePatternAvailablePropertyId',
+    'TreeScope_Element', 'StyleId_Heading6', 'HeadingLevel9',
+    'PropertyConditionFlags', 'AutomationElementMode',
+    'UIA_SpreadsheetItemAnnotationObjectsPropertyId',
+    'UIA_IsRangeValuePatternAvailablePropertyId',
+    'PropertyConditionFlags_None',
+    'UIA_TableRowOrColumnMajorPropertyId',
+    'IUIAutomationScrollPattern', 'OrientationType',
+    'UIA_MenuItemControlTypeId', 'UIA_TransformPatternId',
+    'IUIAutomationElement5', 'ProviderOptions_UseClientCoordinates',
+    'UIA_CustomLandmarkTypeId',
+    'UIA_IsSpreadsheetPatternAvailablePropertyId',
+    'ScrollAmount_SmallDecrement',
+    'UIA_LegacyIAccessibleDefaultActionPropertyId',
+    'UIA_IsInvokePatternAvailablePropertyId', 'StyleId_Heading9',
+    'UIA_LegacyIAccessibleNamePropertyId', 'UIA_CustomControlTypeId',
+    'ExpandCollapseState_Expanded',
+    'UIA_ScrollVerticalViewSizePropertyId',
+    'UIA_GridColumnCountPropertyId', 'TreeScope_Parent',
+    'IUIAutomationOrCondition', 'UIA_TreeItemControlTypeId',
+    'UIA_ValueIsReadOnlyPropertyId',
+    'UIA_HostedFragmentRootsInvalidatedEventId',
+    'IUIAutomationActiveTextPositionChangedEventHandler',
+    'UIA_LocalizedLandmarkTypePropertyId',
+    'UIA_IsTableItemPatternAvailablePropertyId', 'Library',
+    'TreeScope_Descendants',
+    'UIA_LegacyIAccessibleDescriptionPropertyId',
+    'UIA_IsCustomNavigationPatternAvailablePropertyId',
+    'UIA_TextEditPatternId', 'UIA_ValuePatternId',
+    'IUIAutomationElement2', 'StructureChangeType_ChildAdded',
+    'IUIAutomationNotCondition', 'UIA_TextFlowDirectionsAttributeId',
+    'UIA_MenuClosedEventId', 'IUIAutomationSelectionPattern',
+    'UIA_AnnotationTargetPropertyId', 'UIA_StructureChangedEventId',
+    'UIA_StyleIdAttributeId', 'TextUnit_Line',
+    'UIA_IsAnnotationPatternAvailablePropertyId',
+    'UIA_ToolTipClosedEventId', 'UIA_HelpTextPropertyId',
+    'UIA_TransformCanMovePropertyId', 'UIA_ItemTypePropertyId',
+    'UIA_ForegroundColorAttributeId',
+    'WindowInteractionState_BlockedByModalWindow',
+    'UIA_IsDragPatternAvailablePropertyId', 'IUIAutomation4',
+    'UIA_ClassNamePropertyId', 'UIA_CenterPointPropertyId',
+    'AnnotationType_ConflictingChange',
+    'UIA_IsTextPatternAvailablePropertyId', 'DockPosition_Right',
+    'NavigateDirection_FirstChild',
+    'UIA_GridItemColumnSpanPropertyId',
+    'UIA_SelectionActiveEndAttributeId',
+    'UIA_RangeValueSmallChangePropertyId', 'UIA_PaneControlTypeId',
+    'UIA_LegacyIAccessibleStatePropertyId',
+    'IUIAutomationPropertyChangedEventHandler',
+    'UIA_AutomationPropertyChangedEventId',
+    'UIA_Selection_InvalidatedEventId', 'HeadingLevel1',
+    'UIA_AnnotationObjectsAttributeId',
+    'IUIAutomationRangeValuePattern',
+    'UIA_DropTarget_DragEnterEventId', 'UIA_TitleBarControlTypeId',
+    'UIA_WindowCanMinimizePropertyId',
+    'UIA_GridItemRowSpanPropertyId',
+    'SupportedTextSelection_Multiple', 'DockPosition_Fill',
+    'IUIAutomationBoolCondition', 'StyleId_Heading4',
+    'NavigateDirection_Parent', 'TreeScope_Subtree',
+    'UIA_StrikethroughColorAttributeId', 'IUIAutomationTextPattern',
+    'IUIAutomationCondition', 'TextPatternRangeEndpoint_End',
+    'AnnotationType_CircularReferenceError', 'ScrollAmount',
+    'UIA_StylesPatternId', 'AnnotationType_Mathematics',
+    'HeadingLevel6', 'HeadingLevel_None',
+    'UIA_OutlineColorPropertyId', 'HeadingLevel5',
+    'UIA_SelectionSelectionPropertyId',
+    'UIA_AnimationStyleAttributeId',
+    'UIA_IsValuePatternAvailablePropertyId', 'StyleId_Heading2',
+    'UIA_ScrollItemPatternId', 'ProviderOptions',
+    'ExpandCollapseState_Collapsed', 'IUIAutomationTextRange2',
+    'UIA_ScrollPatternId', 'UIA_TableRowHeadersPropertyId',
+    'IUIAutomationTextRange3', 'UIA_MarginTopAttributeId',
+    'ProviderOptions_ServerSideProvider', 'IUIAutomationAndCondition',
+    'UIA_ControllerForPropertyId',
+    'UIA_ExpandCollapseExpandCollapseStatePropertyId',
+    'TreeTraversalOptions_Default', 'UIA_DocumentControlTypeId',
+    'StructureChangeType', 'UIA_ActiveTextPositionChangedEventId',
+    'WindowVisualState', 'UIA_DropTargetDropTargetEffectPropertyId',
+    'AnnotationType_Author', 'UIA_MarginLeadingAttributeId',
+    'UIA_InvokePatternId',
+    'NotificationProcessing_CurrentThenMostRecent',
+    'DockPosition_Bottom', 'UIA_MenuBarControlTypeId',
+    'UIA_StrikethroughStyleAttributeId', 'OrientationType_None',
+    'IUIAutomationElement4', 'AnnotationType_UnsyncedChange',
+    'UIA_UnderlineStyleAttributeId',
+    'SynchronizedInputType_LeftMouseUp',
+    'IUIAutomationEventHandlerGroup',
+    'UIA_IsDockPatternAvailablePropertyId',
     'NotificationProcessing_ImportantMostRecent',
-    'UIA_IsControlElementPropertyId', 'AnnotationType_Footnote',
-    'UIA_LocalizedLandmarkTypePropertyId', 'IUIAutomationElement2',
-    'AnnotationType_ExternalChange'
+    'IUIAutomationExpandCollapsePattern',
+    'UIA_IsScrollPatternAvailablePropertyId',
+    'AnnotationType_Endnote', 'IUIAutomation3',
+    'AnnotationType_Unknown', 'UIA_ObjectModelPatternId',
+    'ToggleState', 'IUIAutomation6',
+    'IUIAutomationChangesEventHandler',
+    'UIA_AcceleratorKeyPropertyId',
+    'UIA_LegacyIAccessibleChildIdPropertyId',
+    'UIA_CheckBoxControlTypeId', 'AutomationElementMode_Full',
+    'ScrollAmount_LargeIncrement', 'IUIAutomationPropertyCondition',
+    'HeadingLevel8', 'UIA_GridItemRowPropertyId',
+    'SupportedTextSelection_Single', 'IUIAutomationElement7',
+    'StyleId_Heading7', 'UIA_DataItemControlTypeId',
+    'UIA_ToolTipControlTypeId', 'UIA_GridItemColumnPropertyId',
+    'IUIAutomationElement8', 'UIA_GridRowCountPropertyId',
+    'UIA_ClickablePointPropertyId', 'UIA_RangeValuePatternId',
+    'TextEditChangeType_AutoComplete', 'AnnotationType_Footer',
+    'UIA_CaretBidiModeAttributeId',
+    'StructureChangeType_ChildrenReordered',
+    'UIA_SelectionCanSelectMultiplePropertyId',
+    'NavigateDirection_PreviousSibling',
+    'UIA_ScrollHorizontallyScrollablePropertyId',
+    'UIA_LayoutInvalidatedEventId', 'UIA_CulturePropertyId',
+    'UIA_MenuModeEndEventId', 'StyleId_BulletedList',
+    'UIA_Transform2ZoomMaximumPropertyId',
+    'UIA_AnnotationDateTimePropertyId',
+    'UIA_TableColumnHeadersPropertyId',
+    'UIA_LocalizedControlTypePropertyId',
+    'UIA_AnnotationAuthorPropertyId',
+    'PropertyConditionFlags_IgnoreCase', 'OrientationType_Vertical'
 ]
 
 _check_version('1.4.16', 1786530295.670600)
