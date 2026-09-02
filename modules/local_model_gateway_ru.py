@@ -468,10 +468,29 @@ MANAGED_ATTACH_PAYLOAD_KEYS = frozenset(
 )
 
 
+_CU_DEBUG_MAX_BYTES = 4 * 1024 * 1024
+
+
 def _cu_debug(event: str, payload: Mapping[str, Any]) -> None:
-    """Temporary bounded local trace for Computer Use turn diagnosis."""
+    """Temporary bounded local trace for Computer Use turn diagnosis.
+
+    Rotated: when the file exceeds _CU_DEBUG_MAX_BYTES it is renamed to
+    `<name>.1` (replacing the previous .1) and a fresh file starts, so an
+    append-only trace cannot grow without bound (audit BUG-10).
+    """
     try:
-        path = Path(os.environ.get("LOCALCOMET_CU_DEBUG_PATH", r"C:\Users\DNS\AppData\Local\Temp\localcomet-cu-debug.txt"))
+        default_trace = Path(os.environ.get("TEMP", os.environ.get("TMP", str(Path.home())))) / (
+            "localcomet-cu-debug.txt"
+        )
+        path = Path(os.environ.get("LOCALCOMET_CU_DEBUG_PATH") or default_trace)
+        try:
+            if path.stat().st_size > _CU_DEBUG_MAX_BYTES:
+                rotated = path.with_name(path.name + ".1")
+                if rotated.exists():
+                    rotated.unlink()
+                path.rename(rotated)
+        except OSError:
+            pass
         record = {"event": event, "payload": dict(payload), "unix_ms": int(time.time() * 1000)}
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
