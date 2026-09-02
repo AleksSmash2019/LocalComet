@@ -215,6 +215,33 @@ struct ManagedRuntimeInner {
     next_startup_generation: u64,
     stdout_tail: Arc<Mutex<LogTail>>,
     stderr_tail: Arc<Mutex<LogTail>>,
+    /// BUG-6: parameters of the last successful launch, kept so an unexpected
+    /// llama.cpp death can be restarted automatically without user input.
+    last_launch: Option<LastLaunch>,
+    /// Bounded consecutive auto-restarts; reset on any successful start or on
+    /// an explicit stop, so a broken model/runtime cannot loop forever.
+    auto_restart_attempts: u32,
+}
+
+/// Snapshot of the inputs needed to re-run the last launch.
+#[derive(Clone, Debug)]
+pub(crate) struct LastLaunch {
+    pub model_id: String,
+    pub custom_sha256: Option<String>,
+    pub runtime_id: Option<String>,
+    pub ctx_size_override: Option<u32>,
+    pub gpu_layers_override: Option<u32>,
+}
+
+const MAX_AUTO_RESTART_ATTEMPTS: u32 = 3;
+
+#[derive(Clone, Debug)]
+struct AutoRestartParams {
+    model_id: String,
+    custom_sha256: Option<String>,
+    runtime_id: Option<String>,
+    ctx_size_override: Option<u32>,
+    gpu_layers_override: Option<u32>,
 }
 
 impl Default for ManagedRuntimeInner {
@@ -231,6 +258,8 @@ impl Default for ManagedRuntimeInner {
             next_startup_generation: 0,
             stdout_tail: Arc::new(Mutex::new(LogTail::default())),
             stderr_tail: Arc::new(Mutex::new(LogTail::default())),
+            last_launch: None,
+            auto_restart_attempts: 0,
         }
     }
 }
@@ -277,7 +306,17 @@ impl ManagedRuntimeSupervisor {
                 None
             }
         };
+        // BUG-6: an unexpected llama.cpp death without a user-initiated stop is
+        // auto-restarted (bounded attempts) from the captured last-launch
+        // parameters. start() re-acquires the transition lock itself, so the
+        // inner lock is released before that call.
+        let mut auto_restart: Option<AutoRestartParams> = None;
         if let Some(active) = exited {
+            let user_requested_stop = {
+                let inner = self.inner.lock().expect("managed runtime lock poisoned");
+                inner.state == ManagedRuntimeState::Stopping
+                    || inner.state == ManagedRuntimeState::Stopped
+            };
             let _ = bridge.request(ControlPlaneMethod::ModelManagedDetach, json!({}));
             Self::dispose_active(active, false, SHUTDOWN_TIMEOUT);
             let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
@@ -287,6 +326,48 @@ impl ManagedRuntimeSupervisor {
                 inner.inference_ready = false;
                 inner.loading_phase = None;
             }
+            if !user_requested_stop {
+                if let Some(last) = inner.last_launch.clone() {
+                    if inner.auto_restart_attempts < MAX_AUTO_RESTART_ATTEMPTS {
+                        inner.auto_restart_attempts += 1;
+                        inner.last_error = Some(format!(
+                            "managed runtime exited; auto-restart attempt {}/{}",
+                            inner.auto_restart_attempts, MAX_AUTO_RESTART_ATTEMPTS
+                        ));
+                        auto_restart = Some(AutoRestartParams {
+                            model_id: last.model_id,
+                            custom_sha256: last.custom_sha256,
+                            runtime_id: last.runtime_id,
+                            ctx_size_override: last.ctx_size_override,
+                            gpu_layers_override: last.gpu_layers_override,
+                        });
+                    } else {
+                        inner.last_error = Some(format!(
+                            "managed runtime exited; auto-restart limit ({MAX_AUTO_RESTART_ATTEMPTS}) reached"
+                        ));
+                    }
+                }
+            }
+        }
+        if let Some(params) = auto_restart {
+            let AutoRestartParams {
+                model_id,
+                custom_sha256,
+                runtime_id,
+                ctx_size_override,
+                gpu_layers_override,
+            } = params;
+            // Best-effort synchronous restart; start() re-acquires the
+            // transition lock and records its own connection events. Errors
+            // are settled into Failed by start() itself.
+            let _ = self.start(
+                &model_id,
+                custom_sha256.as_deref(),
+                runtime_id.as_deref(),
+                bridge,
+                ctx_size_override,
+                gpu_layers_override,
+            );
         }
 
         let runtime_in_use = {
@@ -597,6 +678,17 @@ impl ManagedRuntimeSupervisor {
         match self.complete_start(&attempt) {
             Ok(()) => {
                 self.record_connection_event("connect", "success", "LC_MODEL_CONNECT_000", "ready");
+                {
+                    let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+                    inner.last_launch = Some(crate::managed_runtime::LastLaunch {
+                        model_id: model_id.to_string(),
+                        custom_sha256: custom_sha256.map(str::to_string),
+                        runtime_id: runtime_id.map(str::to_string),
+                        ctx_size_override,
+                        gpu_layers_override,
+                    });
+                    inner.auto_restart_attempts = 0;
+                }
                 Ok(response)
             }
             Err(error) => Err(self.settle_start_failure(&attempt, error, bridge, true)),
@@ -607,6 +699,13 @@ impl ManagedRuntimeSupervisor {
         &self,
         bridge: &ControlPlaneBridge,
     ) -> Result<ManagedRuntimeStopResponse, BridgeError> {
+        // Explicit stop: the user decided the runtime should stay down, so no
+        // auto-restart may fire from a later status() poll.
+        {
+            let mut inner = self.inner.lock().expect("managed runtime lock poisoned");
+            inner.auto_restart_attempts = 0;
+            inner.last_launch = None;
+        }
         let deadline = Instant::now() + SHUTDOWN_TIMEOUT;
         let (active, final_state) = {
             let _transition = self
@@ -1847,6 +1946,58 @@ fn cpu_thread_arguments(physical_cores: Option<usize>, logical_cores: usize) -> 
     ]
 }
 
+/// Adaptive harness: pre-launch hardware profile. Gathers the full machine
+/// picture (physical/logical cores, total and available RAM, optional VRAM
+/// summary from the device probe) and derives launch parameters that lean
+/// optimistic instead of conservative-minimal:
+///  - context tiers go UP with available RAM (8k -> 16k -> 32k), the old
+///    fixed 2k/4k "starvation" defaults only appear when RAM truly is scarce;
+///  - batch size scales with physical core count.
+#[derive(Clone, Debug)]
+pub(crate) struct AdaptiveHarnessProfile {
+    pub physical_cores: usize,
+    pub available_ram_gb: f64,
+}
+
+impl AdaptiveHarnessProfile {
+    pub(crate) fn collect() -> Self {
+        let mut sys = sysinfo::System::new_all();
+        sys.refresh_memory();
+        let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
+        Self {
+            physical_cores: sys.physical_core_count().unwrap_or(4).max(1),
+            available_ram_gb,
+        }
+    }
+
+    /// Generous-but-safe context: scale UP with RAM instead of down.
+    /// GPU path: let VRAM budget dominate (caller passes the fit target).
+    /// CPU path tiers: <8 GB -> 4096 (scarcity), 8-16 -> 8192, 16-32 -> 16384,
+    /// 32+ -> 32768. Every tier is clamped by the caller to 1024..=131_072.
+    pub(crate) fn recommended_ctx_size(&self) -> u32 {
+        if self.available_ram_gb < 4.5 {
+            2048
+        } else if self.available_ram_gb < 8.0 {
+            4096
+        } else if self.available_ram_gb < 16.0 {
+            8192
+        } else if self.available_ram_gb < 32.0 {
+            16_384
+        } else {
+            32_768
+        }
+    }
+
+    /// Larger batch amortises prompt-eval on many-core machines.
+    pub(crate) fn recommended_batch_size(&self) -> u32 {
+        match self.physical_cores {
+            0..=4 => 512,
+            5..=8 => 1024,
+            _ => 2048,
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn runtime_args(
     model: &Path,
@@ -1891,7 +2042,11 @@ fn runtime_args(
 
     let mut sys = sysinfo::System::new_all();
     sys.refresh_memory();
-    let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
+
+    // Adaptive harness: one hardware profile drives threads, batch and the
+    // generous-but-safe context tiers (scarcity tiers preserved for
+    // small-RAM hosts).
+    let harness = AdaptiveHarnessProfile::collect();
 
     // Hardware-aware thread fit: physical cores for generation, logical for
     // batch. new_all() populated the CPU inventory; cpus() stays valid here.
@@ -1899,18 +2054,15 @@ fn runtime_args(
         sys.physical_core_count(),
         sys.cpus().len(),
     ));
+    args.extend([
+        OsString::from("--batch-size"),
+        OsString::from(harness.recommended_batch_size().to_string()),
+    ]);
 
-    let mut ctx_size = 8192;
-    if model_size_gb > 3.0 {
-        if available_ram_gb < 4.5 {
-            ctx_size = 2048;
-        } else if available_ram_gb < 6.5 {
-            ctx_size = 4096;
-        }
-    } else {
-        if available_ram_gb < 3.0 {
-            ctx_size = 4096;
-        }
+    let mut ctx_size = harness.recommended_ctx_size();
+    if model_size_gb > 6.0 && harness.available_ram_gb < 6.0 {
+        // A very large model on a constrained host still needs the scarcity tier.
+        ctx_size = ctx_size.min(4096);
     }
 
     let auto_gpu_fit = accelerated && gpu_layers_override.is_none();
@@ -3318,6 +3470,34 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(zero_joined.contains("--threads 4"));
+    }
+
+    #[test]
+    fn adaptive_harness_context_scales_with_ram_not_starvation() {
+        // Small-RAM host keeps the scarcity tier.
+        let scarce = AdaptiveHarnessProfile {
+            physical_cores: 4,
+            available_ram_gb: 3.9,
+        };
+        assert_eq!(scarce.recommended_ctx_size(), 2048);
+
+        // 16 GB machine gets 16k instead of the old fixed 2k/4k minimums.
+        let comfortable = AdaptiveHarnessProfile {
+            physical_cores: 8,
+            available_ram_gb: 20.0,
+        };
+        assert_eq!(comfortable.recommended_ctx_size(), 16_384);
+
+        // 32+ GB gets the top tier.
+        let plenty = AdaptiveHarnessProfile {
+            physical_cores: 16,
+            available_ram_gb: 48.0,
+        };
+        assert_eq!(plenty.recommended_ctx_size(), 32_768);
+
+        // Batch scales with physical cores.
+        assert_eq!(scarce.recommended_batch_size(), 512);
+        assert_eq!(plenty.recommended_batch_size(), 2048);
     }
 
     #[test]
