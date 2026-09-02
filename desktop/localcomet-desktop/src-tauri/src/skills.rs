@@ -38,11 +38,13 @@ async fn run_skills_cli(
             })
         })
         .or_else(|| {
-            option_env!("CARGO_MANIFEST_DIR").map(|manifest| {
+            option_env!("CARGO_MANIFEST_DIR").and_then(|manifest| {
+                // CARGO_MANIFEST_DIR = <repo>/desktop/localcomet-desktop/src-tauri;
+                // repo scripts live three levels up.
                 PathBuf::from(manifest)
-                    .join("../../scripts/skills_cli.py")
+                    .join("../../../scripts/skills_cli.py")
                     .canonicalize()
-                    .expect("skills_cli.py must exist next to the crate in dev builds")
+                    .ok()
             })
         })
         .ok_or_else(|| "skills_cli.py not found in trusted locations".to_string())?;
