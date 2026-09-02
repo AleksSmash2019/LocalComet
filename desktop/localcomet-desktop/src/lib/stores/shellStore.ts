@@ -4,7 +4,7 @@ import type { ChatMessageState, InspectorSection, MockMessage, ModeOption, Model
 import type { AgentPermissions, ComputeMode, EffortLevel, VoiceGender } from './uiPreferences';
 import { isComputeMode, isEffortLevel, isVoiceGender, loadUiPreferences, updateUiPreferences } from './uiPreferences';
 
-import { conversationStore, getActiveConversationId, resetConversationStore, selectConversation as selectConversationInStore } from './conversationStore';
+import { conversationStore, getActiveConversationId, resetConversationStore } from './conversationStore';
 
 // Must match the composer textarea maxlength="12000" (MessageComposer.svelte)
 // so the store never silently truncates input the UI allows.
@@ -125,15 +125,7 @@ export function setEffortLevel(level: EffortLevel): void {
 
 
 
-export function setCtxSizeOverride(value: number | null): void {
-  ctxSizeOverride.set(value);
-  updateUiPreferences({ ctxSizeOverride: value });
-}
 
-export function setGpuLayersOverride(value: number | null): void {
-  gpuLayersOverride.set(value);
-  updateUiPreferences({ gpuLayersOverride: value });
-}
 
 export function setComputeMode(mode: ComputeMode): void {
   if (!isComputeMode(mode)) return;
@@ -149,9 +141,6 @@ export function setSelectedMode(mode: ModeOption): void {
   if (modeOptions.includes(mode)) selectedMode.set(mode);
 }
 
-export function setSelectedConversation(id: string): void {
-  selectConversationInStore(id);
-}
 
 export function setComposerDraft(value: string): void {
   composerDraft.set(value.slice(0, MAX_DRAFT_LENGTH));
@@ -310,9 +299,6 @@ function isTerminalMessage(state: ChatMessageState | undefined): boolean {
   return state === 'completed' || state === 'cancelled' || state === 'timed_out' || state === 'failed';
 }
 
-export function sendComposerDraft(): boolean {
-  return appendMockMessage(get(composerDraft));
-}
 
 export function setActiveInspectorSection(section: InspectorSection): void {
   if (inspectorSections.includes(section)) activeInspectorSection.set(section);

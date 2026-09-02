@@ -6,6 +6,7 @@
   import ApprovalModal from './ApprovalModal.svelte';
   import Diagnostics from '$lib/components/agent/Diagnostics.svelte';
   import ChatHeader from './ChatHeader.svelte';
+  import AppMenuBar from './AppMenuBar.svelte';
   import ConversationSidebar from './ConversationSidebar.svelte';
   import SettingsPanel from './SettingsPanel.svelte';
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
@@ -178,6 +179,8 @@
 </script>
 
 <div class="app-shell" data-theme={resolvedTheme}>
+  <AppMenuBar />
+
   <ConversationSidebar />
 
   <div

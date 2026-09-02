@@ -834,7 +834,7 @@ def run_source_scans() -> None:
         TAURI_SRC / "windows_job.rs",
     ]:
         check(path.exists(), f"missing {path}")
-    check("DESKTOP_SIDECAR_RUNTIME_VERSION = \"v6.84.3\"" in runtime_text, "runtime version constant missing")
+    check("DESKTOP_SIDECAR_RUNTIME_VERSION = \"v7.0.5\"" in runtime_text, "runtime version constant missing")
     check("ALLOWED_REQUEST_METHODS" in runtime_text and "app.health" in runtime_text and "app.shutdown" in runtime_text, "runtime lifecycle allowlist missing")
     check("knowledge_reviews" in runtime_text, "runtime review dependency pass-through missing")
     check("chat." not in runtime_text and "planner." not in runtime_text, "runtime contains forbidden non-lifecycle method literal")
@@ -1047,7 +1047,7 @@ def run_manifest_checks() -> None:
     manifest = load_manifest()
     check("modules/desktop_sidecar_runtime_ru.py" in manifest.get("lazy_runtime", []), "manifest missing sidecar runtime")
     check("tools/run_localcomet_desktop_sidecar.py" in manifest.get("tools", []), "manifest missing sidecar runner")
-    check("tools/test_v6843_sidecar_supervisor.py" in manifest.get("tests", []), "manifest missing v6.84.3 test")
+    check("tools/test_v6843_sidecar_supervisor.py" in manifest.get("tests", []), "manifest missing v7.0.5 test")
     all_paths: list[str] = []
     for category in ["entrypoints", "runtime", "lazy_runtime", "tests", "tools"]:
         values = manifest.get(category, [])
@@ -1093,7 +1093,7 @@ def main() -> None:
     run_repo_guard_checks()
     elapsed = time.monotonic() - start
     check(CHECK_COUNT >= 82, f"focused assertion count too low: {CHECK_COUNT}")
-    print(f"ALL v6.84.3 SIDECAR SUPERVISOR TESTS PASSED ({CHECK_COUNT} checks, {elapsed:.2f}s)")
+    print(f"ALL v7.0.5 SIDECAR SUPERVISOR TESTS PASSED ({CHECK_COUNT} checks, {elapsed:.2f}s)")
 
 
 if __name__ == "__main__":

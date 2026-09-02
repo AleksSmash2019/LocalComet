@@ -5,6 +5,7 @@ from modules.project_paths import projects_dir
 from playwright.sync_api import sync_playwright
 
 from core.state import set_value, get_value
+from modules.files import safe_path
 
 
 _playwright = None
@@ -244,8 +245,15 @@ def open_url(url):
 
 
 def open_local_site(folder):
-    file_path = PROJECTS_DIR / folder / "index.html"
-
+    # SEC-3: `folder` comes from model-controlled tool input; without the
+    # Projects containment check a traversal value ("../..") turns read_page
+    # into an arbitrary-file reader. safe_path() is the canonical guard used
+    # by modules/files.py.
+    try:
+        contained = safe_path(str(folder))
+    except Exception as exc:
+        return f"Отказано в доступе: {exc}"
+    file_path = contained / "index.html"
     if not file_path.exists():
         return f"index.html не найден: {file_path}"
 

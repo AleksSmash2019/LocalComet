@@ -138,7 +138,7 @@
 
 <style>
   .sidebar {
-    grid-row: 1 / 3;
+    grid-row: 2;
     width: var(--sidebar-width);
     min-width: var(--sidebar-width);
     display: flex;
@@ -298,12 +298,12 @@
 
     .sidebar.sidebar-open {
       position: fixed;
-      top: var(--shell-header-height);
+      top: calc(var(--app-menubar-height) + var(--shell-header-height));
       left: var(--sidebar-width);
       z-index: 35;
       display: block;
       width: calc(100vw - var(--sidebar-width));
-      height: calc(100vh - var(--shell-header-height));
+      height: calc(100vh - var(--app-menubar-height) - var(--shell-header-height));
       box-shadow: var(--lc-shadow);
     }
   }

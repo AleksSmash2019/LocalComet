@@ -1,4 +1,5 @@
 import { isRecord } from './guards';
+import { bounded, sanitizeErrorText } from './textHelpers';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type {
@@ -22,9 +23,6 @@ export async function createSession(title: string): Promise<SessionSummary> {
   return validateSession(await invokeExact('control_plane_create_session', { title: bounded(title, 120) }));
 }
 
-export async function closeSession(sessionId: string): Promise<SessionSummary> {
-  return validateSession(await invokeExact('control_plane_close_session', { sessionId }));
-}
 
 export async function createThread(sessionId: string, title: string): Promise<ThreadSummary> {
   return validateThread(await invokeExact('control_plane_create_thread', { sessionId, title: bounded(title, 120) }));
@@ -54,7 +52,7 @@ export function normalizeBridgeError(error: unknown): SanitizedBridgeError {
   if (isRecord(error)) {
     const code = typeof error.code === 'string' ? error.code : 'bridge_error';
     const message = typeof error.message === 'string' ? error.message : 'Control Plane bridge error';
-    return { code: bounded(code, 64), message: bounded(sanitize(message), 240) };
+    return { code: bounded(code, 64), message: bounded(sanitizeErrorText(message), 240) };
   }
   return { code: 'bridge_error', message: 'Control Plane bridge error' };
 }
@@ -69,7 +67,7 @@ async function invokeExact<T>(command: string, args?: Readonly<Record<string, st
 
 function validateBootstrap(value: unknown): BootstrapResponse {
   const object = expectRecord(value);
-  if (object.control_plane_version !== 'v6.84.6' || object.protocol !== 'localcomet.ipc') {
+  if (object.control_plane_version !== 'v7.0.5' || object.protocol !== 'localcomet.ipc') {
     throw { code: 'invalid_payload', message: 'Invalid bootstrap payload' };
   }
   return object as unknown as BootstrapResponse;
@@ -144,10 +142,3 @@ function isId(value: unknown): boolean {
   return typeof value === 'string' && /^[0-9a-f]{24}$/.test(value);
 }
 
-function sanitize(value: string): string {
-  return value.replace(/Traceback[\s\S]*/g, '<redacted>').replace(/sk-[A-Za-z0-9_-]{8,}/g, '<redacted>');
-}
-
-function bounded(value: string, limit: number): string {
-  return value.slice(0, limit);
-}

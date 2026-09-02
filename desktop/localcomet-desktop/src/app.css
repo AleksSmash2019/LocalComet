@@ -42,6 +42,7 @@
   --lc-transition-normal: 220ms ease;
   --lc-mono: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   --shell-header-height: 48px;
+  --app-menubar-height: 36px;
   --sidebar-width: 260px;
   --inspector-width: 312px;
   --content-width: 820px;
@@ -182,10 +183,19 @@ a:focus-visible {
   min-height: 0;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   background: var(--lc-bg);
   color: var(--lc-text);
+}
+
+.shell-body {
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .title-bar {
@@ -227,15 +237,6 @@ kbd {
   color: var(--lc-muted);
   font-family: var(--lc-mono);
   font-size: 11px;
-}
-
-.shell-body {
-  grid-column: 2;
-  grid-row: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  overflow: hidden;
 }
 
 .shell-body.diagnostics-open {
@@ -430,12 +431,12 @@ button:disabled {
 
   .diagnostics.drawer-open {
     position: fixed;
-    top: var(--shell-header-height);
+    top: calc(var(--app-menubar-height) + var(--shell-header-height));
     right: 0;
     z-index: 40;
     display: block;
     width: min(var(--inspector-width), calc(100vw - var(--sidebar-width)));
-    height: calc(100vh - var(--shell-header-height));
+    height: calc(100vh - var(--app-menubar-height) - var(--shell-header-height));
     border-left: var(--border-thin);
     box-shadow: var(--lc-shadow);
   }
@@ -453,12 +454,12 @@ button:disabled {
 
   .sidebar.sidebar-open {
     position: fixed;
-    top: var(--shell-header-height);
+    top: calc(var(--app-menubar-height) + var(--shell-header-height));
     left: var(--sidebar-width);
     z-index: 35;
     display: block;
     width: calc(100vw - var(--sidebar-width));
-    height: calc(100vh - var(--shell-header-height));
+    height: calc(100vh - var(--app-menubar-height) - var(--shell-header-height));
     box-shadow: var(--lc-shadow);
   }
 

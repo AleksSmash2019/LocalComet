@@ -408,7 +408,7 @@ fn require_tool_permission(state: &ApprovalState, tool: &str) -> Result<(), Brid
 /// Unknown or malformed tool names are rejected fail-closed.
 pub(crate) fn risk_level_for_tool(tool: &str) -> Result<RiskLevel, BridgeError> {
     match tool {
-        "files.read" | "files.list" => Ok(RiskLevel::ReadOnly),
+        "files.read" | "files.list" | "system.time" => Ok(RiskLevel::ReadOnly),
         "files.write"
         | "files.create_folder"
         | "files.rollback"
@@ -812,6 +812,11 @@ pub(crate) fn request_approval_inner(
 /// Atomically validate scope and consume a one-time token, returning an
 /// execution grant on success.
 ///
+/// Internal-only: this command is NOT granted via ACL (absent from
+/// capabilities/permission-sets) and the frontend bridge exposes no caller;
+/// it is reserved for future trusted callers. Grant consumption for the
+/// tool surface happens inside `run_tool_call`.
+///
 /// NOTE (honest boundary): the desktop sidecar exposes no tool.call execution
 /// path (filesystem methods are explicitly `unsupported_method`), so this
 /// command produces the authoritative grant but does not dispatch to the
@@ -1173,6 +1178,36 @@ pub(crate) fn run_tool_call_inner(
             return Ok(envelope);
         }
     }
+    // files.* mutations (create_folder/write/delete) execute in this host
+    // process, mirroring the computer_use broker seam above: the sidecar has
+    // no no-reparse, handle-relative primitive, so these tool calls used to
+    // fail closed (feature_disabled) at the sidecar boundary. The approval
+    // token has already been consumed above; the grant material is
+    // re-verified inside secure_fs against the exact input bytes before any
+    // filesystem object is touched.
+    if matches!(
+        tool.as_str(),
+        "files.write" | "files.create_folder" | "files.delete"
+    ) {
+        let outcome = crate::secure_fs::execute_broker_mutation(
+            &tool,
+            &input,
+            grant.as_ref(),
+            &workspace_path,
+        );
+        if let Some(receipt) = idempotency_receipt {
+            let outcome_for_receipt = match &outcome {
+                Ok(_) => IdempotencyOutcome::Completed,
+                Err(_) => IdempotencyOutcome::Failed,
+            };
+            state
+                .registry
+                .lock()
+                .expect("approval registry poisoned")
+                .complete_idempotent_call(receipt, outcome_for_receipt);
+        }
+        return outcome;
+    }
     let (method, payload) = match build_tool_call_request_with_correlation(
         &tool,
         &input,
@@ -1429,6 +1464,10 @@ mod tests {
         );
         assert_eq!(
             risk_level_for_tool("files.list").unwrap(),
+            RiskLevel::ReadOnly
+        );
+        assert_eq!(
+            risk_level_for_tool("system.time").unwrap(),
             RiskLevel::ReadOnly
         );
     }

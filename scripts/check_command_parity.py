@@ -20,6 +20,12 @@ SRC_DIR = REPO_ROOT / "desktop" / "localcomet-desktop" / "src"
 UTILITY_COMMANDS = {
     "get_model_storage_info",
     "open_model_storage_folder",
+    # Internal-only: NOT granted via ACL and the frontend bridge exposes no
+    # caller; reserved for future trusted callers (see execute_approved doc).
+    "execute_approved",
+    # Rust-internal session transport: registration is required by the IPC
+    # contract; the frontend lifecycle closes sessions via turn teardown.
+    "control_plane_close_session",
     # Broker-owned continuation authority transports (master prompt Part I).
     # Rust-internal for now: the orchestrator wiring lands in Phase 4, the
     # commands are already registered and covered by focused Rust tests.

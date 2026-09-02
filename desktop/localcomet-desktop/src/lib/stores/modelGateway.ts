@@ -1938,13 +1938,15 @@ function runBoundedLaunchContinuation(
   const completeGrant = (status: 'verified' | 'failed' | 'blocked' | 'pending', verified: boolean): void => {
     if (!leaseId) return;
     const currentLease = leaseId;
-    if (status !== 'pending') leaseId = null;
     recordContinuationTrace({ event: 'continuation_complete_requested', request_id: requestId, status });
     invoke('cu_broker_continuation_complete', {
       leaseId: currentLease,
       status,
       postconditionVerified: verified
     }).then(() => {
+      // Release the lease only after the host accepted the completion; on failure
+      // the lease stays usable until its Rust-side TTL (30s) expires.
+      if (leaseId === currentLease) leaseId = null;
       recordContinuationTrace({ event: 'continuation_complete_succeeded', request_id: requestId, status });
     }).catch((error) => {
       recordContinuationTrace({ event: 'continuation_complete_failed', request_id: requestId, status, error_code: continuationErrorCode(error) });
@@ -2069,7 +2071,7 @@ function terminalizeCurrentRequest(
   if (blocked) return false;
   clearInferenceTimers();
   bufferedEarlyEvents = [];
-  finalizeAssistantMessage(current.requestId, lifecycle, error?.message);
+  finalizeAssistantMessage(current.requestId, lifecycle, error ? `${error.code}: ${error.message}` : undefined);
   inferenceRequestStore.set({
     ...current,
     lifecycle,

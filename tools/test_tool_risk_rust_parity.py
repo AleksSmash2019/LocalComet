@@ -353,6 +353,15 @@ def main() -> int:
             f"Guarded mismatch: rust={sorted(rust['Guarded'])} "
             f"toml={sorted(toml_by_level['guarded'])}"
         )
+    # Strict read-only parity: the full Rust read_only arm set must equal the
+    # TOML read_only set in both directions. A tool classified read_only in
+    # only one source (e.g. a TOML entry missing from the Rust match arm, or a
+    # Rust-only name) is a parity break, not an acceptable gap.
+    if rust["ReadOnly"] != toml_by_level["read_only"]:
+        errors.append(
+            f"ReadOnly mismatch: rust={sorted(rust['ReadOnly'])} "
+            f"toml={sorted(toml_by_level['read_only'])}"
+        )
     read_only_in_mutating = toml_by_level["read_only"] & (rust["Dangerous"] | rust["Guarded"])
     if read_only_in_mutating:
         errors.append(f"read_only tools classified as mutating in Rust: {sorted(read_only_in_mutating)}")

@@ -71,3 +71,7 @@ auth.json
 
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md
+@AutomationLog.txt
+
+# WorkBuddy session memory (personal to that tool, not project knowledge)
+.workbuddy-ai/

@@ -293,6 +293,18 @@ impl LspSession {
                 session.workspace_root.display().to_string().replace('\\', "/").trim_start_matches('/')
             ),
             "capabilities": {},
+            // Security: rust-analyzer executes cargo metadata/check with build
+            // scripts and proc macros by default. A workspace admitted from the
+            // webview may be untrusted, so code-execution surfaces are disabled
+            // BEFORE the server touches the workspace.
+            "initializationOptions": {
+                "rust-analyzer": {
+                    "cargo": {"buildScripts": {"enable": false}},
+                    "procMacro": {"enable": false},
+                    "checkOnSave": {"enable": false},
+                    "flycheck": {"enable": false}
+                }
+            },
         });
         let response_deadline = Duration::from_millis(timeout_ms.max(1_000));
         session.request_with_deadline("initialize", init_params, response_deadline)?;

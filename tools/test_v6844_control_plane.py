@@ -84,7 +84,7 @@ def run_control_plane_unit_checks() -> None:
     plane = module.DesktopControlPlane(id_factory=lambda: next(ids))
     boot = plane.dispatch("app.bootstrap", {}, request_id="req-bootstrap")
     payload = boot.response
-    check(payload["control_plane_version"] == "v6.84.6", "bootstrap version wrong")
+    check(payload["control_plane_version"] == "v7.0.5", "bootstrap version wrong")
     check(
         set(payload)
         == {
@@ -105,7 +105,7 @@ def run_control_plane_unit_checks() -> None:
     )
     check(payload["protocol"] == "localcomet.ipc", "bootstrap protocol wrong")
     check(payload["protocol_version"] == "1.0", "bootstrap protocol version wrong")
-    check(payload["sidecar_runtime_version"] == "v6.84.3", "sidecar runtime version wrong")
+    check(payload["sidecar_runtime_version"] == "v7.0.5", "sidecar runtime version wrong")
     check(payload["capabilities"] == sorted(payload["capabilities"]), "capabilities not sorted")
     check("turn.start_mock" in payload["capabilities"], "mock turn capability missing")
     check("knowledge.review.list" in payload["capabilities"], "review list capability missing")
@@ -521,7 +521,7 @@ def run_sidecar_transcripts() -> None:
         process.stdin.flush()
         bootstrap = decode_from_stream(process.stdout)
         check(bootstrap["type"] == "response", "bootstrap did not respond")
-        check(bootstrap["payload"]["control_plane_version"] == "v6.84.6", "bootstrap response version wrong")
+        check(bootstrap["payload"]["control_plane_version"] == "v7.0.5", "bootstrap response version wrong")
         process.stdin.write(request("review-empty", "knowledge.review.list", {"offset": 0, "limit": 50}))
         process.stdin.flush()
         review_empty = decode_from_stream(process.stdout)
@@ -533,7 +533,7 @@ def run_sidecar_transcripts() -> None:
         process.stdin.flush()
         review_snapshot = decode_from_stream(process.stdout)
         check(review_snapshot["type"] == "response", "review snapshot did not return one terminal response")
-        check(review_snapshot["payload"]["command_center_version"] == "v6.84.6", "command center version wrong")
+        check(review_snapshot["payload"]["command_center_version"] == "v7.0.5", "command center version wrong")
         check(review_snapshot["payload"]["inbox_count"] == 0, "empty runtime snapshot inbox count wrong")
         check(review_snapshot["payload"]["hard_stop"] is True, "review snapshot lost HARD STOP")
         check(review_snapshot["payload"]["vault_write_authority"] is False, "review snapshot granted Vault write")

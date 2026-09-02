@@ -68,10 +68,10 @@ from modules.knowledge_review_ui_projection_ru import (
 )
 
 
-DESKTOP_CONTROL_PLANE_VERSION = "v6.84.6"
+DESKTOP_CONTROL_PLANE_VERSION = "v7.0.5"
 IPC_PROTOCOL = "localcomet.ipc"
 IPC_PROTOCOL_VERSION = "1.0"
-SIDECAR_RUNTIME_VERSION = "v6.84.3"
+SIDECAR_RUNTIME_VERSION = "v7.0.5"
 KNOWLEDGE_CONTEXT_CONTROL_PLANE_RELEASE = "v6.84.5.1e5"
 KNOWLEDGE_INJECTION_CONTROL_PLANE_RELEASE = "v6.84.5.1e6"
 KNOWLEDGE_REVIEW_LIST_CONTRACT = "localcomet.knowledge-review-list/1.0"
@@ -81,7 +81,7 @@ KNOWLEDGE_REVIEW_REFRESH_CONTRACT = "localcomet.knowledge-review-refresh/1.0"
 KNOWLEDGE_REVIEW_DECISION_CREATE_CONTRACT = (
     "localcomet.knowledge-review-decision-create/1.0"
 )
-KNOWLEDGE_OPERATIONS_COMMAND_CENTER_VERSION = "v6.84.6"
+KNOWLEDGE_OPERATIONS_COMMAND_CENTER_VERSION = "v7.0.5"
 KNOWLEDGE_REVIEW_SOURCE = "LOCAL_CONTROL_PLANE"
 MAX_KNOWLEDGE_REVIEW_ARTIFACTS = 128
 MAX_KNOWLEDGE_REVIEW_PAGE_SIZE = 50
@@ -1106,6 +1106,15 @@ class DesktopControlPlane:
             try:
                 gateway_payload: Mapping[str, Any] | None = None
                 if action != "CANCEL":
+                    # BUG-3b: unknown turn_id must produce a stale-response, not a
+                    # KeyError that (outside the tool worker) kills the whole
+                    # sidecar process.
+                    if turn_id not in self._turns:
+                        return self._desktop_stale_response(
+                            turn_id=turn_id,
+                            injection_id=injection_id,
+                            code="request_not_found",
+                        )
                     gateway_payload = model_gateway.bound_turn_payload(self._turns[turn_id].prompt_text)
                 decision = (
                     KnowledgeInjectionDecision.INCLUDE

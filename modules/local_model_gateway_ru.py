@@ -26,7 +26,7 @@ from modules.knowledge_injection_ru import (
 )
 
 
-LOCAL_MODEL_GATEWAY_VERSION = "v6.84.5"
+LOCAL_MODEL_GATEWAY_VERSION = "v7.0.5"
 PROVIDER_ID = "openai-compatible-local"
 MANAGED_PROVIDER_ID = "managed-llama-cpp"
 HARNESS_MINIMAL = "minimal"
@@ -427,7 +427,7 @@ TURN_START_PAYLOAD_KEYS = frozenset(
     )
 )
 
-LOCALCOMET_APPLICATION_VERSION = "v6.84.6"
+LOCALCOMET_APPLICATION_VERSION = "v7.0.5"
 ASSISTANT_CONTEXT_APPLICATION_KEYS = frozenset(("name", "mode", "version"))
 ASSISTANT_CONTEXT_CONVERSATION_KEYS = frozenset(
     ("locale", "project_context_available", "selected_files_context_available")
@@ -2653,7 +2653,7 @@ def _turn_payload(
     stream_channel: str = "content",
 ) -> dict[str, Any]:
     payload = {
-        "control_plane_version": "v6.84.6",
+        "control_plane_version": "v7.0.5",
         "model_gateway_version": LOCAL_MODEL_GATEWAY_VERSION,
         "request_id": request.request_id,
         "turn_id": request.turn_id,

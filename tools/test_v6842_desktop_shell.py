@@ -97,7 +97,7 @@ def main() -> None:
     ):
         check(path.exists(), f"{index} missing {rel(path)}")
 
-    check('DESKTOP_SHELL_VERSION = \'v6.84.6\'' in read(SRC / "lib" / "version.ts"), "15 desktop shell version missing")
+    check('DESKTOP_SHELL_VERSION = \'v7.0.5\'' in read(SRC / "lib" / "version.ts"), "15 desktop shell version missing")
     check('DESKTOP_IPC_CONTRACT_VERSION = "v6.84.1"' in read(ROOT / "modules" / "desktop_ipc_contract_ru.py"), "16 IPC version changed")
     check('LOCALCOMET_VERSION = "v6.82"' in read(ROOT / "LocalComet_Control_Panel.py"), "17 panel version changed")
     check('AUTONOMOUS_ACTION_EXECUTOR_VERSION = "v6.84"' in read(ROOT / "modules" / "autonomous_action_executor_ru.py"), "18 executor version changed")

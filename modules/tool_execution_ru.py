@@ -7,6 +7,14 @@ responsibility is workspace confinement: every target path is resolved and
 checked against the confirmed workspace via WorkspacePolicy.validate_path
 (resolve-before-containment, so symlink/junction escape is rejected).
 
+Mutating tools (files.write / files.create_folder / files.delete) are NOT
+executed here: since secure_fs.rs landed, the Rust control-plane broker runs
+them in-process (handle-relative, no-reparse primitives) after consuming the
+one-time approval token, so they never reach the sidecar. The handlers below
+stay fail-closed (feature_disabled) as defense-in-depth: a payload that
+arrives at this boundary outside the Rust broker path can never mutate the
+filesystem.
+
 No chunking in the first release: payloads larger than MAX_TOOL_FILE_BYTES are
 rejected (read -> payload_too_large, write -> invalid_payload). The limit is
 bounded by the IPC per-string payload limit (MAX_STRING_CHARS = 1 MiB), since
@@ -365,13 +373,14 @@ def _files_write(policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any
         raise ToolExecutionError("invalid_payload", "content exceeds the writable size limit")
     # A resolved Path is not an authorization handle: an attacker can replace a
     # missing parent with a link between validation and mkdir/write. Python has
-    # no portable Windows handle-relative, no-reparse writer, so fail closed
-    # rather than retaining a workspace-escape primitive. Tool execution is
-    # feature-disabled at the control plane; a later enablement must provide a
-    # tested platform-specific secure write primitive first.
+    # no portable Windows handle-relative, no-reparse writer, so the sidecar
+    # stays fail-closed as defense-in-depth. Real mutation execution lives in
+    # the Rust control-plane broker (src-tauri/src/secure_fs.rs): files.write
+    # is intercepted in approval_commands::run_tool_call_inner after the
+    # one-time approval token is consumed and never dispatched to the sidecar.
     raise ToolExecutionError(
         "feature_disabled",
-        "files.write is unavailable until secure no-reparse writes are implemented",
+        "files.write is executed by the Rust control-plane broker; direct sidecar writes stay disabled (no no-reparse handle-relative primitive)",
     )
 
 
@@ -380,22 +389,26 @@ def _files_create_folder(
 ) -> dict[str, Any]:
     _require_str(input_obj, "path")
     # Path resolution is not an authorization handle. A junction can replace a
-    # component after validation and before mkdir on Windows, so this operation
-    # must remain unavailable until a handle-relative no-reparse primitive is
-    # implemented and covered by platform-specific tests.
+    # component after validation and before mkdir on Windows, so the sidecar
+    # never executes mutations in-process. Real execution lives in the Rust
+    # control-plane broker (src-tauri/src/secure_fs.rs), which creates the leaf
+    # relative to a verified parent handle; this boundary stays fail-closed.
     raise ToolExecutionError(
         "feature_disabled",
-        "files.create_folder is unavailable until secure no-reparse folder creation is implemented",
+        "files.create_folder is executed by the Rust control-plane broker; direct sidecar mutations stay disabled (no no-reparse handle-relative primitive)",
     )
 
 
 def _files_delete(policy: WorkspacePolicy, tool: str, input_obj: Mapping[str, Any]) -> dict[str, Any]:
     _require_str(input_obj, "path")
-    # Recursive delete has the same validation/use race as writes and folder
-    # creation. Fail closed rather than accepting a workspace escape primitive.
+    # Recursive delete is not implemented anywhere in the contract (no flag
+    # exists in the tool schema), and non-recursive deletion is executed by
+    # the Rust control-plane broker (src-tauri/src/secure_fs.rs), which
+    # refuses reparse leaves and non-empty folders. This boundary stays
+    # fail-closed as defense-in-depth.
     raise ToolExecutionError(
         "feature_disabled",
-        "files.delete is unavailable until secure no-reparse deletion is implemented",
+        "files.delete is executed by the Rust control-plane broker; direct sidecar mutations stay disabled (no no-reparse handle-relative primitive)",
     )
 
 

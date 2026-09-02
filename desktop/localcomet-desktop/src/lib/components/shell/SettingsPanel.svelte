@@ -328,7 +328,7 @@
 <style>
   .settings-panel {
     position: fixed;
-    top: var(--shell-header-height);
+    top: calc(var(--app-menubar-height) + var(--shell-header-height));
     right: 0;
     bottom: 0;
     z-index: 50;

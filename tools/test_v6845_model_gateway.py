@@ -280,15 +280,15 @@ def test_version_alignment_and_turn_payload_shape() -> None:
         },
         "turn payload metadata shape changed",
     )
-    assert_condition(payload["control_plane_version"] == DESKTOP_CONTROL_PLANE_VERSION == "v6.84.6", "Control Plane version not aligned")
+    assert_condition(payload["control_plane_version"] == DESKTOP_CONTROL_PLANE_VERSION == "v7.0.5", "Control Plane version not aligned")
     assert_condition(payload["control_plane_version"] != "v6.84.4", "stale Control Plane version still emitted")
-    assert_condition(payload["model_gateway_version"] == LOCAL_MODEL_GATEWAY_VERSION == "v6.84.5", "Model Gateway release changed")
+    assert_condition(payload["model_gateway_version"] == LOCAL_MODEL_GATEWAY_VERSION == "v7.0.5", "Model Gateway release changed")
     assert_condition(IPC_PROTOCOL == "localcomet.ipc" and IPC_PROTOCOL_VERSION == "1.0", "IPC protocol changed")
-    assert_condition(DESKTOP_SIDECAR_RUNTIME_VERSION == "v6.84.3", "Sidecar runtime version changed")
+    assert_condition(DESKTOP_SIDECAR_RUNTIME_VERSION == "v7.0.5", "Sidecar runtime version changed")
 
     bridge_text = (ROOT / "desktop" / "localcomet-desktop" / "src" / "lib" / "bridge" / "controlPlane.ts").read_text(encoding="utf-8")
     bridge_test_text = (ROOT / "desktop" / "localcomet-desktop" / "tests" / "control-plane.test.ts").read_text(encoding="utf-8")
-    assert_condition("object.control_plane_version !== 'v6.84.6'" in bridge_text, "exact Control Plane validation changed")
+    assert_condition("object.control_plane_version !== 'v7.0.5'" in bridge_text, "exact Control Plane validation changed")
     assert_condition("rejects the stale v6.84.4 bootstrap version" in bridge_test_text, "stale-version rejection test missing")
 
 
@@ -428,7 +428,7 @@ def main() -> None:
         start = time.perf_counter()
         test()
         print(f"PASS {test.__name__} {time.perf_counter() - start:.3f}s")
-    print("ALL v6.84.5 MODEL GATEWAY TESTS PASSED")
+    print("ALL v7.0.5 MODEL GATEWAY TESTS PASSED")
 
 
 if __name__ == "__main__":

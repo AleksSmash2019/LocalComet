@@ -145,7 +145,8 @@ function installTauriMock(): void {
     safe_to_start: true,
     reason_code: null,
     fallback_runtime_ids: [],
-    device_summary: 'NVIDIA GeForce RTX 5070 (11943 MiB)'
+    device_summary: 'NVIDIA GeForce RTX 5070 (11943 MiB)',
+    launch_recommendation: null
   };
 }
 
@@ -733,7 +734,8 @@ describe('Local Model Gateway frontend', () => {
       safe_to_start: false,
       reason_code: 'VULKAN_DEVICE_UNAVAILABLE',
       fallback_runtime_ids: ['llama-cpp-windows-x86-64-cpu-bootstrap'],
-      device_summary: null
+      device_summary: null,
+      launch_recommendation: null
     };
 
     const capability = await getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap', 'qwen3-1.7b-instruct-q4-k-m');
@@ -741,6 +743,61 @@ describe('Local Model Gateway frontend', () => {
     expect(capability.available).toBe(false);
     expect(capability.reason_code).toBe('VULKAN_DEVICE_UNAVAILABLE');
     expect(capability.fallback_runtime_ids).toEqual(['llama-cpp-windows-x86-64-cpu-bootstrap']);
+    expect(capability.launch_recommendation).toBeNull();
+  });
+
+  it('validates a hardware-fit launch recommendation payload', async () => {
+    capabilityResponse = {
+      runtime_id: 'llama-cpp-windows-x86-64-vulkan-bootstrap',
+      available: true,
+      safe_to_start: true,
+      reason_code: null,
+      fallback_runtime_ids: [],
+      device_summary: 'NVIDIA GeForce RTX 5070 (11943 MiB, 11175 MiB free)',
+      launch_recommendation: {
+        mode: 'hybrid',
+        gpu_layers: 29,
+        ctx_size: 4096,
+        architecture: 'qwen3',
+        block_count: 48,
+        model_context_length: 40960,
+        estimated: false
+      }
+    };
+
+    const capability = await getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap', 'qwen3-1.7b-instruct-q4-k-m');
+
+    expect(capability.launch_recommendation).toEqual({
+      mode: 'hybrid',
+      gpu_layers: 29,
+      ctx_size: 4096,
+      architecture: 'qwen3',
+      block_count: 48,
+      model_context_length: 40960,
+      estimated: false
+    });
+  });
+
+  it('rejects recommendation payloads with an inconsistent layer count', async () => {
+    capabilityResponse = {
+      runtime_id: 'llama-cpp-windows-x86-64-vulkan-bootstrap',
+      available: true,
+      safe_to_start: true,
+      reason_code: null,
+      fallback_runtime_ids: [],
+      device_summary: 'NVIDIA GeForce RTX 5070 (11943 MiB, 11175 MiB free)',
+      launch_recommendation: {
+        mode: 'hybrid',
+        gpu_layers: null,
+        ctx_size: 4096,
+        architecture: 'qwen3',
+        block_count: 48,
+        model_context_length: 40960,
+        estimated: false
+      }
+    };
+
+    await expect(getManagedRuntimeCapability('llama-cpp-windows-x86-64-vulkan-bootstrap')).rejects.toThrow();
   });
 
   describe('bounded launch continuation (plan P0.2)', () => {

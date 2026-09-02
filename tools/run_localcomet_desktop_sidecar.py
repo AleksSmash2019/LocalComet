@@ -144,6 +144,18 @@ class _ToolCallCoordinator:
                     exc,
                     reply_to=str(message.get("id", "unknown")),
                 )
+            except BaseException as exc:
+                # BUG-3 hardening: an unexpected exception must still produce a
+                # terminal error envelope, otherwise the client card stays in
+                # WAITING until the host times out (INV-UI-001 spirit). The
+                # exception is re-raised after the honest reply is queued so
+                # the process-level fatal handling still sees it.
+                messages = self._runtime.protocol_error_messages(
+                    IPCProtocolError("internal_error", f"tool.call handler failed: {type(exc).__name__}"),
+                    reply_to=str(message.get("id", "unknown")),
+                )
+                _write_messages(self._runtime, messages)
+                raise
             _write_messages(self._runtime, messages)
         finally:
             self._worker = None
@@ -176,15 +188,40 @@ def _handle_and_write(
                 reply_to=str(message.get("id", "unknown")),
             )
 
+    # BUG-3b hardening: an unexpected exception from any handler must produce an
+    # honest internal_error envelope instead of killing the whole sidecar
+    # process with all user tasks. IPCProtocolError already carries its own
+    # contract-shaped reply (see handle()).
     if message.get("method") not in SERIALIZED_ACCEPTANCE_METHODS:
-        return _write_messages(runtime, handle())
+        try:
+            return _write_messages(runtime, handle())
+        except IPCProtocolError as exc:
+            return _write_messages(runtime, runtime.protocol_error_messages(exc, reply_to=str(message.get("id", "unknown"))))
+        except BaseException as exc:
+            error_message = runtime.protocol_error_messages(
+                IPCProtocolError("internal_error", f"{message.get('method')}: {type(exc).__name__}"),
+                reply_to=str(message.get("id", "unknown")),
+            )
+            _write_messages(runtime, error_message)
+            return False
 
     token = acceptance_gate.begin()
     try:
         response_messages = handle()
-    except BaseException:
+    except IPCProtocolError as exc:
         acceptance_gate.finish(token, flush=False)
-        raise
+        return _write_messages(
+            runtime,
+            runtime.protocol_error_messages(exc, reply_to=str(message.get("id", "unknown"))),
+        )
+    except BaseException as exc:
+        acceptance_gate.finish(token, flush=False)
+        error_message = runtime.protocol_error_messages(
+            IPCProtocolError("internal_error", f"{message.get('method')}: {type(exc).__name__}"),
+            reply_to=str(message.get("id", "unknown")),
+        )
+        _write_messages(runtime, error_message)
+        return False
     return acceptance_gate.finish(token, response_messages, flush=True)
 
 

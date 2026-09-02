@@ -79,11 +79,34 @@
       'gateway_unavailable',
       'tool_unsupported',
       'computer_use_blocked',
-      'timeout'
+      'timeout',
+      'sidecar_unavailable',
+      'stream_protocol_error',
+      'empty_model_output',
+      'empty_model_response',
+      'model_request_failed',
+      'request_timed_out',
+      'overall_timeout',
+      'inactivity_timeout',
+      'first_token_timeout',
+      'tool_call_limit_exceeded',
+      'tool_validation_error',
+      'internal_error',
+      'model_session_unavailable',
+      'chat_reducer_error',
+      'protocol_mismatch',
+      'knowledge_injection_failed'
     ];
     const tokens = Array.from(bounded.matchAll(/\b[a-z][a-z0-9_]{2,64}\b/gi), (match) => match[0].toLowerCase());
     const safeCode = safeCodes.find((code) => tokens.includes(code));
-    if (safeCode) return `${$t('chat.request_failed_reason')}: ${safeCode}`;
+    if (safeCode) {
+      const hintKey = 'chat.reason.' + safeCode;
+      const hint = $t(hintKey);
+      const hintResolved = hint !== hintKey ? hint : '';
+      return hintResolved
+        ? `${$t('chat.request_failed_reason')}: ${hintResolved}`
+        : `${$t('chat.request_failed_reason')}: ${safeCode}`;
+    }
 
     const safeClass = /(blocked|policy|allowlist|unsupported|invalid|outside[ _](the[ _])?workspace|approval|ownership|model|runtime|gateway|tool|computer use|not ready|permission|unavailable|timeout)/i.test(bounded)
       ? 'request_blocked_or_unavailable'

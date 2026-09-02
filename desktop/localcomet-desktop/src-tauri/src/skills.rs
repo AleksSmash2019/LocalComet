@@ -21,17 +21,31 @@ async fn run_skills_cli(
     let python = std::env::var_os("LOCALCOMET_TEST_PYTHON")
         .unwrap_or_else(|| std::ffi::OsString::from("python"));
 
-    // Find the skills_cli.py script
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let mut cli_path = cwd.join("../../../scripts/skills_cli.py");
-    if !cli_path.exists() {
-        // Fallback for release build or tests where cwd might be different
-        cli_path = cwd.join("../../scripts/skills_cli.py");
-    }
-    if !cli_path.exists() {
-        // Fallback for release build if needed
-        cli_path = cwd.join("scripts/skills_cli.py");
-    }
+    // SEC-2: resolve the CLI script from a trusted anchor (resource/exe dir,
+    // then CARGO_MANIFEST_DIR for dev builds). A bare cwd-relative fallback in
+    // an installed app could pick up a planted file from the launch directory.
+    let cli_path = std::env::var_os("LOCALCOMET_SKILLS_CLI_PATH")
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|exe| {
+                let candidate = exe
+                    .parent()?
+                    .join("../../../scripts/skills_cli.py")
+                    .canonicalize()
+                    .ok();
+                candidate.filter(|p| p.is_file())
+            })
+        })
+        .or_else(|| {
+            option_env!("CARGO_MANIFEST_DIR").map(|manifest| {
+                PathBuf::from(manifest)
+                    .join("../../scripts/skills_cli.py")
+                    .canonicalize()
+                    .expect("skills_cli.py must exist next to the crate in dev builds")
+            })
+        })
+        .ok_or_else(|| "skills_cli.py not found in trusted locations".to_string())?;
 
     let local_data_dir = app.path().local_data_dir().map_err(|e| e.to_string())?;
     let app_root =
@@ -46,6 +60,22 @@ async fn run_skills_cli(
 
     for arg in args {
         cmd.arg(arg);
+    }
+
+    // SEC-2: minimal environment (mirror of the sidecar sanitiser) — the
+    // inherited user environment could smuggle PYTHONPATH/PYTHONSTARTUP
+    // execution or proxy redirection into the skill CLI.
+    cmd.env_clear();
+    cmd.env(
+        "SYSTEMROOT",
+        std::env::var("SYSTEMROOT").unwrap_or_default(),
+    );
+    cmd.env("PATH", r"C:\Windows\System32;C:\Windows");
+    if let Ok(test_root) = std::env::var("LOCALCOMET_TEST_PROJECT_ROOT") {
+        cmd.env("LOCALCOMET_TEST_PROJECT_ROOT", test_root);
+    }
+    if let Ok(test_py) = std::env::var("LOCALCOMET_TEST_PYTHON") {
+        cmd.env("LOCALCOMET_TEST_PYTHON", test_py);
     }
 
     let output = tauri::async_runtime::spawn_blocking(move || cmd.output())

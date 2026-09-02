@@ -41,8 +41,8 @@ def main() -> int:
         "tool_calls": [call],
     }
     payload = {
-        "control_plane_version": "v6.84.6",
-        "model_gateway_version": "v6.84.3",
+        "control_plane_version": "v7.0.5",
+        "model_gateway_version": "v7.0.5",
         "request_id": metadata["request_id"],
         "turn_id": metadata["turn_id"],
         "chat_session_id": metadata["chat_session_id"],

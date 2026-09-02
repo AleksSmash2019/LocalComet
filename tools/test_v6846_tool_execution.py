@@ -2,9 +2,13 @@
 """Block 2 tests (ADR-013): sidecar tool execution with workspace confinement.
 
 Covers modules/tool_execution_ru.py and the tool.call routing in
-desktop_sidecar_runtime_ru.py. Security focus (R4): read-only and mutating
-files.* calls are confined to the confirmed workspace; traversal and symlink
-escape are rejected because resolution happens before the containment check.
+desktop_sidecar_runtime_ru.py. Security focus (R4): read-only files.* calls
+are confined to the confirmed workspace; traversal and symlink escape are
+rejected because resolution happens before the containment check. Mutating
+files.* calls (write / create_folder / delete) are executed by the Rust
+control-plane broker (src-tauri/src/secure_fs.rs) after approval; the sidecar
+handlers stay fail-closed (feature_disabled) as defense-in-depth, and these
+tests pin that contract.
 """
 from __future__ import annotations
 
@@ -127,13 +131,19 @@ class ToolExecutionConfinementTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "policy_blocked")
         self.assertFalse(target.exists())
 
-    def test_files_write_is_fail_closed_until_secure_no_reparse_writer_exists(self) -> None:
+    def test_files_write_stays_fail_closed_in_sidecar_while_rust_broker_executes(self) -> None:
+        # Since secure_fs.rs, the Rust control-plane broker executes files.write
+        # after consuming the approval token; the payload never reaches the
+        # sidecar. This boundary must stay fail-closed as defense-in-depth:
+        # even a grant-carrying payload that bypasses the broker path cannot
+        # mutate the filesystem from inside the sidecar process.
         target = Path(self.workspace) / "sub" / "out.txt"
         with self.assertRaises(ToolExecutionError) as ctx:
             execute_tool_call(
                 _payload(self.workspace, "files.write", {"path": "sub/out.txt", "content": "данные"})
             )
         self.assertEqual(ctx.exception.code, "feature_disabled")
+        self.assertIn("control-plane broker", ctx.exception.message)
         self.assertFalse(target.exists())
 
     def test_files_write_oversized_content_is_invalid(self) -> None:
@@ -152,7 +162,10 @@ class ToolExecutionConfinementTests(unittest.TestCase):
             execute_tool_call(_payload(self.workspace, "files.read", {"path": "big.bin"}))
         self.assertEqual(ctx.exception.code, "payload_too_large")
 
-    def test_reparse_sensitive_mutations_are_fail_closed_while_listing_remains_available(self) -> None:
+    def test_reparse_sensitive_mutations_are_fail_closed_in_sidecar_while_listing_remains_available(self) -> None:
+        # files.create_folder / files.delete run in the Rust control-plane
+        # broker (secure_fs.rs) with handle-relative no-reparse primitives;
+        # the sidecar boundary itself must never gain mutation capability.
         directory = Path(self.workspace) / "dir"
         directory.mkdir()
         (directory / "a.txt").write_text("x", encoding="utf-8")
@@ -161,9 +174,11 @@ class ToolExecutionConfinementTests(unittest.TestCase):
         with self.assertRaises(ToolExecutionError) as create_ctx:
             execute_tool_call(_payload(self.workspace, "files.create_folder", {"path": "new-dir"}))
         self.assertEqual(create_ctx.exception.code, "feature_disabled")
+        self.assertIn("control-plane broker", create_ctx.exception.message)
         with self.assertRaises(ToolExecutionError) as delete_ctx:
             execute_tool_call(_payload(self.workspace, "files.delete", {"path": "dir"}))
         self.assertEqual(delete_ctx.exception.code, "feature_disabled")
+        self.assertIn("control-plane broker", delete_ctx.exception.message)
         self.assertTrue(directory.is_dir())
 
     def test_files_list_outside_workspace_is_blocked(self) -> None:

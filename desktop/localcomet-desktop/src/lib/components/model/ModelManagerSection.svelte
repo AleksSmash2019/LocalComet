@@ -29,6 +29,7 @@
   import Icon from '$lib/components/common/Icon.svelte';
   import { selectDefaultModelArtifact } from '$lib/stores/modelDefault';
   import { computeMode, setComputeMode } from '$lib/stores/shellStore';
+  import { updateUiPreferences } from '$lib/stores/uiPreferences';
   import { computeModeProfile, isComputeMode } from '$lib/types/computeMode';
 
   // The separate "Hugging Face" settings tab was removed: the approved catalog
@@ -131,17 +132,37 @@
   // availability or unavailability (INV-UI-001).
   let capability: ManagedRuntimeCapability | null = null;
 
-  async function refreshCapability(runtimeId: string): Promise<void> {
+  async function refreshCapability(runtimeId: string, modelId: string): Promise<void> {
     capability = null;
     if (runtimeId === '' || installationState(runtimeId) !== 'valid') return;
     try {
-      capability = await getManagedRuntimeCapability(runtimeId, selectedModelId || undefined);
+      capability = await getManagedRuntimeCapability(runtimeId, modelId || undefined);
     } catch {
       capability = null;
     }
   }
 
-  $: if (selectedRuntimeId) void refreshCapability(selectedRuntimeId);
+  $: if (selectedRuntimeId) void refreshCapability(selectedRuntimeId, selectedModelId);
+
+  function applyLaunchRecommendation(): void {
+    const recommendation = capability?.launch_recommendation;
+    if (!recommendation) return;
+    if (recommendation.mode === 'hybrid') {
+      setComputeMode('hybrid');
+      updateUiPreferences({
+        ctxSizeOverride: recommendation.ctx_size,
+        gpuLayersOverride: recommendation.gpu_layers
+      });
+      return;
+    }
+    if (recommendation.mode === 'cpu') {
+      setComputeMode('cpu');
+      updateUiPreferences({ ctxSizeOverride: recommendation.ctx_size, gpuLayersOverride: null });
+      return;
+    }
+    setComputeMode('gpu');
+    updateUiPreferences({ ctxSizeOverride: null, gpuLayersOverride: null });
+  }
 
   function installationState(artifactId: string): string {
     return $managedRuntimeStore.installedArtifacts.find((artifact) => artifact.artifact_id === artifactId)?.installation_status ?? 'not_installed';
@@ -449,6 +470,14 @@
           {/if}
         {/if}
       </p>
+      {#if capability.launch_recommendation}
+        <p class="runtime-capability launch-recommendation">
+          {$t('models.recommendation.label')}:
+          {$t(`models.recommendation.mode.${capability.launch_recommendation.mode}`)}
+          · {$t('models.recommendation.ctx')}: {capability.launch_recommendation.ctx_size}{#if capability.launch_recommendation.mode === 'hybrid' && capability.launch_recommendation.gpu_layers !== null} · {$t('models.recommendation.layers')}: {capability.launch_recommendation.gpu_layers}{/if}{#if capability.launch_recommendation.estimated} · {$t('models.recommendation.estimated')}{/if}
+          <button type="button" disabled={$managedConnectionBusy} onclick={applyLaunchRecommendation}>{$t('models.recommendation.apply')}</button>
+        </p>
+      {/if}
     {/if}
     {#if $managedRuntimeStore.status?.state === 'Ready'}
       <p class="runtime-selector-hint">{$t('models.engine_requires_disconnect')}</p>

@@ -18,13 +18,6 @@ export interface ApprovalRequestCorrelation {
   readonly actionId?: string;
 }
 
-export interface ExecutionGrant {
-  grant_id: string;
-  tool: string;
-  workspace: string;
-  session: string;
-}
-
 export interface WorkspaceIdentity {
   status: string;
   canonical_path: string;
@@ -100,31 +93,6 @@ export async function requestApproval(
 
 export async function resolveToolApproval(requestId: string, decision: 'approve' | 'reject'): Promise<void> {
   await invoke('resolve_tool_approval', { requestId, decision });
-}
-
-export async function executeApproved(
-  token: string,
-  approvalId: string,
-  callId: string,
-  tool: string,
-  input: unknown
-): Promise<ExecutionGrant> {
-  const grant = await invoke<ExecutionGrant>('execute_approved', {
-    token,
-    approvalId,
-    callId,
-    tool,
-    input
-  });
-  if (
-    typeof grant !== 'object' ||
-    grant === null ||
-    typeof grant.grant_id !== 'string' ||
-    grant.tool !== tool
-  ) {
-    throw { code: 'invalid_payload', message: 'Invalid execution grant' };
-  }
-  return grant;
 }
 
 export async function setWorkspace(path: string): Promise<WorkspaceIdentity> {

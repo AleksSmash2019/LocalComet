@@ -127,9 +127,6 @@ export function setApprovalCorrelation(correlation: ApprovalCorrelation): void {
   pendingApprovalCorrelation = { ...correlation };
 }
 
-export function getApprovalCorrelation(): ApprovalCorrelation | null {
-  return pendingApprovalCorrelation ? { ...pendingApprovalCorrelation } : null;
-}
 
 export function clearApprovalCorrelation(): void {
   pendingApprovalCorrelation = null;
@@ -183,9 +180,6 @@ export function clearApprovalPrompt(): void {
   clearApprovalCorrelation();
 }
 
-export function setApprovalPromptActive(active: boolean): void {
-  approvalPromptActive.set(active);
-}
 
 export async function rejectActiveApproval(): Promise<void> {
   const prompt = get(approvalPrompt);

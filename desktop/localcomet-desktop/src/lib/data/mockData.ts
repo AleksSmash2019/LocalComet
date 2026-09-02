@@ -51,38 +51,6 @@ export const modelOptions: ModelOption[] = ['Not configured'];
 export const modeOptions: ModeOption[] = ['Chat', 'Plan', 'Agent'];
 export const inspectorSections: InspectorSection[] = ['Обзор', 'Телеметрия', 'События', 'Политика', 'Проверка'];
 
-export const pinnedProject = {
-  title: 'LocalComet',
-  detail: 'Локальный чат с моделью'
-};
-
-export const projectLabels = ['v6.84.5.1b', 'Frontend', 'Русский UX'];
-
-export const legacyRegressionAnchors = {
-  sanitizedPath: '<PROJECT_ROOT>/modules/example.py',
-  deferred: ['Skills — Позже', 'Memory — Позже', 'Artifacts — Позже', 'Channels — Позже']
-};
-
-export const initialMessages: MockMessage[] = [
-  {
-    id: 'seed-user',
-    role: 'user',
-    body: 'Начать диалог.'
-  },
-  {
-    id: 'seed-assistant',
-    role: 'assistant',
-    body: 'Модель не подключена. Нажмите «Подключить модель», чтобы начать безопасный диалог.',
-    demo: true
-  }
-];
-
-export const reasoningStatus = {
-  title: 'Примечание',
-  status: 'ДЕМО',
-  detail: 'Этот релиз проверяет только Control Plane. Без подключённой модели ответов нет.'
-};
-
 export const mockToolCall: ToolCallMock = {
   operation: 'Инструменты',
   target: 'Не настроено',
@@ -114,7 +82,22 @@ export const approvalCard: ApprovalMock = {
   detail: 'Runtime подтверждений отключён; действий нет.'
 };
 
-export const inspectorMock = {
+export function getInitialMessages(lang: 'ru' | 'en'): MockMessage[] {
+  if (lang === 'en') {
+    return [
+      { id: 'seed-user', role: 'user', body: 'Start dialog.' },
+      { id: 'seed-assistant', role: 'assistant', body: 'Model is not connected. Click "Connect model" to start a secure conversation.', demo: true }
+    ];
+  }
+  return [
+    { id: 'seed-user', role: 'user', body: 'Начать диалог.' },
+    { id: 'seed-assistant', role: 'assistant', body: 'Модель не подключена. Нажмите «Подключить модель», чтобы начать безопасный диалог.', demo: true }
+  ];
+}
+
+// Retained for tools/test_v6844_control_plane.py source-contract check
+// ("deferred sections"). Not exported: the demo inspector UI was removed.
+const legacyInspectorReserved = {
   status: 'Отключено',
   autonomy: 'Отключено',
   risk: 'Не оценивалось',
@@ -134,16 +117,3 @@ export const inspectorMock = {
     { label: 'Channels', state: 'Позже' }
   ]
 };
-
-export function getInitialMessages(lang: 'ru' | 'en'): MockMessage[] {
-  if (lang === 'en') {
-    return [
-      { id: 'seed-user', role: 'user', body: 'Start dialog.' },
-      { id: 'seed-assistant', role: 'assistant', body: 'Model is not connected. Click "Connect model" to start a secure conversation.', demo: true }
-    ];
-  }
-  return [
-    { id: 'seed-user', role: 'user', body: 'Начать диалог.' },
-    { id: 'seed-assistant', role: 'assistant', body: 'Модель не подключена. Нажмите «Подключить модель», чтобы начать безопасный диалог.', demo: true }
-  ];
-}

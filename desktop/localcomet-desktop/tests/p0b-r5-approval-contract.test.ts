@@ -368,31 +368,9 @@ describe('p0b-r5-approval-contract', () => {
     expect(() => validateApprovalEnvelope({ ...validEnvelope(), commandFamily: 'tool_filesystem_execute' }, 'artifact.download')).toThrow();
   });
 
-  it('p0b_r5_execute_approved_forwards_exact_boundary_and_rejects_tool_mismatch', async () => {
-    const { executeApproved } = await import('../src/lib/bridge/approval');
-    const input = { artifact_id: 'llama-cpp-windows-x86-64-cpu-bootstrap' };
-    protectedResponse = { grant_id: 'grant-1', tool: 'artifact.remove', workspace: 'workspace', session: 'session' };
-
-    await expect(executeApproved(
-      sharedFixture.token,
-      sharedFixture.approvalId,
-      sharedFixture.callId,
-      'artifact.download',
-      input
-    )).rejects.toMatchObject({ code: 'invalid_payload' });
-
-    expect(invokeCalls).toEqual([
-      {
-        command: 'execute_approved',
-        args: {
-          token: sharedFixture.token,
-          approvalId: sharedFixture.approvalId,
-          callId: sharedFixture.callId,
-          tool: 'artifact.download',
-          input
-        }
-      }
-    ]);
-  });
+  // `executeApproved` was removed from the frontend bridge: the Rust command
+  // `execute_approved` is internal-only (not granted via ACL) and had no
+  // production callers. The one-time-token consumption contract is enforced
+  // inside `run_tool_call` and covered by the Rust approval suite.
 
 });

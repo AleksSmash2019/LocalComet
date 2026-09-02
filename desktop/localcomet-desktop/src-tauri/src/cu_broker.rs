@@ -330,12 +330,13 @@ fn hidden_browser_launch_options(
     Ok((args, Some(port)))
 }
 
-fn plan_launch(
+fn plan_launch_with(
     action: &str,
     target_raw: &Value,
     url_raw: &Value,
     workspace_path: Option<&str>,
     hidden_desktop: Option<&str>,
+    registry: &dyn Fn(&str) -> Option<String>,
 ) -> Result<ResolvedLaunch, String> {
     let target_value = target_raw.as_str().map(str::trim).unwrap_or_default();
     if target_value.is_empty() || target_value.len() > 200 {
@@ -378,7 +379,7 @@ fn plan_launch(
             }
             let entry =
                 app_entry(&canonical).expect("normalized target must have a registry entry");
-            let program = resolve_program(entry).ok_or_else(|| {
+            let program = resolve_program_with(entry, registry).ok_or_else(|| {
                 "allowlisted app executable was not found on this system".to_owned()
             })?;
             let (args, browser_cdp_port) =
@@ -412,8 +413,9 @@ fn plan_launch(
                 ["chrome", "msedge", "firefox"]
                     .into_iter()
                     .find(|candidate| {
-                        resolve_program(
+                        resolve_program_with(
                             app_entry(candidate).expect("browser candidate must be registered"),
+                            registry,
                         )
                         .is_some()
                     })
@@ -432,7 +434,7 @@ fn plan_launch(
             }
             let entry =
                 app_entry(&canonical).expect("normalized browser must have a registry entry");
-            let program = resolve_program(entry).ok_or_else(|| {
+            let program = resolve_program_with(entry, registry).ok_or_else(|| {
                 "allowlisted browser executable was not found on this system".to_owned()
             })?;
             let url = url_raw
@@ -454,6 +456,54 @@ fn plan_launch(
         }
         other => Err(format!("unsupported broker action: {other}")),
     }
+}
+
+fn plan_launch(
+    action: &str,
+    target_raw: &Value,
+    url_raw: &Value,
+    workspace_path: Option<&str>,
+    hidden_desktop: Option<&str>,
+) -> Result<ResolvedLaunch, String> {
+    plan_launch_with(
+        action,
+        target_raw,
+        url_raw,
+        workspace_path,
+        hidden_desktop,
+        &registry_lookup,
+    )
+}
+
+/// Test-only seam for sibling modules (intent_compiler): same preflight as
+/// `plan_launch`, but with a fixed fake App Paths registry so browser
+/// resolution never depends on the host. Not part of the production surface.
+#[cfg(test)]
+pub(crate) fn plan_launch_with_for_test(
+    action: &str,
+    target_raw: &Value,
+    url_raw: &Value,
+    workspace_path: Option<&str>,
+    hidden_desktop: Option<&str>,
+) -> Result<(), String> {
+    plan_launch_with(
+        action,
+        target_raw,
+        url_raw,
+        workspace_path,
+        hidden_desktop,
+        &|subkey: &str| {
+            const BROWSER_EXES: [&str; 3] = ["chrome.exe", "msedge.exe", "firefox.exe"];
+            if BROWSER_EXES
+                .iter()
+                .any(|exe| subkey.ends_with(&format!("\\{exe}")))
+            {
+                return Some(format!("{}\\System32\\notepad.exe", system_root()));
+            }
+            None
+        },
+    )
+    .map(|_: ResolvedLaunch| ())
 }
 
 fn validate_hidden_browser_profile(raw: &str) -> Result<(), String> {
@@ -478,7 +528,10 @@ fn validate_hidden_browser_profile(raw: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn resolve_program(entry: &AppEntry) -> Option<String> {
+fn resolve_program_with(
+    entry: &AppEntry,
+    resolve_registry: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
     if let Some(exe) = entry.system32_exe {
         let path = format!("{}\\System32\\{exe}", system_root());
         if std::path::Path::new(&path).is_file() {
@@ -496,7 +549,7 @@ fn resolve_program(entry: &AppEntry) -> Option<String> {
             r"HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths",
             r"HKLM\Software\Microsoft\Windows\CurrentVersion\App Paths",
         ] {
-            if let Some(path) = registry_default_value(&format!("{root_key}\\{exe}")) {
+            if let Some(path) = resolve_registry(&format!("{root_key}\\{exe}")) {
                 let cleaned = path.trim_matches('"').to_owned();
                 if std::path::Path::new(&cleaned).is_file() {
                     return Some(cleaned);
@@ -505,6 +558,13 @@ fn resolve_program(entry: &AppEntry) -> Option<String> {
         }
     }
     None
+}
+
+/// The registry lookup seam for program resolution. Production always uses
+/// `registry_default_value` (reg.exe); tests substitute a fixed fake so the
+/// allowlisted-browser paths never depend on the host's installed browsers.
+fn registry_lookup(subkey: &str) -> Option<String> {
+    registry_default_value(subkey)
 }
 
 /// Registry default-value lookup via reg.exe (same pattern as hardware.rs).
@@ -1923,6 +1983,21 @@ mod tests {
     use super::*;
     use std::time::Duration as StdDuration;
 
+    /// Fixed fake of the App Paths registry: chrome/msedge/firefox resolve to
+    /// existing files (System32 notepad.exe is used as a stand-in path), any
+    /// other subkey is absent. Makes browser-resolution tests independent of
+    /// the host's installed browsers and of reg.exe availability.
+    fn fake_registry_lookup(subkey: &str) -> Option<String> {
+        const BROWSER_EXES: [&str; 3] = ["chrome.exe", "msedge.exe", "firefox.exe"];
+        if BROWSER_EXES
+            .iter()
+            .any(|exe| subkey.ends_with(&format!("\\{exe}")))
+        {
+            return Some(format!("{}\\System32\\notepad.exe", system_root()));
+        }
+        None
+    }
+
     const REQUEST_ID: &str = "0123456789abcdef01234567";
     const ACTION_ID: &str = "call_0123456789abcdef0123456789ab";
     const EXPIRED_REQUEST_ID: &str = "111111111111111111111111";
@@ -2069,20 +2144,33 @@ mod tests {
         assert!(validate_broker_action("open_app", &path, None)
             .expect_err("path target must be blocked")
             .contains("path"));
-        let notepad = json!({"action": "open_app", "target": "notepad"});
-        assert!(validate_broker_action("open_app", &notepad, None).is_ok());
-        let youtube = json!({
-            "action": "open_url",
-            "target": "browser",
-            "url": "https://www.youtube.com/"
-        });
-        assert!(validate_broker_action("open_url", &youtube, None).is_ok());
-        let generic_https = json!({
-            "action": "open_url",
-            "target": "browser",
-            "url": "https://example.com/"
-        });
-        assert!(validate_broker_action("open_url", &generic_https, None).is_ok());
+        assert!(plan_launch_with(
+            "open_app",
+            &json!("notepad"),
+            &Value::Null,
+            None,
+            None,
+            &fake_registry_lookup,
+        )
+        .is_ok());
+        assert!(plan_launch_with(
+            "open_url",
+            &json!("browser"),
+            &json!("https://www.youtube.com/"),
+            None,
+            None,
+            &fake_registry_lookup,
+        )
+        .is_ok());
+        assert!(plan_launch_with(
+            "open_url",
+            &json!("browser"),
+            &json!("https://example.com/"),
+            None,
+            None,
+            &fake_registry_lookup,
+        )
+        .is_ok());
     }
 
     #[test]
@@ -2461,11 +2549,24 @@ mod tests {
         assert!(validate_broker_action("open_app", &with_url, None)
             .expect_err("open_app with URL must be blocked")
             .contains("open_app must not include a URL"));
-        let notepad = json!({"action": "open_app", "target": "notepad"});
-        assert!(validate_broker_action("open_app", &notepad, None).is_ok());
-        let url_for_browser =
-            json!({"action": "open_url", "target": "chrome", "url": "https://example.com"});
-        assert!(validate_broker_action("open_url", &url_for_browser, None).is_ok());
+        assert!(plan_launch_with(
+            "open_app",
+            &json!("notepad"),
+            &Value::Null,
+            None,
+            None,
+            &fake_registry_lookup,
+        )
+        .is_ok());
+        assert!(plan_launch_with(
+            "open_url",
+            &json!("chrome"),
+            &json!("https://example.com"),
+            None,
+            None,
+            &fake_registry_lookup,
+        )
+        .is_ok());
         let url_missing = json!({"action": "open_url", "target": "chrome"});
         assert!(validate_broker_action("open_url", &url_missing, None)
             .expect_err("open_url missing URL must be blocked")

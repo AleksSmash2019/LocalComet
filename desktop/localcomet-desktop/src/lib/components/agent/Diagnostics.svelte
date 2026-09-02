@@ -242,14 +242,14 @@
 
     .diagnostics.drawer-open {
       position: fixed;
-      top: var(--shell-header-height);
+      top: calc(var(--app-menubar-height) + var(--shell-header-height));
       right: 0;
       z-index: 40;
       display: block;
       width: min(var(--inspector-width), calc(100vw - var(--sidebar-width)));
       min-width: 0;
       max-width: 100vw;
-      height: calc(100vh - var(--shell-header-height));
+      height: calc(100vh - var(--app-menubar-height) - var(--shell-header-height));
       box-shadow: var(--lc-shadow);
     }
   }

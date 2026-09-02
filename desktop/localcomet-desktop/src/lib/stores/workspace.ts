@@ -95,7 +95,3 @@ export async function chooseWorkspace(): Promise<boolean> {
   }
 }
 
-export function resetWorkspaceState(): void {
-  if (typeof localStorage !== 'undefined') localStorage.removeItem(WORKSPACE_PREFERENCE_KEY);
-  workspaceStore.set({ status: 'unconfirmed', path: null, digest: null, error: null });
-}

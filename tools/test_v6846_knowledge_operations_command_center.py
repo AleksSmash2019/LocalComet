@@ -1,4 +1,4 @@
-"""Focused v6.84.6 Human-Governed Knowledge Operations Command Center tests."""
+"""Focused v7.0.5 Human-Governed Knowledge Operations Command Center tests."""
 
 from __future__ import annotations
 

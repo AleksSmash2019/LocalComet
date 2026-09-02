@@ -32,3 +32,10 @@ description = "Allow uninstalling a skill after explicit approval."
 commands.allow = [
   "skills_uninstall",
 ]
+
+[[permission]]
+identifier = "allow-skills-compile"
+description = "Allow compiling a skill workflow after explicit approval."
+commands.allow = [
+  "skills_compile",
+]

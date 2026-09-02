@@ -1,4 +1,5 @@
 import { isRecord } from './guards';
+import { bounded, sanitizeErrorText } from './textHelpers';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { isLanguage } from '$lib/i18n/locales';
@@ -22,6 +23,7 @@ import type {
   ManagedModelRemovalResult,
   ManagedRuntimeCatalog,
   ManagedRuntimeCapability,
+  LaunchRecommendation,
   ManagedRuntimeLogs,
   ManagedRuntimeStartResponse,
   ManagedRuntimeStatus,
@@ -258,8 +260,11 @@ export async function startManagedRuntime(
     : maybeIsCurrent;
   const prefs = loadUiPreferences();
   const computeProfile = computeModeProfile(prefs.computeMode);
-  const ctxSizeOverride = computeProfile.ctxSizeOverride ?? prefs.ctxSizeOverride;
-  const gpuLayersOverride = computeProfile.gpuLayersOverride ?? prefs.gpuLayersOverride;
+  // Explicit numbers (for example an applied hardware-fit recommendation)
+  // take precedence over the mode's conservative fallback profile. The
+  // profile values still apply when no explicit override was chosen.
+  const ctxSizeOverride = prefs.ctxSizeOverride ?? computeProfile.ctxSizeOverride;
+  const gpuLayersOverride = prefs.gpuLayersOverride ?? computeProfile.gpuLayersOverride;
   const approvalInput = {
     ...(customSha256 === null ? { model_id: requestedId } : { model_id: requestedId, custom_sha256: customSha256 }),
     ...(requestedRuntimeId === undefined ? {} : { runtime_id: requestedRuntimeId }),
@@ -440,7 +445,7 @@ export function normalizeGatewayError(error: unknown): SanitizedGatewayError {
   if (isRecord(error)) {
     return {
       code: bounded(typeof error.code === 'string' ? error.code : 'gateway_error', 64),
-      message: bounded(sanitize(typeof error.message === 'string' ? error.message : 'Local model gateway error'), 240)
+      message: bounded(sanitizeErrorText(typeof error.message === 'string' ? error.message : 'Local model gateway error'), 240)
     };
   }
   return { code: 'gateway_error', message: 'Local model gateway error' };
@@ -881,6 +886,42 @@ function validateManagedLogs(value: unknown): ManagedRuntimeLogs {
   };
 }
 
+function validateLaunchRecommendation(value: unknown): LaunchRecommendation {
+  const object = expectExactRecord(value, [
+    'mode',
+    'gpu_layers',
+    'ctx_size',
+    'architecture',
+    'block_count',
+    'model_context_length',
+    'estimated'
+  ]);
+  if (object.mode !== 'gpu' && object.mode !== 'hybrid' && object.mode !== 'cpu') throw invalid();
+  const ctxSize = boundedNonNegativeInteger(object.ctx_size, 131072);
+  if (ctxSize < 1024) throw invalid();
+  const gpuLayers =
+    object.gpu_layers === null ? null : boundedNonNegativeInteger(object.gpu_layers, 99);
+  if (gpuLayers !== null && (gpuLayers < 1 || object.mode !== 'hybrid')) throw invalid();
+  if (gpuLayers === null && object.mode === 'hybrid') throw invalid();
+  const blockCount =
+    object.block_count === null ? null : boundedNonNegativeInteger(object.block_count, 1024);
+  if (blockCount !== null && blockCount < 1) throw invalid();
+  const modelContextLength =
+    object.model_context_length === null
+      ? null
+      : boundedNonNegativeInteger(object.model_context_length, 10_000_000);
+  if (modelContextLength !== null && modelContextLength < 256) throw invalid();
+  return {
+    mode: object.mode,
+    gpu_layers: gpuLayers,
+    ctx_size: ctxSize,
+    architecture: object.architecture === null ? null : safeText(object.architecture, 64),
+    block_count: blockCount,
+    model_context_length: modelContextLength,
+    estimated: exactBoolean(object.estimated)
+  };
+}
+
 function validateManagedCapability(value: unknown): ManagedRuntimeCapability {
   const object = expectExactRecord(value, [
     'runtime_id',
@@ -888,7 +929,8 @@ function validateManagedCapability(value: unknown): ManagedRuntimeCapability {
     'safe_to_start',
     'reason_code',
     'fallback_runtime_ids',
-    'device_summary'
+    'device_summary',
+    'launch_recommendation'
   ]);
   const reasonCode = object.reason_code === null ? null : safeText(object.reason_code, 64);
   if (reasonCode === '') throw invalid();
@@ -898,7 +940,11 @@ function validateManagedCapability(value: unknown): ManagedRuntimeCapability {
     safe_to_start: exactBoolean(object.safe_to_start),
     reason_code: reasonCode,
     fallback_runtime_ids: boundedArray(object.fallback_runtime_ids, 8).map((id) => validateArtifactId(String(id))),
-    device_summary: object.device_summary === null ? null : safeText(object.device_summary, 96)
+    device_summary: object.device_summary === null ? null : safeText(object.device_summary, 96),
+    launch_recommendation:
+      object.launch_recommendation === null
+        ? null
+        : validateLaunchRecommendation(object.launch_recommendation)
   };
 }
 
@@ -1077,7 +1123,7 @@ function parseModelEvent(value: unknown, toolsEnabled: boolean): ModelGatewayEve
     error: isRecord(metadata.error)
       ? {
           code: bounded(String(metadata.error.code ?? 'gateway_error'), 64),
-          message: bounded(sanitize(String(metadata.error.message ?? 'Local model gateway error')), 240),
+          message: bounded(sanitizeErrorText(String(metadata.error.message ?? 'Local model gateway error')), 240),
           retryable: metadata.error.retryable === true
         }
       : undefined
@@ -1435,10 +1481,4 @@ function invalid(): SanitizedGatewayError {
   return { code: 'invalid_payload', message: `Payload Error: ${caller}` };
 }
 
-function sanitize(value: string): string {
-  return value.replace(/Traceback[\s\S]*/g, '<redacted>').replace(/sk-[A-Za-z0-9_-]{8,}/g, '<redacted>');
-}
 
-function bounded(value: string, limit: number): string {
-  return value.slice(0, limit);
-}

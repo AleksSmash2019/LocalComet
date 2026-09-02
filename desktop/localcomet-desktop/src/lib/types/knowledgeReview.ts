@@ -219,7 +219,7 @@ export interface KnowledgeReviewSnapshotEnvelope {
   readonly contract:
     | 'localcomet.knowledge-review-snapshot/1.0'
     | 'localcomet.knowledge-review-refresh/1.0';
-  readonly command_center_version: 'v6.84.6';
+  readonly command_center_version: 'v7.0.5';
   readonly control_plane_version: string;
   readonly sidecar_runtime_version: string;
   readonly source: 'LOCAL_CONTROL_PLANE';
@@ -293,7 +293,7 @@ export interface KnowledgeReviewDecisionRequest {
 
 export interface KnowledgeReviewDecisionCreateEnvelope {
   readonly contract: 'localcomet.knowledge-review-decision-create/1.0';
-  readonly command_center_version: 'v6.84.6';
+  readonly command_center_version: 'v7.0.5';
   readonly control_plane_version: string;
   readonly sidecar_runtime_version: string;
   readonly source: 'LOCAL_CONTROL_PLANE';
@@ -324,7 +324,7 @@ export interface ReviewFilterState {
 }
 
 export interface ReviewDiagnostics {
-  readonly commandCenterVersion: 'v6.84.6';
+  readonly commandCenterVersion: 'v7.0.5';
   readonly frontendContractVersion: 'localcomet.knowledge-review-ui/1.0';
   readonly tauriBridgeStatus: 'IDLE' | 'CONNECTING' | 'CONNECTED' | 'UNAVAILABLE' | 'ERROR';
   readonly sidecarConnectionState: 'IDLE' | 'CONNECTING' | 'CONNECTED' | 'UNAVAILABLE' | 'ERROR';
@@ -579,6 +579,3 @@ export function sortReviewFindings(findings: readonly ReviewFinding[]): readonly
   });
 }
 
-export function isBlocked(review: ReviewCenterItem): boolean {
-  return review.status === 'BLOCKED';
-}

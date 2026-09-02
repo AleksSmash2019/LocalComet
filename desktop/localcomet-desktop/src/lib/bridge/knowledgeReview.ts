@@ -40,7 +40,7 @@ export const KNOWLEDGE_REVIEW_PROJECTION_CONTRACT = 'localcomet.knowledge-review
 export const KNOWLEDGE_CHANGE_REVIEW_CONTRACT = 'localcomet.knowledge-change-review/1.0';
 export const HUMAN_REVIEW_DECISION_CONTRACT =
   'localcomet.knowledge-change-review-decision/1.0';
-export const KNOWLEDGE_OPERATIONS_COMMAND_CENTER_VERSION = 'v6.84.6';
+export const KNOWLEDGE_OPERATIONS_COMMAND_CENTER_VERSION = 'v7.0.5';
 export const KNOWLEDGE_REVIEW_ACTOR_SOURCE = 'LOCALCOMET_REVIEW_CENTER';
 export const KNOWLEDGE_REVIEW_SOURCE = 'LOCAL_CONTROL_PLANE';
 export const KNOWLEDGE_REVIEW_LIST_OFFSET = 0;

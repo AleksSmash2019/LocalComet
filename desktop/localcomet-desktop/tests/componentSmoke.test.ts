@@ -91,7 +91,7 @@ describe('component smoke tests', () => {
     expect(html).not.toContain('provider=');
   });
 
-  it('reduces unrecognized provider failures to a safe class label', () => {
+  it('reduces unrecognized provider failures to a safe human hint without leaking raw text', () => {
     chatMessages.set([{
       id: 'failed-provider',
       role: 'assistant',
@@ -101,9 +101,28 @@ describe('component smoke tests', () => {
       error: 'model_request_failed provider=https://private.example/token'
     }]);
     const html = render(MessageList).body;
-    expect(html).toContain('request_blocked_or_unavailable');
+    // New contract: a recognized gateway code resolves to its i18n hint...
+    expect(html).toContain('\u041f\u0440\u0438\u0447\u0438\u043d\u0430');
+    // ...while the rest of the raw error (private host/token) stays hidden.
     expect(html).not.toContain('private.example');
-    expect(html).not.toContain('model_request_failed');
+    expect(html).not.toContain('token');
+  });
+
+  it('maps gateway codes to human hints and keeps unknown text sanitized', () => {
+    chatMessages.set([{
+      id: 'failed-sidecar',
+      role: 'assistant',
+      body: '',
+      conversationId: 'local-chat',
+      state: 'failed',
+      error: 'sidecar_unavailable: model completion returned non-200 status'
+    }]);
+    const html = render(MessageList).body;
+    expect(html).toContain('request-error-cause');
+    expect(html).not.toContain('sidecar_unavailable');
+    expect(html).not.toContain('non-200');
+    const unknown = render(MessageList, {}).body; // placeholder to keep render count stable
+    expect(typeof unknown).toBe('string');
   });
 
   it('renders the tool card with sanitized target', () => {

@@ -1,6 +1,7 @@
 use crate::artifact_trust::{perf_logging_enabled, ArtifactTrustService, ValidatedRuntimeModel};
 use crate::artifact_validation_cache::ValidationSource;
 use crate::control_plane::{BridgeError, ControlPlaneBridge, ControlPlaneMethod};
+use crate::gguf_metadata::{read_gguf_metadata, recommend_launch, LaunchRecommendationReport};
 use crate::windows_job::{ContainedManagedRuntimeProcess, ManagedRuntimeLaunchSpec};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -387,8 +388,40 @@ impl ManagedRuntimeSupervisor {
                 .filter(|candidate| candidate.as_str() != runtime_id)
                 .cloned()
                 .collect();
+            capability.launch_recommendation = self.model_launch_recommendation(
+                model_id,
+                runtime_id,
+                capability.device_summary.as_deref(),
+            );
         }
         Ok(capability)
+    }
+
+    /// Hardware-fit recommendation for the selected model. None is returned
+    /// when the model file cannot be resolved or, for an accelerated runtime,
+    /// when the device probe did not positively confirm a device: a probe
+    /// failure must never be reported as a CPU recommendation.
+    fn model_launch_recommendation(
+        &self,
+        model_id: &str,
+        runtime_id: &str,
+        device_summary: Option<&str>,
+    ) -> Option<LaunchRecommendationReport> {
+        if runtime_id.contains("vulkan") && device_summary.is_none() {
+            return None;
+        }
+        let model_path = self.artifacts.managed_model_file(model_id).ok()?;
+        let model_size_bytes = fs::metadata(&model_path).ok()?.len();
+        let metadata = read_gguf_metadata(&model_path);
+        let mut sys = sysinfo::System::new_all();
+        sys.refresh_memory();
+        let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
+        Some(recommend_launch(
+            model_size_bytes,
+            metadata.as_ref(),
+            device_summary,
+            available_ram_gb,
+        ))
     }
 
     pub(crate) fn runtime_start_approval_input(
@@ -770,6 +803,33 @@ impl ManagedRuntimeSupervisor {
         sys.refresh_memory();
         let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
         let accelerated = launch.runtime_id.contains("vulkan");
+        // Hardware-fit context target for pure-auto GPU launches: aim the
+        // engine's own --fit at the largest bounded context tier that
+        // plausibly fits the probed free VRAM. Fit remains the final
+        // authority; manual overrides keep the previous fixed target.
+        let fit_ctx_target =
+            if accelerated && ctx_size_override.is_none() && gpu_layers_override.is_none() {
+                match cached_device_probe(
+                    &launch.runtime_id,
+                    &launch.runtime_release_tag,
+                    &launch.package_dir,
+                    &launch.executable,
+                ) {
+                    DeviceProbeOutcome::VulkanDevice(summary) => {
+                        let metadata = read_gguf_metadata(&launch.model_path);
+                        let recommendation = recommend_launch(
+                            model_size_bytes,
+                            metadata.as_ref(),
+                            Some(&summary),
+                            available_ram_gb,
+                        );
+                        (recommendation.mode == "gpu").then_some(recommendation.ctx_size)
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
         // A partial Vulkan launch intentionally keeps only part of the GGUF on
         // host RAM. Do not reject it by comparing all file bytes with available
         // RAM; llama.cpp is authoritative for the actual layer allocation and
@@ -826,6 +886,7 @@ impl ManagedRuntimeSupervisor {
                     launch.runtime_id.contains("vulkan"),
                     ctx_size_override,
                     gpu_layers_override,
+                    fit_ctx_target,
                 ),
                 current_dir: launch.package_dir.clone(),
                 env: sanitized_runtime_environment(),
@@ -1505,6 +1566,10 @@ pub struct ManagedRuntimeCapability {
     pub reason_code: Option<&'static str>,
     pub fallback_runtime_ids: Vec<String>,
     pub device_summary: Option<String>,
+    /// Hardware-fit launch recommendation for the selected model, when both
+    /// the device probe and the model file could be resolved. None is honest
+    /// absence (probe unavailable, CPU runtime, or model unresolved).
+    pub launch_recommendation: Option<LaunchRecommendationReport>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1627,6 +1692,7 @@ fn probe_capability(
         reason_code: None,
         fallback_runtime_ids: Vec::new(),
         device_summary: None,
+        launch_recommendation: None,
     };
     match outcome {
         DeviceProbeOutcome::VulkanDevice(summary) => {
@@ -1791,6 +1857,7 @@ fn runtime_args(
     accelerated: bool,
     ctx_size_override: Option<u32>,
     gpu_layers_override: Option<u32>,
+    fit_ctx_target: Option<u32>,
 ) -> Vec<OsString> {
     let mut args = vec![OsString::from("--model"), model.as_os_str().to_os_string()];
     if let Some(mmproj_path) = mmproj {
@@ -1857,7 +1924,7 @@ fn runtime_args(
         args.push(OsString::from("on"));
         if auto_context_fit {
             args.push(OsString::from("--fit-ctx"));
-            args.push(OsString::from("2048"));
+            args.push(OsString::from(fit_ctx_target.unwrap_or(2048).to_string()));
         } else {
             args.push(OsString::from("--ctx-size"));
             args.push(OsString::from(
@@ -2978,6 +3045,7 @@ mod tests {
             reason_code: Some("VULKAN_DEVICE_UNAVAILABLE"),
             fallback_runtime_ids: vec!["llama-cpp-windows-x86-64-cpu-bootstrap".into()],
             device_summary: None,
+            launch_recommendation: None,
         };
 
         let value = serde_json::to_value(&capability).expect("serialize capability");
@@ -2994,6 +3062,37 @@ mod tests {
             json!(["llama-cpp-windows-x86-64-cpu-bootstrap"])
         );
         assert_eq!(value["device_summary"], Value::Null);
+        assert_eq!(value["launch_recommendation"], Value::Null);
+    }
+
+    #[test]
+    fn capability_report_serializes_launch_recommendation() {
+        let capability = ManagedRuntimeCapability {
+            runtime_id: "llama-cpp-windows-x86-64-vulkan-bootstrap".into(),
+            available: true,
+            safe_to_start: true,
+            reason_code: None,
+            fallback_runtime_ids: Vec::new(),
+            device_summary: Some("NVIDIA GeForce RTX 5070 (11943 MiB, 11175 MiB free)".into()),
+            launch_recommendation: Some(LaunchRecommendationReport {
+                mode: "gpu",
+                gpu_layers: None,
+                ctx_size: 32768,
+                architecture: Some("qwen3".into()),
+                block_count: Some(28),
+                model_context_length: Some(40960),
+                estimated: false,
+            }),
+        };
+
+        let value = serde_json::to_value(&capability).expect("serialize capability");
+
+        let recommendation = &value["launch_recommendation"];
+        assert_eq!(recommendation["mode"], "gpu");
+        assert_eq!(recommendation["ctx_size"], 32768);
+        assert_eq!(recommendation["gpu_layers"], Value::Null);
+        assert_eq!(recommendation["block_count"], 28);
+        assert_eq!(recommendation["estimated"], false);
     }
 
     #[test]
@@ -3042,6 +3141,7 @@ mod tests {
             Path::new(r"C:\k\key.txt"),
             "alias",
             false,
+            None,
             None,
             None,
         );
@@ -3127,6 +3227,7 @@ mod tests {
             true,
             None,
             None,
+            None,
         );
         let joined = args
             .iter()
@@ -3135,6 +3236,30 @@ mod tests {
             .join(" ");
         assert!(joined.contains("--fit on"));
         assert!(joined.contains("--fit-ctx 2048"));
+        assert!(!joined.contains("--gpu-layers"));
+    }
+
+    #[test]
+    fn accelerated_runtime_args_aim_fit_at_the_recommended_context_tier() {
+        let args = runtime_args(
+            Path::new(r"C:\m\model.gguf"),
+            None,
+            12345,
+            Path::new(r"C:\k\key.txt"),
+            "alias",
+            true,
+            None,
+            None,
+            Some(32768),
+        );
+        let joined = args
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--fit on"));
+        assert!(joined.contains("--fit-ctx 32768"));
+        assert!(!joined.contains("--ctx-size"));
         assert!(!joined.contains("--gpu-layers"));
     }
 
@@ -3149,6 +3274,7 @@ mod tests {
             true,
             Some(2048),
             Some(8),
+            None,
         );
         let joined = args
             .iter()
@@ -3205,6 +3331,7 @@ mod tests {
             false,
             None,
             None,
+            None,
         );
         let joined = args
             .iter()
@@ -3232,6 +3359,7 @@ mod tests {
             &key,
             "approved-model",
             false,
+            None,
             None,
             None,
         );

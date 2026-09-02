@@ -1,8 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
-  <title id="title">LocalComet mark</title>
-  <desc id="desc">Original LocalComet circular comet mark.</desc>
-  <circle cx="32" cy="32" r="28" fill="#f8fafc" stroke="#2563eb" stroke-width="4" />
-  <path d="M18 34c9-13 20-17 34-16-8 4-13 10-16 18-2 6-7 10-14 10-5 0-8-4-4-12z" fill="#2563eb" />
-  <path d="M13 43c8-1 14-3 20-8-3 7-9 12-18 15-3 1-5-5-2-7z" fill="#16a34a" />
-  <circle cx="36" cy="29" r="5" fill="#ffffff" />
+  <title id="title">LocalComet</title>
+  <desc id="desc">LocalComet green comet mark on a dark field.</desc>
+  <circle cx="32" cy="32" r="29" fill="#09090b" stroke="#10b981" stroke-opacity=".24" stroke-width="2" />
+  <path d="M6 8c15 7 27 15 35 27" fill="none" stroke="#10b981" stroke-width="3.1" stroke-linecap="round" opacity=".2" />
+  <path d="M9 18c13 4 23 10 31 19" fill="none" stroke="#10b981" stroke-width="2.7" stroke-linecap="round" opacity=".52" />
+  <path d="M17 26c9 2 16 6 22 12" fill="none" stroke="#10b981" stroke-width="2.2" stroke-linecap="round" opacity=".9" />
+  <circle cx="42" cy="41" r="14" fill="#10b981" fill-opacity=".08" stroke="#10b981" stroke-width="3.4" />
+  <circle cx="42" cy="41" r="7" fill="#34d399" />
+  <circle cx="46" cy="37" r="3.5" fill="#09090b" fill-opacity=".74" />
 </svg>

@@ -109,43 +109,9 @@ export async function submitControlPlaneDemo(prompt: string, behavior: MockTurnB
   }
 }
 
-export async function createPendingKnowledgeTurn(prompt: string): Promise<TurnSummary | null> {
-  const state = get(controlPlaneStore);
-  if (state.bridgeState !== 'READY') return null;
-  try {
-    let session = state.currentSession;
-    if (!session) {
-      session = await createSession('LocalComet chat');
-      controlPlaneStore.update((current) => ({ ...current, currentSession: session }));
-    }
-    let thread = get(controlPlaneStore).currentThread;
-    if (!thread) {
-      thread = await createThread(session.session_id, 'Project Knowledge');
-      controlPlaneStore.update((current) => ({ ...current, currentThread: thread }));
-    }
-    const turn = await startMockTurn(thread.thread_id, prompt, 'pending_model');
-    controlPlaneStore.update((current) => ({ ...current, currentTurn: turn, lastError: null }));
-    return turn;
-  } catch (error) {
-    controlPlaneStore.update((current) => ({ ...current, lastError: normalizeBridgeError(error) }));
-    return null;
-  }
-}
 
-export async function startCancellationDemo(): Promise<void> {
-  await submitControlPlaneDemo('Cancellation demo request', 'wait_for_cancel');
-}
 
-export async function cancelCurrentDemoTurn(reason: CancelReason = 'user_requested'): Promise<void> {
-  const turn = get(controlPlaneStore).currentTurn;
-  if (!turn || turn.state !== 'RUNNING') return;
-  try {
-    const cancelled = await cancelTurn(turn.turn_id, reason);
-    controlPlaneStore.update((state) => ({ ...state, currentTurn: cancelled, lastError: null }));
-  } catch (error) {
-    controlPlaneStore.update((state) => ({ ...state, lastError: normalizeBridgeError(error) }));
-  }
-}
+
 
 export function resetControlPlaneStore(): void {
   lastSequenceByReplyTo.clear();

@@ -703,7 +703,18 @@ mod tests {
             .expect("compiled");
         assert_eq!(plan.intent_kind, IntentKind::OpenUrl);
         let input = plan_to_computer_use_input(&plan);
-        assert!(crate::cu_broker::validate_broker_action("open_url", &input, None).is_ok());
+        // Broker preflight with a fixed fake App Paths registry: the URL
+        // validation path must succeed regardless of the host's installed
+        // browsers (and without spawning reg.exe).
+        let target = input
+            .get("target")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let url = input.get("url").cloned().unwrap_or(serde_json::Value::Null);
+        assert!(
+            crate::cu_broker::plan_launch_with_for_test("open_url", &target, &url, None, None)
+                .is_ok()
+        );
         assert_eq!(plan.risk_level, "dangerous");
     }
 

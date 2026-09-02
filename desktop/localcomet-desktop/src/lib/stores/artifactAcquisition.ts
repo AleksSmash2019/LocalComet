@@ -88,19 +88,6 @@ export async function downloadApprovedArtifact(artifactId: string): Promise<Arti
   }
 }
 
-export async function downloadArbitraryHuggingFaceArtifact(url: string): Promise<ArtifactDownloadState | null> {
-  const generation = lifecycleGeneration;
-  try {
-    const started = await startArbitraryHuggingFaceDownload(url);
-    recordDownload(started);
-    const terminal = await followDownload(started);
-    if (terminal.lifecycle === 'completed' && generation === lifecycleGeneration) await refreshAvailableArtifacts(generation);
-    return terminal;
-  } catch (error) {
-    artifactAcquisitionStore.update((state) => ({ ...state, lastError: normalizeGatewayError(error) }));
-    return null;
-  }
-}
 
 export async function cancelApprovedArtifactDownload(artifactId: string): Promise<void> {
   const current = get(artifactAcquisitionStore).downloads[artifactId];

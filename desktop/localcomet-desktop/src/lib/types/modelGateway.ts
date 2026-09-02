@@ -33,7 +33,7 @@ export type InferenceLifecycle =
   | 'failed';
 
 export interface GatewayCatalog {
-  readonly gateway_version: 'v6.84.5';
+  readonly gateway_version: 'v7.0.5';
   readonly providers: readonly { readonly provider_id: ProviderId; readonly label: string; readonly scheme: 'http' | 'internal'; readonly host: '127.0.0.1'; readonly base_path: '/v1' }[];
   readonly harnesses: readonly { readonly harness_id: HarnessId; readonly label: string }[];
   readonly persistence: false;
@@ -412,6 +412,16 @@ export interface ManagedRuntimeLogs {
   readonly stderr_tail: readonly string[];
 }
 
+export interface LaunchRecommendation {
+  readonly mode: 'gpu' | 'hybrid' | 'cpu';
+  readonly gpu_layers: number | null;
+  readonly ctx_size: number;
+  readonly architecture: string | null;
+  readonly block_count: number | null;
+  readonly model_context_length: number | null;
+  readonly estimated: boolean;
+}
+
 export interface ManagedRuntimeCapability {
   readonly runtime_id: string;
   readonly available: boolean;
@@ -419,4 +429,5 @@ export interface ManagedRuntimeCapability {
   readonly reason_code: string | null;
   readonly fallback_runtime_ids: readonly string[];
   readonly device_summary: string | null;
+  readonly launch_recommendation: LaunchRecommendation | null;
 }

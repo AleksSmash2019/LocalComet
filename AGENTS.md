@@ -86,9 +86,9 @@ computerUse deny-by-default, CSP без внешних шрифтов):
 - vitest: 398 тестов пройдено
 - Rust: 512 passed, 0 failed, 7 ignored; fmt и clippy -D warnings зелёные
 - trust-chain: 15 файлов проходят byte invariants
-- command parity: 58 команд зарегистрированы и вызываются
-- tool risk registry: 7 console tools и 11 sidecar tools покрыты, 19 записей валидны
-- INV-UI-001: 97 frontend-файлов без fake-state violations
+- command parity: 79 команд зарегистрированы и вызываются
+- tool risk registry: 7 console tools и 11 sidecar tools покрыты, 21 запись валидна
+- INV-UI-001: 116 frontend-файлов без fake-state violations
 - bundle parity: 146 shipped modules совпадают с source в обеих runtime locations
 - ADR-015 Python parity: 67 passed, 1 skipped (Block 3/4 iteration limit)
 - CLI smoke: 8 passed, 0 failed
