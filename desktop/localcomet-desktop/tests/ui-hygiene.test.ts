@@ -119,7 +119,7 @@ describe('UP02-WP01-HF2 visible production controls', () => {
     expect(buttons.length).toBeGreaterThan(0);
     for (const button of buttons) {
       expect(button, button.slice(0, 120)).toContain('onclick=');
-      expect(button).toMatch(/aria-label=|<span>|>\{\$t\(|>\s*\{\$t\(/);
+      expect(button).toMatch(/aria-label=|<span|>\{\$t\(|>\s*\{\$t\(/);
     }
   });
 });

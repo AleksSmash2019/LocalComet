@@ -228,11 +228,14 @@ def open_url(url):
     if not url:
         return "URL пустой."
 
-    if not (
-        url.startswith("http://")
-        or url.startswith("https://")
-        or url.startswith("file://")
-    ):
+    # H1: `file://` is rejected outright. The only sanctioned local-page path
+    # is open_local_site(), which runs the Projects safe_path() containment
+    # check; a model-supplied file://C:/Windows/... passed to page.goto would
+    # otherwise turn this tool into an arbitrary file reader.
+    if url.startswith("file://"):
+        return "Отказано: прямые file://-ссылки запрещены. Используйте локальный сайт из Projects."
+
+    if not (url.startswith("http://") or url.startswith("https://")):
         return open_local_site(url)
 
     def run(page):

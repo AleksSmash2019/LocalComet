@@ -4,23 +4,23 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --lc-bg: #09090b;
-  --lc-bg-elevated: rgba(9, 9, 11, 0.75);
-  --lc-panel: rgba(24, 24, 27, 0.6);
-  --lc-panel-solid: #18181b;
-  --lc-panel-soft: #27272a;
-  --lc-line: rgba(63, 63, 70, 0.72);
-  --lc-line-strong: rgba(82, 82, 91, 0.92);
-  --lc-text: #f4f4f5;
-  --lc-muted: #a1a1aa;
-  --lc-faint: #71717a;
+  --lc-bg: #101312;
+  --lc-bg-elevated: rgba(16, 19, 18, 0.78);
+  --lc-panel: rgba(30, 34, 32, 0.62);
+  --lc-panel-solid: #1e2220;
+  --lc-panel-soft: #2b302d;
+  --lc-line: rgba(86, 95, 90, 0.66);
+  --lc-line-strong: rgba(110, 119, 114, 0.9);
+  --lc-text: #f6f7f6;
+  --lc-muted: #a8b0ab;
+  --lc-faint: #7c847f;
   --lc-accent: #10b981;
   --lc-accent-strong: #34d399;
-  --lc-accent-dim: rgba(16, 185, 129, 0.12);
+  --lc-accent-dim: rgba(16, 185, 129, 0.14);
   --lc-danger: #ef4444;
   --lc-warning: #f59e0b;
-  --lc-info: #06b6d4;
-  --lc-logo-cut: #09090b;
+  --lc-info: #22d3ee;
+  --lc-logo-cut: #101312;
   
   --lc-radius-sm: 8px;
   --lc-radius-md: 12px;
@@ -260,7 +260,7 @@ kbd {
 .chat-scroll {
   min-height: 0;
   overflow-y: auto;
-  padding: 20px 24px 16px;
+  padding: 12px 24px 8px;
 }
 
 .content-column {

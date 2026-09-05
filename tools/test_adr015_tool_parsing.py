@@ -884,8 +884,11 @@ class ToolCallIntegrationTests(unittest.TestCase):
         self.assertEqual(failed[0]["tools_executed"], 0)
 
     # -- A4 -----------------------------------------------------------------
-    def test_a4a_tools_empty_rejects_model_tool_call_fail_closed(self) -> None:
-        # tools=[] + tool_call в ответе модели => fail-closed.
+    def test_a4a_tools_empty_stray_tool_call_is_salvaged_not_failed(self) -> None:
+        # tools=[] + одиночный tool_call в ответе модели: НЕ падать всем ходом.
+        # ADR-015 (в)-хвост: болтливый шаблон маленькой модели вырезается,
+        # ход завершается честным empty_model_output (текста не было), а
+        # tool-call события НЕ эмитятся (fail-closed сохранён для событий).
         event_chunks = [
             _sse_tool_delta({"index": 0, "id": "call_0", "type": "function", "function": {"name": "files.read", "arguments": '{"path": "a.txt"}'}}),
             _SSE_DONE,
@@ -899,10 +902,57 @@ class ToolCallIntegrationTests(unittest.TestCase):
                 gateway.shutdown()
 
         failed = self._by_method(events, "model.turn.failed")
-        self.assertEqual(len(failed), 1, "tool_call with tools=[] must fail closed")
+        self.assertEqual(len(failed), 1, "no sanctioned execution path: the stray call must not run")
         self.assertEqual(self._by_method(events, "model.turn.tool_calls"), [])
         self.assertEqual(self._by_method(events, "model.tool.request"), [])
-        self.assertIn(failed[0]["metadata"]["error"]["code"], {"stream_protocol_error", "invalid_payload"})
+        self.assertEqual(failed[0]["metadata"]["error"]["code"], "empty_model_output")
+        self.assertEqual(failed[0]["tools_executed"], 0)
+
+    def test_a4a2_tools_empty_mixed_content_and_tool_call_salvages_text(self) -> None:
+        # tools=[] + текст И tool_call в одном потоке: текст сохраняется,
+        # tool-call вырезается, ход завершается успешно (completed).
+        event_chunks = [
+            _sse_content("Привет! "),
+            _sse_tool_delta({"index": 0, "id": "call_0", "type": "function", "function": {"name": "files.read", "arguments": '{"path": "a.txt"}'}}),
+            _sse_content("Как дела?"),
+            _SSE_DONE,
+        ]
+        with _IntegrationFakeServer(list(event_chunks)) as server:
+            gateway, binding = self._bound_gateway(server.port)
+            try:
+                request = self._turn_request(binding["binding_fingerprint"], "b" * 24, ())
+                events = self._run_turn(gateway, request)
+            finally:
+                gateway.shutdown()
+
+        completed = self._by_method(events, "model.turn.completed")
+        self.assertEqual(len(completed), 1, "salvaged text must complete the turn")
+        self.assertEqual(self._by_method(events, "model.turn.failed"), [])
+        self.assertEqual(self._by_method(events, "model.turn.tool_calls"), [])
+        self.assertEqual(self._by_method(events, "model.tool.request"), [])
+        streamed = "".join(p["text"] for p in self._by_method(events, "model.output.delta"))
+        self.assertEqual(streamed, "Привет! Как дела?")
+        self.assertEqual(completed[0]["tools_executed"], 0)
+
+    def test_a4a3_tools_empty_function_call_delta_is_salvaged_not_failed(self) -> None:
+        # function_call ВНУТРИ delta при tools=[] — та же утечка шаблона, что и
+        # tool_calls (llama.cpp отдаёт легаси-форму): вырезается, ход не падает.
+        # role=tool и вне-слотовые маркеры по-прежнему жёстко отвергаются.
+        raw_event = 'data: {"choices": [{"index": 0, "delta": {"function_call": {"name": "run", "arguments": "{}"}}, "finish_reason": null}]}\n\n'
+        event_chunks = [raw_event.encode("utf-8"), _SSE_DONE]
+        with _IntegrationFakeServer(list(event_chunks)) as server:
+            gateway, binding = self._bound_gateway(server.port)
+            try:
+                request = self._turn_request(binding["binding_fingerprint"], "9" * 24, ())
+                events = self._run_turn(gateway, request)
+            finally:
+                gateway.shutdown()
+
+        failed = self._by_method(events, "model.turn.failed")
+        self.assertEqual(self._by_method(events, "model.turn.tool_calls"), [])
+        self.assertEqual(self._by_method(events, "model.tool.request"), [])
+        self.assertEqual(len(failed), 1, "no text after stripping => honest empty output, not a protocol crash")
+        self.assertEqual(failed[0]["metadata"]["error"]["code"], "empty_model_output")
 
     def test_a4b_tools_empty_plain_content_completes(self) -> None:
         event_chunks = [_sse_content("hi "), _sse_content("there"), _SSE_DONE]

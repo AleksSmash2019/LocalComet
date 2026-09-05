@@ -34,7 +34,7 @@ describe('UI preferences', () => {
   it('uses a versioned key and complete safe defaults', () => {
     expect(UI_PREFERENCES_KEY).toBe('localcomet.ui.preferences.v1');
     expect(loadUiPreferences()).toEqual(DEFAULT_UI_PREFERENCES);
-    expect(Object.keys(loadUiPreferences())).toEqual(['theme', 'locale', 'diagnosticsPanel',
+    expect(Object.keys(loadUiPreferences())).toEqual(['theme', 'accentColor', 'locale', 'diagnosticsPanel',
       'voiceMode', 'voiceGender', 'agentPermissions', 'ctxSizeOverride', 'gpuLayersOverride', 'computeMode', 'effort']);
   });
 
@@ -57,6 +57,7 @@ describe('UI preferences', () => {
   it('loads only valid fields and ignores unknown fields', () => {
     localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
       theme: 'dark',
+      accentColor: null,
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
@@ -69,6 +70,7 @@ describe('UI preferences', () => {
     }));
     expect(loadUiPreferences()).toEqual({
       theme: 'dark',
+      accentColor: null,
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
@@ -89,7 +91,8 @@ describe('UI preferences', () => {
       voiceGender: 'robot'
     }));
     expect(loadUiPreferences()).toEqual({
-      theme: 'system',
+      theme: 'light',
+      accentColor: null,
       locale: 'en',
       diagnosticsPanel: 'closed',
       voiceMode: false,
@@ -112,7 +115,8 @@ describe('UI preferences', () => {
   it('reads the legacy language only when the v1 record is absent', () => {
     localStorage.setItem(LEGACY_LANGUAGE_KEY, 'en');
     expect(loadUiPreferences()).toEqual({
-      theme: 'system',
+      theme: 'light',
+      accentColor: null,
       locale: 'en',
       diagnosticsPanel: 'closed',
       voiceMode: false,
@@ -133,11 +137,13 @@ describe('UI preferences', () => {
   it('writes a complete bounded record while preserving valid current fields', () => {
     localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
       theme: 'dark',
+      accentColor: null,
       locale: 'en',
       diagnosticsPanel: 'closed'
     }));
     expect(updateUiPreferences({ diagnosticsPanel: 'open' })).toEqual({
       theme: 'dark',
+      accentColor: null,
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
@@ -150,6 +156,7 @@ describe('UI preferences', () => {
     });
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
       theme: 'dark',
+      accentColor: null,
       locale: 'en',
       diagnosticsPanel: 'open',
       voiceMode: false,
@@ -165,6 +172,7 @@ describe('UI preferences', () => {
   it('ignores invalid and unknown update fields', () => {
     localStorage.setItem(UI_PREFERENCES_KEY, JSON.stringify({
       theme: 'light',
+      accentColor: null,
       locale: 'ru',
       diagnosticsPanel: 'open'
     }));
@@ -178,6 +186,7 @@ describe('UI preferences', () => {
     } as unknown as Parameters<typeof updateUiPreferences>[0];
     expect(updateUiPreferences(unsafePatch)).toEqual({
       theme: 'light',
+      accentColor: null,
       locale: 'ru',
       diagnosticsPanel: 'open',
       voiceMode: false,
@@ -190,6 +199,7 @@ describe('UI preferences', () => {
     });
     expect(Object.keys(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}'))).toEqual([
       'theme',
+      'accentColor',
       'locale',
       'diagnosticsPanel',
       'voiceMode',
@@ -207,6 +217,19 @@ describe('UI preferences', () => {
     updateUiPreferences({ theme: 'dark' });
     expect(localStorage.getItem(LEGACY_LANGUAGE_KEY)).toBe('en');
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}').locale).toBe('en');
+  });
+
+  it('persists a custom accent color and rejects invalid values', () => {
+    updateUiPreferences({ accentColor: '#8b5cf6' });
+    expect(loadUiPreferences().accentColor).toBe('#8b5cf6');
+    // wrong shape / non-hex is refused; hex is stored normalized to lowercase
+    updateUiPreferences({ accentColor: 'purple' });
+    expect(loadUiPreferences().accentColor).toBe('#8b5cf6');
+    updateUiPreferences({ accentColor: '#8B5CF6' });
+    expect(loadUiPreferences().accentColor).toBe('#8b5cf6');
+    // null restores the theme default
+    updateUiPreferences({ accentColor: null });
+    expect(loadUiPreferences().accentColor).toBeNull();
   });
 
   it('survives storage read and write failures', () => {

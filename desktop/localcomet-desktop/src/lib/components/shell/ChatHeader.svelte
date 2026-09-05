@@ -2,7 +2,7 @@
   import Icon from '$lib/components/common/Icon.svelte';
   import StatusBadge from '$lib/components/common/StatusBadge.svelte';
   import { activeConversation } from '$lib/stores/conversationStore';
-  import { approvedManagedModelInstalled, connectSelectedManagedModel, gatewayStatus, inferenceRequestStore, managedConnectionBusy, managedModelReady, managedRuntimeStore } from '$lib/stores/modelGateway';
+  import { approvedManagedModelInstalled, connectSelectedManagedModel, gatewayStatus, inferenceBusy, inferenceRequestStore, managedConnectionBusy, managedModelReady, managedRuntimeStore, stopSelectedManagedRuntime } from '$lib/stores/modelGateway';
   import { sidebarExpanded, openModelSetup, modelSetupDrawerOpen, inspectorVisible, inspectorDrawerOpen, openSettings, setDiagnosticsPanelOpen } from '$lib/stores/shellStore';
   import { t } from '$lib/i18n';
 
@@ -27,6 +27,16 @@
     return { label: $t('conn.model_unavailable'), tone: 'disabled' as const };
   })();
   $: safeModelIdentity = $managedRuntimeStore.status?.model_display_name ?? $managedRuntimeStore.status?.model_id ?? '';
+
+  // Disconnect is reachable where the user sees the model status: the header
+  // chip area. It mirrors the Settings action (same store call) so the loaded
+  // model can be unloaded without opening Settings.
+  $: canDisconnect = !$inferenceBusy && !$managedConnectionBusy
+    && ['Ready', 'Starting', 'Validating', 'Failed'].includes($managedRuntimeStore.status?.state ?? '');
+
+  async function disconnectManagedModel(): Promise<void> {
+    await stopSelectedManagedRuntime();
+  }
 
   async function connectManagedModel(): Promise<void> {
     openModelSetup('managed');
@@ -61,6 +71,18 @@
           <StatusBadge label={connectionSummary.label} tone={connectionSummary.tone} />
         </span>
       </button>
+      {#if canDisconnect}
+        <button
+          type="button"
+          class="disconnect-button"
+          aria-label={$t('models.disconnect')}
+          title={$t('models.disconnect')}
+          onclick={() => void disconnectManagedModel()}
+        >
+          <Icon name="power" size={14} />
+          <span>{$t('models.disconnect')}</span>
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -89,12 +111,17 @@
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    background: color-mix(in srgb, var(--lc-bg) 75%, transparent);
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lc-bg) 82%, transparent),
+      color-mix(in srgb, var(--lc-bg) 62%, transparent)
+    );
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    padding: 12px 24px;
-    height: 56px;
-    border-bottom: 1px solid color-mix(in srgb, var(--lc-line) 40%, transparent);
+    padding: 10px 24px;
+    min-height: 56px;
+    border-bottom: 1px solid color-mix(in srgb, var(--lc-line) 34%, transparent);
+    box-shadow: 0 1px 12px color-mix(in srgb, #000 14%, transparent);
     z-index: 10;
   }
 
@@ -136,6 +163,41 @@
     background: color-mix(in srgb, var(--lc-panel-soft) 80%, transparent);
     color: var(--lc-text);
     transform: translateY(-1px);
+  }
+
+  .model-status-block {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .disconnect-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in srgb, var(--lc-line) 60%, transparent);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--lc-muted);
+    font-size: 11.5px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .disconnect-button:hover {
+    border-color: color-mix(in srgb, var(--lc-danger) 55%, transparent);
+    color: var(--lc-danger);
+    background: color-mix(in srgb, var(--lc-danger) 8%, transparent);
+  }
+
+  .disconnect-button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--lc-accent) 70%, transparent);
+    outline-offset: 2px;
   }
 
   .model-chip {

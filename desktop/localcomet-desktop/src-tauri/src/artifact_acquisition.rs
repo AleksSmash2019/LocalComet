@@ -219,7 +219,10 @@ impl ArtifactAcquisitionManager {
             job_sequence: Arc::new(AtomicU64::new(0)),
             diagnostic_lock: Arc::new(Mutex::new(())),
         };
-        manager.cleanup_stale_partials();
+        // NOTE: stale partials are intentionally NOT swept at construction.
+        // A leftover "<job_id>.partial" is the resume base for an interrupted
+        // download (Range resume); it is removed only when its final size
+        // disqualifies it or when the owning path reaches a terminal state.
         manager
     }
 
@@ -607,6 +610,10 @@ impl ArtifactAcquisitionManager {
         artifact: ApprovedDownloadArtifact,
         cancel_requested: Arc<AtomicBool>,
     ) {
+        // Bounded scratch sweep: extraction dirs are never resumable, so old
+        // ones from crashed runs are removed on every job start. Download
+        // partials are intentionally kept (Range resume).
+        self.cleanup_stale_partials();
         let result = self.download_and_install(&job_id, &artifact, &cancel_requested);
         match result {
             Ok(()) => {
@@ -678,7 +685,10 @@ impl ArtifactAcquisitionManager {
             .map_err(|_| AcquisitionError::new("acquisition_storage_unavailable"))?;
         let partial = acquisition_root.join(format!("{job_id}.partial"));
         if partial.exists() {
-            return Err(AcquisitionError::new("partial_name_conflict"));
+            // Job ids are content-hash based; a leftover with the same id is a
+            // stale orphan from a crashed run and is removed, not resumed —
+            // the custom path cannot trust a partial without a pinned digest.
+            remove_owned_file(&partial);
         }
         self.set_lifecycle(job_id, ArtifactDownloadLifecycle::Downloading, None);
         let local_sha256 = self.download_custom_to_partial(
@@ -883,17 +893,51 @@ impl ArtifactAcquisitionManager {
         partial: &Path,
         cancel_requested: &AtomicBool,
     ) -> Result<String, AcquisitionError> {
-        let mut response = open_approved_response(artifact)?;
-        validate_content_type(&response, artifact)?;
+        // Range resume: reuse an owned leftover partial from a previous
+        // interrupted attempt of the SAME artifact instead of restarting the
+        // whole transfer. The resumed prefix is not trusted: the final SHA-256
+        // over the complete file still gates installation, so a tampered or
+        // foreign partial fails hash verification as before.
+        let mut resume_from = 0_u64;
+        if partial.exists() {
+            let existing_len = fs::metadata(partial).map(|meta| meta.len()).unwrap_or(0);
+            let expected = expected_bytes(artifact);
+            if existing_len > 0 && existing_len < expected {
+                resume_from = existing_len;
+            } else {
+                remove_owned_file(partial);
+            }
+        }
+        let mut response = open_approved_response(artifact, resume_from)?;
+        if resume_from == 0 {
+            validate_content_type(&response, artifact)?;
+        }
         let mut file = OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create_new(!partial.exists())
+            .append(partial.exists())
             .open(partial)
             .map_err(|_| AcquisitionError::new("partial_create_failed"))?;
         let expected = expected_bytes(artifact);
-        let mut received = 0_u64;
-        let mut last_reported = 0_u64;
+        let mut received = resume_from;
+        let mut last_reported = received;
         let mut hasher = Sha256::new();
+        if resume_from > 0 {
+            // Hash the already-downloaded prefix so the final digest covers
+            // the whole file, not just the resumed tail.
+            let mut prefix_file =
+                File::open(partial).map_err(|_| AcquisitionError::new("partial_unavailable"))?;
+            let mut chunk = [0_u8; DOWNLOAD_BUFFER_BYTES];
+            loop {
+                let read = prefix_file
+                    .read(&mut chunk)
+                    .map_err(|_| AcquisitionError::new("partial_unavailable"))?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&chunk[..read]);
+            }
+        }
         let mut buffer = [0_u8; DOWNLOAD_BUFFER_BYTES];
         loop {
             self.require_not_cancelled(cancel_requested)?;
@@ -1015,6 +1059,10 @@ impl ArtifactAcquisitionManager {
         Ok(())
     }
 
+    /// Bounded hygiene sweep for extraction scratch dirs (runtime-staging is
+    /// never resumable). Download partials are NOT swept here: they are the
+    /// Range-resume base and are removed by their owning job paths or by the
+    /// resume-vs-reject size check in download_to_partial.
     fn cleanup_stale_partials(&self) {
         let Ok(root) = self.artifacts.acquisition_root() else {
             return;
@@ -1026,14 +1074,7 @@ impl ArtifactAcquisitionManager {
             let path = entry.path();
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if is_owned_partial_name(&name)
-                && entry
-                    .file_type()
-                    .map(|kind| kind.is_file())
-                    .unwrap_or(false)
-            {
-                let _ = fs::remove_file(path);
-            } else if is_owned_runtime_staging_name(&name)
+            if is_owned_runtime_staging_name(&name)
                 && entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false)
             {
                 let _ = fs::remove_dir_all(path);
@@ -1059,6 +1100,23 @@ impl ArtifactAcquisitionManager {
             let _ = fs::remove_dir_all(&staging);
         }
         !partial.exists() && !staging.exists()
+    }
+
+    /// Terminal-state cleanup variant that keeps the download partial (the
+    /// Range-resume base) and only removes extraction scratch space.
+    fn cleanup_job_staging_only(&self, job_id: &str) -> bool {
+        let Ok(root) = self.artifacts.acquisition_root() else {
+            return false;
+        };
+        let staging = root.join(format!("{job_id}.runtime-staging"));
+        if staging.exists() {
+            let _ = fs::remove_dir_all(&staging);
+        }
+        let partial = root.join(format!("{job_id}.partial"));
+        !staging.exists()
+            && fs::metadata(&partial)
+                .map(|meta| meta.len() > 0)
+                .unwrap_or(false)
     }
 
     fn persist_terminal_failure_before_cleanup(
@@ -1089,7 +1147,31 @@ impl ArtifactAcquisitionManager {
             final_artifact_exists,
         };
         let _ = self.append_failure_event(&before_cleanup);
-        let cleanup_complete = self.cleanup_job_temporary_resources(job_id);
+        // Range resume: a failed download keeps its .partial when a retry can
+        // use it (non-zero size, still below expected) and the failure is not
+        // a correctness fault — a hash/size mismatch means the downloaded
+        // bytes cannot be trusted, so the partial must go. Runtime-staging is
+        // never resumable and is always swept.
+        let correctness_fault = matches!(
+            error.code,
+            "hash_mismatch" | "size_mismatch" | "invalid_model_format"
+        );
+        let resumable = !correctness_fault && {
+            let root = self.artifacts.acquisition_root();
+            match root {
+                Ok(root) => {
+                    let partial = root.join(format!("{job_id}.partial"));
+                    let len = fs::metadata(&partial).map(|meta| meta.len()).unwrap_or(0);
+                    len > 0 && len < expected_bytes
+                }
+                Err(_) => false,
+            }
+        };
+        let cleanup_complete = if resumable {
+            self.cleanup_job_staging_only(job_id)
+        } else {
+            self.cleanup_job_temporary_resources(job_id)
+        };
         let after_cleanup = AcquisitionFailureEvent {
             timestamp_utc_ms: now_utc_ms(),
             cleanup_complete,
@@ -1389,6 +1471,7 @@ fn custom_content_length(response: &Response) -> Result<u64, AcquisitionError> {
 
 fn open_approved_response(
     artifact: &ApprovedDownloadArtifact,
+    resume_from: u64,
 ) -> Result<Response, AcquisitionError> {
     let acquisition = match artifact {
         ApprovedDownloadArtifact::Runtime(runtime) => &runtime.acquisition,
@@ -1405,11 +1488,20 @@ fn open_approved_response(
         .map_err(|_| AcquisitionError::new("invalid_catalog_url"))?;
     for _ in 0..=MAX_REDIRECTS {
         validate_redirect_url(&current, &acquisition.allowed_redirect_hosts)?;
-        let response = client
-            .get(current.clone())
+        let mut request = client.get(current.clone());
+        if resume_from > 0 {
+            // Range resume (SEC-audit growth #3): continue an interrupted
+            // download instead of restarting a multi-gigabyte transfer. The
+            // byte offset is re-validated against the 206 response below.
+            request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
+        }
+        let response = request
             .send()
             .map_err(|_| AcquisitionError::new("download_failed"))?;
         if response.status().is_redirection() {
+            // A redirect target must never receive the caller's Range header
+            // context implicitly reused; the loop re-attaches it after
+            // validating the hop, which is where resume_from stays correct.
             let location = response
                 .headers()
                 .get(reqwest::header::LOCATION)
@@ -1422,12 +1514,34 @@ fn open_approved_response(
             current = next;
             continue;
         }
-        if !response.status().is_success() {
+        if resume_from > 0 {
+            if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+                // Server ignored the Range request: refuse rather than append
+                // the full body to a partial file (would corrupt the artifact).
+                return Err(AcquisitionError::new("range_resume_rejected"));
+            }
+            validate_content_range(&response, resume_from)?;
+        } else if !response.status().is_success() {
             return Err(AcquisitionError::new("download_failed"));
         }
         return Ok(response);
     }
     Err(AcquisitionError::new("redirect_limit_exceeded"))
+}
+
+/// Confirms the 206 body actually starts at the requested offset, so the
+/// resumed file is byte-identical to an uninterrupted download.
+fn validate_content_range(response: &Response, resume_from: u64) -> Result<(), AcquisitionError> {
+    let content_range = response
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|header| header.to_str().ok())
+        .ok_or_else(|| AcquisitionError::new("range_resume_rejected"))?;
+    let expected_prefix = format!("bytes {resume_from}-");
+    if !content_range.starts_with(&expected_prefix) {
+        return Err(AcquisitionError::new("range_resume_rejected"));
+    }
+    Ok(())
 }
 
 fn validate_redirect_url(url: &Url, allowed_hosts: &[String]) -> Result<(), AcquisitionError> {
@@ -2712,18 +2826,24 @@ mod tests {
     }
 
     #[test]
-    fn stale_cleanup_only_removes_owned_job_partials() {
+    fn stale_cleanup_only_removes_runtime_staging_dirs() {
+        // The sweep now targets extraction scratch only: download partials
+        // are the Range-resume base and must survive it in both owned and
+        // unrelated-name forms (the resume size check guards the owned ones).
         let (_workspace, manager, trust) = test_manager();
         let root = trust.acquisition_root().expect("acquisition root");
         let owned = root.join(format!("{}.partial", "b".repeat(64)));
         let unrelated = root.join("user-model.gguf.partial");
-        fs::write(&owned, b"stale").expect("write stale partial");
+        let staging = root.join(format!("{}.runtime-staging", "c".repeat(64)));
+        fs::write(&owned, b"resume-base").expect("write owned partial");
         fs::write(&unrelated, b"keep").expect("write unrelated partial");
+        fs::create_dir_all(&staging).expect("write stale staging");
 
         manager.cleanup_stale_partials();
 
-        assert!(!owned.exists());
+        assert!(owned.exists());
         assert!(unrelated.exists());
+        assert!(!staging.exists());
     }
 
     #[test]

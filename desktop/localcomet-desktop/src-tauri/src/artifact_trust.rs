@@ -35,7 +35,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 const CATALOG_BYTES: &[u8] = include_bytes!("../resources/localcomet/approved-artifacts.v1.json");
 const EMBEDDED_CATALOG_SHA256: &str =
-    "54e241d113d3fd2c57f1c0be74a8b9bcf56dd7c0a29d86c04ad641d719b3e081";
+    "41070b76037e277c38061a35872b797a3bb94ddf40c036f6477bdc3b1f5b9f06";
 const CATALOG_ID: &str = "localcomet-approved-artifacts";
 const SCHEMA_VERSION: u32 = 1;
 const MAX_ARTIFACTS: usize = 32;

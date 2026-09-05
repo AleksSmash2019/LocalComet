@@ -301,6 +301,20 @@ function runtimeStatusFixture(): ManagedRuntimeStatus {
   };
 }
 
+function readyStatusWith(modelId: string, displayName: string): ManagedRuntimeStatus {
+  return {
+    ...runtimeStatusFixture(),
+    state: 'Ready',
+    model_state: 'Ready',
+    inference_ready: true,
+    runtime_instance_id: 'd'.repeat(32),
+    runtime_instance_fingerprint: 'e'.repeat(64),
+    model_id: modelId,
+    model_display_name: displayName,
+    binding_fingerprint: '9'.repeat(64)
+  };
+}
+
 function installResponses(): void {
   invokeCalls = [];
   responses = {
@@ -742,7 +756,10 @@ describe('managed artifact trust frontend contract', () => {
 
     const body = render(ManagedRuntimePanel).body;
     expect(body).toContain('Qwen3 1.7B Q4_K_M');
-    expect(body).toMatch(/Запустить среду|Start Runtime/);
+    // The start button shows the switch wording whenever the loaded model does
+    // not match the selection (one-click switch), including a fresh stopped
+    // runtime, so only the switch label can be asserted here.
+    expect(body).toMatch(/Сменить модель|Switch Model/);
     expect(body).toMatch(/Остановить среду|Stop Runtime/);
     expect(body).toMatch(/Подтвердить привязку|Confirm Binding/);
     expect(body).not.toMatch(/C:\\|absolute_path|Model path|Executable|Approve artifact|Download model/i);
@@ -830,7 +847,7 @@ describe('managed artifact trust frontend contract', () => {
     expect(state.binding).toBeNull();
     const rendered = render(ManagedRuntimePanel).body;
     expect(rendered).toMatch(/<button[^>]*disabled/);
-    expect(rendered).toMatch(/Запустить среду|Start Runtime/);
+    expect(rendered).toMatch(/Сменить модель|Switch Model/);
   });
 
   it('fails closed when catalog digests or inventory references disagree', async () => {
@@ -995,6 +1012,107 @@ describe('managed artifact trust frontend contract', () => {
     expect(invokeCalls.filter((call) => call.command === 'managed_runtime_stop_trusted')).toHaveLength(1);
     expect(invokeCalls.filter((call) => call.command === 'model_binding_set')).toHaveLength(0);
     expect(get(managedRuntimeStore).binding).toBeNull();
+  });
+
+  it('unloads a different loaded model before starting the selected one', async () => {
+    await refreshManagedRuntimeStatus();
+    await setManagedSelectedModel(MODEL_ID);
+    const otherModelId = 'custom-owner-repo-model-1234567890ab';
+    const otherModelStatus = {
+      ...runtimeStatusFixture(),
+      state: 'Ready',
+      model_state: 'Ready',
+      inference_ready: true,
+      runtime_instance_id: 'd'.repeat(32),
+      runtime_instance_fingerprint: 'e'.repeat(64),
+      model_id: otherModelId,
+      model_display_name: 'Owner custom model',
+      binding_fingerprint: '9'.repeat(64)
+    };
+    // While the other model is loaded, every status poll reports it. After the
+    // switch-stop the mock flips to the selected model so the follow-up start
+    // completes through the static managed_runtime_start fixture.
+    let switched = false;
+    responses.managed_runtime_status = () =>
+      switched ? readyStatusWith(MODEL_ID, 'Qwen3 1.7B Q4_K_M') : otherModelStatus;
+    await refreshManagedRuntimeStatus();
+    invokeCalls = [];
+    // The old model is not in the trusted catalog slice, so the switch path
+    // runs the approval-guarded stop command.
+    responses.managed_runtime_stop = () => {
+      switched = true;
+      return { state: 'Stopped', model_state: 'Unavailable', inference_ready: false, stopped: true };
+    };
+    responses.managed_runtime_stop_trusted = responses.managed_runtime_stop;
+
+    await startSelectedManagedRuntime();
+
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_stop')).toHaveLength(1);
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(1);
+    expect(get(managedRuntimeStore).status?.model_id).toBe(MODEL_ID);
+  });
+
+  it('does not restart the runtime when the same model is already loaded', async () => {
+    await refreshManagedRuntimeStatus();
+    await setManagedSelectedModel(MODEL_ID);
+    responses.managed_runtime_status = {
+      ...runtimeStatusFixture(),
+      state: 'Ready',
+      model_state: 'Ready',
+      inference_ready: true,
+      runtime_instance_id: 'd'.repeat(32),
+      runtime_instance_fingerprint: 'e'.repeat(64),
+      model_id: MODEL_ID,
+      model_display_name: 'Qwen3 1.7B Q4_K_M',
+      binding_fingerprint: '9'.repeat(64)
+    };
+    await refreshManagedRuntimeStatus();
+    invokeCalls = [];
+
+    await startSelectedManagedRuntime();
+
+    // startSelectedManagedRuntime is an explicit launch action: with the same
+    // model already loaded it goes straight to start without an unload, and no
+    // switch path is taken.
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_stop')).toHaveLength(0);
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_stop_trusted')).toHaveLength(0);
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(1);
+  });
+
+  it('abandons the switch without a start approval when the old model cannot be unloaded', async () => {
+    await refreshManagedRuntimeStatus();
+    await setManagedSelectedModel(MODEL_ID);
+    const otherModelId = 'custom-owner-repo-model-1234567890ab';
+    responses.managed_runtime_status = {
+      ...runtimeStatusFixture(),
+      state: 'Ready',
+      model_state: 'Ready',
+      inference_ready: true,
+      runtime_instance_id: 'd'.repeat(32),
+      runtime_instance_fingerprint: 'e'.repeat(64),
+      model_id: otherModelId,
+      model_display_name: 'Owner custom model',
+      binding_fingerprint: '9'.repeat(64)
+    };
+    await refreshManagedRuntimeStatus();
+    invokeCalls = [];
+    responses.managed_runtime_stop = () => {
+      // The unload stalled: the authoritative status still reports Stopping.
+      responses.managed_runtime_status = {
+        ...runtimeStatusFixture(),
+        state: 'Stopping',
+        model_state: 'Unloading',
+        model_id: otherModelId,
+        model_display_name: 'Owner custom model'
+      };
+      return { state: 'Stopping', model_state: 'Unloading', inference_ready: false, stopped: false };
+    };
+
+    await startSelectedManagedRuntime();
+
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_stop')).toHaveLength(1);
+    expect(invokeCalls.filter((call) => call.command === 'managed_runtime_start_trusted')).toHaveLength(0);
+    expect(get(managedRuntimeStore).lastError?.code).toBe('runtime_stop_failed');
   });
 
   it('rejects false launchable and inconsistent compatibility claims', async () => {

@@ -20,7 +20,7 @@ describe('voice output lifecycle', () => {
     expect(invokeMock).toHaveBeenCalledWith('speak_local_text', {
       text: 'Проверочный ответ',
       language: 'ru-RU',
-      voice_profile: 'female'
+      voiceProfile: 'female'
     });
   });
 
@@ -40,7 +40,7 @@ describe('voice output lifecycle', () => {
     expect(invokeMock).toHaveBeenCalledWith('speak_local_text', {
       text: 'Мужской профиль',
       language: 'ru-RU',
-      voice_profile: 'male'
+      voiceProfile: 'male'
     });
   });
 
@@ -80,13 +80,13 @@ describe('voice output lifecycle', () => {
     expect(invokeMock.mock.calls[0]).toEqual(['speak_local_text', {
       text: 'Женский ответ',
       language: 'ru-RU',
-      voice_profile: 'female'
+      voiceProfile: 'female'
     }]);
     expect(invokeMock.mock.calls[1]).toEqual(['stop_local_text']);
     expect(invokeMock.mock.calls[2]).toEqual(['speak_local_text', {
       text: 'Мужской ответ',
       language: 'ru-RU',
-      voice_profile: 'male'
+      voiceProfile: 'male'
     }]);
   });
 

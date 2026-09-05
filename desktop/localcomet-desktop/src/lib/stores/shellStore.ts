@@ -1,8 +1,9 @@
 import { derived, get, writable } from 'svelte/store';
 import { inspectorSections, modeOptions, modelOptions } from '$lib/data/mockData';
 import type { ChatMessageState, InspectorSection, MockMessage, ModeOption, ModelOption, ThemeMode } from '$lib/data/mockData';
-import type { AgentPermissions, ComputeMode, EffortLevel, VoiceGender } from './uiPreferences';
-import { isComputeMode, isEffortLevel, isVoiceGender, loadUiPreferences, updateUiPreferences } from './uiPreferences';
+import type { AgentPermissions, ComputeMode, EffortLevel, VoiceProfile } from './uiPreferences';
+import type { AccentColor } from './uiPreferences';
+import { isAccentColor, isComputeMode, isEffortLevel, isVoiceGender, loadUiPreferences, updateUiPreferences } from './uiPreferences';
 
 import { conversationStore, getActiveConversationId, resetConversationStore } from './conversationStore';
 
@@ -22,9 +23,10 @@ function cloneMessages(): MockMessage[] {
 }
 
 export const themeMode = writable<ThemeMode>(initialUiPreferences.theme);
+export const accentColor = writable<AccentColor>(initialUiPreferences.accentColor);
 export const agentPermissions = writable<AgentPermissions>(initialUiPreferences.agentPermissions);
 export const voiceMode = writable<boolean>(initialUiPreferences.voiceMode);
-export const voiceGender = writable<VoiceGender>(initialUiPreferences.voiceGender);
+export const voiceGender = writable<VoiceProfile>(initialUiPreferences.voiceGender);
 export const effortLevel = writable<EffortLevel>(initialUiPreferences.effort);
 
 export const ctxSizeOverride = writable<number | null>(initialUiPreferences.ctxSizeOverride);
@@ -63,6 +65,17 @@ export function setThemeMode(mode: ThemeMode): void {
   if (mode !== 'system' && mode !== 'light' && mode !== 'dark') return;
   themeMode.set(mode);
   updateUiPreferences({ theme: mode });
+}
+
+/**
+ * Custom accent color for the whole app (chat included). null restores the
+ * theme default; otherwise a validated #rrggbb hex. The AppShell derives the
+ * hover/strong and dim variants from this one value at runtime.
+ */
+export function setAccentColor(value: AccentColor): void {
+  if (!isAccentColor(value)) return;
+  accentColor.set(value);
+  updateUiPreferences({ accentColor: value });
 }
 
 export function setAgentPermissions(permissions: Partial<import('./uiPreferences').AgentPermissions>): void {
@@ -111,7 +124,7 @@ export function setVoiceMode(enabled: boolean): void {
   updateUiPreferences({ voiceMode: enabled });
 }
 
-export function setVoiceGender(gender: VoiceGender): void {
+export function setVoiceGender(gender: VoiceProfile): void {
   if (!isVoiceGender(gender)) return;
   voiceGender.set(gender);
   updateUiPreferences({ voiceGender: gender });
@@ -346,6 +359,7 @@ export function resetShellStores(): void {
   const preferences = loadUiPreferences();
   messageCounter = 0;
   themeMode.set(preferences.theme);
+  accentColor.set(preferences.accentColor);
   voiceMode.set(preferences.voiceMode);
   voiceGender.set(preferences.voiceGender);
   activeWorkspace.set('chat');

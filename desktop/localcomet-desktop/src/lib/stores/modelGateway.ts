@@ -726,7 +726,7 @@ export async function refreshManagedRuntimeStatus(): Promise<void> {
 
 export async function startSelectedManagedRuntime(precomputedReadiness?: ModelReadinessSummary): Promise<void> {
   const generation = subscriptionGeneration;
-  const state = get(managedRuntimeStore);
+  let state = get(managedRuntimeStore);
   const stillCurrent = () => generation === subscriptionGeneration &&
     get(managedRuntimeStore).selectedModelId === state.selectedModelId;
   if (!state.selectedModelId) return;
@@ -747,6 +747,30 @@ export async function startSelectedManagedRuntime(precomputedReadiness?: ModelRe
       }));
       clearManagedGatewayBinding();
       return;
+    }
+    // One-click model switch: a different active model is unloaded before the
+    // selected one starts. Without this the supervisor answers the start with
+    // "busy" and the only way out for the user was an app restart. The stop
+    // path refreshes authoritative status and settles its own error; only a
+    // runtime still stuck in-flight (Stopping) after that aborts the switch,
+    // every other outcome proceeds to the start, which fails honestly on its
+    // own if the runtime is genuinely busy.
+    const activeState = state.status?.state;
+    if (
+      (activeState === 'Ready' || activeState === 'Starting' || activeState === 'Validating') &&
+      state.status?.model_id !== state.selectedModelId
+    ) {
+      await stopSelectedManagedRuntimeInternal(false);
+      state = get(managedRuntimeStore);
+      if (state.status?.state === 'Stopping') {
+        const error = {
+          code: 'runtime_stop_failed',
+          message: 'The previously loaded model could not be unloaded before switching'
+        };
+        managedRuntimeStore.update((current) => ({ ...current, binding: null, lastError: error }));
+        clearManagedGatewayBinding();
+        return;
+      }
     }
     const automaticRuntimeId = selectedModel
       ? selectPreferredInstalledManagedRuntimeId(
@@ -1211,15 +1235,20 @@ async function startClaimedLocalModelTurn(
     const toolsEnabled = get(agentPermissions).tools;
     const initialSeedIds = new Set(['seed-user', 'seed-assistant']);
     const nonSeedMessages = messages.filter((m) => !initialSeedIds.has(m.id));
-    // The gateway limit counts the system message and the new prompt too.
-    // Keep two prior messages so system + history + current prompt stays within
-    // GatewayLimits.maximum_messages (4) on the third and later turns.
-    const recentMessages = nonSeedMessages.slice(-2);
-    const serializedMessages = recentMessages.map((message) => {
+    // Long-conversation memory (audit P0): keep as much prior history as the
+    // gateway accepts — GatewayLimits.maximum_messages (32) counts the system
+    // message and the new prompt, and the harness byte cap is 2× prompt
+    // (32 KiB). 14 messages × 2 KiB = 28 KiB fits with headroom; the oldest
+    // entries drop off first and one oversized paste can't evict the window.
+    const MAX_HISTORY_MESSAGES = 14;
+    const MAX_HISTORY_MESSAGE_BYTES = 2_048;
+    const historySlice = nonSeedMessages.slice(-MAX_HISTORY_MESSAGES);
+    const recentMessages = historySlice.map((message) => {
+      const content = (message.body || '').slice(0, MAX_HISTORY_MESSAGE_BYTES);
       if (message.role === 'assistant' && toolsEnabled && message.toolCalls && message.toolCalls.length > 0) {
-        return { role: message.role, content: message.body || '', tool_calls: message.toolCalls };
+        return { role: message.role, content, tool_calls: message.toolCalls };
       }
-      return { role: message.role, content: message.body || '' };
+      return { role: message.role, content };
     });
     const acceptance = await startModelTurn({
       requestId,
@@ -1236,7 +1265,7 @@ async function startClaimedLocalModelTurn(
       locale: assistantLocaleFor(get(locale)),
       bindingFingerprint: binding.binding_fingerprint,
       agentPermissions: get(agentPermissions),
-      messages: serializedMessages
+      messages: recentMessages
     });
 
     if (acceptance.request_id !== requestId) throw new Error('Request ID mismatch');

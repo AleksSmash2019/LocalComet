@@ -44,7 +44,13 @@
   $: state = status?.state ?? 'NotInstalled';
   $: selectedModel = $managedRuntimeStore.catalog.find((model) => model.model_id === $managedRuntimeStore.selectedModelId);
   $: modelLaunchable = $managedRuntimeStore.readiness?.model_id === selectedModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
-  $: canStart = !$inferenceBusy && Boolean(selectedModel) && modelLaunchable && (state === 'Stopped' || state === 'Failed' || (state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId));
+  // A different loaded model does not block start any more: the store unloads
+  // it first (one-click switch). Only the same-model start keeps the literal
+  // "Start Runtime" label; everything else offers the switch wording.
+  $: startLabelKey = state === 'Stopped' || state === 'Failed' || status?.model_id !== $managedRuntimeStore.selectedModelId
+    ? 'model.switch_model'
+    : 'model.start_runtime';
+  $: canStart = !$inferenceBusy && Boolean(selectedModel) && modelLaunchable && (state === 'Stopped' || state === 'Failed' || ((state === 'Ready' || state === 'Starting' || state === 'Validating') && status?.model_id !== $managedRuntimeStore.selectedModelId));
   $: canStop = !$inferenceBusy && (state === 'Ready' || state === 'Starting' || state === 'Validating' || state === 'Failed');
   $: canBind = !$inferenceBusy && state === 'Ready' && status?.model_state === 'Ready' && status?.inference_ready === true && status?.model_id === $managedRuntimeStore.selectedModelId && modelLaunchable && Boolean(status?.runtime_instance_id) && Boolean($managedRuntimeStore.selectedModelId);
   $: tone = state === 'Ready' ? 'ready' : state === 'Failed' ? 'danger' : state === 'Starting' || state === 'Validating' || state === 'Stopping' ? 'info' : 'disabled';
@@ -75,7 +81,7 @@
 
   <div class="managed-controls">
     <button type="button" aria-label={$t('model.refresh_runtime')} disabled={$inferenceBusy} onclick={() => void refreshManagedRuntimeStatus()}>{$t('model.refresh_runtime')}</button>
-    <button type="button" aria-label={$t(state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId ? 'model.switch_model' : 'model.start_runtime')} disabled={!canStart} onclick={() => void startSelectedManagedRuntime()}>{$t(state === 'Ready' && status?.model_id !== $managedRuntimeStore.selectedModelId ? 'model.switch_model' : 'model.start_runtime')}</button>
+    <button type="button" aria-label={$t(startLabelKey)} disabled={!canStart} onclick={() => void startSelectedManagedRuntime()}>{$t(startLabelKey)}</button>
     <button type="button" aria-label={$t('model.stop_runtime')} disabled={!canStop} onclick={() => void stopSelectedManagedRuntime()}>{$t('model.stop_runtime')}</button>
   </div>
 

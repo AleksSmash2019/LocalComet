@@ -125,7 +125,8 @@ describe('language store', () => {
   it('selected language persists to the versioned preference record', () => {
     setLocale('en');
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
-      theme: 'system',
+      theme: 'light',
+      accentColor: null,
       locale: 'en',
       diagnosticsPanel: 'closed',
             voiceMode: false,

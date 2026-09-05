@@ -39,6 +39,17 @@
       <span class="sidebar-wordmark"><span>Local</span>Comet</span>
     </div>
 
+    <button
+      type="button"
+      class="new-conversation-button"
+      aria-label={$t('sidebar.new_conversation')}
+      title={$t('sidebar.new_conversation')}
+      onclick={startNewConversation}
+    >
+      <span class="new-conv-plus"><Icon name="add" size={15} /></span>
+      <span class="new-conv-label">{$t('sidebar.new_conversation')}</span>
+    </button>
+
     <div class="sidebar-nav">
       <button
         type="button"
@@ -49,7 +60,7 @@
         onclick={openChat}
       >
         <Icon name="chat" size={16} />
-        {$t('nav.chat')}
+        <span>{$t('nav.chat')}</span>
       </button>
       <button
         type="button"
@@ -60,7 +71,7 @@
         onclick={() => setActiveWorkspace('hf_browser')}
       >
         <Icon name="hf" size={16} />
-        {$t('nav.hf_browser')}
+        <span>{$t('nav.hf_browser')}</span>
       </button>
       <button
         type="button"
@@ -71,22 +82,10 @@
         onclick={() => setActiveWorkspace('modelfit')}
       >
         <Icon name="hardware" size={16} />
-        {$t('modelfit.title')}
+        <span>{$t('modelfit.title')}</span>
       </button>
     </div>
 
-    <button
-      type="button"
-      class="plain-button new-conversation-button"
-      aria-label={$t('sidebar.new_conversation')}
-      title={$t('sidebar.new_conversation')}
-      onclick={startNewConversation}
-    >
-      <div class="new-conv-left">
-        <Icon name="add" size={16} />
-        <span>{$t('sidebar.new_conversation')}</span>
-      </div>
-    </button>
     <button
       type="button"
       class="plain-button collapse-button"
@@ -94,13 +93,13 @@
       aria-expanded={$sidebarExpanded}
       onclick={() => sidebarExpanded.update((value) => !value)}
     >
-      <Icon name={$sidebarExpanded ? 'collapse' : 'expand'} size={18} />
+      <Icon name={$sidebarExpanded ? 'collapse' : 'expand'} size={16} />
     </button>
   </div>
 
   <div class="conversation-groups">
     <section aria-label={$t('group.local_chats')}>
-      <h2>{$t('group.local_chats')}</h2>
+      <h2><span class="h2-rule"></span>{$t('group.local_chats')}</h2>
       {#if $conversationStore.conversations.length === 0}
         <p class="conversation-empty">{$t('conversation.empty')}</p>
       {:else}
@@ -112,7 +111,8 @@
             aria-current={$conversationStore.activeId === conversation.id ? 'page' : undefined}
             onclick={() => openConversation(conversation.id)}
           >
-            <span>{tTitle(conversation.title, $t)}</span>
+            <span class="conversation-dot" aria-hidden="true"></span>
+            <span class="conversation-title">{tTitle(conversation.title, $t)}</span>
           </button>
         {/each}
       {/if}
@@ -179,68 +179,117 @@
   .sidebar-nav {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 2px;
   }
 
   .nav-button {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 12px;
-    border-radius: var(--radius-3);
+    padding: 9px 12px;
+    border-radius: 10px;
     color: var(--lc-muted);
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 13.5px;
+    font-weight: 570;
+    letter-spacing: 0.01em;
     background: transparent;
     border: none;
     text-align: left;
     cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+
+  .nav-button :global(svg) {
+    opacity: 0.85;
+    transition: opacity 0.18s ease, transform 0.18s ease;
   }
 
   .nav-button:hover {
-    background: color-mix(in srgb, var(--lc-text) 8%, transparent);
+    background: color-mix(in srgb, var(--lc-text) 7%, transparent);
     color: var(--lc-text);
   }
 
+  .nav-button:hover :global(svg) {
+    opacity: 1;
+  }
+
   .nav-button.active {
-    background: linear-gradient(90deg, var(--lc-accent-dim) 0%, transparent 100%);
+    background:
+      linear-gradient(90deg, color-mix(in srgb, var(--lc-accent) 14%, transparent) 0%, transparent 90%);
     color: var(--lc-text);
-    box-shadow: inset 3px 0 0 var(--lc-accent);
+    font-weight: 640;
+  }
+
+  .nav-button.active :global(svg) {
+    opacity: 1;
+    color: var(--lc-accent);
+    transform: scale(1.05);
+  }
+
+  .nav-button.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, var(--lc-accent-strong), var(--lc-accent));
+    box-shadow: 0 0 10px color-mix(in srgb, var(--lc-accent) 45%, transparent);
   }
 
   .new-conversation-button {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    border-radius: var(--radius-3);
-    border: 1px solid color-mix(in srgb, var(--lc-accent) 30%, transparent);
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--lc-accent) 34%, transparent);
     color: var(--lc-accent);
-    background: color-mix(in srgb, var(--lc-accent) 5%, transparent);
-    font-size: 14px;
-    font-weight: 600;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--lc-accent) 12%, transparent) 0%, color-mix(in srgb, var(--lc-accent) 5%, transparent) 100%);
+    font-size: 13.5px;
+    font-weight: 620;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  
-  .new-conversation-button:hover {
-    background: color-mix(in srgb, var(--lc-accent) 12%, transparent);
-    border-color: color-mix(in srgb, var(--lc-accent) 50%, transparent);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px color-mix(in srgb, var(--lc-accent) 15%, transparent);
+    text-align: left;
+    transition: all 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
   }
 
-  .new-conv-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  .new-conv-plus {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--lc-accent) 16%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lc-accent) 26%, transparent);
+  }
+
+  .new-conversation-button:hover {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--lc-accent) 18%, transparent) 0%, color-mix(in srgb, var(--lc-accent) 8%, transparent) 100%);
+    border-color: color-mix(in srgb, var(--lc-accent) 55%, transparent);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--lc-accent) 18%, transparent);
+  }
+
+  .new-conversation-button:active {
+    transform: translateY(0);
+  }
+
+  .new-conv-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .conversation-empty {
     margin: 16px 8px;
     padding: 12px;
-    border-radius: var(--radius-2);
+    border-radius: 10px;
     background: color-mix(in srgb, var(--lc-text) 2%, transparent);
     color: var(--lc-muted);
     font-size: 12.5px;
@@ -249,32 +298,92 @@
   }
 
   h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 20px 8px 8px;
     color: var(--lc-faint);
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 700;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
   }
 
+  .h2-rule {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--lc-line) 55%, transparent), transparent);
+  }
+
   .conversation-button {
+    position: relative;
     width: 100%;
-    min-height: 34px;
-    display: block;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
     text-align: left;
-    padding: 6px 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
     color: var(--lc-muted);
     font-size: 12.5px;
-    font-weight: 560;
+    font-weight: 540;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease;
+  }
+
+  .conversation-dot {
+    flex: none;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--lc-muted) 55%, transparent);
+    transition: background 0.16s ease, box-shadow 0.16s ease;
+  }
+
+  .conversation-title {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  .conversation-button:hover {
+    background: color-mix(in srgb, var(--lc-text) 6%, transparent);
+    color: var(--lc-text);
+  }
+
   .conversation-button.selected {
-    background: var(--lc-accent-dim);
-    border-color: transparent;
-    color: var(--lc-accent);
+    background:
+      linear-gradient(90deg, color-mix(in srgb, var(--lc-accent) 12%, transparent) 0%, transparent 95%);
+    color: var(--lc-text);
+    font-weight: 620;
+  }
+
+  .conversation-button.selected .conversation-dot {
+    background: var(--lc-accent);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--lc-accent) 55%, transparent);
+  }
+
+  .collapse-button {
+    align-self: center;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    margin-top: -4px;
+    border-radius: 9px;
+    color: var(--lc-faint);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+
+  .collapse-button:hover {
+    background: color-mix(in srgb, var(--lc-text) 7%, transparent);
+    color: var(--lc-text);
   }
 
   .conversation-groups {

@@ -62,8 +62,8 @@ describe('shell stores', () => {
     resetShellStores();
   });
 
-  it('defaults theme to system and can change to light and dark', () => {
-    expect(get(themeMode)).toBe('system');
+  it('defaults theme to light and can change to system and dark', () => {
+    expect(get(themeMode)).toBe('light');
     setThemeMode('light');
     expect(get(themeMode)).toBe('light');
     setThemeMode('dark');
@@ -75,6 +75,7 @@ describe('shell stores', () => {
     expect(get(themeMode)).toBe('light');
     expect(JSON.parse(localStorage.getItem(UI_PREFERENCES_KEY) ?? '{}')).toEqual({
       theme: 'light',
+      accentColor: null,
       locale: 'ru',
       diagnosticsPanel: 'closed',
             voiceMode: false,
@@ -223,8 +224,8 @@ describe('shell stores', () => {
     expect(handleGlobalEscape('Escape')).toBe(false);
   });
 
-  it('defaults theme mode to system', () => {
-    expect(get(themeMode)).toBe('system');
+  it('defaults theme mode to light', () => {
+    expect(get(themeMode)).toBe('light');
   });
 
   it('changes theme mode to light', () => {

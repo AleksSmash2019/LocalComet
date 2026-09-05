@@ -29,6 +29,7 @@
     settingsPanelOpen,
     sidebarExpanded,
     themeMode,
+    accentColor,
     resetShellStores
   } from '$lib/stores/shellStore';
   import { initializeControlPlaneBridge, shutdownControlPlaneBridge } from '$lib/stores/controlPlane';
@@ -48,6 +49,60 @@
   let transcriptRevision = 0;
 
   $: document.documentElement.lang = $locale;
+
+  function hexChannels(hex: string): [number, number, number] {
+    const value = hex.replace('#', '');
+    return [
+      parseInt(value.slice(0, 2), 16),
+      parseInt(value.slice(2, 4), 16),
+      parseInt(value.slice(4, 6), 16)
+    ];
+  }
+
+  function lighten(hex: string, amount: number): string {
+    const [r, g, b] = hexChannels(hex);
+    const lift = (channel: number): string => Math.min(255, Math.round(channel + (255 - channel) * amount))
+      .toString(16)
+      .padStart(2, '0');
+    return `#${lift(r)}${lift(g)}${lift(b)}`;
+  }
+
+  function alpha(hex: string, a: number): string {
+    const [r, g, b] = hexChannels(hex);
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
+  // ModelFit renders in a same-origin iframe from a prebuilt bundle whose
+  // accent is hardcoded as the RGB triplet --mf-accent. Paint it with the
+  // owner's accent: inject an override stylesheet into the iframe document
+  // on every load and re-apply whenever the accent changes. Same-origin, so
+  // the injection is local DOM work — no network, no postMessage surface.
+  let modelfitFrame: HTMLIFrameElement;
+  let modelfitStyleEl: HTMLStyleElement | null = null;
+
+  function modelfitAccentCss(accent: string): string {
+    const [r, g, b] = hexChannels(accent);
+    const strong = lighten(accent, 0.28);
+    const [sr, sg, sb] = hexChannels(strong);
+    return `:root,.light{--mf-accent:${r} ${g} ${b};--mf-accent-soft:${sr} ${sg} ${sb};--mf-ok:${r} ${g} ${b};}`;
+  }
+
+  function applyModelfitAccent(): void {
+    const doc = modelfitFrame?.contentDocument;
+    if (!doc) return;
+    if (!$accentColor) {
+      modelfitStyleEl?.remove();
+      modelfitStyleEl = null;
+      return;
+    }
+    if (!modelfitStyleEl || !modelfitStyleEl.isConnected) {
+      modelfitStyleEl = doc.createElement('style');
+      doc.head.appendChild(modelfitStyleEl);
+    }
+    modelfitStyleEl.textContent = modelfitAccentCss($accentColor);
+  }
+
+  $: if ($accentColor !== undefined && modelfitFrame) applyModelfitAccent();
 
   function recordTranscriptPosition(): void {
     if (!transcriptViewport) return;
@@ -93,6 +148,13 @@
   }
 
   $: resolvedTheme = $themeMode === 'system' ? (systemDark ? 'dark' : 'light') : $themeMode;
+  // Custom accent (Settings → Appearance): one hex drives the three accent
+  // variables the whole UI reads. strong/dim derive from the same color so
+  // every existing color-mix consumer follows automatically. When the owner
+  // picks the default (null) no inline override is rendered at all.
+  $: accentStyle = $accentColor
+    ? `--lc-accent:${$accentColor};--lc-accent-strong:${lighten($accentColor, 0.28)};--lc-accent-dim:${alpha($accentColor, 0.14)}`
+    : '';
   $: transcriptRevision =
     $chatMessages.length + ($chatMessages[$chatMessages.length - 1]?.body.length ?? 0);
   $: if (transcriptViewport && transcriptRevision >= 0) {
@@ -178,7 +240,7 @@
 
 </script>
 
-<div class="app-shell" data-theme={resolvedTheme}>
+<div class="app-shell" data-theme={resolvedTheme} style={accentStyle}>
   <AppMenuBar />
 
   <ConversationSidebar />
@@ -222,7 +284,13 @@
         <p class="hf-lazy-error">{error?.message ?? 'Failed to load'}</p>
       {/await}
     {:else if $activeWorkspace === 'modelfit'}
-      <iframe src="/modelfit.html" title={$t('modelfit.title')} class="modelfit-frame"></iframe>
+      <iframe
+        bind:this={modelfitFrame}
+        src="/modelfit.html"
+        title={$t('modelfit.title')}
+        class="modelfit-frame"
+        onload={applyModelfitAccent}
+      ></iframe>
     {:else}
       <OnboardingScreen />
     {/if}
@@ -247,7 +315,11 @@
       radial-gradient(ellipse 70% 58% at 104% 116%, color-mix(in srgb, var(--lc-accent) 10%, transparent), transparent 66%),
       radial-gradient(ellipse 52% 48% at 52% 48%, color-mix(in srgb, var(--lc-accent) 4%, transparent), transparent 78%),
       linear-gradient(140deg, color-mix(in srgb, var(--lc-bg) 92%, #052e24) 0%, color-mix(in srgb, var(--lc-bg) 98%, #0b1814) 48%, color-mix(in srgb, var(--lc-bg) 94%, #062e21) 100%);
-    box-shadow: inset 0 0 156px color-mix(in srgb, #000 48%, transparent);
+    box-shadow: inset 0 0 156px color-mix(in srgb, #000 34%, transparent);
+  }
+
+  .app-shell[data-theme="light"] {
+    box-shadow: inset 0 0 156px color-mix(in srgb, #000 6%, transparent);
   }
 
   .shell-body {

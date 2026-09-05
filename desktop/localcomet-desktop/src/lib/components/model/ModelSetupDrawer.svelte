@@ -52,10 +52,22 @@
     readonly model_id: string;
     readonly display_name: string;
     readonly installed: boolean;
+    readonly source: 'catalog' | 'custom';
+    readonly size_bytes: number | null;
   };
 
   function isForbiddenModel(modelId: string, displayName: string): boolean {
     return /qwen2\.5[- _]?1\.5b/i.test(`${modelId} ${displayName}`);
+  }
+
+  const GB = 1024 * 1024 * 1024;
+
+  function modelLabel(model: ManagedModelChoice): string {
+    const suffix = model.installed ? $t('setup.model_installed_suffix') : '';
+    const size = model.size_bytes
+      ? ` · ${(model.size_bytes / GB).toFixed(1)} GB`
+      : '';
+    return `${model.display_name}${size}${suffix}`;
   }
 
   // The drawer must use the same union as Settings: approved catalog models
@@ -63,30 +75,43 @@
   // managedRuntimeStore.catalog and then hid the selector unless >1 installed
   // entries existed, which made a valid custom Qwen3 model disappear behind
   // the one-click setup hero.
+  // Grouping: the flat union read as "каша" (screenshot) — catalog entries and
+  // raw user .gguf filenames sat in one unsorted list. Each choice now carries
+  // its source and size so the <select> can render labelled optgroups with the
+  // installed models on top.
   $: visibleManagedModels = (() => {
     const byId = new Map<string, ManagedModelChoice>();
     const isInstalled = (modelId: string) => $managedRuntimeStore.installedArtifacts.some((artifact) =>
       artifact.kind === 'model' && artifact.artifact_id === modelId && artifact.installation_status === 'valid'
     );
     for (const model of $managedRuntimeStore.catalog) {
-      if (!isForbiddenModel(model.model_id, model.display_name)) {
-        byId.set(model.model_id, {
-          model_id: model.model_id,
-          display_name: model.display_name,
-          installed: isInstalled(model.model_id)
-        });
-      }
+      if (isForbiddenModel(model.model_id, model.display_name)) continue;
+      byId.set(model.model_id, {
+        model_id: model.model_id,
+        display_name: model.display_name,
+        installed: isInstalled(model.model_id),
+        source: 'catalog',
+        size_bytes: model.asset_bytes ?? null
+      });
     }
     for (const artifact of $artifactAcquisitionStore.artifacts) {
       if (artifact.kind !== 'model' || isForbiddenModel(artifact.artifact_id, artifact.display_name)) continue;
       byId.set(artifact.artifact_id, {
         model_id: artifact.artifact_id,
         display_name: artifact.display_name,
-        installed: isInstalled(artifact.artifact_id)
+        installed: isInstalled(artifact.artifact_id),
+        source: artifact.trust_kind === 'approved_catalog' ? 'catalog' : 'custom',
+        size_bytes: artifact.expected_bytes ?? null
       });
     }
-    return [...byId.values()];
+    const choices = [...byId.values()];
+    const rank = (choice: ManagedModelChoice): number =>
+      (choice.installed ? 0 : 1) * 10 + (choice.source === 'catalog' ? 0 : 1);
+    return choices.sort((a, b) => rank(a) - rank(b) || a.display_name.localeCompare(b.display_name));
   })();
+  $: recommendedChoices = visibleManagedModels.filter((model) => model.installed && model.source === 'catalog');
+  $: catalogChoices = visibleManagedModels.filter((model) => model.source === 'catalog');
+  $: customChoices = visibleManagedModels.filter((model) => model.source === 'custom');
   $: selectedAvailableModel = visibleManagedModels.find((model) => model.model_id === $managedRuntimeStore.selectedModelId) ?? null;
   $: managedModelLaunchable = $managedRuntimeStore.readiness?.model_id === selectedAvailableModel?.model_id && $managedRuntimeStore.readiness?.launchable === true;
   $: canBindManaged = !$inferenceBusy && !$managedConnectionBusy && !managedSetupRunning && !$managedModelReady && Boolean(setupTargetModelId);
@@ -297,15 +322,39 @@
           {#if managedState === 'NotInstalled'}
             <div class="hero-empty-state">
               {#if visibleManagedModels.length > 0}
-                <label class="form-field">
-                  <span>{$t('setup.model')}</span>
-                  <select disabled={$inferenceBusy || managedSetupRunning} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
-                    <option value="">{$t('setup.select_local_model')}</option>
-                    {#each visibleManagedModels as model}
-                      <option value={model.model_id}>{model.display_name}</option>
-                    {/each}
-                  </select>
-                </label>
+                <fieldset class="model-picker" disabled={managedSetupRunning}>
+                  <legend>{$t('setup.pick_title')}</legend>
+                  {#each visibleManagedModels.slice(0, 8) as model (model.model_id)}
+                    <button
+                      type="button"
+                      class="model-card"
+                      class:selected={$managedRuntimeStore.selectedModelId === model.model_id}
+                      aria-pressed={$managedRuntimeStore.selectedModelId === model.model_id}
+                      onclick={() => void setManagedSelectedModel(model.model_id)}
+                    >
+                      <span class="model-card-main">
+                        <span class="model-card-name">{model.display_name}</span>
+                        <span class="model-card-meta">
+                          {#if model.size_bytes}<span>{(model.size_bytes / GB).toFixed(1)} GB</span>{/if}
+                          <span class="model-card-tag" class:tag-installed={model.installed}>
+                            {model.installed ? $t('setup.badge_installed') : $t('setup.badge_download')}
+                          </span>
+                        </span>
+                      </span>
+                      {#if $managedRuntimeStore.selectedModelId === model.model_id}
+                        <Icon name="check" size={18} />
+                      {/if}
+                    </button>
+                  {/each}
+                </fieldset>
+                <button
+                  type="button"
+                  class="model-fit-link"
+                  onclick={() => { closeModelSetup(); setActiveWorkspace('modelfit'); }}
+                >
+                  <Icon name="diag" size={15} />
+                  <span>{$t('setup.not_sure_fit')}</span>
+                </button>
               {/if}
               <span class="setup-kicker">{$t('setup.recommended_path')}</span>
               <p class="empty-title">{$t('setup.hero_title')}</p>
@@ -380,9 +429,27 @@
                 <span>{$t('setup.model')}</span>
                 <select disabled={$inferenceBusy} value={$managedRuntimeStore.selectedModelId} onchange={(e) => void setManagedSelectedModel((e.currentTarget as HTMLSelectElement).value)}>
                   <option value="">{$t('setup.select_local_model')}</option>
-                  {#each visibleManagedModels as model}
-                    <option value={model.model_id}>{model.display_name}</option>
-                  {/each}
+                  {#if recommendedChoices.length > 0}
+                    <optgroup label={$t('setup.group_installed')}>
+                      {#each recommendedChoices as model}
+                        <option value={model.model_id}>{modelLabel(model)}</option>
+                      {/each}
+                    </optgroup>
+                  {/if}
+                  {#if catalogChoices.length > recommendedChoices.length}
+                    <optgroup label={$t('setup.group_catalog')}>
+                      {#each catalogChoices.filter((model) => !model.installed) as model}
+                        <option value={model.model_id}>{modelLabel(model)}</option>
+                      {/each}
+                    </optgroup>
+                  {/if}
+                  {#if customChoices.length > 0}
+                    <optgroup label={$t('setup.group_custom')}>
+                      {#each customChoices as model}
+                        <option value={model.model_id}>{modelLabel(model)}</option>
+                      {/each}
+                    </optgroup>
+                  {/if}
                 </select>
               </label>
             {/if}
@@ -828,6 +895,102 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
+  }
+
+  .model-picker {
+    width: 100%;
+    border: none;
+    margin: 0 0 14px;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+
+  .model-picker legend {
+    color: var(--lc-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    padding: 0;
+  }
+
+  .model-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 14px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--lc-line) 70%, transparent);
+    background: color-mix(in srgb, var(--lc-panel) 60%, transparent);
+    color: var(--lc-text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+  }
+
+  .model-card:hover {
+    border-color: color-mix(in srgb, var(--lc-accent) 55%, var(--lc-line));
+    transform: translateY(-1px);
+  }
+
+  .model-card.selected {
+    border-color: var(--lc-accent);
+    background: color-mix(in srgb, var(--lc-accent) 10%, transparent);
+  }
+
+  .model-card-main {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .model-card-name {
+    font-size: 14px;
+    font-weight: 620;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .model-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--lc-muted);
+    font-size: 12px;
+  }
+
+  .model-card-tag {
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--lc-line) 80%, transparent);
+  }
+
+  .model-card-tag.tag-installed {
+    color: var(--lc-accent);
+    border-color: color-mix(in srgb, var(--lc-accent) 45%, transparent);
+  }
+
+  .model-fit-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--lc-accent);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .model-fit-link:hover {
+    text-decoration: underline;
   }
 
   .run-model-btn {

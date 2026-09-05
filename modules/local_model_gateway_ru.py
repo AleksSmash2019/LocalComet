@@ -504,7 +504,10 @@ class GatewayLimits:
     maximum_model_count: int = 256
     maximum_model_id_bytes: int = 192
     maximum_prompt_bytes: int = 16_384
-    maximum_messages: int = 4
+    # Long-conversation memory (audit P0): the harness carries a real history
+    # window, so the cap must hold a meaningful dialogue, not 2 prior turns.
+    # 32 messages × ~4 KiB average ≈ 128 KiB, well inside a 4–8 KiB ctx chat.
+    maximum_messages: int = 32
     maximum_sse_line_bytes: int = 8_192
     maximum_sse_event_bytes: int = 16_384
     maximum_sse_events: int = 2_048
@@ -2994,6 +2997,22 @@ def _parse_sse_event(
     if data == "[DONE]":
         return StreamDelta(""), [], True
     value = _loads_json(data.encode("utf-8"))
+    if not tools_enabled:
+        # ADR-015 (в) salvage: a small model on a tools-OFF turn may still emit
+        # a stray tool_calls delta (its template leaks the trained format). The
+        # always-forbidden markers stay a hard rejection, but a bare
+        # choices[].delta.tool_calls chunk is STRIPPED: text in the same event
+        # is kept, the unsanctioned call is dropped and counted. If the event
+        # carried nothing but the stray call, it becomes an empty delta — the
+        # turn then ends via the existing honest empty_model_output path
+        # instead of a protocol error.
+        stray_tool_calls = _extract_stray_tool_calls(value)
+        if stray_tool_calls is not None:
+            _cu_debug(
+                "tools_off_stray_tool_calls_stripped",
+                {"stripped": len(stray_tool_calls)},
+            )
+        value = _strip_stray_tool_calls(value)
     check_model_response_markers(value, tools_enabled=tools_enabled)
     if not isinstance(value, Mapping):
         raise GatewayError("invalid_payload", "SSE JSON must be an object")
@@ -3059,6 +3078,84 @@ def _reject_always_forbidden_markers(value: object) -> None:
     elif isinstance(value, list):
         for child in value:
             _reject_always_forbidden_markers(child)
+
+
+def _extract_stray_tool_calls(value: object) -> list | None:
+    """Return the bare choices[].delta.tool_calls payload on a tools-OFF event.
+
+    Salvage (ADR-015 (в) tail): only the canonical slots a small model's
+    template leaks into are extracted — delta.tool_calls and the legacy
+    delta.function_call form. Every other position keeps the hard rejection
+    in check_model_response_markers. Returns None when the event carries no
+    bare delta slot to salvage.
+    """
+    if not isinstance(value, Mapping):
+        return None
+    choices = value.get("choices")
+    if not isinstance(choices, list):
+        return None
+    extracted: list | None = None
+    for choice in choices:
+        if not isinstance(choice, Mapping):
+            continue
+        delta = choice.get("delta")
+        if not isinstance(delta, Mapping):
+            continue
+        leaked = False
+        if "tool_calls" in delta and isinstance(delta["tool_calls"], list):
+            if extracted is None:
+                extracted = []
+            extracted.extend(delta["tool_calls"])
+            leaked = True
+        if "function_call" in delta:
+            if extracted is None:
+                extracted = []
+            leaked = True
+        if leaked:
+            continue
+    return extracted
+
+
+def _strip_stray_tool_calls(value: object) -> object:
+    """Deep-copy the event without leaked delta tool slots (salvage path).
+
+    Removes delta.tool_calls and delta.function_call — the two wire shapes a
+    template-leaking model emits into plain chat. role=tool, top-level
+    tools/functions and any other marker position are left in place so the
+    subsequent check_model_response_markers pass still rejects them.
+    Non-salvageable events are returned unchanged (same object).
+    """
+    if not isinstance(value, Mapping):
+        return value
+    choices = value.get("choices")
+    if not isinstance(choices, list) or not any(
+        isinstance(choice, Mapping)
+        and isinstance(choice.get("delta"), Mapping)
+        and ("tool_calls" in choice["delta"] or "function_call" in choice["delta"])
+        for choice in choices
+    ):
+        return value
+    stripped_choices: list = []
+    for choice in choices:
+        if (
+            isinstance(choice, Mapping)
+            and isinstance(choice.get("delta"), Mapping)
+            and ("tool_calls" in choice["delta"] or "function_call" in choice["delta"])
+        ):
+            delta = choice["delta"]
+            trimmed_delta = {
+                key: item
+                for key, item in delta.items()
+                if key not in ("tool_calls", "function_call")
+            }
+            trimmed_choice = {key: item for key, item in choice.items() if key != "delta"}
+            trimmed_choice["delta"] = trimmed_delta
+            stripped_choices.append(trimmed_choice)
+        else:
+            stripped_choices.append(choice)
+    stripped = dict(value)
+    stripped["choices"] = stripped_choices
+    return stripped
 
 
 def _reject_stray_tool_call_markers(value: object) -> None:

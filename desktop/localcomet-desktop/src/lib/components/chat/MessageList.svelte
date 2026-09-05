@@ -111,7 +111,13 @@
     const safeClass = /(blocked|policy|allowlist|unsupported|invalid|outside[ _](the[ _])?workspace|approval|ownership|model|runtime|gateway|tool|computer use|not ready|permission|unavailable|timeout)/i.test(bounded)
       ? 'request_blocked_or_unavailable'
       : '';
-    return safeClass ? `${$t('chat.request_failed_reason')}: ${safeClass}` : '';
+    if (!safeClass) return '';
+    // The class is an internal bucket, not a code: show its human hint when
+    // the dictionary has one, never the raw identifier.
+    const classHint = $t('chat.reason.' + safeClass);
+    return classHint !== 'chat.reason.' + safeClass
+      ? `${$t('chat.request_failed_reason')}: ${classHint}`
+      : `${$t('chat.request_failed_reason')}: ${safeClass}`;
   }
 
   $: visibleMessages = $chatMessages.filter((message) => message.conversationId === $selectedConversationId);
@@ -292,20 +298,21 @@
     max-width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
 
   .prompt-cards-section {
-    margin-top: 32px;
+    margin-top: 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
   }
 
   .prompt-cards-section h3 {
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 21px;
+    font-weight: 650;
+    letter-spacing: -0.015em;
     color: var(--lc-text);
     margin: 0;
   }
@@ -313,7 +320,7 @@
   .cards-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: 8px;
     max-width: 600px;
     width: 100%;
   }
@@ -321,29 +328,33 @@
   .prompt-card {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 16px;
-    background: var(--lc-panel);
-    border: 1px solid var(--lc-line);
-    border-radius: var(--radius-3);
+    gap: 3px;
+    padding: 12px 14px;
+    background: color-mix(in srgb, var(--lc-panel) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lc-line) 74%, transparent);
+    border-radius: var(--lc-radius-lg);
     text-align: left;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.18s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   }
 
   .prompt-card:hover {
     background: var(--lc-panel-soft);
-    border-color: var(--lc-accent);
+    border-color: color-mix(in srgb, var(--lc-accent) 55%, var(--lc-line));
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--lc-accent) 12%, rgba(0, 0, 0, 0.2));
   }
 
   .prompt-card span {
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
     color: var(--lc-text);
   }
 
   .prompt-card .prompt-sub {
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 400;
     color: var(--lc-muted);
   }
 
@@ -352,7 +363,7 @@
     max-width: 100%;
     display: flex;
     justify-content: flex-start;
-    animation: message-in 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: message-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .message.user {
@@ -367,26 +378,29 @@
     min-width: 0;
     width: fit-content;
     max-width: 80%;
-    border: 1px solid color-mix(in srgb, var(--lc-line) 84%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lc-line) 62%, transparent);
     border-radius: var(--lc-radius-lg);
-    background: color-mix(in srgb, var(--lc-panel-solid) 60%, transparent);
-    padding: 10px 16px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--lc-text) 2.5%, transparent) 0%, transparent 42%),
+      color-mix(in srgb, var(--lc-panel-solid) 55%, transparent);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 4px 14px rgba(0, 0, 0, 0.08);
+    padding: 7px 12px;
     font-size: 13.5px;
-    line-height: 1.625;
+    line-height: 1.55;
   }
 
   .code-wrapper {
-    margin: 8px 0;
+    margin: 6px 0;
     max-width: 100%;
     overflow-x: auto;
   }
 
   .reasoning-block {
-    margin-top: 12px;
-    padding: 8px 10px;
-    border: 1px solid color-mix(in srgb, var(--lc-line) 72%, transparent);
+    margin-top: 8px;
+    padding: 6px 9px;
+    border: 1px solid color-mix(in srgb, var(--lc-line) 58%, transparent);
     border-radius: var(--lc-radius-sm);
-    background: color-mix(in srgb, var(--lc-panel-soft) 52%, transparent);
+    background: color-mix(in srgb, var(--lc-panel-soft) 42%, transparent);
     color: var(--lc-muted);
   }
 
@@ -405,22 +419,25 @@
   }
 
   .reasoning-text {
-    margin-top: 8px;
+    margin-top: 6px;
     max-height: 260px;
     overflow: auto;
     color: var(--lc-muted);
     font-size: 12px;
-    line-height: 1.55;
+    line-height: 1.5;
     white-space: pre-wrap;
   }
 
   .user .bubble {
     border-color: transparent;
+    border-bottom-right-radius: 6px;
     background: var(--lc-accent);
     color: var(--lc-logo-cut);
     font-weight: 500;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--lc-logo-cut) 10%, transparent),
+      0 2px 8px color-mix(in srgb, var(--lc-accent) 26%, transparent);
   }
-
   .runtime .bubble {
     border-color: var(--lc-line-strong);
   }
@@ -437,7 +454,7 @@
 
   .request-state {
     display: inline-block;
-    margin-top: var(--lc-space-2);
+    margin-top: var(--lc-space-1);
     color: var(--lc-muted);
     font-size: 11px;
     font-family: var(--lc-mono);
@@ -479,15 +496,21 @@
   }
 
   .retry-button {
-    min-height: 30px;
-    padding: 0 var(--lc-space-3);
+    min-height: 26px;
+    padding: 0 10px;
     border: var(--border-thin);
-    border-radius: var(--lc-radius-sm);
+    border-radius: 999px;
     background: var(--lc-panel-soft);
     color: var(--lc-text);
     font-size: 12px;
-    font-weight: 760;
+    font-weight: 700;
     cursor: pointer;
+    transition: all 0.18s ease;
+  }
+
+  .retry-button:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--lc-accent) 55%, var(--lc-line));
+    color: var(--lc-accent-strong);
   }
 
   .retry-button:disabled {
@@ -498,13 +521,14 @@
   .message-actions {
     display: flex;
     justify-content: flex-end;
-    margin-top: 4px;
-    opacity: 0.7;
-    transition: opacity 0.2s ease;
+    margin-top: 2px;
+    opacity: 0;
+    transition: opacity 0.16s ease;
   }
 
-  .bubble:hover .message-actions {
-    opacity: 1;
+  .bubble:hover .message-actions,
+  .message:focus-within .message-actions {
+    opacity: 0.85;
   }
 
   .msg-action-btn {
@@ -535,7 +559,7 @@
   @keyframes message-in {
     from {
       opacity: 0;
-      transform: translateY(6px);
+      transform: translateY(5px);
     }
     to {
       opacity: 1;

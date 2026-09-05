@@ -50,8 +50,10 @@ describe('minimal Settings surface', () => {
     expect(html).toContain('Local speech output is currently available for Russian responses only');
     expect(html).toContain('title="Female voice"');
     expect(html).toContain('title="Male voice"');
+    expect(html).toContain('title="Dmitri voice"');
+    expect(html).toContain('title="Denis voice"');
     expect(html).toContain('Play sample');
-    expect(html.match(/aria-label="Play sample"/g)?.length).toBe(2);
+    expect(html.match(/aria-label="Play sample"/g)?.length).toBe(4);
     expect(html).toMatch(/aria-pressed="true"[^>]*title="Female voice"/);
   });
 

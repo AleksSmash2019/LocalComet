@@ -890,7 +890,44 @@ fn embedded_catalog_is_canonical_and_exactly_pinned() {
         EMBEDDED_CATALOG_SHA256
     );
     assert_eq!(service.catalog.runtimes.len(), 2);
-    assert_eq!(service.catalog.models.len(), 1);
+    assert_eq!(service.catalog.models.len(), 7);
+    let model_ids: Vec<&str> = service
+        .catalog
+        .models
+        .iter()
+        .map(|model| model.model_id.as_str())
+        .collect();
+    assert_eq!(
+        model_ids,
+        vec![
+            "gemma-2-2b-it-q4-k-m",
+            "qwen2.5-7b-instruct-q4-k-m",
+            "qwen3-1.7b-q4-k-m",
+            "qwen3-4b-instruct-2507-q4-k-m",
+            "qwen3-4b-q4-k-m",
+            "qwen3-8b-q4-k-m",
+            "qwen3.5-4b-q4-k-m",
+        ]
+    );
+    let qwen3_8b = service
+        .catalog
+        .models
+        .iter()
+        .find(|model| model.model_id == "qwen3-8b-q4-k-m")
+        .expect("qwen3-8b entry");
+    assert_eq!(qwen3_8b.asset_bytes, 5_027_783_488);
+    assert_eq!(
+        qwen3_8b.asset_sha256,
+        "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785"
+    );
+    let gemma = service
+        .catalog
+        .models
+        .iter()
+        .find(|model| model.model_id == "gemma-2-2b-it-q4-k-m")
+        .expect("gemma entry");
+    assert_eq!(gemma.license_id, "gemma");
+    assert_eq!(gemma.asset_bytes, 1_708_582_752);
 
     let runtime = &service.catalog.runtimes[0];
     assert_eq!(runtime.runtime_id, "llama-cpp-windows-x86-64-cpu-bootstrap");
@@ -955,8 +992,12 @@ fn embedded_catalog_is_canonical_and_exactly_pinned() {
         "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
     );
 
-    let model = &service.catalog.models[0];
-    assert_eq!(model.model_id, "qwen2.5-7b-instruct-q4-k-m");
+    let model = service
+        .catalog
+        .models
+        .iter()
+        .find(|model| model.model_id == "qwen2.5-7b-instruct-q4-k-m")
+        .expect("qwen2.5 entry");
     assert_eq!(
         model.upstream_revision,
         "a8bb3906b78b3009770d7ae7d116be2ea892802d"

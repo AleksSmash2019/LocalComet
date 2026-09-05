@@ -360,7 +360,11 @@ impl ApprovalState {
             .permissions
             .lock()
             .expect("approval permissions lock poisoned");
-        match tool {
+        // Fail-closed: a tool missing from this map is not tied to any
+        // capability flag, so it must not silently inherit "allowed". A new
+        // tool has to be added here explicitly when its capability surface is
+        // decided.
+        let capability: Option<bool> = match tool {
             "files.read"
             | "files.list"
             | "files.write"
@@ -369,13 +373,24 @@ impl ApprovalState {
             | "files.rollback"
             | "files.rollback_undo"
             | "checkpoint.restore_files"
-            | "checkpoint.restore_task" => permissions.files,
-            "shell" => permissions.shell,
-            "computer_use" => permissions.computer_use,
-            "web.search" | "web.fetch" => permissions.internet,
-            "skills.invoke" => permissions.tools,
-            _ => true,
-        }
+            | "checkpoint.restore_task" => Some(permissions.files),
+            "shell" => Some(permissions.shell),
+            "computer_use" => Some(permissions.computer_use),
+            "web.search" | "web.fetch" => Some(permissions.internet),
+            "skills.invoke" => Some(permissions.tools),
+            // Runtime/artifact lifecycle commands are gated by their own
+            // approval tokens (runtime.start/stop, artifact.download/remove,
+            // model.binding.set, import_custom_model), not by agent
+            // capability switches; they are exempt from this map.
+            "runtime.start"
+            | "runtime.stop"
+            | "artifact.download"
+            | "artifact.remove"
+            | "model.binding.set"
+            | "import_custom_model" => None,
+            _ => return false,
+        };
+        capability.is_none() || capability == Some(true)
     }
 }
 
@@ -1542,6 +1557,30 @@ mod tests {
     fn b3r_prefix_suffix_confusion_rejected_fail_closed() {
         assert_unknown_tool_rejected("files.read.extra");
         assert_unknown_tool_rejected("evil.files.read");
+    }
+
+    /// SEC-6 tail: the capability gate is deny-by-default. A tool missing
+    /// from the capability map must surface `permission_denied` even with
+    /// every capability flag enabled — the removed `_ => true` arm silently
+    /// allowed exactly this case. Lifecycle commands stay exempt by design
+    /// (they carry their own approval tokens, not capability switches).
+    #[test]
+    fn sec6_unknown_tool_fails_closed_permission_denied() {
+        let state = test_approval_state_with_workspace();
+        for tool in [
+            "unknown.tool",
+            "",
+            "   ",
+            "FILES.READ",
+            "files.read.extra",
+            "system.time2",
+        ] {
+            let error = require_tool_permission(&state, tool)
+                .expect_err(&format!("SEC-6: {tool:?} must fail closed"));
+            assert_eq!(error.code, "permission_denied", "{tool}");
+        }
+        assert!(state.allows_tool("runtime.start"));
+        assert!(state.allows_tool("artifact.download"));
     }
 
     fn test_approval_state_with_workspace() -> ApprovalState {

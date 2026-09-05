@@ -194,8 +194,11 @@ describe('component smoke tests', () => {
 
   it('renders the approval card empty state when nothing is pending', () => {
     const html = render(ApprovalCard).body;
-    expect(html).toContain('Нет запросов на подтверждение');
+    // Nothing is pending: the card renders nothing at all — the old
+    // "Нет запросов на подтверждение" line read as a stray status message
+    // under the prompt cards.
     expect(html).not.toContain('Подтвердить');
+    expect(html).not.toContain('Отклонить');
   });
 
   it('renders useful Diagnostics without demo controls or no-op tabs', () => {
@@ -244,7 +247,6 @@ describe('component smoke tests', () => {
   it('keeps approval card empty while guarded tool calls run in the background', () => {
     requestApprovalForTool('files.write', { path: 'a.txt' });
     const html = render(ApprovalCard).body;
-    expect(html).toContain('Нет запросов на подтверждение');
     expect(html).not.toContain('files.write');
     expect(html).not.toContain('Подтвердить');
     expect(html).not.toContain('Отклонить');

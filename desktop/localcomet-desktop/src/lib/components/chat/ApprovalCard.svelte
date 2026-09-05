@@ -122,7 +122,8 @@
     </div>
   </article>
 {:else}
-  <p class="approval-empty">{$t('approval.no_pending')}</p>
+  <!-- Nothing awaits a decision: render nothing. The previous "no pending
+       approvals" line read as a stray status message under the prompt cards. -->
 {/if}
 
 <style>
@@ -142,11 +143,6 @@
   .approval-error {
     margin: 0;
     color: var(--lc-danger);
-  }
-
-  .approval-empty {
-    margin: 0;
-    color: var(--color-muted);
   }
 
   .approval-actions {

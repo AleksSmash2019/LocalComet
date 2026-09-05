@@ -21,6 +21,8 @@ static ACTIVE_TTS_CHILD: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
 enum TtsVoiceProfile {
     Female,
     Male,
+    Dmitri,
+    Denis,
 }
 
 impl TtsVoiceProfile {
@@ -28,6 +30,8 @@ impl TtsVoiceProfile {
         match value.unwrap_or("female") {
             "female" => Ok(Self::Female),
             "male" => Ok(Self::Male),
+            "dmitri" => Ok(Self::Dmitri),
+            "denis" => Ok(Self::Denis),
             _ => Err("Неподдерживаемый профиль локального TTS-голоса".to_string()),
         }
     }
@@ -36,6 +40,8 @@ impl TtsVoiceProfile {
         match self {
             Self::Female => "ru_RU-irina-medium.onnx",
             Self::Male => "ru_RU-ruslan-medium.onnx",
+            Self::Dmitri => "ru_RU-dmitri-medium.onnx",
+            Self::Denis => "ru_RU-denis-medium.onnx",
         }
     }
 
@@ -43,6 +49,8 @@ impl TtsVoiceProfile {
         match self {
             Self::Female => "женский",
             Self::Male => "мужской",
+            Self::Dmitri => "мужской Дмитрий",
+            Self::Denis => "мужской Денис",
         }
     }
 }
@@ -291,6 +299,12 @@ fn speak_with_piper(
         .arg(PIPER_LENGTH_SCALE)
         .arg("--output_file")
         .arg(&output)
+        // piper resolves espeak-ng-data (and its other DLL/model resources)
+        // relative to the CURRENT process directory. Inherited launch dirs
+        // make it abort before writing audio, and the SAPI fallback then
+        // announces every profile with the same RHVoice. Anchoring the child
+        // to the piper root keeps the neural voice selection real.
+        .current_dir(&root)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -353,7 +367,9 @@ fn speak_with_piper(
 fn rhvoice_voice_name(profile: TtsVoiceProfile) -> &'static str {
     match profile {
         TtsVoiceProfile::Female => RHVOICE_FEMALE_VOICE_NAME,
-        TtsVoiceProfile::Male => RHVOICE_MALE_VOICE_NAME,
+        TtsVoiceProfile::Male | TtsVoiceProfile::Dmitri | TtsVoiceProfile::Denis => {
+            RHVOICE_MALE_VOICE_NAME
+        }
     }
 }
 
@@ -459,6 +475,14 @@ mod tests {
             TtsVoiceProfile::parse(Some("male")),
             Ok(TtsVoiceProfile::Male)
         );
+        assert_eq!(
+            TtsVoiceProfile::parse(Some("dmitri")),
+            Ok(TtsVoiceProfile::Dmitri)
+        );
+        assert_eq!(
+            TtsVoiceProfile::parse(Some("denis")),
+            Ok(TtsVoiceProfile::Denis)
+        );
         assert!(TtsVoiceProfile::parse(Some("irina")).is_err());
     }
 
@@ -485,6 +509,10 @@ mod tests {
         fs::write(root.join("ru_RU-irina-medium.onnx.json"), b"{}").expect("female config");
         fs::write(root.join("ru_RU-ruslan-medium.onnx"), b"test").expect("male model marker");
         fs::write(root.join("ru_RU-ruslan-medium.onnx.json"), b"{}").expect("male config");
+        fs::write(root.join("ru_RU-dmitri-medium.onnx"), b"test").expect("dmitri model marker");
+        fs::write(root.join("ru_RU-dmitri-medium.onnx.json"), b"{}").expect("dmitri config");
+        fs::write(root.join("ru_RU-denis-medium.onnx"), b"test").expect("denis model marker");
+        fs::write(root.join("ru_RU-denis-medium.onnx.json"), b"{}").expect("denis config");
 
         let (piper, model) =
             resolve_voice_files(&root, TtsVoiceProfile::Female).expect("female files");
@@ -494,6 +522,14 @@ mod tests {
             resolve_voice_files(&root, TtsVoiceProfile::Male).expect("male files");
         assert_eq!(male_piper, root.join("piper.exe"));
         assert_eq!(male_model, root.join("ru_RU-ruslan-medium.onnx"));
+        let dmitri_model = resolve_voice_files(&root, TtsVoiceProfile::Dmitri)
+            .expect("dmitri files")
+            .1;
+        assert_eq!(dmitri_model, root.join("ru_RU-dmitri-medium.onnx"));
+        let denis_model = resolve_voice_files(&root, TtsVoiceProfile::Denis)
+            .expect("denis files")
+            .1;
+        assert_eq!(denis_model, root.join("ru_RU-denis-medium.onnx"));
 
         fs::remove_dir_all(root).expect("cleanup");
     }

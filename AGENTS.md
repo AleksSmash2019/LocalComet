@@ -79,7 +79,10 @@ Sidecar test runtime на Windows: разворачивается в %LOCALAPPDA
     python scripts/check_real_sidecar_tests.py
 
 Проверенный базовый уровень (15.08.2026, аудит и исправление B1-B8: binding runtime_id
-в approval digest и start, fmt, watchdog 615s, ignore dump_canonical_catalog,
+в approval digest и start, fmt, watchdog 615s (уточнение 04.09.2026: в коде
+MODEL_REQUEST_WATCHDOG_TIMEOUT = 125с с 20.07.2026, это неактивность-сторож с
+скользящим touch(), константы 615s в истории нет — строка 615s была ошибкой записи),
+ignore dump_canonical_catalog,
 computerUse deny-by-default, CSP без внешних шрифтов):
 
 - svelte-check: 0 ошибок, 0 предупреждений

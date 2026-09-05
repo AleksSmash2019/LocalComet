@@ -790,7 +790,22 @@ def _web_search(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": "LocalComet/6.84 web.search"})
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
+            content_type = resp.headers.get("Content-Type", "")
+            # H2: bounded read with a content-type gate. The legacy
+            # `resp.read()` trusted the endpoint to send a small lite page; a
+            # hostile or mutated endpoint could stream gigabytes into RAM.
+            # DuckDuckGo lite is text/html; anything else is rejected before a
+            # single body byte is buffered. Limit mirrors _web_fetch.
+            if not content_type.split(";")[0].strip().lower() == "text/html":
+                raise ToolExecutionError(
+                    "internal_error", f"web.search rejected content-type: {content_type!r}"
+                )
+            raw = resp.read(_MAX_FETCH_BYTES + 1)
+            if len(raw) > _MAX_FETCH_BYTES:
+                raw = raw[:_MAX_FETCH_BYTES]
+            html = raw.decode("utf-8", errors="replace")
+    except ToolExecutionError:
+        raise
     except Exception as exc:
         raise ToolExecutionError("internal_error", f"web.search fetch failed: {exc}") from exc
     # parse: lite DDG has <a href="URL">Title</a> + snippet

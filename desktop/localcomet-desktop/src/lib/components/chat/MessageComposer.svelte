@@ -305,7 +305,7 @@
 
   .composer-wrap {
     width: min(calc(100% - 48px), var(--content-width));
-    margin: 0 auto 16px;
+    margin: 0 auto 10px;
     z-index: 10;
   }
 
@@ -313,10 +313,12 @@
     display: flex;
     align-items: flex-end;
     gap: 6px;
-    border: 1px solid color-mix(in srgb, var(--lc-line) 60%, transparent);
-    border-radius: 16px;
-    padding: 10px 14px;
-    background: color-mix(in srgb, var(--lc-panel-soft) 40%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lc-line) 62%, transparent);
+    border-radius: var(--lc-radius-lg);
+    padding: 8px 12px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--lc-text) 2%, transparent) 0%, transparent 55%),
+      color-mix(in srgb, var(--lc-panel-soft) 46%, transparent);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
     box-shadow: var(--lc-shadow-e1);
@@ -423,14 +425,14 @@
     min-height: 24px;
     width: 100%;
     max-height: 240px;
-    margin-bottom: 6px;
-    margin-top: 6px;
+    margin-bottom: 4px;
+    margin-top: 4px;
     padding: 0;
     border: none;
     background: transparent;
     color: var(--lc-text);
-    font-size: 15.5px;
-    line-height: 1.6;
+    font-size: 14.5px;
+    line-height: 1.55;
     resize: none;
     outline: none;
     overflow-y: auto;

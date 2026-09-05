@@ -157,7 +157,14 @@ async function setUpManagedArtifactsForModel(artifacts: readonly ManagedDownload
     : null;
   const fallbackRuntime = artifacts.find((artifact) => artifact.kind === 'runtime' && artifact.trust_kind === 'approved_catalog');
   const runtime = selectedRuntime ?? vulkanRuntime ?? fallbackRuntime;
-  if (!runtime || model.kind !== 'model' || (model.trust_kind === 'user_supplied' && !isInstalled(model.artifact_id))) return false;
+  if (!runtime || model.kind !== 'model' || (model.trust_kind === 'user_supplied' && !isInstalled(model.artifact_id))) {
+    // Refusal before any work happened: never leave a previous 'running'
+    // setup panel stuck on screen (the observed "Установка 100%" hang).
+    artifactAcquisitionStore.update((state) => (state.setup.lifecycle === 'running'
+      ? { ...state, setup: { lifecycle: 'failed', artifact_id: null } }
+      : state));
+    return false;
+  }
   artifactAcquisitionStore.update((state) => ({
     ...state,
     setup: { lifecycle: 'running', artifact_id: null },
@@ -170,11 +177,20 @@ async function setUpManagedArtifactsForModel(artifacts: readonly ManagedDownload
     }));
     if (isInstalled(artifact.artifact_id)) continue;
     const terminal = await downloadApprovedArtifact(artifact.artifact_id);
-    if (terminal?.lifecycle !== 'completed') {
+    if (terminal === null) {
+      // downloadApprovedArtifact swallowed a bridge error: the setup is not
+      // running any more, so settle the panel instead of spinning forever.
+      artifactAcquisitionStore.update((state) => ({
+        ...state,
+        setup: { lifecycle: 'failed', artifact_id: artifact.artifact_id }
+      }));
+      return false;
+    }
+    if (terminal.lifecycle !== 'completed') {
       artifactAcquisitionStore.update((state) => ({
         ...state,
         setup: {
-          lifecycle: terminal?.lifecycle === 'cancelled' ? 'cancelled' : 'failed',
+          lifecycle: terminal.lifecycle === 'cancelled' ? 'cancelled' : 'failed',
           artifact_id: artifact.artifact_id
         }
       }));
@@ -183,7 +199,7 @@ async function setUpManagedArtifactsForModel(artifacts: readonly ManagedDownload
     await refreshManagedRuntimeStatus();
   }
   await setManagedSelectedModel(model.artifact_id);
-  const connected = await connectSelectedManagedModel();
+  const connected = await connectSelectedManagedModel().catch(() => false);
   artifactAcquisitionStore.update((state) => ({
     ...state,
     setup: { lifecycle: connected ? 'completed' : 'failed', artifact_id: model.artifact_id },
@@ -238,7 +254,13 @@ async function followDownload(started: ArtifactDownloadState): Promise<ArtifactD
   let current = started;
   while (!isTerminal(current) && generation === lifecycleGeneration) {
     await delay(DOWNLOAD_POLL_MS);
-    current = await getArtifactDownloadState(current.job_id);
+    try {
+      current = await getArtifactDownloadState(current.job_id);
+    } catch (error) {
+      // A failed status poll must not wedge the setup panel in 'running'
+      // forever: settle the download as failed so the UI recovers.
+      current = { ...current, lifecycle: 'failed', error_code: 'download_status_unavailable' };
+    }
     recordDownload(current);
   }
   if (generation === lifecycleGeneration) await refreshManagedRuntimeStatus();

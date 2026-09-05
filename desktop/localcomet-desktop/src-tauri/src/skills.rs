@@ -13,13 +13,101 @@ pub struct SkillResponse {
     pub error: Option<serde_json::Value>,
 }
 
+/// SEC-2 tail: hard ceiling for one skills-CLI invocation.
+const SKILLS_CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// SEC-2 tail: pinned interpreter resolution. The bundled production layout
+/// keeps python314.dll next to the main exe; dev builds resolve through
+/// CARGO_MANIFEST_DIR's target dir. An explicit override exists for tests.
+fn resolve_pinned_python() -> Result<PathBuf, String> {
+    if let Some(path) = std::env::var_os("LOCALCOMET_TEST_PYTHON")
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+    {
+        return Ok(path);
+    }
+    if let Some(exe) = std::env::current_exe().ok().and_then(|exe| {
+        let candidate = exe.parent()?.join("python314.dll");
+        candidate.is_file().then_some(exe.parent()?.to_path_buf())
+    }) {
+        return Ok(exe.join("python.exe")).and_then(|p| {
+            if p.is_file() {
+                Ok(p)
+            } else {
+                Err("bundled python.exe not found next to python314.dll".to_string())
+            }
+        });
+    }
+    if let Some(manifest) = option_env!("CARGO_MANIFEST_DIR") {
+        for candidate in [
+            PathBuf::from(manifest).join("../../../target/debug/python.exe"),
+            PathBuf::from(manifest).join("../../../target/release/python.exe"),
+        ] {
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(
+        "pinned python interpreter not found (no override, bundled runtime, or dev target)"
+            .to_string(),
+    )
+}
+
+/// Run a child to completion with a hard deadline; kill the process tree
+/// attempt (terminate handle) when the deadline passes.
+fn wait_with_timeout(
+    mut cmd: Command,
+    timeout: std::time::Duration,
+) -> Result<std::process::Output, String> {
+    use std::io::Read;
+    let mut child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to execute Python CLI: {e}"))?;
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(status) => {
+                let mut stdout = Vec::new();
+                let mut stderr = Vec::new();
+                if let Some(mut stream) = child.stdout.take() {
+                    let _ = stream.read_to_end(&mut stdout);
+                }
+                if let Some(mut stream) = child.stderr.take() {
+                    let _ = stream.read_to_end(&mut stderr);
+                }
+                return Ok(std::process::Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
+            None => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("skills CLI timed out".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+        }
+    }
+}
+
 async fn run_skills_cli(
     app: &AppHandle,
     action: &str,
     args: &[&str],
 ) -> Result<SkillResponse, String> {
-    let python = std::env::var_os("LOCALCOMET_TEST_PYTHON")
-        .unwrap_or_else(|| std::ffi::OsString::from("python"));
+    // SEC-2 tail: resolve an absolute, pinned interpreter. A bare "python"
+    // from the inherited PATH late-binds to whatever executable a same-user
+    // attacker (or a broken install) put first on the path. Resolution order:
+    // explicit override → python314.dll sibling of the running exe (bundled
+    // runtime layout) → CARGO_MANIFEST_DIR target dir (dev builds). Bare
+    // "python" is deliberately not a fallback.
+    let python = resolve_pinned_python()?;
 
     // SEC-2: resolve the CLI script from a trusted anchor (resource/exe dir,
     // then CARGO_MANIFEST_DIR for dev builds). A bare cwd-relative fallback in
@@ -64,6 +152,11 @@ async fn run_skills_cli(
         cmd.arg(arg);
     }
 
+    // SEC-2 tail: the child must not inherit the host's working directory
+    // (a launch dir with a planted sitecustomize.py or relative payloads).
+    // Anchor it to the app-data root the CLI is already confined to.
+    cmd.current_dir(&app_root);
+
     // SEC-2: minimal environment (mirror of the sidecar sanitiser) — the
     // inherited user environment could smuggle PYTHONPATH/PYTHONSTARTUP
     // execution or proxy redirection into the skill CLI.
@@ -80,10 +173,15 @@ async fn run_skills_cli(
         cmd.env("LOCALCOMET_TEST_PYTHON", test_py);
     }
 
-    let output = tauri::async_runtime::spawn_blocking(move || cmd.output())
-        .await
-        .map_err(|e| format!("Join error: {}", e))?
-        .map_err(|e| format!("Failed to execute Python CLI: {}", e))?;
+    let output = tauri::async_runtime::spawn_blocking(move || {
+        // SEC-2 tail: bounded runtime. The CLI is a local config tool; a hung
+        // interpreter must not hold the Tauri command forever. 15s is far
+        // above the CLI's normal runtime (list/compile are in-memory ops).
+        wait_with_timeout(cmd, SKILLS_CLI_TIMEOUT)
+    })
+    .await
+    .map_err(|e| format!("Join error: {}", e))?
+    .map_err(|e| format!("Failed to execute Python CLI: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     if let Ok(parsed) = serde_json::from_str::<SkillResponse>(&stdout) {

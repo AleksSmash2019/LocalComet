@@ -123,6 +123,14 @@
     return '';
   })();
 
+  // One-click switch target: when another model is loaded, selecting a different
+  // model in the list offers to replace it instead of forcing a manual stop.
+  $: switchingModels = ['Ready', 'Starting', 'Validating'].includes(managedState)
+    && $managedRuntimeStore.status?.model_id !== null
+    && $managedRuntimeStore.status?.model_id !== undefined
+    && $managedRuntimeStore.status?.model_id !== selectedModelId
+    && !modelDownloading;
+
   onMount(() => {
     void initializeArtifactAcquisition();
   });
@@ -564,6 +572,9 @@
     {/if}
     {#if selectedModelArtifact?.trust_kind === 'approved_catalog' && !modelInstalled && !activeDownload}
       <button type="button" disabled={actionPending} onclick={() => requestDownload(selectedModelArtifact)}><span>{modelDownload?.lifecycle === 'failed' || modelDownload?.lifecycle === 'cancelled' ? $t('models.retry_model') : $t('models.download_model')}</span></button>
+    {/if}
+    {#if switchingModels}
+      <button type="button" class="primary" disabled={actionPending} onclick={() => void connect()}>{$t('models.switch_to_model')} {selectedModelArtifact?.display_name ?? ''}</button>
     {/if}
     {#if runtimeInstalled && modelInstalled && !$managedModelReady && !activeDownload}
       <button type="button" class="primary" disabled={actionPending} onclick={() => void connect()}>{$t('models.connect')}</button>

@@ -13,6 +13,30 @@ export const LEGACY_LANGUAGE_KEY = 'localcomet.ui.language';
 
 export type UiTheme = 'system' | 'light' | 'dark';
 
+/** Custom accent color: null = theme default, otherwise #rrggbb. */
+export type AccentColor = string | null;
+
+/**
+ * Accent presets offered in Settings. Neutral, high-contrast hues that keep
+ * both light and dark themes readable; the owner's green (#10b981 / #059669
+ * per theme) stays the default via accentColor = null.
+ */
+export const ACCENT_PRESETS: ReadonlyArray<{ value: string; key: string }> = Object.freeze([
+  { value: '#10b981', key: 'settings.accent_preset_emerald' },
+  { value: '#3b82f6', key: 'settings.accent_preset_azure' },
+  { value: '#8b5cf6', key: 'settings.accent_preset_violet' },
+  { value: '#ec4899', key: 'settings.accent_preset_rose' },
+  { value: '#f97316', key: 'settings.accent_preset_amber' },
+  { value: '#14b8a6', key: 'settings.accent_preset_teal' }
+]);
+
+const ACCENT_HEX_PATTERN = /^#[0-9a-f]{6}$/;
+
+export function isAccentColor(value: unknown): value is AccentColor {
+  if (value === null) return true;
+  return typeof value === 'string' && ACCENT_HEX_PATTERN.test(value);
+}
+
 /**
  * Interface locale codes. The canonical list lives in $lib/i18n/locales so the
  * picker, the translation registry and this validator cannot drift apart.
@@ -20,6 +44,8 @@ export type UiTheme = 'system' | 'light' | 'dark';
 export type UiLocale = Language;
 export type DiagnosticsPanelPreference = 'open' | 'closed';
 export type VoiceGender = 'female' | 'male';
+/** Piper voice identities: female=irina, male=ruslan, plus extra male voices. */
+export type VoiceProfile = VoiceGender | 'dmitri' | 'denis';
 
 export interface AgentPermissions {
   files: boolean;
@@ -31,11 +57,12 @@ export interface AgentPermissions {
 
 export interface UiPreferences {
   theme: UiTheme;
+  accentColor: AccentColor;
   locale: UiLocale;
   diagnosticsPanel: DiagnosticsPanelPreference;
   agentPermissions: AgentPermissions;
   voiceMode: boolean;
-  voiceGender: VoiceGender;
+  voiceGender: VoiceProfile;
   ctxSizeOverride: number | null;
   gpuLayersOverride: number | null;
   computeMode: ComputeMode;
@@ -43,7 +70,11 @@ export interface UiPreferences {
 }
 
 export const DEFAULT_UI_PREFERENCES: Readonly<UiPreferences> = Object.freeze({
-  theme: 'system',
+  // The owner asked for a brighter default: a fresh install now opens in the
+  // light theme instead of following the (usually dark) Windows scheme. The
+  // System/Dark/Light selector in Settings still overrides this per machine.
+  theme: 'light',
+  accentColor: null,
   locale: 'ru',
   diagnosticsPanel: 'closed',
   voiceMode: false,
@@ -80,8 +111,8 @@ function isDiagnosticsPanel(value: unknown): value is DiagnosticsPanelPreference
   return value === 'open' || value === 'closed';
 }
 
-export function isVoiceGender(value: unknown): value is VoiceGender {
-  return value === 'female' || value === 'male';
+export function isVoiceGender(value: unknown): value is VoiceProfile {
+  return value === 'female' || value === 'male' || value === 'dmitri' || value === 'denis';
 }
 
 function isAgentPermissions(value: unknown): value is Partial<AgentPermissions> {
@@ -98,6 +129,7 @@ function normalizePreferences(value: unknown): UiPreferences {
   if (!isRecord(value)) return preferences;
 
   if (isTheme(value.theme)) preferences.theme = value.theme;
+  if (isAccentColor(value.accentColor)) preferences.accentColor = value.accentColor;
   if (isLocale(value.locale)) preferences.locale = value.locale;
   if (isDiagnosticsPanel(value.diagnosticsPanel)) {
     preferences.diagnosticsPanel = value.diagnosticsPanel;
@@ -169,6 +201,7 @@ export function updateUiPreferences(patch: Readonly<Partial<UiPreferences>>): Ui
 
   if (isRecord(patch)) {
     if (isTheme(patch.theme)) preferences.theme = patch.theme;
+    if (isAccentColor(patch.accentColor)) preferences.accentColor = patch.accentColor;
     if (isLocale(patch.locale)) preferences.locale = patch.locale;
     if (typeof patch.voiceMode === 'boolean') preferences.voiceMode = patch.voiceMode;
     if (isVoiceGender(patch.voiceGender)) preferences.voiceGender = patch.voiceGender;

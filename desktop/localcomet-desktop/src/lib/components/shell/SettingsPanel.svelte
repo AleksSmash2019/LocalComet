@@ -11,16 +11,19 @@
   import {
     inspectorDrawerOpen,
     inspectorVisible,
+    setAccentColor,
     setDiagnosticsPanelOpen,
     settingsSection,
     setThemeMode,
     themeMode,
     setVoiceGender,
-    voiceGender
+    voiceGender,
+    accentColor
   } from '$lib/stores/shellStore';
+  import { ACCENT_PRESETS } from '$lib/stores/uiPreferences';
   import { availableLanguages, isLanguage, locale, setLocale, t } from '$lib/i18n';
   import type { ThemeMode } from '$lib/data/mockData';
-  import type { VoiceGender } from '$lib/stores/uiPreferences';
+  import type { VoiceProfile } from '$lib/stores/uiPreferences';
   import {
     DESKTOP_BUILD_LABEL,
     DESKTOP_BUILD_STATUS,
@@ -35,14 +38,14 @@
   let closeButton: HTMLButtonElement;
 
   const sections = [
-    { id: 'interface', labelKey: 'settings.tab_interface' },
-    { id: 'models', labelKey: 'settings.tab_models' },
-    { id: 'skills', labelKey: 'skills.title' },
-    { id: 'permissions', labelKey: 'settings.tab_permissions' },
-    { id: 'checkpoints', labelKey: 'checkpoints.title' },
-    { id: 'coding', labelKey: 'coding.title' },
-    { id: 'observability', labelKey: 'settings.tab_observability' },
-    { id: 'about', labelKey: 'settings.tab_about' }
+    { id: 'interface', icon: 'settings', labelKey: 'settings.tab_interface' },
+    { id: 'models', icon: 'model', labelKey: 'settings.tab_models' },
+    { id: 'skills', icon: 'tool', labelKey: 'skills.title' },
+    { id: 'permissions', icon: 'shield', labelKey: 'settings.tab_permissions' },
+    { id: 'checkpoints', icon: 'audit', labelKey: 'checkpoints.title' },
+    { id: 'coding', icon: 'terminal', labelKey: 'coding.title' },
+    { id: 'observability', icon: 'diag', labelKey: 'settings.tab_observability' },
+    { id: 'about', icon: 'inspector', labelKey: 'settings.tab_about' }
   ] as const;
 
   const themes: ReadonlyArray<{ mode: ThemeMode; icon: string; labelKey: string }> = [
@@ -51,9 +54,11 @@
     { mode: 'dark', icon: 'moon', labelKey: 'settings.theme_dark' }
   ];
 
-  const ttsVoices: ReadonlyArray<{ gender: VoiceGender; labelKey: string; descriptionKey: string }> = [
+  const ttsVoices: ReadonlyArray<{ gender: VoiceProfile; labelKey: string; descriptionKey: string }> = [
     { gender: 'female', labelKey: 'settings.voice_female', descriptionKey: 'settings.voice_female_description' },
-    { gender: 'male', labelKey: 'settings.voice_male', descriptionKey: 'settings.voice_male_description' }
+    { gender: 'male', labelKey: 'settings.voice_male', descriptionKey: 'settings.voice_male_description' },
+    { gender: 'dmitri', labelKey: 'settings.voice_dmitri', descriptionKey: 'settings.voice_dmitri_description' },
+    { gender: 'denis', labelKey: 'settings.voice_denis', descriptionKey: 'settings.voice_denis_description' }
   ];
 
   // Languages come from the shared registry, so adding a locale there makes it
@@ -65,15 +70,30 @@
     if (isLanguage(value)) setLocale(value);
   }
 
-  function selectVoiceGender(gender: VoiceGender): void {
+  function selectVoiceGender(gender: VoiceProfile): void {
     if ($voiceGender === gender) return;
     setVoiceGender(gender);
     void stopLocalText();
   }
 
-  function previewVoiceGender(gender: VoiceGender): void {
+  function previewVoiceGender(gender: VoiceProfile): void {
     setVoiceGender(gender);
     void stopLocalText().then(() => speakLocalText($t('settings.voice_preview_text'), gender, $locale));
+  }
+
+  const isAccentHex = (value: string): boolean => /^#[0-9a-fA-F]{6}$/.test(value);
+
+  function applyAccentPreset(value: string): void {
+    setAccentColor(value.toLowerCase());
+  }
+
+  function onCustomAccentInput(event: Event): void {
+    const value = (event.currentTarget as HTMLInputElement).value;
+    if (isAccentHex(value)) setAccentColor(value.toLowerCase());
+  }
+
+  function resetAccent(): void {
+    setAccentColor(null);
   }
 
   $: diagnosticsOpen = $inspectorVisible || $inspectorDrawerOpen;
@@ -115,7 +135,7 @@
       title={$t('settings.close')}
       onclick={onClose}
     >
-      <Icon name="cancel" size={16} />
+      <Icon name="cancel" size={15} />
       <span>{$t('settings.close')}</span>
     </button>
   </header>
@@ -126,8 +146,13 @@
         type="button"
         class:active={$settingsSection === item.id}
         aria-current={$settingsSection === item.id ? 'page' : undefined}
+        aria-label={$t(item.labelKey)}
+        title={$t(item.labelKey)}
         onclick={() => settingsSection.set(item.id)}
-      >{$t(item.labelKey)}</button>
+      >
+        <Icon name={item.icon} size={15} />
+        <span>{$t(item.labelKey)}</span>
+      </button>
     {/each}
   </nav>
 
@@ -150,6 +175,48 @@
           </button>
         {/each}
       </div>
+      </section>
+
+      <section aria-labelledby="settings-accent">
+        <h3 id="settings-accent">{$t('settings.accent_title')}</h3>
+        <p class="workspace-description">{$t('settings.accent_description')}</p>
+        <div class="accent-row" role="group" aria-label={$t('settings.accent_title')}>
+          {#each ACCENT_PRESETS as preset}
+            <button
+              type="button"
+              class="accent-swatch"
+              class:selected={$accentColor === preset.value.toLowerCase()}
+              aria-label={$t(preset.key)}
+              aria-pressed={$accentColor === preset.value.toLowerCase()}
+              title={$t(preset.key)}
+              style="--swatch:{preset.value}"
+              onclick={() => applyAccentPreset(preset.value)}
+            ></button>
+          {/each}
+          <label class="accent-custom">
+            <input
+              type="color"
+              class="accent-picker"
+              aria-label={$t('settings.accent_custom')}
+              title={$t('settings.accent_custom')}
+              value={$accentColor ?? '#10b981'}
+              oninput={onCustomAccentInput}
+            />
+            <span>{$t('settings.accent_custom')}</span>
+          </label>
+          {#if $accentColor}
+            <button
+              type="button"
+              class="accent-reset"
+              aria-label={$t('settings.accent_reset')}
+              title={$t('settings.accent_reset')}
+              onclick={resetAccent}
+            >
+              <Icon name="cancel" size={14} />
+              <span>{$t('settings.accent_reset')}</span>
+            </button>
+          {/if}
+        </div>
       </section>
 
       <section aria-labelledby="settings-language">
@@ -346,46 +413,81 @@
     top: 0;
     z-index: 1;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: var(--lc-space-3);
     border-bottom: var(--border-thin);
     background: var(--lc-panel-solid);
-    padding: var(--lc-space-4);
+    padding: var(--lc-space-2) var(--lc-space-4);
   }
 
   .settings-tabs {
     position: sticky;
-    top: 79px;
+    top: 55px;
     z-index: 1;
     display: flex;
-    gap: var(--lc-space-6);
-    padding: 0 var(--lc-space-4);
+    gap: 2px;
+    padding: var(--lc-space-2) var(--lc-space-3) 0;
     border-bottom: var(--border-thin);
     background: var(--lc-panel-solid);
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 
   .settings-tabs button {
-    flex: 0 0 auto;
-    min-height: 42px;
+    flex: 1 1 0;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 34px;
     border: 0;
     border-bottom: 2px solid transparent;
-    padding: 0 var(--lc-space-3);
+    border-radius: 8px 8px 0 0;
+    padding: 0 8px;
     background: transparent;
     color: var(--lc-muted);
     font-size: 12px;
-    font-weight: 760;
+    font-weight: 640;
+    white-space: nowrap;
     cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease;
+  }
+
+  .settings-tabs button :global(svg) {
+    opacity: 0.8;
+    transition: opacity 0.16s ease;
+  }
+
+  .settings-tabs button:hover {
+    background: color-mix(in srgb, var(--lc-text) 6%, transparent);
+    color: var(--lc-text);
+  }
+
+  .settings-tabs button:hover :global(svg) {
+    opacity: 1;
   }
 
   .settings-tabs button.active {
     border-bottom-color: var(--lc-accent);
     color: var(--lc-accent);
+    font-weight: 720;
+  }
+
+  .settings-tabs button.active :global(svg) {
+    opacity: 1;
+  }
+
+  .settings-tabs button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .eyebrow {
     color: var(--lc-muted);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 760;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -398,13 +500,13 @@
 
   h2 {
     margin-top: var(--lc-space-1);
-    font-size: 19px;
+    font-size: 16px;
   }
 
   h3 {
     margin-bottom: var(--lc-space-3);
     color: var(--lc-muted);
-    font-size: 12px;
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -413,20 +515,20 @@
     display: inline-flex;
     align-items: center;
     gap: var(--lc-space-1);
-    min-height: 36px;
+    min-height: 32px;
     padding: 0 var(--lc-space-2);
     color: var(--lc-muted);
   }
 
   .settings-content {
     display: grid;
-    gap: var(--lc-space-5);
+    gap: var(--lc-space-4);
     padding: var(--lc-space-4);
   }
 
   .settings-content > div:not(.panel-hidden) {
     display: grid;
-    gap: var(--lc-space-5);
+    gap: var(--lc-space-4);
   }
 
   .panel-hidden {
@@ -436,7 +538,19 @@
   section {
     min-width: 0;
     border-bottom: var(--border-thin);
-    padding-bottom: var(--lc-space-5);
+    padding-bottom: var(--lc-space-4);
+  }
+
+  @media (max-width: 700px) {
+    .settings-tabs button span {
+      display: none;
+    }
+
+    .settings-tabs button {
+      flex: 0 0 auto;
+      min-width: 34px;
+      padding: 0 10px;
+    }
   }
 
   section:last-child {
@@ -451,6 +565,74 @@
 
   .theme-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .accent-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--lc-space-2);
+  }
+
+  .accent-swatch {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 2px solid color-mix(in srgb, var(--lc-line) 70%, transparent);
+    background: var(--swatch);
+    cursor: pointer;
+    transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+  }
+
+  .accent-swatch:hover {
+    transform: translateY(-1px) scale(1.06);
+    border-color: var(--lc-line-strong);
+  }
+
+  .accent-swatch.selected {
+    border-color: var(--lc-text);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--swatch) 45%, transparent);
+  }
+
+  .accent-custom {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--lc-space-2);
+    color: var(--lc-muted);
+    font-size: 12px;
+    font-weight: 640;
+    cursor: pointer;
+  }
+
+  .accent-picker {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: var(--border-thin);
+    border-radius: 10px;
+    background: var(--lc-panel-soft);
+    cursor: pointer;
+  }
+
+  .accent-reset {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 var(--lc-space-2);
+    border: var(--border-thin);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--lc-muted);
+    font-size: 12px;
+    font-weight: 640;
+    cursor: pointer;
+    transition: color 0.16s ease, border-color 0.16s ease;
+  }
+
+  .accent-reset:hover {
+    color: var(--lc-text);
+    border-color: var(--lc-line-strong);
   }
 
   .voice-grid {

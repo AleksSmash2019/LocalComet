@@ -221,6 +221,16 @@ def rollback(path: str, snapshot_path: str) -> str:
     if not source.exists():
         return f"Snapshot не найден: {source}"
 
+    # M2 (external audit 2026-09-03): both reads are bounded by the same
+    # 10 MB guard as files.write. An unbounded read here turned the guarded
+    # rollback into a free "load anything inside Projects into RAM" primitive
+    # and the journal into unbounded memory growth.
+    source_size = source.stat().st_size
+    if source_size > MAX_FILE_BYTES:
+        return f"Отклонено: снимок превышает лимит {MAX_FILE_BYTES} байт"
+    if target.exists() and target.stat().st_size > MAX_FILE_BYTES:
+        return f"Отклонено: текущий файл превышает лимит {MAX_FILE_BYTES} байт, откат невозможен"
+
     # Save current state before overwriting (allows rollback of rollback).
     if target.exists():
         _rollback_journal[str(target)] = target.read_bytes()
@@ -248,9 +258,19 @@ def rollback_undo(path: str) -> str:
 
     prior_bytes = _rollback_journal.pop(key)
     target.parent.mkdir(parents=True, exist_ok=True)
+    # M2: an empty journal entry means the file did NOT exist before the
+    # rollback; deleting is only correct when it is still absent-content, and
+    # a same-named empty file must round-trip back to empty, not vanish.
     if prior_bytes:
         target.write_bytes(prior_bytes)
-    elif target.exists():
+    elif not target.exists():
+        pass
+    elif target.stat().st_size == 0:
         target.unlink()
+    else:
+        return (
+            "Отклонено: текущий файл не пуст, а снимок утверждал, что файла не было — "
+            "ручное разрешение конфликта требуется"
+        )
 
     return f"Откат отменён: {target} восстановлен в предыдущее состояние"

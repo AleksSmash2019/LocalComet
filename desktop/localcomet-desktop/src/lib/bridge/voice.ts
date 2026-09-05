@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Language } from '$lib/i18n/locales';
-import type { VoiceGender } from '$lib/stores/uiPreferences';
+import type { VoiceProfile } from '$lib/stores/uiPreferences';
 
 /**
  * Monotonic client-side generation for the current speech session. Turning
@@ -25,7 +25,7 @@ function ttsLanguageTag(language: Language): 'ru-RU' | null {
 
 export async function speakLocalText(
   text: string,
-  voiceGender: VoiceGender = 'female',
+  voiceGender: VoiceProfile = 'female',
   language: Language = 'ru'
 ): Promise<void> {
   const languageTag = ttsLanguageTag(language);
@@ -35,7 +35,10 @@ export async function speakLocalText(
     await invoke('speak_local_text', {
       text,
       language: languageTag,
-      voice_profile: voiceGender
+      // Tauri v2 maps invoke args to command parameters by their camelCase
+      // name; the previous snake_case key was silently dropped, so every
+      // preview fell back to parse(None) = the female profile.
+      voiceProfile: voiceGender
     });
   } catch {
     // Local-only speech must never fall back to browser or remote synthesis.
