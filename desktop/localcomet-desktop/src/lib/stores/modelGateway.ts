@@ -1246,7 +1246,15 @@ async function startClaimedLocalModelTurn(
     const recentMessages = historySlice.map((message) => {
       const content = (message.body || '').slice(0, MAX_HISTORY_MESSAGE_BYTES);
       if (message.role === 'assistant' && toolsEnabled && message.toolCalls && message.toolCalls.length > 0) {
-        return { role: message.role, content, tool_calls: message.toolCalls };
+        // The harness byte cap covers the SERIALIZED message, tool_calls
+        // included. A tool-heavy turn (long command output echoed in a call)
+        // can exceed 2 KiB by itself and kill every later turn with
+        // payload_too_large. Drop the calls when the serialized entry no
+        // longer fits; the text content stays.
+        const withCalls = { role: message.role, content, tool_calls: message.toolCalls };
+        if (JSON.stringify(withCalls).length <= MAX_HISTORY_MESSAGE_BYTES) {
+          return withCalls;
+        }
       }
       return { role: message.role, content };
     });

@@ -34,7 +34,10 @@ const ACCENT_HEX_PATTERN = /^#[0-9a-f]{6}$/;
 
 export function isAccentColor(value: unknown): value is AccentColor {
   if (value === null) return true;
-  return typeof value === 'string' && ACCENT_HEX_PATTERN.test(value);
+  // Accept any case: a hand-edited or legacy localStorage record with '#8B5CF6'
+  // must not silently reset the accent on every load. SettingsPanel lowercases
+  // before set; persisted values normalize here on read.
+  return typeof value === 'string' && ACCENT_HEX_PATTERN.test(value.toLowerCase());
 }
 
 /**

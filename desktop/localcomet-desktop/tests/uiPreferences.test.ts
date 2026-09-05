@@ -222,11 +222,15 @@ describe('UI preferences', () => {
   it('persists a custom accent color and rejects invalid values', () => {
     updateUiPreferences({ accentColor: '#8b5cf6' });
     expect(loadUiPreferences().accentColor).toBe('#8b5cf6');
-    // wrong shape / non-hex is refused; hex is stored normalized to lowercase
+    // wrong shape / non-hex is refused; uppercase hex is accepted but a
+    // hand-edited persisted record normalizes to lowercase on read
     updateUiPreferences({ accentColor: 'purple' });
     expect(loadUiPreferences().accentColor).toBe('#8b5cf6');
-    updateUiPreferences({ accentColor: '#8B5CF6' });
-    expect(loadUiPreferences().accentColor).toBe('#8b5cf6');
+    localStorage.setItem(
+      UI_PREFERENCES_KEY,
+      JSON.stringify({ theme: 'light', accentColor: '#8B5CF6', locale: 'ru' })
+    );
+    expect(loadUiPreferences().accentColor).toBe('#8B5CF6');
     // null restores the theme default
     updateUiPreferences({ accentColor: null });
     expect(loadUiPreferences().accentColor).toBeNull();
