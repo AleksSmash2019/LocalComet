@@ -32,12 +32,38 @@
   } from '$lib/stores/artifactAcquisition';
   import type { HarnessId } from '$lib/types/modelGateway';
   import { selectManagedSetupModelId } from '$lib/stores/modelDefault';
+  import { scanHardwareSnapshot, systemDiskFreeBytes } from '$lib/bridge/hardware';
   import { t } from '$lib/i18n';
 
   export let onClose: () => void = () => {};
 
   let portInput = '';
   $: portValid = /^\d+$/.test(portInput) && Number(portInput) >= 1024 && Number(portInput) <= 65535;
+
+  // Free space on the system disk (null = probe failed; cards stay neutral).
+  let systemFreeBytes: number | null = null;
+  const DISK_RESERVE_BYTES = 2 * 1024 * 1024 * 1024;
+
+  type FitVerdict = 'installed' | 'fits' | 'tight' | 'wont_fit' | 'unknown';
+
+  function fitVerdict(model: ManagedModelChoice): FitVerdict {
+    if (model.installed) return 'installed';
+    if (systemFreeBytes === null || model.size_bytes === null) return 'unknown';
+    const required = model.size_bytes + DISK_RESERVE_BYTES;
+    if (systemFreeBytes < required) return 'wont_fit';
+    if (systemFreeBytes < required * 2) return 'tight';
+    return 'fits';
+  }
+
+  function fitLabel(model: ManagedModelChoice): string {
+    switch (fitVerdict(model)) {
+      case 'installed': return $t('setup.fit_installed');
+      case 'fits': return $t('setup.fit_fits');
+      case 'tight': return $t('setup.fit_tight');
+      case 'wont_fit': return $t('setup.fit_wont');
+      default: return '';
+    }
+  }
 
   // External flow state
   $: canBindExternal = !$inferenceBusy && portValid && Boolean($modelGatewayStore.selectedModelId);
@@ -94,8 +120,18 @@
         size_bytes: model.asset_bytes ?? null
       });
     }
+    const normalizeName = (name: string): string =>
+      name.toLowerCase().replace(/\.gguf$/, '').replace(/[-_\s.]+/g, '-');
+    const catalogNames = new Set(
+      [...byId.values()].map((choice) => normalizeName(choice.display_name))
+    );
     for (const artifact of $artifactAcquisitionStore.artifacts) {
       if (artifact.kind !== 'model' || isForbiddenModel(artifact.artifact_id, artifact.display_name)) continue;
+      // A custom .gguf that names an existing catalog model is the same file
+      // to the user; showing both read as "каша". The catalog entry wins.
+      if (artifact.trust_kind !== 'approved_catalog' && catalogNames.has(normalizeName(artifact.display_name))) {
+        continue;
+      }
       byId.set(artifact.artifact_id, {
         model_id: artifact.artifact_id,
         display_name: artifact.display_name,
@@ -206,6 +242,15 @@
     // empty first-run state.
     void refreshManagedRuntimeStatus();
     void initializeArtifactAcquisition();
+    // Fit verdicts need the real free space on the system disk (audit finding:
+    // a 20 GB disk must warn before a 5 GB download, not after).
+    void scanHardwareSnapshot()
+      .then((hardware) => {
+        systemFreeBytes = systemDiskFreeBytes(hardware);
+      })
+      .catch(() => {
+        systemFreeBytes = null;
+      });
   });
 
   // Close drawer on Escape handled by shellStore
@@ -325,20 +370,32 @@
                 <fieldset class="model-picker" disabled={managedSetupRunning}>
                   <legend>{$t('setup.pick_title')}</legend>
                   {#each visibleManagedModels.slice(0, 8) as model (model.model_id)}
+                    {@const verdict = fitVerdict(model)}
                     <button
                       type="button"
                       class="model-card"
                       class:selected={$managedRuntimeStore.selectedModelId === model.model_id}
+                      class:card-wont-fit={verdict === 'wont_fit'}
                       aria-pressed={$managedRuntimeStore.selectedModelId === model.model_id}
                       onclick={() => void setManagedSelectedModel(model.model_id)}
                     >
                       <span class="model-card-main">
-                        <span class="model-card-name">{model.display_name}</span>
+                        <span class="model-card-name">
+                          {model.display_name}
+                          {#if model.source === 'catalog' && model.model_id === 'qwen3.5-4b-q4-k-m'}
+                            <span class="model-card-tag tag-recommended">{$t('setup.badge_recommended')}</span>
+                          {/if}
+                        </span>
                         <span class="model-card-meta">
                           {#if model.size_bytes}<span>{(model.size_bytes / GB).toFixed(1)} GB</span>{/if}
                           <span class="model-card-tag" class:tag-installed={model.installed}>
                             {model.installed ? $t('setup.badge_installed') : $t('setup.badge_download')}
                           </span>
+                          {#if verdict !== 'installed' && fitLabel(model)}
+                            <span class="fit-verdict" class:fit-bad={verdict === 'wont_fit'} class:fit-tight={verdict === 'tight'}>
+                              {fitLabel(model)}
+                            </span>
+                          {/if}
                         </span>
                       </span>
                       {#if $managedRuntimeStore.selectedModelId === model.model_id}
@@ -973,6 +1030,28 @@
   .model-card-tag.tag-installed {
     color: var(--lc-accent);
     border-color: color-mix(in srgb, var(--lc-accent) 45%, transparent);
+  }
+
+  .fit-verdict {
+    color: var(--lc-accent);
+  }
+
+  .fit-verdict.fit-tight {
+    color: var(--lc-warning);
+  }
+
+  .fit-verdict.fit-bad {
+    color: var(--lc-danger);
+  }
+
+  .model-card-tag.tag-recommended {
+    color: var(--lc-accent);
+    border-color: color-mix(in srgb, var(--lc-accent) 50%, transparent);
+    background: color-mix(in srgb, var(--lc-accent) 10%, transparent);
+  }
+
+  .model-card.card-wont-fit {
+    opacity: 0.55;
   }
 
   .model-fit-link {
