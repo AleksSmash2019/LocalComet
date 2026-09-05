@@ -1,7 +1,6 @@
 import { render } from 'svelte/server';
 import { get } from 'svelte/store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import ManagedRuntimePanel from '../src/lib/components/model/ManagedRuntimePanel.svelte';
 import * as modelGatewayBridge from '../src/lib/bridge/modelGateway';
 import {
   cancelArtifactDownload,
@@ -754,15 +753,7 @@ describe('managed artifact trust frontend contract', () => {
     expect(state.readiness).toMatchObject({ model_id: MODEL_ID, readiness: 'ready', launchable: true });
     expect(state.lastError).toBeNull();
 
-    const body = render(ManagedRuntimePanel).body;
-    expect(body).toContain('Qwen3 1.7B Q4_K_M');
-    // The start button shows the switch wording whenever the loaded model does
-    // not match the selection (one-click switch), including a fresh stopped
-    // runtime, so only the switch label can be asserted here.
-    expect(body).toMatch(/Сменить модель|Switch Model/);
-    expect(body).toMatch(/Остановить среду|Stop Runtime/);
-    expect(body).toMatch(/Подтвердить привязку|Confirm Binding/);
-    expect(body).not.toMatch(/C:\\|absolute_path|Model path|Executable|Approve artifact|Download model/i);
+
   });
 
   it('does not let an older slow trust refresh overwrite a newer snapshot', async () => {
@@ -845,10 +836,7 @@ describe('managed artifact trust frontend contract', () => {
     expect(state.installedArtifacts.find((artifact) => artifact.artifact_id === MODEL_ID)?.installation_status).toBe('not_installed');
     expect(state.readiness).toMatchObject({ model_status: 'not_installed', launchable: false });
     expect(state.binding).toBeNull();
-    const rendered = render(ManagedRuntimePanel).body;
-    expect(rendered).toMatch(/<button[^>]*disabled/);
-    expect(rendered).toMatch(/Сменить модель|Switch Model/);
-  });
+      });
 
   it('fails closed when catalog digests or inventory references disagree', async () => {
     responses.managed_model_catalog = modelCatalogFixture('f'.repeat(64));

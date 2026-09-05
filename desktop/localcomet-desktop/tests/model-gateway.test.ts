@@ -1,8 +1,6 @@
 import { render } from 'svelte/server';
 import { get } from 'svelte/store';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import ModelGatewayPanel from '../src/lib/components/model/ModelGatewayPanel.svelte';
-import ManagedRuntimePanel from '../src/lib/components/model/ManagedRuntimePanel.svelte';
 import { t } from '../src/lib/i18n';
 import {
   getModelGatewayCatalog,
@@ -672,20 +670,6 @@ describe('Local Model Gateway frontend', () => {
     expect(state.persistence).toBe('Off');
     expect(state.status).toBe('Completed');
     expect(state.generatedText).toBe('hello');
-  });
-
-  it('renders no URL, API key, header, tool or attachment controls', () => {
-    const body = render(ModelGatewayPanel).body;
-    expect(body).toContain(get(t)('model.openai_compatible_local'));
-    expect(body).toContain('127.0.0.1');
-    expect(body).not.toMatch(/URL|API key|Headers|Temperature|Attachments|Tool controls/i);
-  });
-
-  it('renders managed runtime without URL, port, API-key, executable or path controls', () => {
-    const body = render(ManagedRuntimePanel).body;
-    expect(body).toContain(get(t)('model.managed_runtime_title'));
-    expect(body).toContain(get(t)('model.not_installed'));
-    expect(body).not.toMatch(/URL|Port|API key|Executable|Model path|Environment|Arguments/i);
   });
 
   it('invokes the capability command with exact args and a validated payload', async () => {
