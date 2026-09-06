@@ -184,10 +184,13 @@ pub fn run() {
                         "LC_START_103",
                         "sidecar_exited_before_ready",
                     ),
-                    SupervisorError::Unavailable(_) => (
+                    SupervisorError::Unavailable(ref reason) => (
                         startup::StartupPhase::BackendStart,
                         "LC_START_101",
-                        "sidecar_unavailable",
+                        // Carry the supervisor's concrete failure code (sanitized at the
+                        // log boundary) so a blocked boot is diagnosable from
+                        // startup.log alone.
+                        &**reason,
                     ),
                     SupervisorError::Io(_) => (
                         startup::StartupPhase::BackendStart,

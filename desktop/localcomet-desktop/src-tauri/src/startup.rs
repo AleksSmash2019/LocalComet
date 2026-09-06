@@ -98,7 +98,7 @@ pub fn report_failure(phase: StartupPhase, code: &'static str) {
     show_native_failure(&failure_message(phase, code));
 }
 
-pub fn report_failure_with_reason(phase: StartupPhase, code: &'static str, reason: &'static str) {
+pub fn report_failure_with_reason(phase: StartupPhase, code: &'static str, reason: &str) {
     record(phase, &failure_status(reason), code);
     show_native_failure(&failure_message(phase, code));
 }
