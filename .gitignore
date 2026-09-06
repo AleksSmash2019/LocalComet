@@ -75,3 +75,17 @@ auth.json
 
 # WorkBuddy session memory (personal to that tool, not project knowledge)
 .workbuddy-ai/
+
+# Run logs and screenshot debris from ad-hoc probe/campaign sessions
+/visual_demo_*.png
+/localcomet_cdp_*.png
+/*_inference_response.png
+/gates_output.log
+/fmt_output.log
+/clippy_output.log
+/python_gates_output.log
+/dev_output.log
+/tauri_run.log
+/temp_status.txt
+/todo.md
+/%SystemDrive%/
