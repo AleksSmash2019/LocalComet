@@ -42,6 +42,11 @@ const DOWNLOAD_BUFFER_BYTES: usize = 32 * 1024;
 const PROGRESS_UPDATE_BYTES: u64 = 128 * 1024;
 const DISK_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_STALE_PARTIALS: usize = 64;
+
+/// A kept-for-resume `.partial` older than this can never be resumed: job ids
+/// are unique per attempt, so its owning job is gone and the file is a disk
+/// leak (up to MAX_MODEL_BYTES each). Swept by cleanup_stale_partials.
+const STALE_PARTIAL_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 const MAX_RUNTIME_ARCHIVE_MEMBERS: usize = 128;
 const ACQUISITION_EVENT_SCHEMA_VERSION: u32 = 1;
 
@@ -389,17 +394,19 @@ impl ArtifactAcquisitionManager {
             );
             completed.received_bytes = existing.asset_bytes;
             completed.percent = percent(existing.asset_bytes, existing.asset_bytes);
-            self.jobs
-                .lock()
-                .expect("download registry poisoned")
-                .jobs
-                .insert(
+            {
+                let mut registry = self.jobs.lock().expect("download registry poisoned");
+                registry.jobs.insert(
                     completed.job_id.clone(),
                     DownloadJob {
                         state: completed.clone(),
                         cancel_requested: Arc::new(AtomicBool::new(false)),
                     },
                 );
+                // Keep the registry bounded: this path runs on every start
+                // attempt for an already-valid custom model.
+                registry.prune();
+            }
             return Ok(completed);
         }
         self.artifacts
@@ -1060,9 +1067,10 @@ impl ArtifactAcquisitionManager {
     }
 
     /// Bounded hygiene sweep for extraction scratch dirs (runtime-staging is
-    /// never resumable). Download partials are NOT swept here: they are the
-    /// Range-resume base and are removed by their owning job paths or by the
-    /// resume-vs-reject size check in download_to_partial.
+    /// never resumable). Download partials kept for Range-resume are swept
+    /// here too, but only when stale (job ids are unique per attempt, so a
+    /// partial whose owning job is gone can never be resumed — it would only
+    /// accumulate disk usage, up to MAX_MODEL_BYTES per orphan).
     fn cleanup_stale_partials(&self) {
         let Ok(root) = self.artifacts.acquisition_root() else {
             return;
@@ -1078,6 +1086,19 @@ impl ArtifactAcquisitionManager {
                 && entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false)
             {
                 let _ = fs::remove_dir_all(path);
+                continue;
+            }
+            if is_owned_partial_name(&name) {
+                let stale = entry
+                    .metadata()
+                    .and_then(|meta| meta.modified())
+                    .ok()
+                    .and_then(|modified| modified.elapsed().ok())
+                    .map(|age| age.as_millis() as u64 >= STALE_PARTIAL_AGE_MS)
+                    .unwrap_or(false);
+                if stale {
+                    let _ = fs::remove_file(path);
+                }
             }
         }
     }

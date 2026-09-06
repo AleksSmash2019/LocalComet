@@ -823,6 +823,14 @@ pub(crate) fn execute_broker_mutation(
             "grant was issued for a different tool",
         ));
     }
+    // Defense-in-depth: the grant is workspace-bound at issuance, so the
+    // caller-passed confinement root must match the notarized grant workspace.
+    if grant.workspace != workspace_path {
+        return Err(crate::control_plane::BridgeError::new(
+            "approval_workspace_mismatch",
+            "grant workspace does not match the broker workspace",
+        ));
+    }
     if grant.is_expired() {
         return Err(crate::control_plane::BridgeError::new(
             "grant_expired",

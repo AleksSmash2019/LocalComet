@@ -19,11 +19,22 @@ const SKILLS_CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1
 /// SEC-2 tail: pinned interpreter resolution. The bundled production layout
 /// keeps python314.dll next to the main exe; dev builds resolve through
 /// CARGO_MANIFEST_DIR's target dir. An explicit override exists for tests.
-fn resolve_pinned_python() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("LOCALCOMET_TEST_PYTHON")
+/// The override is debug-only (same policy as supervisor.rs): in a release
+/// build a same-user env var must not choose the executed interpreter.
+#[cfg(debug_assertions)]
+fn test_python_override() -> Option<PathBuf> {
+    std::env::var_os("LOCALCOMET_TEST_PYTHON")
         .map(PathBuf::from)
         .filter(|p| p.is_file())
-    {
+}
+
+#[cfg(not(debug_assertions))]
+fn test_python_override() -> Option<PathBuf> {
+    None
+}
+
+fn resolve_pinned_python() -> Result<PathBuf, String> {
+    if let Some(path) = test_python_override() {
         return Ok(path);
     }
     if let Some(exe) = std::env::current_exe().ok().and_then(|exe| {
@@ -112,9 +123,14 @@ async fn run_skills_cli(
     // SEC-2: resolve the CLI script from a trusted anchor (resource/exe dir,
     // then CARGO_MANIFEST_DIR for dev builds). A bare cwd-relative fallback in
     // an installed app could pick up a planted file from the launch directory.
-    let cli_path = std::env::var_os("LOCALCOMET_SKILLS_CLI_PATH")
+    // The env override is debug-only (same policy as supervisor.rs).
+    #[cfg(debug_assertions)]
+    let cli_env_override = std::env::var_os("LOCALCOMET_SKILLS_CLI_PATH")
         .map(PathBuf::from)
-        .filter(|p| p.is_file())
+        .filter(|p| p.is_file());
+    #[cfg(not(debug_assertions))]
+    let cli_env_override: Option<PathBuf> = None;
+    let cli_path = cli_env_override
         .or_else(|| {
             std::env::current_exe().ok().and_then(|exe| {
                 let candidate = exe
@@ -166,11 +182,16 @@ async fn run_skills_cli(
         std::env::var("SYSTEMROOT").unwrap_or_default(),
     );
     cmd.env("PATH", r"C:\Windows\System32;C:\Windows");
-    if let Ok(test_root) = std::env::var("LOCALCOMET_TEST_PROJECT_ROOT") {
-        cmd.env("LOCALCOMET_TEST_PROJECT_ROOT", test_root);
-    }
-    if let Ok(test_py) = std::env::var("LOCALCOMET_TEST_PYTHON") {
-        cmd.env("LOCALCOMET_TEST_PYTHON", test_py);
+    // Env passthrough is debug-only (same policy as supervisor.rs): a release
+    // build must not forward test-root/test-python selections into the child.
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(test_root) = std::env::var("LOCALCOMET_TEST_PROJECT_ROOT") {
+            cmd.env("LOCALCOMET_TEST_PROJECT_ROOT", test_root);
+        }
+        if let Ok(test_py) = std::env::var("LOCALCOMET_TEST_PYTHON") {
+            cmd.env("LOCALCOMET_TEST_PYTHON", test_py);
+        }
     }
 
     let output = tauri::async_runtime::spawn_blocking(move || {
@@ -187,7 +208,13 @@ async fn run_skills_cli(
     if let Ok(parsed) = serde_json::from_str::<SkillResponse>(&stdout) {
         Ok(parsed)
     } else {
-        Err(format!("Invalid JSON from CLI: {}", stdout))
+        // The CLI stdout is untrusted process output: never echo more than a
+        // bounded prefix back to the UI error path.
+        let mut prefix = stdout.as_ref();
+        if prefix.len() > 256 {
+            prefix = &prefix[..256];
+        }
+        Err(format!("Invalid JSON from CLI: {}", prefix.trim_end()))
     }
 }
 
@@ -229,6 +256,11 @@ pub async fn skills_compile(
         .to_owned();
     let arguments_json = serde_json::to_string(&semantic_payload["arguments"])
         .map_err(|err| format!("invalid workflow arguments: {err}"))?;
+    // Windows command-line limit is 32767 chars; reject oversized argument
+    // JSON before the spawn instead of failing with an unreadable OS error.
+    if arguments_json.len() > 16_384 {
+        return Err("workflow arguments exceed 16384 bytes".to_string());
+    }
     run_skills_cli(
         &app,
         "compile",

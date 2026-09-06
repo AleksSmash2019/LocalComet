@@ -27,6 +27,7 @@ ALLOWLIST = {
     # the gate treats an entry with no matching importer as INERT_ALLOWLIST and
     # fails, so a stale entry cannot silently pre-approve a future file.
     "src/lib/components/shell/AppShell.svelte": "type-only import",
+    "src/lib/stores/chatHistory.ts": "type-only import (persisted message shape)",
     "src/lib/components/shell/SettingsPanel.svelte": "type-only import",
 }
 

@@ -782,7 +782,14 @@ def _web_search(policy: WorkspacePolicy, tool: str, input_obj) -> dict:
         raise ToolExecutionError("invalid_payload", "query exceeds 200 chars")
     cached = _web_cache_get(f"s:{query.strip().lower()}")
     if cached is not None:
-        return {"tool": tool, "query": query, "results": cached, "cached": True}
+        # The cache stores the JSON-encoded results list; decode it so both
+        # the hit and miss paths return the same shape (a list of dicts).
+        import json as _json
+        try:
+            decoded = _json.loads(cached)
+        except ValueError:
+            decoded = cached
+        return {"tool": tool, "query": query, "results": decoded, "cached": True}
     # DuckDuckGo lite HTML — no API key, single GET
     import urllib.request, urllib.parse, re
     q = urllib.parse.quote_plus(query.strip())
@@ -834,14 +841,31 @@ def _resolve_public_fetch_target(url: str) -> tuple[urllib.parse.ParseResult, st
     if port not in {80, 443}:
         raise ToolExecutionError("policy_denied", "web.fetch only permits standard HTTP(S) ports")
     host = parsed.hostname
+    # Literal IP literals and DNS-resolved hosts both flow through the same
+    # unwrapping below: IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1) and 6to4
+    # embed an IPv4 target whose is_loopback/is_private flags on the wrapper
+    # address are unreliable across CPython builds.
     try:
-        candidate_ips = {ipaddress.ip_address(host)}
+        raw_candidates = [ipaddress.ip_address(host)]
     except ValueError:
         try:
             infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
         except OSError as exc:
             raise ToolExecutionError("invalid_payload", f"unable to resolve URL host: {exc}") from exc
-        candidate_ips = {ipaddress.ip_address(info[4][0]) for info in infos}
+        raw_candidates = [info[4][0] for info in infos]
+    candidate_ips = set()
+    for raw in raw_candidates:
+        try:
+            ip = ipaddress.ip_address(raw)
+        except ValueError:
+            continue
+        if isinstance(ip, ipaddress.IPv6Address):
+            mapped = ip.ipv4_mapped
+            if mapped is not None:
+                ip = mapped
+            elif ip.sixtofour:
+                ip = ipaddress.ip_address((int(ip) >> 32) & 0xFFFFFFFF)
+        candidate_ips.add(ip)
     if not candidate_ips or any(
         ip.is_loopback
         or ip.is_private

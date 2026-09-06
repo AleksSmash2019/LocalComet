@@ -3256,7 +3256,7 @@ TOOL_REGISTRY: dict[str, dict[str, Any]] = {
     "files.create_folder": {"required": ("path",), "properties": {"path": str}},
     "files.delete": {"required": ("path",), "properties": {"path": str}},
     "shell": {"required": ("command",), "properties": {"command": str}},
-    "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str, "target": str, "url": str, "goal": str, "max_steps": int, "seconds": (int, float), "ownership_request_id": str}},
+    "computer_use": {"required": ("action",), "properties": {"action": str, "coordinate": list, "text": str, "target": str, "url": str, "goal": str, "max_steps": int, "seconds": (int, float)}},
     "web.search": {"required": ("query",), "properties": {"query": str}},
     "web.fetch": {"required": ("url",), "properties": {"url": str}},
     "skills.invoke": {"required": ("skill_id", "permissions"), "properties": {"skill_id": str, "permissions": list, "arguments": (dict, list)}},
@@ -3305,7 +3305,7 @@ def build_tool_schemas(for_tools: tuple[str, ...] | None = None) -> list[dict[st
             else:
                 properties[field_name] = {"type": _TYPE_TO_JSON.get(expected_type, "string")}
                 if name == "computer_use" and field_name == "action":
-                    properties[field_name]["enum"] = ["open_app", "open_folder", "open_url", "click", "double_click", "type", "type_element", "paste", "key", "hotkey", "scroll", "wait", "wait_for_window", "observe", "drag", "screenshot", "close_owned", "task"]
+                    properties[field_name]["enum"] = ["open_app", "open_folder", "open_url", "click", "double_click", "type", "type_element", "paste", "key", "hotkey", "scroll", "wait", "wait_for_window", "observe", "drag", "screenshot", "task"]
         schemas.append(
             {
                 "type": "function",
@@ -3614,12 +3614,19 @@ def _read_bounded(
 
 def _loads_json(body: bytes) -> Any:
     text = _decode_utf8(body)
+    # Pre-parse depth scan: json.loads on a deeply nested payload raises
+    # RecursionError, which is not a GatewayError and would surface as an
+    # opaque internal_error instead of a diagnosable invalid_payload.
+    if _scan_max_json_depth(text) > MAX_ARGUMENT_DEPTH:
+        raise GatewayError("invalid_payload", "provider JSON nesting exceeds depth limit")
     try:
         return json.loads(text, object_pairs_hook=_reject_duplicate_keys, parse_constant=_reject_json_constant)
     except GatewayError:
         raise
     except json.JSONDecodeError as exc:
         raise GatewayError("invalid_payload", "invalid provider JSON") from exc
+    except RecursionError as exc:
+        raise GatewayError("invalid_payload", "provider JSON nesting exceeds depth limit") from exc
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

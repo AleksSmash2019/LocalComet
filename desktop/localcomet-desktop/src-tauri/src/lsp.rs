@@ -34,7 +34,10 @@ const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 
 /// Honest discovery: explicit env override wins; otherwise PATH is searched
 /// for known servers. Returns a path ONLY when the binary really exists.
+/// The override is debug-only (same policy as supervisor.rs): in a release
+/// build a same-user env var must not choose the spawned server binary.
 pub fn discover_server() -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
     if let Ok(p) = std::env::var("LOCALCOMET_LSP_SERVER_PATH") {
         let path = PathBuf::from(p);
         if path.is_file() {
@@ -42,6 +45,8 @@ pub fn discover_server() -> Option<PathBuf> {
         }
         return None;
     }
+    #[cfg(not(debug_assertions))]
+    let _ = ();
     let candidates = ["rust-analyzer.exe", "rust-analyzer", "clangd.exe", "clangd"];
     let path_var = std::env::var("PATH").unwrap_or_default();
     for dir in std::env::split_paths(&path_var) {
@@ -76,16 +81,29 @@ fn frame_message(body: &str) -> String {
 fn read_framed<R: BufRead>(reader: &mut R) -> Result<Option<String>, String> {
     let mut content_length: Option<usize> = None;
     loop {
-        let mut line = String::new();
-        let n = reader.read_line(&mut line).map_err(|e| e.to_string())?;
-        if n == 0 {
-            return Ok(None); // EOF between frames
+        // Read the header line byte-wise with a hard cap BEFORE allocating:
+        // read_line would happily buffer an unbounded hostile line first and
+        // only then notice the header is oversized (host-memory exhaustion).
+        let mut line = Vec::new();
+        loop {
+            let mut byte = [0u8; 1];
+            let n = reader.read(&mut byte).map_err(|e| e.to_string())?;
+            if n == 0 {
+                if line.is_empty() {
+                    return Ok(None); // EOF between frames
+                }
+                return Err("lsp_unterminated_header".into());
+            }
+            line.push(byte[0]);
+            if byte[0] == b'\n' {
+                break;
+            }
+            if line.len() > MAX_HEADER_BYTES {
+                return Err("lsp_header_too_large".into());
+            }
         }
-        if line.len() > MAX_HEADER_BYTES {
-            return Err("lsp_header_too_large".into());
-        }
-        let trimmed = line.trim_end();
-        if trimmed.is_empty() {
+        let trimmed = String::from_utf8_lossy(&line);
+        if trimmed.trim_end().is_empty() {
             break; // end of headers
         }
         let lower = trimmed.to_ascii_lowercase();

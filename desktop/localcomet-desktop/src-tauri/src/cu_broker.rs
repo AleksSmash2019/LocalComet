@@ -1162,6 +1162,22 @@ pub fn execute_broker_action(
             &action_id,
         );
     }
+    // Defense-in-depth: the grant is workspace-bound at issuance, so the
+    // caller-passed confinement root must match the notarized grant workspace.
+    // The broker receives None in tests and in actions that need no folder
+    // resolution; an empty caller workspace can never match a notarized one,
+    // and vice versa, so both sides are compared literally.
+    match workspace_path {
+        Some(ws) if ws == grant.workspace => {}
+        _ => {
+            return blocked_envelope(
+                action,
+                "grant workspace does not match the broker workspace",
+                &request_id,
+                &action_id,
+            );
+        }
+    }
     if grant.is_expired() {
         return blocked_envelope(action, "execution grant expired", &request_id, &action_id);
     }
@@ -2022,6 +2038,8 @@ mod tests {
             grant_id: "g_test".into(),
             tool: "computer_use".into(),
             input_digest: crate::approval::canonical_input_digest(input),
+            // Tests pass Some("ws") as the broker workspace, mirroring the
+            // production caller which forwards the confirmed workspace.
             workspace: "ws".into(),
             session: "session".into(),
             nonce: [0u8; 16],
@@ -2075,7 +2093,7 @@ mod tests {
             Some(&grant_for(&input)),
             Some(BINDING_REQUEST_ID),
             Some(ACTION_ID),
-            None,
+            Some("ws"),
             None,
         );
         assert_eq!(result["status"], "blocked");
@@ -2194,7 +2212,7 @@ mod tests {
             Some(&grant_for(&input)),
             Some(REQUEST_ID),
             Some(ACTION_ID),
-            None,
+            Some("ws"),
             None,
         );
         assert_eq!(result["status"], "blocked");
@@ -2211,7 +2229,7 @@ mod tests {
             Some(&grant_for(&input)),
             Some(REQUEST_ID),
             Some(ACTION_ID),
-            None,
+            Some("ws"),
             None,
         );
         assert_eq!(result["status"], "blocked");
@@ -2227,7 +2245,7 @@ mod tests {
             Some(&grant_for(&other)),
             Some(REQUEST_ID),
             Some(ACTION_ID),
-            None,
+            Some("ws"),
             None,
         );
         assert_eq!(result["status"], "blocked");
@@ -2251,7 +2269,7 @@ mod tests {
             Some(&grant_for(&input)),
             None,
             None,
-            None,
+            Some("ws"),
             None,
         );
         assert_eq!(result["status"], "blocked");
@@ -2272,7 +2290,7 @@ mod tests {
             None,
             Some(REQUEST_ID),
             Some(ACTION_ID),
-            None,
+            Some("ws"),
             None,
         );
         assert_eq!(result["status"], "blocked");
@@ -2400,7 +2418,7 @@ mod tests {
             Some(&grant_for(&input)),
             Some(REQUEST_ID),
             Some(ACTION_ID),
-            None,
+            Some("ws"),
             Some("bad desktop!"),
         );
         assert_eq!(result["status"], "blocked");
@@ -2422,7 +2440,7 @@ mod tests {
             Some(&grant_for(&input)),
             Some(REQUEST_ID),
             Some(ACTION_ID),
-            None,
+            Some("ws"),
             Some("LocalCometMissingDesktopXYZ"),
         );
         // Pre-spawn probe: an unopenable desktop is refused BEFORE any
@@ -2443,7 +2461,7 @@ mod tests {
             Some(&grant_for(&input)),
             Some(REQUEST_ID),
             Some(ACTION_ID),
-            None,
+            Some("ws"),
             None,
         );
         assert_eq!(result["status"], "blocked");
