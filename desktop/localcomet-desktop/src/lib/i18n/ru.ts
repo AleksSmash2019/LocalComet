@@ -235,6 +235,8 @@ export const ru: TranslationMap = {
   'approval.side_effects.computer_use_application_launch': 'Запускает приложение из встроенного списка; данные не изменяются напрямую',
   'approval.side_effects.computer_use_folder_open': 'Открывает разрешённую пользовательскую папку',
   'approval.side_effects.computer_use_ui_interaction': 'Взаимодействует с обычным элементом интерфейса',
+  'approval.side_effects.computer_use_browser_navigation': 'Открывает внешний браузер по веб-адресу',
+  'approval.side_effects.computer_use_owned_lifecycle': 'Закрывает приложение, запущенное этой задачей ранее',
   'approval.side_effects.computer_use_sensitive_or_external_effect': 'Может отправить данные, изменить состояние или вызвать внешний эффект',
   'approval.side_effects.computer_use_system_or_unallowlisted_path': 'Затрагивает системную или неразрешённую цель; требуется ручная проверка',
   'approval.side_effects.skills_invoke': 'Запускает зарегистрированный навык',

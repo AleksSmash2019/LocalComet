@@ -1,4 +1,7 @@
 import { derived, get, writable } from 'svelte/store';
+// Runtime import is safe: chatHistory only imports types from this module
+// (type-only, erased at build), so the module graph stays acyclic.
+import { scheduleChatHistorySave } from './chatHistory';
 
 export interface ConversationMeta {
   id: string;
@@ -25,6 +28,11 @@ function initialState(): ConversationState {
   return { conversations: [conversation], activeId: conversation.id };
 }
 
+/** Fresh default state, for callers that reset without wiping history. */
+export function conversationStoreInitialState(): ConversationState {
+  return initialState();
+}
+
 export const conversationStore = writable<ConversationState>(initialState());
 
 export const activeConversation = derived(conversationStore, ($state) => {
@@ -48,6 +56,7 @@ export function createConversation(): string {
     conversations: [{ id, title: NEW_CHAT_TITLE, createdAt: Date.now() }, ...state.conversations],
     activeId: id
   }));
+  scheduleChatHistorySave();
   return id;
 }
 
@@ -55,6 +64,7 @@ export function selectConversation(id: string): void {
   conversationStore.update((state) =>
     state.conversations.some((c) => c.id === id) ? { ...state, activeId: id } : state
   );
+  scheduleChatHistorySave();
 }
 
 export function renameConversation(id: string, title: string): void {
@@ -64,6 +74,7 @@ export function renameConversation(id: string, title: string): void {
     ...state,
     conversations: state.conversations.map((c) => (c.id === id ? { ...c, title: trimmed } : c))
   }));
+  scheduleChatHistorySave();
 }
 
 function autoTitleFromPrompt(prompt: string): string {

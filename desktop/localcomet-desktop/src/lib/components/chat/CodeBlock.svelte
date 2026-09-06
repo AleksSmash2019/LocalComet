@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import type { CodeBlockMock } from '$lib/data/mockData';
 
   export let block: CodeBlockMock;
-  
+
   let copied = false;
   let copyTimeout: ReturnType<typeof setTimeout>;
-  
+
   async function copyCode() {
     try {
       await navigator.clipboard.writeText(block.code);
@@ -18,6 +19,10 @@
       console.error('Failed to copy code', err);
     }
   }
+
+  onDestroy(() => {
+    clearTimeout(copyTimeout);
+  });
 </script>
 
 <figure class="code-block" aria-label="Code block">

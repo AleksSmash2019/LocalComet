@@ -235,6 +235,8 @@ export const en: TranslationMap = {
   'approval.side_effects.computer_use_application_launch': 'Launches an allowlisted application; no data is directly changed',
   'approval.side_effects.computer_use_folder_open': 'Opens an allowlisted user folder',
   'approval.side_effects.computer_use_ui_interaction': 'Interacts with an ordinary interface element',
+  'approval.side_effects.computer_use_browser_navigation': 'Navigates an external browser to a web address',
+  'approval.side_effects.computer_use_owned_lifecycle': 'Closes an application previously launched by this task',
   'approval.side_effects.computer_use_sensitive_or_external_effect': 'May send data, change state, or cause an external effect',
   'approval.side_effects.computer_use_system_or_unallowlisted_path': 'Touches a system or unallowlisted target; manual review is required',
   'approval.side_effects.skills_invoke': 'Runs a registered skill',

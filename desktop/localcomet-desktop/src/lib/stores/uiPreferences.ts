@@ -149,13 +149,20 @@ function normalizePreferences(value: unknown): UiPreferences {
       }
     }
   }
-  if (value.ctxSizeOverride === null || typeof value.ctxSizeOverride === 'number') {
+  if (isValidOverride(value.ctxSizeOverride)) {
     preferences.ctxSizeOverride = value.ctxSizeOverride;
   }
-  if (value.gpuLayersOverride === null || typeof value.gpuLayersOverride === 'number') {
+  if (isValidOverride(value.gpuLayersOverride)) {
     preferences.gpuLayersOverride = value.gpuLayersOverride;
   }
   return preferences;
+}
+
+// Numeric overrides reach the runtime launch payload: reject anything that is
+// not a positive safe integer so hand-edited storage cannot persist garbage.
+function isValidOverride(value: unknown): value is number | null {
+  if (value === null) return true;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
 function browserStorage(): Storage | null {
@@ -216,10 +223,10 @@ export function updateUiPreferences(patch: Readonly<Partial<UiPreferences>>): Ui
     if (isAgentPermissions(patch.agentPermissions)) {
       preferences.agentPermissions = { ...preferences.agentPermissions, ...patch.agentPermissions } as AgentPermissions;
     }
-    if (patch.ctxSizeOverride !== undefined) {
+    if (isValidOverride(patch.ctxSizeOverride)) {
       preferences.ctxSizeOverride = patch.ctxSizeOverride;
     }
-    if (patch.gpuLayersOverride !== undefined) {
+    if (isValidOverride(patch.gpuLayersOverride)) {
       preferences.gpuLayersOverride = patch.gpuLayersOverride;
     }
   }

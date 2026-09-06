@@ -1,5 +1,6 @@
 import { derived, get, writable } from 'svelte/store';
 import { DEFAULT_CONVERSATION_ID } from './conversationStore';
+import { clearQueuedTurn, dequeueTurn } from './turnQueue';
 import { parseToolCallResult } from '$lib/tools/computerUseEnvelope';
 import {
   extractBrokerContinuationAndScrub,
@@ -2128,6 +2129,15 @@ function terminalizeCurrentRequest(
     activeTurnId: null,
     lastError: error
   }));
+  // A terminal turn frees the single-slot send queue: auto-submit the queued
+  // draft (user-visible "next message") instead of leaving it dead behind a
+  // busy guard. Awaiting-verification is transient and must NOT drain.
+  if (lifecycle !== 'awaiting_verification') {
+    const queued = dequeueTurn();
+    if (queued) {
+      void startLocalModelTurn(queued.draft, queued.conversationId, [...queued.fileIds]);
+    }
+  }
   return true;
 }
 
@@ -2403,6 +2413,7 @@ export function resetModelGatewayStore(): void {
   managedConnectionPromise = null;
   managedConnectionBusy.set(false);
   inferenceRequestStore.set(initialInferenceState);
+  clearQueuedTurn();
 }
 
 function currentPort(): number {

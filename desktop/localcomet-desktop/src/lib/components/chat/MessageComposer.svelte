@@ -6,6 +6,7 @@
   import FilesPanel from '$lib/components/files/FilesPanel.svelte';
   import { composerDraft, openSettings, selectedConversationId, setComposerDraft } from '$lib/stores/shellStore';
   import { applyAutoTitle } from '$lib/stores/conversationStore';
+  import { queuedTurnStore, queueTurn } from '$lib/stores/turnQueue';
   import { t } from '$lib/i18n';
   import {
     approvedManagedModelInstalled,
@@ -33,12 +34,13 @@
   const voiceSubmissionGate = createVoiceInputSubmissionGate();
 
   $: isGenerating = ['submitted', 'accepted', 'streaming', 'awaiting_approval', 'awaiting_verification', 'cancelling'].includes($inferenceRequestStore.lifecycle);
+  $: queuedTurn = $queuedTurnStore;
   $: if ($selectedConversationId !== observedConversationId) {
     observedConversationId = $selectedConversationId;
     setComposerDraft('');
     if (isGenerating) void cancelLocalModelTurn();
   }
-  $: canSend = $managedModelReady && Boolean($composerDraft.trim()) && !isGenerating;
+  $: canSend = $managedModelReady && (Boolean($composerDraft.trim()) || Boolean(queuedTurn)) && !isGenerating;
   $: {
     const generatingNow = isGenerating;
     if (previouslyGenerating && !generatingNow) {
@@ -180,14 +182,23 @@
   }
 
   async function send(draftOverride?: string): Promise<void> {
+    const draft = (draftOverride ?? $composerDraft).trim();
     if (isGenerating) {
-      restoreComposerFocus = true;
-      await cancelLocalModelTurn();
-      await restoreFocusAfterRequest();
+      // The send button becomes Stop while busy, but an Enter submit with
+      // fresh text should QUEUE the message instead of dying on the busy
+      // guard: it auto-submits when the current turn terminalizes.
+      if (draft && !queuedTurn && $managedModelReady) {
+        queueTurn($selectedConversationId, draft, $includedFileIds);
+        setComposerDraft('');
+        resizeDraftBox();
+      } else {
+        restoreComposerFocus = true;
+        await cancelLocalModelTurn();
+        await restoreFocusAfterRequest();
+      }
       return;
     }
-    const draft = (draftOverride ?? $composerDraft).trim();
-    if (!draft || isGenerating) return;
+    if (!draft) return;
     if (!$managedModelReady) {
       if (draftOverride) {
         setComposerDraft('');

@@ -169,7 +169,11 @@
   })();
 
   function displayState(state: string): string {
-    return $t(`models.state.${state}`);
+    // 'running' is the active-download lifecycle but has no dedicated
+    // models.state.* key; map it to the human downloading phase instead of
+    // leaking the raw key through the t() fallback.
+    const key = state === 'running' ? 'models.state.downloading' : `models.state.${state}`;
+    return $t(key);
   }
 
   function onPortInput(event: Event) {

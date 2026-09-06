@@ -5,7 +5,8 @@ import type { AgentPermissions, ComputeMode, EffortLevel, VoiceProfile } from '.
 import type { AccentColor } from './uiPreferences';
 import { isAccentColor, isComputeMode, isEffortLevel, isVoiceGender, loadUiPreferences, updateUiPreferences } from './uiPreferences';
 
-import { conversationStore, getActiveConversationId, resetConversationStore } from './conversationStore';
+import { conversationStore, conversationStoreInitialState, getActiveConversationId, resetConversationStore } from './conversationStore';
+import { loadChatHistory, persistChatHistory, scheduleChatHistorySave, setChatHistorySaveRunner } from './chatHistory';
 
 // Must match the composer textarea maxlength="12000" (MessageComposer.svelte)
 // so the store never silently truncates input the UI allows.
@@ -184,7 +185,16 @@ export function appendAcceptedChatTurn(requestId: string, rawDraft: string, conv
   const bounded = rawDraft.slice(0, MAX_DRAFT_LENGTH);
   const body = bounded.trim();
   if (!body || !/^[0-9a-f]{24}$/.test(requestId)) return false;
-  if (get(chatMessages).some((message) => message.requestId === requestId)) return false;
+  const existing = get(chatMessages);
+  if (existing.some((message) => message.requestId === requestId)) return false;
+  // After a history restore, persisted message ids occupy the low counter
+  // range; resume above the highest existing number so ids stay unique.
+  let maxCounter = 0;
+  for (const message of existing) {
+    const match = /^chat-(?:user|assistant)-(\d+)$/.exec(message.id);
+    if (match) maxCounter = Math.max(maxCounter, Number.parseInt(match[1], 10));
+  }
+  if (messageCounter <= maxCounter) messageCounter = maxCounter;
 
     messageCounter += 1;
   const turnEffort = isEffortLevel(requestedEffort) ? requestedEffort : get(effortLevel);
@@ -211,8 +221,18 @@ export function appendAcceptedChatTurn(requestId: string, rawDraft: string, conv
   ]);
 
   composerDraft.set('');
+  scheduleChatHistorySave();
   return true;
 }
+
+/**
+ * Coalesced history save: streaming updates arrive many times per second, so
+ * the write is deferred and coalesced by chatHistory's shared timer.
+ */
+setChatHistorySaveRunner(() => {
+  const conversationState = get(conversationStore);
+  persistChatHistory(conversationState.conversations, get(chatMessages), conversationState.activeId);
+});
 
 export function appendAssistantChunk(requestId: string, chunk: string): boolean {
   if (!chunk || !/^[0-9a-f]{24}$/.test(requestId)) return false;
@@ -227,6 +247,7 @@ export function appendAssistantChunk(requestId: string, chunk: string): boolean 
       state: 'streaming'
     };
   }));
+  if (appended) scheduleChatHistorySave();
   return appended;
 }
 
@@ -263,6 +284,7 @@ export function setAssistantToolCalls(requestId: string, toolCalls: import('$lib
       state: 'streaming'
     };
   }));
+  if (updated) scheduleChatHistorySave();
   return updated;
 }
 
@@ -291,6 +313,7 @@ export function updateAssistantToolResult(
       toolCalls: newToolCalls
     };
   }));
+  if (updated) scheduleChatHistorySave();
   return updated;
 }
 
@@ -305,6 +328,7 @@ export function finalizeAssistantMessage(
     finalized = true;
     return { ...message, state, error: error?.slice(0, 240) };
   }));
+  if (finalized) scheduleChatHistorySave();
   return finalized;
 }
 
@@ -362,16 +386,36 @@ export function resetShellStores(): void {
   accentColor.set(preferences.accentColor);
   voiceMode.set(preferences.voiceMode);
   voiceGender.set(preferences.voiceGender);
+  // These five are initialized from preferences at module load; a reset must
+  // restore them the same way or runtime state diverges from persisted state.
+  agentPermissions.set(preferences.agentPermissions);
+  effortLevel.set(preferences.effort);
+  computeMode.set(preferences.computeMode);
+  ctxSizeOverride.set(preferences.ctxSizeOverride);
+  gpuLayersOverride.set(preferences.gpuLayersOverride);
   activeWorkspace.set('chat');
   sidebarExpanded.set(true);
   inspectorVisible.set(preferences.diagnosticsPanel === 'open');
   inspectorDrawerOpen.set(preferences.diagnosticsPanel === 'open');
   settingsPanelOpen.set(false);
   settingsSection.set('interface');
-  resetConversationStore();
+  // Chat history survives restarts: restore persisted conversations and
+  // finished messages instead of resetting to the empty state. In-flight
+  // turns were never persisted, so nothing half-finished comes back.
+  const history = loadChatHistory();
+  if (history.messages.length > 0 || history.conversations.length > 0) {
+    const restoredConversations = history.conversations.length > 0
+      ? history.conversations
+      : conversationStoreInitialState().conversations;
+    const activeId = history.activeId ?? restoredConversations[0]?.id;
+    conversationStore.set({ conversations: restoredConversations, activeId });
+    mockMessages.set(history.messages);
+  } else {
+    resetConversationStore();
+    mockMessages.set(cloneMessages());
+  }
   selectedModel.set(modelOptions[0]);
   selectedMode.set('Chat');
-  mockMessages.set(cloneMessages());
   composerDraft.set('');
   activeInspectorSection.set(inspectorSections[0]);
   toolsPopoverOpen.set(false);
