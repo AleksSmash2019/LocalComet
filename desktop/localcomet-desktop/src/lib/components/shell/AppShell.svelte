@@ -40,7 +40,7 @@
   import { locale, t } from '$lib/i18n';
   import type { ResolvedTheme } from '$lib/data/mockData';
   import { followTranscriptToEnd, isTranscriptNearBottom } from '$lib/components/chat/transcriptScroll';
-  import { installModelFitBridge } from '$lib/bridge/modelfit';
+  import { installModelFitBridge, openModelFitWindow } from '$lib/bridge/modelfit';
 
   let systemDark = false;
   let resolvedTheme: ResolvedTheme = 'light';
@@ -72,37 +72,12 @@
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 
-  // ModelFit renders in a same-origin iframe from a prebuilt bundle whose
-  // accent is hardcoded as the RGB triplet --mf-accent. Paint it with the
-  // owner's accent: inject an override stylesheet into the iframe document
-  // on every load and re-apply whenever the accent changes. Same-origin, so
-  // the injection is local DOM work — no network, no postMessage surface.
-  let modelfitFrame: HTMLIFrameElement;
-  let modelfitStyleEl: HTMLStyleElement | null = null;
-
-  function modelfitAccentCss(accent: string): string {
-    const [r, g, b] = hexChannels(accent);
-    const strong = lighten(accent, 0.28);
-    const [sr, sg, sb] = hexChannels(strong);
-    return `:root,.light{--mf-accent:${r} ${g} ${b};--mf-accent-soft:${sr} ${sg} ${sb};--mf-ok:${r} ${g} ${b};}`;
-  }
-
-  function applyModelfitAccent(): void {
-    const doc = modelfitFrame?.contentDocument;
-    if (!doc) return;
-    if (!$accentColor) {
-      modelfitStyleEl?.remove();
-      modelfitStyleEl = null;
-      return;
-    }
-    if (!modelfitStyleEl || !modelfitStyleEl.isConnected) {
-      modelfitStyleEl = doc.createElement('style');
-      doc.head.appendChild(modelfitStyleEl);
-    }
-    modelfitStyleEl.textContent = modelfitAccentCss($accentColor);
-  }
-
-  $: if ($accentColor !== undefined && modelfitFrame) applyModelfitAccent();
+  // ModelFit runs in a dedicated top-level WebviewWindow (openModelFitWindow). An in-app
+  // iframe was removed deliberately: in release builds WebView2 never completes subframe
+  // navigations to the custom-protocol origin (verified via CDP in the isolated desktop —
+  // top-level navigation serves the document, an iframe hangs forever). Accent is picked up
+  // by the ModelFit window itself from the shared preferences record at its own load.
+  $: if ($activeWorkspace === 'modelfit') void openModelFitWindow();
 
   function recordTranscriptPosition(): void {
     if (!transcriptViewport) return;
@@ -284,13 +259,12 @@
         <p class="hf-lazy-error">{error?.message ?? 'Failed to load'}</p>
       {/await}
     {:else if $activeWorkspace === 'modelfit'}
-      <iframe
-        bind:this={modelfitFrame}
-        src="/modelfit.html"
-        title={$t('modelfit.title')}
-        class="modelfit-frame"
-        onload={applyModelfitAccent}
-      ></iframe>
+      <div class="modelfit-shell">
+        <p class="modelfit-note">{$t('modelfit.title')}</p>
+        <button type="button" class="modelfit-open" onclick={() => void openModelFitWindow()}>
+          {$t('modelfit.open_window')}
+        </button>
+      </div>
     {:else}
       <OnboardingScreen />
     {/if}
@@ -361,10 +335,32 @@
     font-size: 12px;
   }
 
-  .modelfit-frame {
+  .modelfit-shell {
     width: 100%;
     height: 100%;
-    border: none;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .modelfit-note {
+    color: var(--lc-muted);
+    font-size: 13px;
+  }
+
+  .modelfit-open {
+    border: 1px solid var(--lc-accent, #10b981);
+    color: var(--lc-accent, #10b981);
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 13.5px;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .modelfit-open:hover {
+    background: rgba(16, 185, 129, 0.08);
   }
 </style>

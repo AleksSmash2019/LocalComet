@@ -835,6 +835,7 @@ export const ru: TranslationMap = {
   // Project
   'project.detail': 'Локальный чат с моделью',
   'modelfit.title': 'Подобрать модель',
+  'modelfit.open_window': 'Открыть окно подбора',
 
   // Risk
   'risk.read_only': 'Только чтение',

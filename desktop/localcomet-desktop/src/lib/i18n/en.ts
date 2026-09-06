@@ -835,6 +835,7 @@ export const en: TranslationMap = {
   // Project
   'project.detail': 'Local chat with model',
   'modelfit.title': 'Find a suitable model',
+  'modelfit.open_window': 'Open the ModelFit window',
 
   // Risk
   'risk.read_only': 'Read-only',
