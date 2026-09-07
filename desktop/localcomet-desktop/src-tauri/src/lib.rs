@@ -24,6 +24,7 @@ mod intent_compiler;
 mod ipc;
 mod knowledge;
 mod managed_runtime;
+mod modelfit_window;
 mod permission_context;
 #[allow(dead_code, unused_imports)]
 mod project_intelligence;
@@ -87,6 +88,7 @@ use managed_runtime::{
     managed_runtime_start_trusted, managed_runtime_status, managed_runtime_stop,
     managed_runtime_stop_trusted, ManagedRuntimeSupervisor,
 };
+use modelfit_window::open_modelfit_window;
 use skills::{
     skills_compile, skills_disable, skills_enable, skills_install, skills_list, skills_uninstall,
 };
@@ -369,6 +371,7 @@ pub fn run() {
             speak_local_text,
             stop_local_text,
             scan_hardware,
+            open_modelfit_window,
             hf_search_models,
             hf_list_repo_files,
             set_workspace,

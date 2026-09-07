@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 type ModelFitInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 type ModelFitBridgeWindow = Window & { __modelfit_invoke?: ModelFitInvoke };
@@ -20,24 +19,9 @@ export function installModelFitBridge(): () => void {
 }
 
 export async function openModelFitWindow(): Promise<void> {
-  const appWindow = new WebviewWindow('modelfit', {
-    url: '/modelfit.html',
-    title: 'ModelFit AI',
-    width: 1100,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
-    center: true,
-    decorations: true,
-    resizable: true,
-    maximizable: true,
-    // Owned window on Windows: stays above the main window, minimizes and
-    // closes with it, and never drifts away as a free-floating top-level
-    // window in the taskbar/Alt-Tab.
-    parent: 'main'
-  });
-
-  appWindow.once('tauri://error', (e) => {
-    console.error('Failed to create ModelFit window:', e);
-  });
+  // The window is created Rust-side (open_modelfit_window) so it can be owned
+  // by "main": owned windows stay above their owner, minimize/close with it,
+  // and never drift off detached from the app. The JS create path with a
+  // parent option deadlocks (never settles) on tauri 2.11.5 — CDP-verified.
+  await invoke('open_modelfit_window');
 }
