@@ -40,7 +40,8 @@
   import { locale, t } from '$lib/i18n';
   import type { ResolvedTheme } from '$lib/data/mockData';
   import { followTranscriptToEnd, isTranscriptNearBottom } from '$lib/components/chat/transcriptScroll';
-  import { installModelFitBridge, openModelFitWindow } from '$lib/bridge/modelfit';
+  import { installModelFitBridge } from '$lib/bridge/modelfit';
+  import ModelfitWorkspace from '$lib/components/model/ModelfitWorkspace.svelte';
 
   let systemDark = false;
   let resolvedTheme: ResolvedTheme = 'light';
@@ -72,12 +73,11 @@
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 
-  // ModelFit runs in a dedicated top-level WebviewWindow (openModelFitWindow). An in-app
-  // iframe was removed deliberately: in release builds WebView2 never completes subframe
-  // navigations to the custom-protocol origin (verified via CDP in the isolated desktop —
-  // top-level navigation serves the document, an iframe hangs forever). Accent is picked up
-  // by the ModelFit window itself from the shared preferences record at its own load.
-  $: if ($activeWorkspace === 'modelfit') void openModelFitWindow();
+  // ModelFit renders INSIDE the main window (ModelfitWorkspace mounts the
+  // standalone bundle into the main document). The iframe approach is not
+  // viable: WebView2 fires the load event but the frame stays an empty
+  // cross-origin document (CDP-verified). A separate WebviewWindow was tried
+  // and removed per owner decision — no detached windows.
 
   function recordTranscriptPosition(): void {
     if (!transcriptViewport) return;
@@ -188,7 +188,6 @@
   });
 
   onMount(() => installModelFitBridge());
-
   onMount(() => {
     // A mounted frontend is a new UI session. Never inherit an approval prompt
     // or an in-flight local lifecycle from a previous WebView/remount.
@@ -259,12 +258,7 @@
         <p class="hf-lazy-error">{error?.message ?? 'Failed to load'}</p>
       {/await}
     {:else if $activeWorkspace === 'modelfit'}
-      <div class="modelfit-shell">
-        <p class="modelfit-note">{$t('modelfit.title')}</p>
-        <button type="button" class="modelfit-open" onclick={() => void openModelFitWindow()}>
-          {$t('modelfit.open_window')}
-        </button>
-      </div>
+      <ModelfitWorkspace />
     {:else}
       <OnboardingScreen />
     {/if}
@@ -333,34 +327,5 @@
     padding: var(--lc-space-4);
     color: var(--lc-danger);
     font-size: 12px;
-  }
-
-  .modelfit-shell {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-  }
-
-  .modelfit-note {
-    color: var(--lc-muted);
-    font-size: 13px;
-  }
-
-  .modelfit-open {
-    border: 1px solid var(--lc-accent, #10b981);
-    color: var(--lc-accent, #10b981);
-    border-radius: 10px;
-    padding: 10px 18px;
-    font-size: 13.5px;
-    background: transparent;
-    cursor: pointer;
-  }
-
-  .modelfit-open:hover {
-    background: rgba(16, 185, 129, 0.08);
   }
 </style>

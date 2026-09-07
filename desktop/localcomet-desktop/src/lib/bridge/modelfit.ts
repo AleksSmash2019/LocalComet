@@ -18,10 +18,53 @@ export function installModelFitBridge(): () => void {
   };
 }
 
-export async function openModelFitWindow(): Promise<void> {
-  // The window is created Rust-side (open_modelfit_window) so it can be owned
-  // by "main": owned windows stay above their owner, minimize/close with it,
-  // and never drift off detached from the app. The JS create path with a
-  // parent option deadlocks (never settles) on tauri 2.11.5 — CDP-verified.
-  await invoke('open_modelfit_window');
+/**
+ * Parse the standalone modelfit.html bundle and execute it inside the MAIN
+ * window document. An <iframe src="/modelfit.html"> is not viable: WebView2
+ * fires the load event but the frame stays an empty cross-origin document
+ * (CDP-verified, DOM search finds nothing). The bundle itself is a
+ * self-contained React app that mounts to the first #root element and
+ * resolves its bridge from its own window.__TAURI__ (withGlobalTauri), so
+ * running it in the main document is equivalent to running it standalone.
+ */
+export async function mountModelFitBundle(host: HTMLElement): Promise<() => void> {
+  const response = await fetch('/modelfit.html');
+  if (!response.ok) {
+    throw new Error(`modelfit bundle fetch failed: ${response.status}`);
+  }
+  const html = await response.text();
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+
+  const root = document.createElement('div');
+  root.id = 'root';
+  host.appendChild(root);
+
+  const cleanupNodes: (HTMLElement | SVGElement)[] = [root];
+  const injectedScripts: HTMLScriptElement[] = [];
+
+  for (const sourceStyle of Array.from(parsed.querySelectorAll('style'))) {
+    const style = document.createElement('style');
+    style.textContent = sourceStyle.textContent;
+    document.head.appendChild(style);
+    cleanupNodes.push(style);
+  }
+
+  for (const sourceScript of Array.from(parsed.querySelectorAll('script'))) {
+    const script = document.createElement('script');
+    for (const attr of Array.from(sourceScript.attributes)) {
+      script.setAttribute(attr.name, attr.value);
+    }
+    script.textContent = sourceScript.textContent;
+    document.head.appendChild(script);
+    injectedScripts.push(script);
+  }
+
+  return () => {
+    for (const script of injectedScripts) {
+      script.remove();
+    }
+    for (const node of cleanupNodes) {
+      node.remove();
+    }
+  };
 }

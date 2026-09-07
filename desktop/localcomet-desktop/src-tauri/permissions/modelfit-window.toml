@@ -1,6 +1,0 @@
-[[permission]]
-identifier = "allow-open-modelfit-window"
-description = "Allow opening the ModelFit helper window as an owned window of the main window."
-commands.allow = [
-  "open_modelfit_window",
-]
