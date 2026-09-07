@@ -71,3 +71,49 @@ Hidden-isolated desktop + loopback CDP (tools/sweep_installed_release.py, SWEEP_
 - Установленная копия НЕ обновлялась новым установщиком: запуск инсталлятора поверх установленной программы — действие на системе пользователя, требует явного решения владельца.
 - Реальный чат-turn с загруженной моделью в скрытом окружении не прогонялся (модель не загружена в изолированном LOCALAPPDATA; статус UI честно показывает «Модель не загружена»).
 - Полная CDP-верификация «Навыков» в УСТАНОВЛЕННОЙ копии станет возможной после установки нового установщика (см. пункт 7.1).
+
+---
+
+# Дополнение 07.09 (вторая волна): озвучка и ModelFit-окно
+
+## Найденные баги
+
+### Баг 2 (исправлен, c19a9c7): при озвучке ответа мигает консоль
+piper.exe и powershell.exe (SAPI) запускались без CREATE_NO_WINDOW — на каждый ответ всплывало консольное окно. Фикс: creation_flags(0x0800_0000) в voice.rs для обоих запусков. Остальные места запуска проверены: sidecar и терминалы уже защищены (windows_job.rs), reg.exe/nvidia-smi уже скрывались (hardware.rs).
+
+### Баг 3 (исправлен, b243020 + 95a7506): «Подобрать модель» открывает окно, оторванное от интерфейса
+Окно ModelFit было независимым (не привязано к главному). Хотелось owner-поведение (поверх главного, сворачивается/закрывается вместе с ним). В ходе исправления найдены 2 скрытых дефекта фреймворка (tauri 2.11.5), оба подтверждены CDP-пробами:
+1. JS-путь WebviewWindow(parent:'main') зависает навсегда — команда create_webview_window не завершается ни успехом, ни ошибкой.
+2. Rust-путь parent(&main) из рабочего потока зависает так же: owner-HWND резолвится блокирующим запросом к event loop.
+
+Итоговое решение: окно создаётся в Rust на главном потоке (open_modelfit_window, run_on_main_thread + канал с таймаутом 15с), фронтенд просто вызывает команду. Проверено на видимом десктопе: команда завершается ОК, окно создаётся, скан железа внутри него работает.
+
+Примечание о верификации: на скрытом тестовом десктопе owner-окна не создаются (ограничение самой среды) — проверка там даёт ложный отказ; финальная проверка выполнена на видимом десктопе с изолированным профилем данных.
+
+## Гейты после второй волны (последние строки дословно)
+
+- cargo test: `test result: ok. 777 passed; 0 failed; 7 ignored; ...`
+- cargo fmt --check: exit 0
+- cargo clippy --all-targets --all-features -- -D warnings: `Finished ... target(s) in 6.74s`
+- npm run check: `svelte-check found 0 errors and 0 warnings`
+- npm test: `Tests  545 passed (545)`
+- python tests/* (check_bundle_parity, evidence_model, trust_chain_gate, tool_risk_registry_gate, mockdata_import_gate, trust_chain_invariants): `OK`
+- python scripts/check_command_parity.py: `OK: 79 commands registered and invoked (parity holds)`
+- python scripts/check_tool_risk_registry.py: `OK: 7 console tool function(s) ...; 21 registry entries valid`
+- python scripts/check_ui_fake_state.py: `OK: no fake-state violations in 113 frontend file(s) (INV-UI-001)`
+- python scripts/check_bundle_parity.py: `OK: 423 shipped module(s) match source across 2 location(s) (bundle parity holds)`
+- python tools/test_bug1_inference_bundle_parity.py: `ALL OK`
+- python tools/test_adr015_tool_parsing.py: `OK (skipped=1)`
+- python tools/test_tool_risk_rust_parity.py: `OK: parser self-tests passed`
+- python scripts/smoke_test.py --mode=cli: `SMOKE PASSED: real sidecar product path behaves as expected.`
+- python scripts/refresh_evidence.py: `evidence refreshed: all gates green` (tree=971dc34f…)
+- python scripts/check_evidence_provenance.py: `OK: 4 evidence file(s) fresh and intact (tree=971dc34f...)`
+- python scripts/check_real_sidecar_tests.py (CI env): `OK: real-sidecar tests ran under require mode with no silent skips`
+
+## Артефакт
+
+Новый установщик (source_commit 95a7506):
+`target/up00-wp01/cargo-target/release/bundle/nsis/LocalComet_7.0.5_x64-setup.exe`
+15 514 114 байт, sha256 `39718b94c3732e014a4168fc79501e87090afd7cac49780f3a17f196273c3590`
+
+Коммиты: 338c5ff (навыки), c19a9c7 (озвучка+первый шаг ModelFit), b243020 (owner из Rust), 95a7506 (main-thread).
