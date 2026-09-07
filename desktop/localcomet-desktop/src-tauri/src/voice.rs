@@ -8,7 +8,15 @@ use std::ffi::OsStr;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
 #[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+#[cfg(target_os = "windows")]
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_FILENAME, SND_PURGE, SND_SYNC};
+
+/// CREATE_NO_WINDOW: TTS children (piper, PowerShell/SAPI) are console
+/// executables; without this flag every spoken answer flashes a console
+/// window on the user's desktop.
+#[cfg(target_os = "windows")]
+const TTS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const MAX_TTS_CHARS: usize = 8_192;
 const PIPER_LENGTH_SCALE: &str = "0.96";
@@ -189,6 +197,7 @@ fn speak_with_sapi(
             SAPI_SCRIPT,
         ])
         .env("LOCALCOMET_TTS_VOICE", voice_name)
+        .creation_flags(TTS_CREATE_NO_WINDOW)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -305,6 +314,7 @@ fn speak_with_piper(
         // announces every profile with the same RHVoice. Anchoring the child
         // to the piper root keeps the neural voice selection real.
         .current_dir(&root)
+        .creation_flags(TTS_CREATE_NO_WINDOW)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

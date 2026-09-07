@@ -30,7 +30,11 @@ export async function openModelFitWindow(): Promise<void> {
     center: true,
     decorations: true,
     resizable: true,
-    maximizable: true
+    maximizable: true,
+    // Owned window on Windows: stays above the main window, minimizes and
+    // closes with it, and never drifts away as a free-floating top-level
+    // window in the taskbar/Alt-Tab.
+    parent: 'main'
   });
 
   appWindow.once('tauri://error', (e) => {
