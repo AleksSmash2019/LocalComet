@@ -17,7 +17,9 @@ pub struct SkillResponse {
 const SKILLS_CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// SEC-2 tail: pinned interpreter resolution. The bundled production layout
-/// keeps python314.dll next to the main exe; dev builds resolve through
+/// ships the interpreter next to the main exe under the sidecar name
+/// localcomet-core.exe (python.exe renamed at packaging time, alongside
+/// python314.dll / python314.zip / DLLs); dev builds resolve through
 /// CARGO_MANIFEST_DIR's target dir. An explicit override exists for tests.
 /// The override is debug-only (same policy as supervisor.rs): in a release
 /// build a same-user env var must not choose the executed interpreter.
@@ -41,13 +43,20 @@ fn resolve_pinned_python() -> Result<PathBuf, String> {
         let candidate = exe.parent()?.join("python314.dll");
         candidate.is_file().then_some(exe.parent()?.to_path_buf())
     }) {
-        return Ok(exe.join("python.exe")).and_then(|p| {
-            if p.is_file() {
-                Ok(p)
-            } else {
-                Err("bundled python.exe not found next to python314.dll".to_string())
-            }
-        });
+        // Bundled runtime: the packager renames python.exe to
+        // localcomet-core.exe, so accept either sibling name.
+        let interpreter = exe.join("python.exe");
+        if interpreter.is_file() {
+            return Ok(interpreter);
+        }
+        let sidecar_named = exe.join("localcomet-core.exe");
+        if sidecar_named.is_file() {
+            return Ok(sidecar_named);
+        }
+        return Err(
+            "bundled interpreter not found next to python314.dll (python.exe or localcomet-core.exe)"
+                .to_string(),
+        );
     }
     if let Some(manifest) = option_env!("CARGO_MANIFEST_DIR") {
         for candidate in [
@@ -133,12 +142,20 @@ async fn run_skills_cli(
     let cli_path = cli_env_override
         .or_else(|| {
             std::env::current_exe().ok().and_then(|exe| {
-                let candidate = exe
-                    .parent()?
-                    .join("../../../scripts/skills_cli.py")
-                    .canonicalize()
-                    .ok();
-                candidate.filter(|p| p.is_file())
+                let dir = exe.parent()?;
+                // Bundled layout ships the CLI at <install>/app/scripts/;
+                // dev builds resolve three levels up from target/debug.
+                for candidate in [
+                    dir.join("app/scripts/skills_cli.py"),
+                    dir.join("../../../scripts/skills_cli.py"),
+                ] {
+                    if let Ok(path) = candidate.canonicalize() {
+                        if path.is_file() {
+                            return Some(path);
+                        }
+                    }
+                }
+                None
             })
         })
         .or_else(|| {
