@@ -117,3 +117,35 @@ piper.exe и powershell.exe (SAPI) запускались без CREATE_NO_WINDO
 15 514 114 байт, sha256 `39718b94c3732e014a4168fc79501e87090afd7cac49780f3a17f196273c3590`
 
 Коммиты: 338c5ff (навыки), c19a9c7 (озвучка+первый шаг ModelFit), b243020 (owner из Rust), 95a7506 (main-thread).
+
+---
+
+# Дополнение 2, 07.09 вечер: ModelFit перенесён внутрь главного окна
+
+Решение владельца: отдельного окна быть не должно. Проверка на только что установленной сборке показала: iframe-баг WebView2 ЖИВ — iframe /modelfit.html получает onload, но остаётся пустым cross-origin документом (contentDocument=null, DOM-поиск «Сканировать ПК» = 0 результатов).
+
+## Что сделано (коммиты a7ae539, b8733c7; установщик 7610c3a6, УСТАНОВЛЕН)
+
+- ModelfitWorkspace.svelte: ModelFit исполняется в ГЛАВНОМ документе — компонент даёт контейнер и #root, бандл монтируется туда.
+- CSP-ловушка: главное окно имеет script-src 'self' — реинжект inline-скриптов из modelfit.html НЕ исполняется (CDP-проб: window.__cspProbe='not-run'). Поэтому tools/extract_modelfit_bundle.py раскладывает static/modelfit.html в static/modelfit-generated/: bundle.css, boot.js (классические скрипты без iframe-моста), bundle.module.js (React-модуль как есть). Загрузка — обычными same-origin <link>/<script>.
+- Удалено вместе с оконным путём: modelfit_window.rs, permissions/modelfit-window.toml, capabilities/modelfit.json, кнопка «Открыть окно подбора» (i18n-ключи modelfit.open_window остались в словарях — без ссылок).
+- modelfit.html больше не отдаётся в рантайме (остался источником для экстрактора).
+
+## Верификация на УСТАНОВЛЕННОЙ копии (7610c3a6)
+
+- Клик «Подобрать модель» → ModelFit рендерится внутри главного окна: #root 4487 байт разметки, кнопка «Сканировать ПК» на месте, 0 console errors.
+- Скан железа внутри окна работает: полный отчёт (CPU i7-14700KF, RTX 5070, RAM, диск) отрисован, 0 ошибок.
+- Полный sweep всех воркспейсов: чисто, персистентность на месте.
+
+## Гейты (последние строки)
+
+- svelte-check: `0 errors and 0 warnings`; vitest: `545 passed`
+- cargo test `777 passed; 0 failed; 7 ignored`, fmt exit 0, clippy `-D warnings` зелёный
+- command parity `79 commands`, bundle parity `423 shipped module(s)`, INV-UI-001 `114 file(s)` — OK
+- evidence refreshed: all gates green (tree=b1ca0348…)
+
+## Ловушки для будущего
+
+- tauri встраивает frontendDist в exe (файлов ассетов в install-дереве нет и не должно быть).
+- adapter-static НЕ очищает build/ сам по себе в этой связке: после добавления static-ассетов нужен полный npm run build до tauri build, иначе в бандле останется старый build/ (случилось: первый инсталлер b8733c7 без ассетов, пересборка npm run build исправила).
+- Если будешь менять modelfit.html — всегда прогонять tools/extract_modelfit_bundle.py и npm run build.
