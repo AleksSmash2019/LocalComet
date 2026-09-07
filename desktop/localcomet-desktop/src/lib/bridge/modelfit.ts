@@ -19,50 +19,51 @@ export function installModelFitBridge(): () => void {
 }
 
 /**
- * Parse the standalone modelfit.html bundle and execute it inside the MAIN
- * window document. An <iframe src="/modelfit.html"> is not viable: WebView2
- * fires the load event but the frame stays an empty cross-origin document
- * (CDP-verified, DOM search finds nothing). The bundle itself is a
- * self-contained React app that mounts to the first #root element and
- * resolves its bridge from its own window.__TAURI__ (withGlobalTauri), so
- * running it in the main document is equivalent to running it standalone.
+ * Execute the ModelFit React bundle inside the MAIN window document.
+ *
+ * Two delivery paths are proven broken and must not come back:
+ *  - <iframe src="/modelfit.html">: WebView2 fires onload but the frame stays
+ *    an empty cross-origin document (CDP-verified; DOM search finds nothing).
+ *  - injecting the html's inline <script> text into the main document: the
+ *    main window CSP is script-src 'self', inline scripts never execute.
+ *
+ * The bundle is therefore shipped as real same-origin files under
+ * /modelfit-generated/ (tools/extract_modelfit_bundle.py splits the html):
+ * bundle.css carries the styles, boot.js the small setup scripts, and
+ * bundle.module.js is the React module that mounts onto the FIRST #root in
+ * the document — the one this component provides.
  */
 export async function mountModelFitBundle(host: HTMLElement): Promise<() => void> {
-  const response = await fetch('/modelfit.html');
-  if (!response.ok) {
-    throw new Error(`modelfit bundle fetch failed: ${response.status}`);
-  }
-  const html = await response.text();
-  const parsed = new DOMParser().parseFromString(html, 'text/html');
-
   const root = document.createElement('div');
   root.id = 'root';
   host.appendChild(root);
 
   const cleanupNodes: (HTMLElement | SVGElement)[] = [root];
-  const injectedScripts: HTMLScriptElement[] = [];
 
-  for (const sourceStyle of Array.from(parsed.querySelectorAll('style'))) {
-    const style = document.createElement('style');
-    style.textContent = sourceStyle.textContent;
-    document.head.appendChild(style);
-    cleanupNodes.push(style);
-  }
+  const css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.href = '/modelfit-generated/bundle.css';
+  document.head.appendChild(css);
+  cleanupNodes.push(css);
 
-  for (const sourceScript of Array.from(parsed.querySelectorAll('script'))) {
-    const script = document.createElement('script');
-    for (const attr of Array.from(sourceScript.attributes)) {
-      script.setAttribute(attr.name, attr.value);
-    }
-    script.textContent = sourceScript.textContent;
-    document.head.appendChild(script);
-    injectedScripts.push(script);
-  }
+  const boot = document.createElement('script');
+  boot.src = '/modelfit-generated/boot.js';
+  document.head.appendChild(boot);
+  cleanupNodes.push(boot);
+
+  const loaded = new Promise<void>((resolve, reject) => {
+    const bundle = document.createElement('script');
+    bundle.type = 'module';
+    bundle.src = '/modelfit-generated/bundle.module.js';
+    bundle.onload = () => resolve();
+    bundle.onerror = () => reject(new Error('ModelFit bundle failed to load'));
+    document.head.appendChild(bundle);
+    cleanupNodes.push(bundle);
+  });
+
+  await loaded;
 
   return () => {
-    for (const script of injectedScripts) {
-      script.remove();
-    }
     for (const node of cleanupNodes) {
       node.remove();
     }
