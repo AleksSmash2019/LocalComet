@@ -22,10 +22,16 @@
     setManagedPreferredRuntime,
     stopSelectedManagedRuntime
   } from '$lib/stores/modelGateway';
-  import { getManagedRuntimeCapability, importCustomModel } from '$lib/bridge/modelGateway';
+  import {
+    getAdaptiveModelParams,
+    getAdaptiveRuntimeArgs,
+    getManagedRuntimeCapability,
+    importCustomModel
+  } from '$lib/bridge/modelGateway';
   import { open } from '@tauri-apps/plugin-dialog';
   import { t } from '$lib/i18n';
-  import type { ApprovedDownloadableArtifact, ManagedDownloadableArtifact, ManagedRuntimeCapability } from '$lib/types/modelGateway';
+  import type { AdaptiveArgsPreview, ApprovedDownloadableArtifact, LaunchRecommendation, ManagedDownloadableArtifact, ManagedRuntimeCapability } from '$lib/types/modelGateway';
+  import { loadUiPreferences } from '$lib/stores/uiPreferences';
   import Icon from '$lib/components/common/Icon.svelte';
   import { selectDefaultModelArtifact } from '$lib/stores/modelDefault';
   import { computeMode, setComputeMode } from '$lib/stores/shellStore';
@@ -170,6 +176,80 @@
     }
     setComputeMode('gpu');
     updateUiPreferences({ ctxSizeOverride: null, gpuLayersOverride: null });
+  }
+
+  // Adaptive params: an explicit, on-demand fresh sample of the hardware fit.
+  // Nothing renders until the backend returns real data (INV-UI-001): a failed
+  // probe or an unresolved model file keeps the section in its "refresh" state.
+  let adaptiveParams: LaunchRecommendation | null = null;
+  let adaptiveArgsPreview: AdaptiveArgsPreview | null = null;
+  let adaptiveArgsShown = false;
+  let adaptiveBusy = false;
+  let adaptiveSelectionKey = '';
+
+  $: {
+    const key = `${selectedRuntimeId ?? ''}::${selectedModelId}`;
+    if (key !== adaptiveSelectionKey) {
+      adaptiveSelectionKey = key;
+      adaptiveParams = null;
+      adaptiveArgsPreview = null;
+      adaptiveArgsShown = false;
+    }
+  }
+
+  async function refreshAdaptiveParams(): Promise<void> {
+    if (selectedRuntimeId === null || selectedModelId === '' || adaptiveBusy) return;
+    adaptiveBusy = true;
+    try {
+      adaptiveParams = await getAdaptiveModelParams(selectedRuntimeId, selectedModelId);
+      adaptiveArgsPreview = null;
+      adaptiveArgsShown = false;
+    } catch {
+      adaptiveParams = null;
+    } finally {
+      adaptiveBusy = false;
+    }
+  }
+
+  function applyAdaptiveParams(): void {
+    const recommendation = adaptiveParams;
+    if (!recommendation) return;
+    if (recommendation.mode === 'hybrid') {
+      setComputeMode('hybrid');
+      updateUiPreferences({
+        ctxSizeOverride: recommendation.ctx_size,
+        gpuLayersOverride: recommendation.gpu_layers
+      });
+      return;
+    }
+    if (recommendation.mode === 'cpu') {
+      setComputeMode('cpu');
+      updateUiPreferences({ ctxSizeOverride: recommendation.ctx_size, gpuLayersOverride: null });
+      return;
+    }
+    setComputeMode('gpu');
+    updateUiPreferences({ ctxSizeOverride: null, gpuLayersOverride: null });
+  }
+
+  async function toggleAdaptiveArgs(): Promise<void> {
+    adaptiveArgsShown = !adaptiveArgsShown;
+    if (!adaptiveArgsShown || adaptiveArgsPreview !== null) return;
+    if (selectedRuntimeId === null || selectedModelId === '') return;
+    adaptiveBusy = true;
+    try {
+      const prefs = loadUiPreferences();
+      adaptiveArgsPreview = await getAdaptiveRuntimeArgs(
+        selectedRuntimeId,
+        selectedModelId,
+        prefs.ctxSizeOverride,
+        prefs.gpuLayersOverride
+      );
+    } catch {
+      adaptiveArgsPreview = null;
+      adaptiveArgsShown = false;
+    } finally {
+      adaptiveBusy = false;
+    }
   }
 
   function installationState(artifactId: string): string {
@@ -486,6 +566,22 @@
           <button type="button" disabled={$managedConnectionBusy} onclick={applyLaunchRecommendation}>{$t('models.recommendation.apply')}</button>
         </p>
       {/if}
+    {/if}
+    {#if selectedRuntimeId !== null && modelInstalled}
+      <p class="runtime-capability adaptive-params">
+        {#if adaptiveParams}
+          {$t('models.adaptive.label')}:
+          {$t(`models.recommendation.mode.${adaptiveParams.mode}`)}
+          · {$t('models.recommendation.ctx')}: {adaptiveParams.ctx_size}{#if adaptiveParams.mode === 'hybrid' && adaptiveParams.gpu_layers !== null} · {$t('models.recommendation.layers')}: {adaptiveParams.gpu_layers}{/if}{#if adaptiveParams.estimated} · {$t('models.recommendation.estimated')}{/if}
+          <button type="button" disabled={adaptiveBusy || $managedConnectionBusy} onclick={applyAdaptiveParams}>{$t('models.recommendation.apply')}</button>
+          <button type="button" disabled={adaptiveBusy} onclick={toggleAdaptiveArgs}>{$t(adaptiveArgsShown ? 'models.adaptive.args_hide' : 'models.adaptive.args_show')}</button>
+          {#if adaptiveArgsShown && adaptiveArgsPreview}
+            <code class="adaptive-args-preview">{adaptiveArgsPreview.accelerated ? 'vulkan' : 'cpu'} · {adaptiveArgsPreview.args.join(' ')}</code>
+          {/if}
+        {:else}
+          <button type="button" disabled={adaptiveBusy} onclick={refreshAdaptiveParams}>{$t('models.adaptive.refresh')}</button>
+        {/if}
+      </p>
     {/if}
     {#if $managedRuntimeStore.status?.state === 'Ready'}
       <p class="runtime-selector-hint">{$t('models.engine_requires_disconnect')}</p>

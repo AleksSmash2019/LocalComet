@@ -24,6 +24,7 @@ import type {
   ManagedRuntimeCatalog,
   ManagedRuntimeCapability,
   LaunchRecommendation,
+  AdaptiveArgsPreview,
   ManagedRuntimeLogs,
   ManagedRuntimeStartResponse,
   ManagedRuntimeStatus,
@@ -330,6 +331,37 @@ export async function getManagedRuntimeCapability(runtimeId: string, modelId?: s
   return validateManagedCapability(
     await invokeExact('managed_runtime_capability', { runtimeId: validateArtifactId(runtimeId), modelId: modelId === undefined ? null : validateArtifactId(modelId) })
   );
+}
+
+export async function getAdaptiveModelParams(runtimeId: string, modelId: string): Promise<LaunchRecommendation> {
+  return validateLaunchRecommendation(
+    await invokeExact('get_adaptive_model_params', {
+      runtimeId: validateArtifactId(runtimeId),
+      modelId: validateArtifactId(modelId)
+    })
+  );
+}
+
+export async function getAdaptiveRuntimeArgs(
+  runtimeId: string,
+  modelId: string,
+  ctxSizeOverride: number | null,
+  gpuLayersOverride: number | null
+): Promise<AdaptiveArgsPreview> {
+  return validateAdaptiveArgsPreview(
+    await invokeExact('get_adaptive_runtime_args', {
+      runtimeId: validateArtifactId(runtimeId),
+      modelId: validateArtifactId(modelId),
+      ctxSizeOverride: validateOverrideValue(ctxSizeOverride),
+      gpuLayersOverride: validateOverrideValue(gpuLayersOverride)
+    })
+  );
+}
+
+function validateOverrideValue(value: number | null): number | null {
+  if (value === null) return null;
+  if (!Number.isInteger(value) || value < 0 || value > 1_000_000) throw invalid();
+  return value;
 }
 
 export const MODEL_REQUEST_SEED = 42;
@@ -945,6 +977,14 @@ function validateManagedCapability(value: unknown): ManagedRuntimeCapability {
       object.launch_recommendation === null
         ? null
         : validateLaunchRecommendation(object.launch_recommendation)
+  };
+}
+
+function validateAdaptiveArgsPreview(value: unknown): AdaptiveArgsPreview {
+  const object = expectExactRecord(value, ['accelerated', 'args']);
+  return {
+    accelerated: exactBoolean(object.accelerated),
+    args: boundedArray(object.args, 64).map((item) => safeText(String(item), 512))
   };
 }
 

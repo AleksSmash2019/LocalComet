@@ -1,0 +1,7 @@
+[[permission]]
+identifier = "allow-adaptive-params"
+description = "Allow reading the fresh hardware-fit adaptive launch recommendation for a managed model and previewing the adaptive runtime argument knobs. Read-only: neither command launches, mutates, or exposes secrets."
+commands.allow = [
+  "get_adaptive_model_params",
+  "get_adaptive_runtime_args"
+]

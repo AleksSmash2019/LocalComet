@@ -1,4 +1,3 @@
-use crate::adaptive_params;
 use crate::artifact_trust::{perf_logging_enabled, ArtifactTrustService, ValidatedRuntimeModel};
 use crate::artifact_validation_cache::ValidationSource;
 use crate::control_plane::{BridgeError, ControlPlaneBridge, ControlPlaneMethod};
@@ -477,6 +476,92 @@ impl ManagedRuntimeSupervisor {
             );
         }
         Ok(capability)
+    }
+
+    /// Fresh hardware-fit recommendation for the model: unlike the capability
+    /// report, this re-runs the device probe and re-reads the GGUF header on
+    /// every call, so a just-unloaded model or freed VRAM is reflected
+    /// immediately. `Err` (never a silent default) when the probe or the model
+    /// file cannot support a recommendation.
+    pub fn adaptive_model_params(
+        &self,
+        runtime_id: &str,
+        model_id: &str,
+    ) -> Result<LaunchRecommendationReport, BridgeError> {
+        let capability = self.runtime_capability(runtime_id, Some(model_id))?;
+        capability.launch_recommendation.ok_or_else(|| {
+            BridgeError::new(
+                "probe_unavailable",
+                "adaptive recommendation unavailable: device probe or model file unresolved",
+            )
+        })
+    }
+
+    /// Read-only preview of the adaptive launch knobs the real launcher would
+    /// emit for this model right now. Shares `adaptive_launch_knobs` with
+    /// `runtime_args`, so the preview cannot drift from a real launch; the
+    /// launch plumbing (`--model`, port, key paths) is deliberately not part
+    /// of it and never contains secrets.
+    pub fn adaptive_args_preview(
+        &self,
+        runtime_id: &str,
+        model_id: &str,
+        ctx_size_override: Option<u32>,
+        gpu_layers_override: Option<u32>,
+    ) -> Result<AdaptiveArgsPreview, BridgeError> {
+        if runtime_id.is_empty()
+            || runtime_id.len() > 96
+            || runtime_id.chars().any(char::is_whitespace)
+        {
+            return Err(ManagedRuntimeError::new("invalid_payload", "invalid runtime id").into());
+        }
+        if model_id.is_empty() || model_id.len() > 96 || model_id.chars().any(char::is_whitespace) {
+            return Err(ManagedRuntimeError::new("invalid_payload", "invalid model id").into());
+        }
+        let target = self.artifacts.runtime_probe_target(runtime_id)?;
+        let accelerated = target.runtime_id.contains("vulkan");
+        let model_path = self.artifacts.managed_model_file(model_id)?;
+        let model_size_bytes = std::fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0);
+        // Mirror the launch-path fit target: the engine's `--fit` is aimed at
+        // the recommended context tier only for a full-auto accelerated launch
+        // with no manual overrides.
+        let fit_ctx_target =
+            if accelerated && ctx_size_override.is_none() && gpu_layers_override.is_none() {
+                match cached_device_probe(
+                    &target.runtime_id,
+                    &target.release_tag,
+                    &target.package_dir,
+                    &target.executable,
+                ) {
+                    DeviceProbeOutcome::VulkanDevice(summary) => {
+                        let metadata = read_gguf_metadata(&model_path);
+                        let mut sys = sysinfo::System::new_all();
+                        sys.refresh_memory();
+                        let available_ram_gb = sys.available_memory() as f64 / 1_073_741_824.0;
+                        let recommendation = recommend_launch(
+                            model_size_bytes,
+                            metadata.as_ref(),
+                            Some(&summary),
+                            available_ram_gb,
+                        );
+                        (recommendation.mode == "gpu").then_some(recommendation.ctx_size)
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
+        let args = adaptive_launch_knobs(
+            model_size_bytes,
+            accelerated,
+            ctx_size_override,
+            gpu_layers_override,
+            fit_ctx_target,
+        )
+        .into_iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+        Ok(AdaptiveArgsPreview { accelerated, args })
     }
 
     /// Hardware-fit recommendation for the selected model. None is returned
@@ -977,35 +1062,23 @@ impl ManagedRuntimeSupervisor {
             let memory_limit_bytes = model_size_bytes.saturating_add(PROCESS_MEMORY_HEADROOM_BYTES);
             let spec = ManagedRuntimeLaunchSpec {
                 executable: launch.executable.clone(),
-                // Adaptive launch path: when the user has not pinned explicit
-                // context/GPU overrides, parameters come from the GGUF-aware
-                // adaptive profile (model size × hardware × architecture).
-                // Explicit overrides keep their manual fit semantics unchanged.
-                args: if ctx_size_override.is_none() && gpu_layers_override.is_none() {
-                    adaptive_runtime_args(
-                        &launch.model_path,
-                        launch.mmproj_path.as_ref(),
-                        port,
-                        &api_key_file,
-                        &alias,
-                        launch.runtime_id.contains("vulkan"),
-                        ctx_size_override,
-                        gpu_layers_override,
-                        fit_ctx_target,
-                    )
-                } else {
-                    runtime_args(
-                        &launch.model_path,
-                        launch.mmproj_path.as_ref(),
-                        port,
-                        &api_key_file,
-                        &alias,
-                        launch.runtime_id.contains("vulkan"),
-                        ctx_size_override,
-                        gpu_layers_override,
-                        fit_ctx_target,
-                    )
-                },
+                // Adaptive launch path: the GGUF-aware fit target comes from
+                // the production recommendation (`recommend_launch` via
+                // fit_ctx_target above), the hardware-fit thread/batch/context
+                // knobs and the engine's bounded `--fit` live inside
+                // `runtime_args` itself. Explicit overrides keep their manual
+                // fit semantics unchanged.
+                args: runtime_args(
+                    &launch.model_path,
+                    launch.mmproj_path.as_ref(),
+                    port,
+                    &api_key_file,
+                    &alias,
+                    launch.runtime_id.contains("vulkan"),
+                    ctx_size_override,
+                    gpu_layers_override,
+                    fit_ctx_target,
+                ),
                 current_dir: launch.package_dir.clone(),
                 env: sanitized_runtime_environment(),
                 memory_limit_bytes: Some(memory_limit_bytes),
@@ -2057,6 +2130,34 @@ fn runtime_args(
     ]);
 
     let model_size_bytes = std::fs::metadata(model).map(|m| m.len()).unwrap_or(0);
+    args.extend(adaptive_launch_knobs(
+        model_size_bytes,
+        accelerated,
+        ctx_size_override,
+        gpu_layers_override,
+        fit_ctx_target,
+    ));
+    args.extend([
+        OsString::from("--n-predict"),
+        OsString::from("4096"),
+        OsString::from("--alias"),
+        OsString::from(alias),
+    ]);
+    args
+}
+
+/// Adaptive subset of the managed launch argv: hardware-fit thread/batch
+/// selection, the context decision (harness tier, explicit override, or the
+/// engine's bounded `--fit`) and the GPU layer split. Shared verbatim by the
+/// real launcher (`runtime_args`) and the `get_adaptive_runtime_args` preview
+/// command, so a preview can never drift from what a launch emits.
+fn adaptive_launch_knobs(
+    model_size_bytes: u64,
+    accelerated: bool,
+    ctx_size_override: Option<u32>,
+    gpu_layers_override: Option<u32>,
+    fit_ctx_target: Option<u32>,
+) -> Vec<OsString> {
     let model_size_gb = model_size_bytes as f64 / 1_073_741_824.0;
 
     let mut sys = sysinfo::System::new_all();
@@ -2069,6 +2170,7 @@ fn runtime_args(
 
     // Hardware-aware thread fit: physical cores for generation, logical for
     // batch. new_all() populated the CPU inventory; cpus() stays valid here.
+    let mut args: Vec<OsString> = Vec::new();
     args.extend(cpu_thread_arguments(
         sys.physical_core_count(),
         sys.cpus().len(),
@@ -2114,10 +2216,6 @@ fn runtime_args(
                 .to_string(),
         ));
     }
-    args.push(OsString::from("--n-predict"));
-    args.push(OsString::from("4096"));
-    args.push(OsString::from("--alias"));
-    args.push(OsString::from(alias));
     if accelerated {
         if let Some(layers) = gpu_layers_override {
             // Explicit Hybrid is reproducible: keep the requested layer count
@@ -2969,6 +3067,52 @@ pub async fn managed_runtime_capability(
     })?
 }
 
+/// Read-only view of the adaptive launch knobs for a managed model.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct AdaptiveArgsPreview {
+    /// True when the runtime is Vulkan-accelerated; CPU previews never
+    /// contain `--gpu-layers`.
+    pub accelerated: bool,
+    /// The adaptive subset of the launch argv (threads, batch, context/fit,
+    /// GPU layers) exactly as `runtime_args` would emit it right now.
+    pub args: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_adaptive_model_params(
+    runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    runtime_id: String,
+    model_id: String,
+) -> Result<LaunchRecommendationReport, BridgeError> {
+    let runtime = Arc::clone(&runtime);
+    tauri::async_runtime::spawn_blocking(move || {
+        runtime.adaptive_model_params(&runtime_id, &model_id)
+    })
+    .await
+    .map_err(|_| BridgeError::new("runtime_unavailable", "adaptive model params worker failed"))?
+}
+
+#[tauri::command]
+pub async fn get_adaptive_runtime_args(
+    runtime: State<'_, Arc<ManagedRuntimeSupervisor>>,
+    runtime_id: String,
+    model_id: String,
+    ctx_size_override: Option<u32>,
+    gpu_layers_override: Option<u32>,
+) -> Result<AdaptiveArgsPreview, BridgeError> {
+    let runtime = Arc::clone(&runtime);
+    tauri::async_runtime::spawn_blocking(move || {
+        runtime.adaptive_args_preview(
+            &runtime_id,
+            &model_id,
+            ctx_size_override,
+            gpu_layers_override,
+        )
+    })
+    .await
+    .map_err(|_| BridgeError::new("runtime_unavailable", "adaptive runtime args worker failed"))?
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn managed_runtime_start_trusted(
@@ -3122,155 +3266,6 @@ pub fn managed_runtime_logs(state: State<'_, Arc<ManagedRuntimeSupervisor>>) -> 
         eprintln!("[PERF] cmd=managed_runtime_logs dur_ms={dur_ms}");
     }
     result
-}
-
-#[allow(clippy::too_many_arguments)]
-/// Адаптивная версия runtime_args с улучшенной системой подбора параметров
-fn adaptive_runtime_args(
-    model: &Path,
-    mmproj: Option<&PathBuf>,
-    port: u16,
-    api_key_file: &Path,
-    alias: &str,
-    accelerated: bool,
-    ctx_size_override: Option<u32>,
-    gpu_layers_override: Option<u32>,
-    fit_ctx_target: Option<u32>,
-) -> Vec<OsString> {
-    // Используем адаптивную систему, если нет оверрайдов
-    let (final_ctx_size, final_gpu_layers) =
-        if ctx_size_override.is_none() && gpu_layers_override.is_none() {
-            // Пытаемся вычислить адаптивные параметры
-            match adaptive_params::analyze_gguf_model(model) {
-                Ok(model_info) => {
-                    let hardware_info = adaptive_params::detect_hardware_info();
-                    let adaptive_params_computed =
-                        adaptive_params::compute_adaptive_params(&model_info, &hardware_info);
-                    (
-                        ctx_size_override.unwrap_or(adaptive_params_computed.ctx_size),
-                        gpu_layers_override.unwrap_or(adaptive_params_computed.n_gpu_layers),
-                    )
-                }
-                Err(_) => {
-                    // Если адаптивный анализ не сработал, используем оригинальную логику
-                    let mut sys = sysinfo::System::new_all();
-                    sys.refresh_memory();
-
-                    let harness = AdaptiveHarnessProfile::collect();
-                    let model_size_bytes = std::fs::metadata(model).map(|m| m.len()).unwrap_or(0);
-                    let model_size_gb = model_size_bytes as f64 / 1_073_741_824.0;
-
-                    let mut ctx_size = harness.recommended_ctx_size();
-                    if model_size_gb > 6.0 && harness.available_ram_gb < 6.0 {
-                        ctx_size = ctx_size.min(4096);
-                    }
-                    (
-                        ctx_size_override.unwrap_or(ctx_size),
-                        gpu_layers_override.unwrap_or(if accelerated { 20 } else { 0 }),
-                    )
-                }
-            }
-        } else {
-            // Используем оверрайды
-            (
-                ctx_size_override.unwrap_or(2048),
-                gpu_layers_override.unwrap_or(if accelerated { 20 } else { 0 }),
-            )
-        };
-
-    let mut args = vec![OsString::from("--model"), model.as_os_str().to_os_string()];
-    if let Some(mmproj_path) = mmproj {
-        args.push(OsString::from("--mmproj"));
-        args.push(mmproj_path.as_os_str().to_os_string());
-    }
-    args.extend(vec![
-        OsString::from("--host"),
-        OsString::from("127.0.0.1"),
-        OsString::from("--port"),
-        OsString::from(port.to_string()),
-        OsString::from("--api-key-file"),
-        api_key_file.as_os_str().to_os_string(),
-        OsString::from("--no-webui"),
-        OsString::from("--no-agent"),
-        // Pin the chat template engine instead of inheriting the runtime
-        // default. A server started with --no-jinja rejects any request
-        // carrying tools/tool_choice ("tools param requires --jinja flag",
-        // verified against b10068), while the tool-less readiness probe still
-        // succeeds -- exactly the shape of a false Ready. The approved runtime
-        // b10068 happens to default --jinja on, so this is not a live bug fix;
-        // it stops a future runtime bump from silently flipping that default.
-        // REQUIRED_FLAGS below makes an engine without the flag fail closed.
-        OsString::from("--jinja"),
-        OsString::from("--reasoning-format"),
-        OsString::from("deepseek"),
-    ]);
-
-    let _model_size_bytes = std::fs::metadata(model).map(|m| m.len()).unwrap_or(0);
-    let _model_size_gb = _model_size_bytes as f64 / 1_073_741_824.0;
-
-    let mut sys = sysinfo::System::new_all();
-    sys.refresh_memory();
-
-    let harness = AdaptiveHarnessProfile::collect();
-
-    args.extend(cpu_thread_arguments(
-        sys.physical_core_count(),
-        sys.cpus().len(),
-    ));
-    args.extend([
-        OsString::from("--batch-size"),
-        OsString::from(harness.recommended_batch_size().to_string()),
-    ]);
-
-    let auto_gpu_fit = accelerated && gpu_layers_override.is_none();
-    let auto_context_fit = auto_gpu_fit && ctx_size_override.is_none();
-
-    // Let llama.cpp fit unset GPU/context arguments to the actual device when
-    // GPU mode has no explicit layer override. A bounded fit context prevents a
-    // large model's native context from consuming the whole VRAM budget.
-    if auto_gpu_fit {
-        args.push(OsString::from("--fit"));
-        args.push(OsString::from("on"));
-        if auto_context_fit {
-            args.push(OsString::from("--fit-ctx"));
-            args.push(OsString::from(
-                fit_ctx_target.unwrap_or(final_ctx_size).to_string(),
-            ));
-        } else {
-            args.push(OsString::from("--ctx-size"));
-            args.push(OsString::from(
-                final_ctx_size.clamp(1024, 131_072).to_string(),
-            ));
-        }
-    } else {
-        args.push(OsString::from("--ctx-size"));
-        args.push(OsString::from(
-            final_ctx_size.clamp(1024, 131_072).to_string(),
-        ));
-    }
-    args.push(OsString::from("--n-predict"));
-    args.push(OsString::from("4096"));
-    args.push(OsString::from("--alias"));
-    args.push(OsString::from(alias));
-    if accelerated {
-        if let Some(layers) = gpu_layers_override {
-            // Explicit Hybrid is reproducible: keep the requested layer count
-            // and disable fit from changing manually selected launch knobs.
-            args.push(OsString::from("--fit"));
-            args.push(OsString::from("off"));
-            args.push(OsString::from("--gpu-layers"));
-            args.push(OsString::from(layers.min(99).to_string()));
-        } else if final_gpu_layers > 0 {
-            // Адаптивные GPU слои
-            args.push(OsString::from("--gpu-layers"));
-            args.push(OsString::from(final_gpu_layers.min(99).to_string()));
-        }
-    } else if final_gpu_layers > 0 {
-        // CPU-режим с адаптивными слоями
-        args.push(OsString::from("--gpu-layers"));
-        args.push(OsString::from(final_gpu_layers.min(99).to_string()));
-    }
-    args
 }
 
 #[cfg(test)]
@@ -3714,6 +3709,102 @@ mod tests {
 
         assert_eq!(args[1], model.into_os_string());
         assert_eq!(args[7], key.into_os_string());
+    }
+
+    #[test]
+    fn adaptive_knobs_hybrid_override_pins_layers_and_disables_fit() {
+        let knobs = adaptive_launch_knobs(17_600_000_000, true, Some(4096), Some(33), None);
+        let joined = knobs
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--ctx-size 4096"));
+        assert!(joined.contains("--fit off"));
+        assert!(joined.contains("--gpu-layers 33"));
+        assert!(!joined.contains("--fit on"));
+        // Launch plumbing (model, ports, keys) is never part of the knobs.
+        assert!(!joined.contains("--model"));
+        assert!(!joined.contains("--port"));
+    }
+
+    #[test]
+    fn adaptive_knobs_full_auto_gpu_uses_fit_with_bounded_context() {
+        let knobs = adaptive_launch_knobs(1_100_000_000, true, None, None, Some(8192));
+        let joined = knobs
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--fit on"));
+        assert!(joined.contains("--fit-ctx 8192"));
+        assert!(!joined.contains("--gpu-layers"));
+    }
+
+    #[test]
+    fn adaptive_knobs_cpu_never_claims_gpu_layers_without_override() {
+        let knobs = adaptive_launch_knobs(5_000_000_000, false, None, None, None);
+        let joined = knobs
+            .iter()
+            .map(|item| item.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("--ctx-size"));
+        assert!(!joined.contains("--gpu-layers"));
+        assert!(!joined.contains("--fit"));
+    }
+
+    #[test]
+    fn preview_knobs_are_a_subset_of_the_real_launch_argv() {
+        // The preview command and the launcher share `adaptive_launch_knobs`;
+        // this pins the contract: every knob the preview reports must also be
+        // present with the same value in the argv a real launch emits for the
+        // same inputs.
+        let model =
+            std::env::temp_dir().join(format!("lc_adaptive_preview_{:?}.gguf", std::process::id()));
+        std::fs::write(&model, vec![0_u8; 4096]).expect("write temp model");
+        let size = std::fs::metadata(&model).expect("model size").len();
+        for accelerated in [false, true] {
+            for (ctx, layers) in [
+                (None, None),
+                (Some(4096), None),
+                (None, Some(33)),
+                (Some(8192), Some(12)),
+            ] {
+                let knobs = adaptive_launch_knobs(size, accelerated, ctx, layers, None)
+                    .iter()
+                    .map(|item| item.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>();
+                let launch = runtime_args(
+                    &model,
+                    None,
+                    12345,
+                    Path::new(r"C:\k\key.txt"),
+                    "alias",
+                    accelerated,
+                    ctx,
+                    layers,
+                    None,
+                )
+                .iter()
+                .map(|item| item.to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+                for knob_index in (0..knobs.len()).step_by(2) {
+                    let flag = &knobs[knob_index];
+                    let value = &knobs[knob_index + 1];
+                    let position = launch
+                        .iter()
+                        .position(|item| item == flag)
+                        .unwrap_or_else(|| panic!("flag {flag} missing from launch argv"));
+                    assert_eq!(
+                        launch[position + 1],
+                        *value,
+                        "value drift for {flag} (accelerated={accelerated})"
+                    );
+                }
+            }
+        }
+        let _ = std::fs::remove_file(&model);
     }
 
     #[test]

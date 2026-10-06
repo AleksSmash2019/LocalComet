@@ -34,6 +34,7 @@
     "allow-cancel-artifact-download",
     "allow-remove-managed-model",
     "allow-request-approval",
+    "allow-adaptive-params",
     "allow-checkpoints",
     "allow-coding",
     "allow-lsp-diagnostics",

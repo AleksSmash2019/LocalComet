@@ -431,3 +431,8 @@ export interface ManagedRuntimeCapability {
   readonly device_summary: string | null;
   readonly launch_recommendation: LaunchRecommendation | null;
 }
+
+export interface AdaptiveArgsPreview {
+  readonly accelerated: boolean;
+  readonly args: readonly string[];
+}
