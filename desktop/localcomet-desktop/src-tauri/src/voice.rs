@@ -150,6 +150,11 @@ try {
     $voice = New-Object -ComObject SAPI.SpVoice
     $target = $env:LOCALCOMET_TTS_VOICE
     $match = $voice.GetVoices() | Where-Object { $_.GetDescription() -eq $target } | Select-Object -First 1
+    if ($null -eq $match) {
+        # The bundled RHVoice names are absent on many machines; any installed
+        # Russian SAPI voice still beats staying silent.
+        $match = $voice.GetVoices() | Where-Object { $_.GetDescription() -match 'Russian|русск' } | Select-Object -First 1
+    }
     if ($null -eq $match) { exit 3 }
     $voice.Voice = $match
     $voice.Rate = 0
