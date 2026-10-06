@@ -189,8 +189,12 @@ def collect(vault: str) -> list[tuple[str, str, dict, str]]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Vault/repository parity gate")
-    ap.add_argument("--vault", default=r"C:\Users\DNS\Documents\LocalCometVault")
-    ap.add_argument("--repo", default=r"C:\Users\DNS\Documents\LocalComet-build-week-clean")
+    # Defaults derive from this script's location (<repo>/scripts/): the repository
+    # is the tree that contains it and the vault is its sibling, so the gate works
+    # unchanged on any machine or drive. CLI overrides still win.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ap.add_argument("--vault", default=os.path.join(os.path.dirname(repo_root), "LocalCometVault"))
+    ap.add_argument("--repo", default=repo_root)
     ap.add_argument("--canon", default="00 Канон/Текущее состояние LocalComet.md")
     ap.add_argument("--max-age", type=int, default=30,
                     help="max age in days for notes claiming current status")
