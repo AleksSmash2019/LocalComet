@@ -477,7 +477,7 @@ def _run_steps(title: str, steps: list):
 
 def _open_folder(path: Path):
     path.mkdir(parents=True, exist_ok=True)
-    subprocess.Popen(["explorer", str(path)])
+    subprocess.Popen(["explorer.exe", str(path)], shell=False)
     return f"Открыл папку: {path}"
 
 

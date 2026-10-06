@@ -2,8 +2,10 @@
 import functools
 import logging
 import warnings
+import re
 from ctypes import WinDLL
 from ctypes.wintypes import LPCSTR, LPCWSTR
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 
 _kernel32 = WinDLL("kernel32")
 
@@ -56,6 +58,15 @@ def setup_logging(*pathnames):
         "level": "WARNING",
     }
 
+    # Безопасный словарь разрешенных хендлеров
+    SAFE_HANDLERS = {
+        "StreamHandler": logging.StreamHandler,
+        "FileHandler": logging.FileHandler,
+        "NullHandler": logging.NullHandler,
+        "RotatingFileHandler": RotatingFileHandler,
+        "TimedRotatingFileHandler": TimedRotatingFileHandler,
+    }
+
     def get(section, option):
         try:
             return parser.get(section, option, True)
@@ -68,8 +79,24 @@ def setup_logging(*pathnames):
 
     # convert level name to level value
     level = getattr(logging, levelname)
-    # create the handler instance
-    handler = eval(handlerclass, vars(logging))
+    
+    # ИСПРАВЛЕНО: безопасное создание хендлера без eval
+    # Извлекаем имя класса из строки вроде "FileHandler('log.txt')"
+    # Используем регулярное выражение для безопасного извлечения имени класса
+    handler_match = re.match(r'(\w+)(?:\s*\([^)]*\))?', handlerclass.strip())
+    
+    if handler_match:
+        handler_name = handler_match.group(1)
+        if handler_name in SAFE_HANDLERS:
+            # Создаем безопасный хендлер
+            handler_class = SAFE_HANDLERS[handler_name]
+            handler = handler_class()  # Пока без аргументов, для безопасности
+        else:
+            # по умолчанию используем StreamHandler
+            handler = logging.StreamHandler()
+    else:
+        handler = logging.StreamHandler()
+    
     formatter = logging.Formatter(format)
     handler.setFormatter(formatter)
     logging.root.addHandler(handler)

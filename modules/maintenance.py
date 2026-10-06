@@ -119,6 +119,6 @@ def open_backups_folder():
     import subprocess
 
     BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
-    subprocess.Popen(["explorer", str(BACKUPS_DIR)])
+    subprocess.Popen(["explorer.exe", str(BACKUPS_DIR)], shell=False)
 
     return f"Открыл папку бэкапов: {BACKUPS_DIR}"

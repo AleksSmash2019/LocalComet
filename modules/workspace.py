@@ -23,7 +23,7 @@ def _ensure_dirs():
 
 def _open_folder(path: Path):
     path.mkdir(parents=True, exist_ok=True)
-    subprocess.Popen(["explorer", str(path)])
+    subprocess.Popen(["explorer.exe", str(path)], shell=False)
     return f"Открыл папку: {path}"
 
 
@@ -208,6 +208,6 @@ def open_last_workspace_file():
     if not path.exists():
         return f"Файл не найден: {path}"
 
-    subprocess.Popen(["notepad", str(path)])
+    subprocess.Popen(["notepad.exe", str(path)], shell=False)
 
     return f"Открыл файл: {path}"

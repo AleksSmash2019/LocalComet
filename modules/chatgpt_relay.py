@@ -75,6 +75,7 @@ def _set_clipboard(text: str):
             errors="replace",
             capture_output=True,
             timeout=30,
+            shell=False,
         )
 
         return True, "Буфер обмена обновлен через PowerShell."
@@ -917,7 +918,7 @@ def open_relay_folder():
     _ensure_dir()
 
     try:
-        subprocess.Popen(["explorer", str(RELAY_DIR)])
+        subprocess.Popen(["explorer.exe", str(RELAY_DIR)], shell=False)
         return f"Открыл папку Relay:\n{RELAY_DIR}"
     except Exception as e:
         return f"Не удалось открыть папку Relay: {e}\nПуть: {RELAY_DIR}"

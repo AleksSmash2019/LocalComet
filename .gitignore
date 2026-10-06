@@ -89,3 +89,8 @@ auth.json
 /temp_status.txt
 /todo.md
 /%SystemDrive%/
+
+# added 2026-10-06: scanner artifacts and ad-hoc audit dumps are not project source
+/.mimosa/
+.mimosa/
+/outputs/

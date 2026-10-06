@@ -1,3 +1,4 @@
+use crate::adaptive_params;
 use crate::artifact_trust::{perf_logging_enabled, ArtifactTrustService, ValidatedRuntimeModel};
 use crate::artifact_validation_cache::ValidationSource;
 use crate::control_plane::{BridgeError, ControlPlaneBridge, ControlPlaneMethod};
@@ -976,17 +977,35 @@ impl ManagedRuntimeSupervisor {
             let memory_limit_bytes = model_size_bytes.saturating_add(PROCESS_MEMORY_HEADROOM_BYTES);
             let spec = ManagedRuntimeLaunchSpec {
                 executable: launch.executable.clone(),
-                args: runtime_args(
-                    &launch.model_path,
-                    launch.mmproj_path.as_ref(),
-                    port,
-                    &api_key_file,
-                    &alias,
-                    launch.runtime_id.contains("vulkan"),
-                    ctx_size_override,
-                    gpu_layers_override,
-                    fit_ctx_target,
-                ),
+                // Adaptive launch path: when the user has not pinned explicit
+                // context/GPU overrides, parameters come from the GGUF-aware
+                // adaptive profile (model size × hardware × architecture).
+                // Explicit overrides keep their manual fit semantics unchanged.
+                args: if ctx_size_override.is_none() && gpu_layers_override.is_none() {
+                    adaptive_runtime_args(
+                        &launch.model_path,
+                        launch.mmproj_path.as_ref(),
+                        port,
+                        &api_key_file,
+                        &alias,
+                        launch.runtime_id.contains("vulkan"),
+                        ctx_size_override,
+                        gpu_layers_override,
+                        fit_ctx_target,
+                    )
+                } else {
+                    runtime_args(
+                        &launch.model_path,
+                        launch.mmproj_path.as_ref(),
+                        port,
+                        &api_key_file,
+                        &alias,
+                        launch.runtime_id.contains("vulkan"),
+                        ctx_size_override,
+                        gpu_layers_override,
+                        fit_ctx_target,
+                    )
+                },
                 current_dir: launch.package_dir.clone(),
                 env: sanitized_runtime_environment(),
                 memory_limit_bytes: Some(memory_limit_bytes),
@@ -3103,6 +3122,155 @@ pub fn managed_runtime_logs(state: State<'_, Arc<ManagedRuntimeSupervisor>>) -> 
         eprintln!("[PERF] cmd=managed_runtime_logs dur_ms={dur_ms}");
     }
     result
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Адаптивная версия runtime_args с улучшенной системой подбора параметров
+fn adaptive_runtime_args(
+    model: &Path,
+    mmproj: Option<&PathBuf>,
+    port: u16,
+    api_key_file: &Path,
+    alias: &str,
+    accelerated: bool,
+    ctx_size_override: Option<u32>,
+    gpu_layers_override: Option<u32>,
+    fit_ctx_target: Option<u32>,
+) -> Vec<OsString> {
+    // Используем адаптивную систему, если нет оверрайдов
+    let (final_ctx_size, final_gpu_layers) =
+        if ctx_size_override.is_none() && gpu_layers_override.is_none() {
+            // Пытаемся вычислить адаптивные параметры
+            match adaptive_params::analyze_gguf_model(model) {
+                Ok(model_info) => {
+                    let hardware_info = adaptive_params::detect_hardware_info();
+                    let adaptive_params_computed =
+                        adaptive_params::compute_adaptive_params(&model_info, &hardware_info);
+                    (
+                        ctx_size_override.unwrap_or(adaptive_params_computed.ctx_size),
+                        gpu_layers_override.unwrap_or(adaptive_params_computed.n_gpu_layers),
+                    )
+                }
+                Err(_) => {
+                    // Если адаптивный анализ не сработал, используем оригинальную логику
+                    let mut sys = sysinfo::System::new_all();
+                    sys.refresh_memory();
+
+                    let harness = AdaptiveHarnessProfile::collect();
+                    let model_size_bytes = std::fs::metadata(model).map(|m| m.len()).unwrap_or(0);
+                    let model_size_gb = model_size_bytes as f64 / 1_073_741_824.0;
+
+                    let mut ctx_size = harness.recommended_ctx_size();
+                    if model_size_gb > 6.0 && harness.available_ram_gb < 6.0 {
+                        ctx_size = ctx_size.min(4096);
+                    }
+                    (
+                        ctx_size_override.unwrap_or(ctx_size),
+                        gpu_layers_override.unwrap_or(if accelerated { 20 } else { 0 }),
+                    )
+                }
+            }
+        } else {
+            // Используем оверрайды
+            (
+                ctx_size_override.unwrap_or(2048),
+                gpu_layers_override.unwrap_or(if accelerated { 20 } else { 0 }),
+            )
+        };
+
+    let mut args = vec![OsString::from("--model"), model.as_os_str().to_os_string()];
+    if let Some(mmproj_path) = mmproj {
+        args.push(OsString::from("--mmproj"));
+        args.push(mmproj_path.as_os_str().to_os_string());
+    }
+    args.extend(vec![
+        OsString::from("--host"),
+        OsString::from("127.0.0.1"),
+        OsString::from("--port"),
+        OsString::from(port.to_string()),
+        OsString::from("--api-key-file"),
+        api_key_file.as_os_str().to_os_string(),
+        OsString::from("--no-webui"),
+        OsString::from("--no-agent"),
+        // Pin the chat template engine instead of inheriting the runtime
+        // default. A server started with --no-jinja rejects any request
+        // carrying tools/tool_choice ("tools param requires --jinja flag",
+        // verified against b10068), while the tool-less readiness probe still
+        // succeeds -- exactly the shape of a false Ready. The approved runtime
+        // b10068 happens to default --jinja on, so this is not a live bug fix;
+        // it stops a future runtime bump from silently flipping that default.
+        // REQUIRED_FLAGS below makes an engine without the flag fail closed.
+        OsString::from("--jinja"),
+        OsString::from("--reasoning-format"),
+        OsString::from("deepseek"),
+    ]);
+
+    let _model_size_bytes = std::fs::metadata(model).map(|m| m.len()).unwrap_or(0);
+    let _model_size_gb = _model_size_bytes as f64 / 1_073_741_824.0;
+
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_memory();
+
+    let harness = AdaptiveHarnessProfile::collect();
+
+    args.extend(cpu_thread_arguments(
+        sys.physical_core_count(),
+        sys.cpus().len(),
+    ));
+    args.extend([
+        OsString::from("--batch-size"),
+        OsString::from(harness.recommended_batch_size().to_string()),
+    ]);
+
+    let auto_gpu_fit = accelerated && gpu_layers_override.is_none();
+    let auto_context_fit = auto_gpu_fit && ctx_size_override.is_none();
+
+    // Let llama.cpp fit unset GPU/context arguments to the actual device when
+    // GPU mode has no explicit layer override. A bounded fit context prevents a
+    // large model's native context from consuming the whole VRAM budget.
+    if auto_gpu_fit {
+        args.push(OsString::from("--fit"));
+        args.push(OsString::from("on"));
+        if auto_context_fit {
+            args.push(OsString::from("--fit-ctx"));
+            args.push(OsString::from(
+                fit_ctx_target.unwrap_or(final_ctx_size).to_string(),
+            ));
+        } else {
+            args.push(OsString::from("--ctx-size"));
+            args.push(OsString::from(
+                final_ctx_size.clamp(1024, 131_072).to_string(),
+            ));
+        }
+    } else {
+        args.push(OsString::from("--ctx-size"));
+        args.push(OsString::from(
+            final_ctx_size.clamp(1024, 131_072).to_string(),
+        ));
+    }
+    args.push(OsString::from("--n-predict"));
+    args.push(OsString::from("4096"));
+    args.push(OsString::from("--alias"));
+    args.push(OsString::from(alias));
+    if accelerated {
+        if let Some(layers) = gpu_layers_override {
+            // Explicit Hybrid is reproducible: keep the requested layer count
+            // and disable fit from changing manually selected launch knobs.
+            args.push(OsString::from("--fit"));
+            args.push(OsString::from("off"));
+            args.push(OsString::from("--gpu-layers"));
+            args.push(OsString::from(layers.min(99).to_string()));
+        } else if final_gpu_layers > 0 {
+            // Адаптивные GPU слои
+            args.push(OsString::from("--gpu-layers"));
+            args.push(OsString::from(final_gpu_layers.min(99).to_string()));
+        }
+    } else if final_gpu_layers > 0 {
+        // CPU-режим с адаптивными слоями
+        args.push(OsString::from("--gpu-layers"));
+        args.push(OsString::from(final_gpu_layers.min(99).to_string()));
+    }
+    args
 }
 
 #[cfg(test)]

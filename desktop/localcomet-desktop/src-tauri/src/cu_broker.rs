@@ -249,8 +249,8 @@ struct ResolvedLaunch {
     args: Vec<String>,
     process_names: &'static [&'static str],
     allow_reparented_process: bool,
-    /// Folder launches reuse the running shell process, so a NEW-pid
-    /// postcondition would never fire; presence of the shell counts instead.
+    /// Shell reuse cannot prove that a requested window or folder was opened.
+    /// User-desktop launches with this flag stay pending without location evidence.
     shell_reused: bool,
     browser_url: Option<String>,
     browser_cdp_port: Option<u16>,

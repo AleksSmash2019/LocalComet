@@ -65,7 +65,7 @@ def _ensure_notepad_file():
 def _open_notepad_file():
     _ensure_notepad_file()
 
-    subprocess.Popen(["notepad", str(NOTEPAD_FILE)])
+    subprocess.Popen(["notepad.exe", str(NOTEPAD_FILE)], shell=False)
     time.sleep(1)
 
     set_value("last_windows_app", "notepad")
@@ -79,7 +79,7 @@ def _write_to_notepad_file(text: str):
 
     NOTEPAD_FILE.write_text(text, encoding="utf-8")
 
-    subprocess.Popen(["notepad", str(NOTEPAD_FILE)])
+    subprocess.Popen(["notepad.exe", str(NOTEPAD_FILE)], shell=False)
     time.sleep(1)
 
     set_value("last_windows_app", "notepad")
@@ -101,7 +101,7 @@ def _append_to_notepad_file(text: str):
 
     NOTEPAD_FILE.write_text(new_text, encoding="utf-8")
 
-    subprocess.Popen(["notepad", str(NOTEPAD_FILE)])
+    subprocess.Popen(["notepad.exe", str(NOTEPAD_FILE)], shell=False)
     time.sleep(1)
 
     set_value("last_windows_app", "notepad")
@@ -130,7 +130,7 @@ def _clear_notepad_file():
 
     NOTEPAD_FILE.write_text("", encoding="utf-8")
 
-    subprocess.Popen(["notepad", str(NOTEPAD_FILE)])
+    subprocess.Popen(["notepad.exe", str(NOTEPAD_FILE)], shell=False)
     time.sleep(1)
 
     set_value("last_windows_app", "notepad")
@@ -152,7 +152,7 @@ def open_app(app: str):
         raise ValueError(f"unknown application identifier: {app}")
 
     try:
-        subprocess.Popen(command)
+        subprocess.Popen(command, shell=False)
         time.sleep(1)
 
         set_value("last_windows_app", app)

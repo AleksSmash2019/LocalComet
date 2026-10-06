@@ -60,6 +60,7 @@ Python:
     python scripts/smoke_test.py --mode=cli
     python scripts/refresh_evidence.py
     python scripts/check_evidence_provenance.py
+    python scripts/check_vault_repo_parity.py
 
 Block 3 orchestration and live tool execution fully implemented and active.
 Computer Use permissions and delegation securely wired through UI (uiPreferences.ts) -> Rust Control Plane -> Python Sidecar.

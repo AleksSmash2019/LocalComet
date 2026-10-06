@@ -336,6 +336,22 @@ pub struct TerminalResult {
     pub process_tree_cleaned: bool,
 }
 
+impl TerminalResult {
+    /// A returned result is not itself success: only a known zero exit is.
+    /// Consumed by the approval/parity layer in the pending adaptive-runtime
+    /// work; kept public so the contract does not shift under it.
+    #[allow(dead_code)]
+    pub fn succeeded(&self) -> bool {
+        self.termination_kind == TerminationKind::Exited && self.exit_code == Some(0)
+    }
+
+    /// Compiler diagnostics are evidence only when captured without loss.
+    #[allow(dead_code)]
+    pub fn stderr_is_complete(&self) -> bool {
+        !self.stderr_truncated && !self.stderr_lossy
+    }
+}
+
 /// UTF-8-first decode with truthful lossiness instead of silent mojibake:
 /// valid UTF-8 (incl. Cyrillic) round-trips byte-exact; anything else is
 /// lossy-converted AND flagged so callers never mistake garbage for content.

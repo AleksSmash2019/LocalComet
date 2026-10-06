@@ -118,13 +118,30 @@ fn parse_rustc_line(line: &str) -> Option<RustcMessage> {
     {
         return None;
     }
+    let level = value.get("level")?.as_str()?;
+    if !matches!(
+        level,
+        "error" | "warning" | "note" | "help" | "failure-note" | "ice"
+    ) {
+        return None;
+    }
+    let spans = value
+        .get("spans")?
+        .as_array()?
+        .iter()
+        .map(|span| {
+            let file = span.get("file_name")?.as_str()?.to_string();
+            let line = u32::try_from(span.get("line_start")?.as_u64()?).ok()?;
+            let column = u32::try_from(span.get("column_start")?.as_u64()?).ok()?;
+            if file.is_empty() || line == 0 || column == 0 {
+                return None;
+            }
+            Some((file, line, column))
+        })
+        .collect::<Option<Vec<_>>>()?;
     let code_field = value.get("code");
     Some(RustcMessage {
-        level_raw: value
-            .get("level")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_ascii_lowercase(),
+        level_raw: level.to_string(),
         code: match code_field {
             Some(serde_json::Value::String(s)) => Some(s.clone()),
             Some(obj) => obj
@@ -140,20 +157,7 @@ fn parse_rustc_line(line: &str) -> Option<RustcMessage> {
             .chars()
             .take(MAX_MESSAGE_CHARS)
             .collect(),
-        spans: value
-            .get("spans")
-            .and_then(serde_json::Value::as_array)
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|s| {
-                        let file = s.get("file_name")?.as_str()?.to_string();
-                        let line = s.get("line_start")?.as_u64()? as u32;
-                        let col = s.get("column_start")?.as_u64()? as u32;
-                        Some((file, line, col))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
+        spans,
     })
 }
 

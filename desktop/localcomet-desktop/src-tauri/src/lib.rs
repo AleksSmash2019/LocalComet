@@ -1,3 +1,4 @@
+mod adaptive_params;
 mod app_data_root;
 mod approval;
 mod approval_commands;
@@ -41,8 +42,8 @@ mod workspace;
 
 use approval_commands::{
     cu_broker_continuation_complete, cu_broker_continuation_consume, cu_broker_continuation_revoke,
-    cu_broker_observe, execute_approved, request_approval, resolve_tool_approval, run_tool_call,
-    set_workspace, ApprovalState,
+    cu_broker_observe, execute_approved, get_adaptive_model_params, get_adaptive_runtime_args,
+    request_approval, resolve_tool_approval, run_tool_call, set_workspace, ApprovalState,
 };
 use artifact_acquisition::{
     cancel_artifact_download, get_artifact_download_state, list_approved_downloadable_artifacts,
@@ -390,7 +391,9 @@ pub fn run() {
             coding_events,
             coding_list_tasks,
             coding_recover_task,
-            coding_cancel
+            coding_cancel,
+            get_adaptive_model_params,
+            get_adaptive_runtime_args
         ])
         .run(tauri::generate_context!());
 

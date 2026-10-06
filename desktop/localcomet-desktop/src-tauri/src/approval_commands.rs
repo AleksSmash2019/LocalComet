@@ -1,3 +1,4 @@
+use crate::adaptive_params;
 use crate::approval::{
     canonical_input_digest, command_family_for_tool, ApprovalDecision, ApprovalDescriptor,
     ApprovalEnvelope, ApprovalError, ApprovalPrompt, ApprovalRegistry, ApprovalScope,
@@ -2551,4 +2552,44 @@ mod tests {
             .expect_err("unknown Computer Use action must be rejected");
         assert_eq!(error.code, "unsupported_action");
     }
+}
+
+#[tauri::command]
+pub fn get_adaptive_model_params(
+    model_path: String,
+) -> Result<adaptive_params::AdaptiveParams, BridgeError> {
+    let path = std::path::Path::new(&model_path);
+    let model_info = adaptive_params::analyze_gguf_model(path)
+        .map_err(|e| BridgeError::new("invalid_payload", &e))?;
+    let hardware_info = adaptive_params::detect_hardware_info();
+    Ok(adaptive_params::compute_adaptive_params(
+        &model_info,
+        &hardware_info,
+    ))
+}
+
+#[tauri::command]
+pub fn get_adaptive_runtime_args(
+    model_path: String,
+    mmproj_path: Option<String>,
+    port: u16,
+    api_key_file: String,
+    alias: String,
+) -> Result<Vec<String>, BridgeError> {
+    let model_path = std::path::Path::new(&model_path);
+    let mmproj_path = mmproj_path.map(|p| std::path::Path::new(&p).to_path_buf());
+    let api_key_file = std::path::Path::new(&api_key_file);
+
+    let args = adaptive_params::build_adaptive_runtime_args(
+        model_path,
+        mmproj_path.as_deref(),
+        port,
+        api_key_file,
+        &alias,
+        "managed-llama-cpp",
+        "", /* package_dir */
+    )
+    .map_err(|e| BridgeError::new("runtime_config_error", &e))?;
+
+    Ok(args)
 }
